@@ -114,6 +114,7 @@ namespace features::esp {
 				bool is_scoped{};
 				bool is_defusing{};
 				bool is_flashed{};
+				bool has_c4{};
 				std::string name{};
 				std::array<systems::bones::data, 27> bones{};
 				math::vector3 origin{};
@@ -140,7 +141,7 @@ namespace features::esp {
 			void add_weapon( xdraw::draw_list& draw_list, const systems::bounds::data& bounds, const info& info, const settings::esp::player::overlay::weapon& cfg, draw_offsets& offsets );
 			void add_flags( xdraw::draw_list& draw_list, const systems::bounds::data& bounds, const info& info, const settings::esp::player::overlay::info_flags& cfg, draw_offsets& offsets );
 			void add_oof_arrow( xdraw::draw_list& draw_list, const info& info, const settings::esp::player::overlay::oof_arrow& cfg );
-			[[nodiscard]] info get_info( const systems::entities::cached& player, const systems::local::snapshot& local, int local_slot = -1 );
+			[[nodiscard]] info get_info( const systems::entities::cached& player, const systems::local::snapshot& local, int local_slot = -1, std::uintptr_t c4_carrier_pawn = 0 );
 
 			struct animation_data
 			{

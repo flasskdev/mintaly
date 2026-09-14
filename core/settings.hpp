@@ -815,11 +815,11 @@ namespace settings {
                                 {
                                         enum flag : std::uint8_t
                                         {
-                                                money = 0, armor, kit, scoped, defusing, flashed, ping, distance, count
+                                                money = 0, armor, kit, scoped, defusing, flashed, ping, distance, c4, count
                                         };
 
                                         xui::setting enabled{};
-                                        config::bools<count> flags{ { false, false, false, true, true, true, true, false } };
+                                        config::bools<count> flags{ { false, false, false, true, true, true, true, false, true } };
 
                                         config::col money_color{ { 160, 210, 140, 255 } };
                                         config::col armor_color{ { 220, 225, 240, 255 } };
@@ -828,6 +828,7 @@ namespace settings {
                                         config::col defusing_color{ { 173, 192, 255, 255 } };
                                         config::col flashed_color{ { 240, 230, 170, 255 } };
                                         config::col distance_color{ { 185, 190, 205, 255 } };
+                                        config::col c4_color{ { 255, 105, 105, 255 } };
 
                                         info_flags() = default;
 
@@ -842,6 +843,7 @@ namespace settings {
                                                 this->defusing_color.reg(cat, "defusing color");
                                                 this->flashed_color.reg(cat, "flashed color");
                                                 this->distance_color.reg(cat, "distance color");
+                                                this->c4_color.reg(cat, "c4 color");
                                         }
 
                                         [[nodiscard]] bool has(flag f) const { return this->flags[f]; }

@@ -5810,15 +5810,15 @@ namespace xui {
 		class combo_overlay : public overlay
 		{
 		public:
-			combo_overlay( std::uintptr_t id, const rect& anchor, float width, const std::vector<std::string>& items, int* current_item, float item_h, float item_pad, std::function<void( )> on_change = nullptr ) : overlay{ id, anchor }, m_width{ width }, m_items{ items }, m_current_item{ current_item }, m_item_h{ item_h }, m_item_pad{ item_pad }, m_on_change{ std::move( on_change ) }
+			combo_overlay( std::uintptr_t id, const rect& anchor, float width, const std::vector<std::string>& items, int initial_val, float item_h, float item_pad, std::function<void( )> on_change = nullptr ) : overlay{ id, anchor }, m_width{ width }, m_items{ items }, m_selected_item{ initial_val }, m_current_val{ initial_val }, m_item_h{ item_h }, m_item_pad{ item_pad }, m_on_change{ std::move( on_change ) }
 			{
 				this->m_hover_anims.resize( items.size( ), 0.0f );
 				this->m_selected_anims.resize( items.size( ), 0.0f );
 				this->m_item_anims.resize( items.size( ), 0.0f );
 
-				if ( current_item && *current_item >= 0 && *current_item < static_cast< int >( items.size( ) ) )
+				if ( this->m_current_val >= 0 && this->m_current_val < static_cast< int >( items.size( ) ) )
 				{
-					this->m_selected_anims[ *current_item ] = 1.0f;
+					this->m_selected_anims[ this->m_current_val ] = 1.0f;
 				}
 			}
 
@@ -5897,10 +5897,8 @@ namespace xui {
 
 						if ( ir.contains( input.mouse_x, input.mouse_y ) )
 						{
-							if ( this->m_current_item )
-							{
-								*this->m_current_item = i;
-							}
+							this->m_selected_item = i;
+							this->m_current_val = i;
 
 							if ( this->m_on_change )
 							{
@@ -6005,7 +6003,7 @@ namespace xui {
 					const auto item_alpha = item_ease * alpha_mult;
 					const auto slide = ( 1.0f - item_ease ) * 8.0f;
 
-					const auto is_selected = this->m_current_item && ( i == *this->m_current_item );
+					const auto is_selected = ( i == this->m_current_val );
 					const auto is_hovered = ir.contains( input.mouse_x, input.mouse_y );
 
 					auto& ha = this->m_hover_anims[ i ];
@@ -6091,6 +6089,9 @@ namespace xui {
 			}
 
 			[[nodiscard]] bool was_changed( ) const { return this->m_changed; }
+			void clear_changed( ) { this->m_changed = false; }
+			[[nodiscard]] int get_selected_item( ) const { return this->m_selected_item; }
+			void update_current_val( int val ) { this->m_current_val = val; }
 
 		private:
 			static constexpr auto k_max_h{ 255.0f };
@@ -6132,7 +6133,8 @@ namespace xui {
 
 			float m_width{};
 			std::vector<std::string> m_items{};
-			int* m_current_item{};
+			int m_selected_item{ -1 };
+			int m_current_val{ 0 };
 			float m_item_h{};
 			float m_item_pad{};
 			std::function<void( )> m_on_change{};
@@ -6171,7 +6173,13 @@ namespace xui {
 		{
 			if ( popup->was_changed( ) )
 			{
+				const auto sel = popup->get_selected_item( );
+				if ( sel >= 0 && sel < count )
+				{
+					current = sel;
+				}
 				changed = true;
+				popup->clear_changed( );
 			}
 		}
 
@@ -6196,6 +6204,7 @@ namespace xui {
 			if ( auto popup = dynamic_cast< combo_overlay* >( overlays::find( id ) ) )
 			{
 				popup->update_anchor( button_rect );
+				popup->update_current_val( current );
 			}
 		}
 
@@ -6223,7 +6232,7 @@ namespace xui {
 					items_vec.emplace_back( items[ i ] );
 				}
 
-				overlays::add( std::make_unique<combo_overlay>( id, button_rect, width, items_vec, &current, s.combo_item_h, s.window_pad_y * 0.5f ) );
+				overlays::add( std::make_unique<combo_overlay>( id, button_rect, width, items_vec, current, s.combo_item_h, s.window_pad_y * 0.5f ) );
 			}
 		}
 
@@ -6477,6 +6486,7 @@ namespace xui {
 			}
 
 			[[nodiscard]] bool was_changed( ) const { return this->m_changed; }
+			void clear_changed( ) { this->m_changed = false; }
 
 			[[nodiscard]] const std::string& get_display_text( ) const
 			{
@@ -6563,6 +6573,7 @@ namespace xui {
 			if ( popup->was_changed( ) )
 			{
 				changed = true;
+				popup->clear_changed( );
 			}
 		}
 

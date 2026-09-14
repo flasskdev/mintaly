@@ -221,52 +221,73 @@ namespace features::changer {
 			this->initialize( );
 		}
 
-		constexpr std::uint64_t steam_id_base = 76561197960265728ull;
-		const auto local_steam_id = this->resolve_local_steam_id( );
-		if ( local_steam_id >= steam_id_base )
-			this->set_local_steam_id( local_steam_id );
-
-		// Enqueue all other players' steam IDs for pulling (plus local steam ID to verify server sync)
-		const auto players = systems::g_entities.get_by_type( systems::entities::type::player );
-		std::vector<std::uint64_t> ids_to_query{};
-
-		if ( local_steam_id >= steam_id_base )
+		try
 		{
-			ids_to_query.push_back( local_steam_id );
-		}
+			constexpr std::uint64_t steam_id_base = 76561197960265728ull;
 
-		for ( const auto& p : players )
-		{
-			if ( !p.ptr )
+			// Safe steam ID resolution — avoid entity scans during map transitions
+			std::uint64_t local_steam_id = 0;
+			try
 			{
-				continue;
+				local_steam_id = this->resolve_local_steam_id( );
+			}
+			catch ( ... )
+			{
+				// Entity system may not be ready during map load, use cached value
+				local_steam_id = this->m_last_local_steam_id.load( );
 			}
 
-			const auto sid = memory::safe_read<std::uint64_t>( p.ptr + SCHEMA( "CBasePlayerController", "m_steamID"_hash ) ).value_or( 0 );
-			if ( sid >= steam_id_base && sid != local_steam_id )
-			{
-				ids_to_query.push_back( sid );
-			}
-		}
+			if ( local_steam_id >= steam_id_base )
+				this->set_local_steam_id( local_steam_id );
 
-		if ( !ids_to_query.empty( ) )
-		{
-			std::lock_guard lock( this->m_query_mutex );
-			for ( const auto id : ids_to_query )
+			// Only scan entities if local player is fully valid
+			if ( !systems::g_local.get( ).is_valid( ) )
+				return;
+
+			// Enqueue all other players' steam IDs for pulling (plus local steam ID to verify server sync)
+			std::vector<std::uint64_t> ids_to_query{};
+
+			if ( local_steam_id >= steam_id_base )
 			{
-				if ( std::find( this->m_pending_query_ids.begin( ), this->m_pending_query_ids.end( ), id ) == this->m_pending_query_ids.end( ) )
+				ids_to_query.push_back( local_steam_id );
+			}
+
+			const auto players = systems::g_entities.get_by_type( systems::entities::type::player );
+			for ( const auto& p : players )
+			{
+				if ( !p.ptr )
 				{
-					this->m_pending_query_ids.push_back( id );
+					continue;
+				}
+
+				const auto sid = memory::safe_read<std::uint64_t>( p.ptr + SCHEMA( "CBasePlayerController", "m_steamID"_hash ) ).value_or( 0 );
+				if ( sid >= steam_id_base && sid != local_steam_id )
+				{
+					ids_to_query.push_back( sid );
+				}
+			}
+
+			if ( !ids_to_query.empty( ) )
+			{
+				std::lock_guard lock( this->m_query_mutex );
+				for ( const auto id : ids_to_query )
+				{
+					if ( std::find( this->m_pending_query_ids.begin( ), this->m_pending_query_ids.end( ), id ) == this->m_pending_query_ids.end( ) )
+					{
+						this->m_pending_query_ids.push_back( id );
+					}
 				}
 			}
 		}
+		catch ( ... )
+		{
+			// Silently absorb any exception during match transitions
+		}
 	}
 
-	const remote_player_skin* skin_sync::get_remote_skin( std::uint64_t steam_id ) const
+	std::optional<remote_player_skin> skin_sync::get_remote_skin( std::uint64_t steam_id ) const
 	{
 		std::shared_lock lock( this->m_mutex );
-		// Valid until the next get_remote_skin call on this thread.
-		thread_local remote_player_skin copy;
 
 		constexpr std::uint64_t steam_id_base = 76561197960265728ull;
 		if ( steam_id < steam_id_base )
@@ -279,23 +300,20 @@ namespace features::changer {
 					const auto it = this->m_cache.find( this->m_last_local_steam_id );
 					if ( it != this->m_cache.end( ) && ( !it->second.skins.empty( ) || it->second.agent_ct > 0 || it->second.agent_t > 0 || it->second.music_kit_id > 0 ) )
 					{
-						copy = it->second;
-						return &copy;
+						return it->second;
 					}
 				}
-				copy = this->m_bot_preview;
-				return &copy;
+				return this->m_bot_preview;
 			}
-			return nullptr;
+			return std::nullopt;
 		}
 
 		const auto it = this->m_cache.find( steam_id );
 		if ( it != this->m_cache.end( ) )
 		{
-			copy = it->second;
-			return &copy;
+			return it->second;
 		}
-		return nullptr;
+		return std::nullopt;
 	}
 
 	bool skin_sync::is_cheat_user( std::uint64_t steam_id ) const

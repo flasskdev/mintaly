@@ -203,7 +203,7 @@ namespace features::changer {
 				continue;
 			}
 
-			const auto sid = memory::read<std::uint64_t>( ctrl + SCHEMA( "CBasePlayerController", "m_steamID"_hash ) );
+			const auto sid = memory::safe_read<std::uint64_t>( ctrl + SCHEMA( "CBasePlayerController", "m_steamID"_hash ) ).value_or( 0 );
 			constexpr std::uint64_t steam_id_base = 76561197960265728ull;
 			if ( sid < steam_id_base && !g_skin_sync.m_bot_sync_test.load( ) )
 			{
@@ -216,25 +216,27 @@ namespace features::changer {
 				continue;
 			}
 
-			const settings::changer::applied_skin* remote_knife_skin{ nullptr };
+			settings::changer::applied_skin remote_knife_skin{};
 			const econ_item_system::item_def* remote_knife_def{ nullptr };
+			bool has_knife_skin{ false };
 			for ( const auto& [def_idx, skin] : remote_skin_data->skins )
 			{
 				const auto def = g_econ_item_system.find_def( def_idx );
 				if ( def && def->category == econ_item_system::item_category::knife )
 				{
-					remote_knife_skin = &skin;
+					remote_knife_skin = skin;
 					remote_knife_def = def;
+					has_knife_skin = true;
 					break;
 				}
 			}
 
-			if ( !remote_knife_def || !remote_knife_skin )
+			if ( !remote_knife_def || !has_knife_skin )
 			{
 				continue;
 			}
 
-			const auto pawn_handle = memory::read<std::uint32_t>( ctrl + SCHEMA( "CBasePlayerController", "m_hPawn"_hash ) );
+			const auto pawn_handle = memory::safe_read<std::uint32_t>( ctrl + SCHEMA( "CBasePlayerController", "m_hPawn"_hash ) ).value_or( 0 );
 			if ( !pawn_handle )
 			{
 				continue;
@@ -246,21 +248,21 @@ namespace features::changer {
 				continue;
 			}
 
-			const auto remote_weapon_services = memory::read<std::uintptr_t>( pawn + SCHEMA( "C_BasePlayerPawn", "m_pWeaponServices"_hash ) );
+			const auto remote_weapon_services = memory::safe_read<std::uintptr_t>( pawn + SCHEMA( "C_BasePlayerPawn", "m_pWeaponServices"_hash ) ).value_or( 0 );
 			if ( !remote_weapon_services )
 			{
 				continue;
 			}
 
 			const auto remote_weapons_base = remote_weapon_services + SCHEMA( "CPlayer_WeaponServices", "m_hMyWeapons"_hash );
-			const auto remote_weapons_size = memory::read<int>( remote_weapons_base );
-			const auto remote_weapons_data = memory::read<std::uintptr_t>( remote_weapons_base + 0x8 );
+			const auto remote_weapons_size = memory::safe_read<int>( remote_weapons_base ).value_or( 0 );
+			const auto remote_weapons_data = memory::safe_read<std::uintptr_t>( remote_weapons_base + 0x8 ).value_or( 0 );
 			if ( !remote_weapons_data || remote_weapons_size <= 0 )
 			{
 				continue;
 			}
 
-			const auto remote_active_handle = memory::read<std::uint32_t>( remote_weapon_services + SCHEMA( "CPlayer_WeaponServices", "m_hActiveWeapon"_hash ) );
+			const auto remote_active_handle = memory::safe_read<std::uint32_t>( remote_weapon_services + SCHEMA( "CPlayer_WeaponServices", "m_hActiveWeapon"_hash ) ).value_or( 0 );
 			const auto remote_active_weapon = systems::g_entities.lookup( remote_active_handle );
 			const auto remote_account_id = static_cast< std::uint32_t >( sid & 0xffffffff );
 
@@ -287,15 +289,15 @@ namespace features::changer {
 				}
 
 				const auto target_token = detail::make_subclass_token( remote_knife_def->def_index );
-				const auto current_subclass = memory::read<std::uint32_t>( weapon + SCHEMA( "C_BaseEntity", "m_nSubclassID"_hash ) );
-				const auto current_pk = memory::read<int>( weapon + SCHEMA( "C_EconEntity", "m_nFallbackPaintKit"_hash ) );
+				const auto current_subclass = memory::safe_read<std::uint32_t>( weapon + SCHEMA( "C_BaseEntity", "m_nSubclassID"_hash ) ).value_or( 0 );
+				const auto current_pk = memory::safe_read<int>( weapon + SCHEMA( "C_EconEntity", "m_nFallbackPaintKit"_hash ) ).value_or( 0 );
 
-				if ( current_subclass == target_token && current_pk == remote_knife_skin->paint_kit_id )
+				if ( current_subclass == target_token && current_pk == remote_knife_skin.paint_kit_id )
 				{
 					break;
 				}
 
-				this->apply( weapon, iv, remote_knife_def, remote_knife_skin, remote_account_id, remote_active_weapon, pawn );
+				this->apply( weapon, iv, remote_knife_def, &remote_knife_skin, remote_account_id, remote_active_weapon, pawn );
 				break;
 			}
 		}

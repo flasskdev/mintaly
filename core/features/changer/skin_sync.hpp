@@ -9,6 +9,7 @@
 #include <atomic>
 #include <mutex>
 #include <vector>
+#include <optional>
 #include <core/settings.hpp>
 
 namespace features::changer {
@@ -32,7 +33,7 @@ namespace features::changer {
 		void set_local_steam_id( std::uint64_t steam_id );
 		[[nodiscard]] std::uint64_t resolve_local_steam_id( ) const;
 
-		[[nodiscard]] const remote_player_skin* get_remote_skin( std::uint64_t steam_id ) const;
+		[[nodiscard]] std::optional<remote_player_skin> get_remote_skin( std::uint64_t steam_id ) const;
 		[[nodiscard]] bool is_cheat_user( std::uint64_t steam_id ) const;
 		[[nodiscard]] bool should_show_indicator( std::uint64_t steam_id ) const;
 		[[nodiscard]] int get_remote_music_kit( std::uint64_t steam_id ) const;

@@ -78,25 +78,14 @@ namespace rendering {
 
 		// ── ping (game scoreboard ping: CCSPlayerController::m_iPing) ───────
 		auto ping{ 0 };
-		const auto ctrl = local.controller ? local.controller : ( addresses::globals::local_player_controller ? memory::safe_read<std::uintptr_t>( addresses::globals::local_player_controller ).value_or( 0 ) : 0 );
-		if ( ctrl )
+		if ( local.controller && systems::g_entities.exists( local.controller ) )
 		{
 			const auto ping_offset = SCHEMA( "CCSPlayerController", "m_iPing"_hash );
 			if ( ping_offset > 0 )
 			{
-				const auto raw_ping = memory::safe_read<std::uint32_t>( ctrl + ping_offset ).value_or( 0 );
+				const auto raw_ping = memory::read<std::uint32_t>( local.controller + ping_offset );
 				if ( raw_ping < 1000 )
 					ping = static_cast<int>( raw_ping );
-			}
-		}
-		else if ( addresses::globals::network_client_service )
-		{
-			const auto net_channel = memory::call<std::uintptr_t>( PATTERN( patterns::get_net_channel ), 0, 0 );
-			if ( net_channel )
-			{
-				const auto lat = memory::call_vfunc<float>( net_channel, 10, 0 );
-				if ( std::isfinite( lat ) && lat > 0.0f && lat < 2.0f )
-					ping = static_cast<int>( std::round( lat * 1000.0f ) );
 			}
 		}
 
@@ -111,7 +100,7 @@ namespace rendering {
 		static auto last_curtime{ 0.0f };
 		static auto measured_tickrate{ 0 };
 
-		if ( local.controller )
+		if ( local.controller && systems::g_entities.exists( local.controller ) && addresses::globals::global_vars )
 		{
 			const auto net_for_tick = addresses::globals::network_client_service;
 			const auto tick_state   = net_for_tick ? memory::call_vfunc<std::uintptr_t>( net_for_tick, 23 ) : 0;
@@ -149,12 +138,13 @@ namespace rendering {
 		if ( has_tick ) std::snprintf( tick_val, sizeof( tick_val ), "%d", measured_tickrate );
 
 		// ── velocity ──────────────────────────────────────────────────────
-		const bool has_velocity = wm.show_velocity.value && local.is_alive && local.pawn;
+		const bool has_velocity = wm.show_velocity.value && local.is_alive && local.pawn && systems::g_entities.exists( local.pawn );
 		static auto smoothed_velocity{ 0.0f };
 		char vel_val[ 8 ]{};
 		if ( has_velocity )
 		{
-			const auto velocity = memory::read<math::vector3>( local.pawn + SCHEMA( "C_BaseEntity", "m_vecAbsVelocity"_hash ) );
+			const auto vel_offset = SCHEMA( "C_BaseEntity", "m_vecAbsVelocity"_hash );
+			const auto velocity = vel_offset ? memory::read<math::vector3>( local.pawn + vel_offset ) : math::vector3{};
 			const auto speed = velocity.length_2d( );
 			smoothed_velocity += ( speed - smoothed_velocity ) * std::min( 8.0f * xdraw::delta_time( ), 1.0f );
 			std::snprintf( vel_val, sizeof( vel_val ), "%.0f", smoothed_velocity );
@@ -313,8 +303,17 @@ namespace rendering {
             else
                 y = 12.0f + row * (height + 5.0f);
 
-            draw_list.rect_filled(x - 2.0f, y + 3.0f, w + 4.0f, height + 2.0f,
-                tint({0,0,0,30}), xdraw::corner_radius{9.0f});
+            // Ambient soft shadow expanding all around the background card
+            draw_list.rect_filled( x - 6.0f, y - 5.0f, w + 12.0f, height + 11.0f,
+                tint({ 0, 0, 0, 15 }), xdraw::corner_radius{ 12.0f } );
+            draw_list.rect_filled( x - 4.0f, y - 3.5f, w + 8.0f, height + 8.0f,
+                tint({ 0, 0, 0, 30 }), xdraw::corner_radius{ 10.0f } );
+            draw_list.rect_filled( x - 2.5f, y - 2.0f, w + 5.0f, height + 5.0f,
+                tint({ 0, 0, 0, 50 }), xdraw::corner_radius{ 8.5f } );
+            draw_list.rect_filled( x - 1.0f, y - 0.5f, w + 2.0f, height + 3.0f,
+                tint({ 0, 0, 0, 75 }), xdraw::corner_radius{ 7.5f } );
+
+            // Card background and border
             draw_list.rect_filled(x, y, w, height, tint(tokens::col_card), xdraw::corner_radius{7.0f});
             draw_list.rect(x, y, w, height, tint(tokens::col_border), xdraw::corner_radius{7.0f});
             const auto accent_x = x + 10.0f;

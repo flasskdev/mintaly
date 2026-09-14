@@ -229,14 +229,14 @@ namespace xdraw {
 
 namespace tokens {
 
-	inline xdraw::color col_accent{ 36, 220, 145, 255 };
-	inline xdraw::color col_dark{ 11, 15, 13, 255 };
-	inline xdraw::color col_text{ 240, 246, 242, 245 };
-	inline xdraw::color col_text_dim{ 138, 152, 144, 200 };
-	inline xdraw::color col_card{ 17, 22, 19, 210 };
-	inline xdraw::color col_elevated{ 23, 30, 26, 220 };
+	inline xdraw::color col_accent{ 168, 178, 194, 255 };
+	inline xdraw::color col_dark{ 12, 13, 16, 255 };
+	inline xdraw::color col_text{ 240, 242, 248, 245 };
+	inline xdraw::color col_text_dim{ 142, 148, 160, 200 };
+	inline xdraw::color col_card{ 18, 20, 25, 210 };
+	inline xdraw::color col_elevated{ 25, 28, 35, 220 };
 
-	inline xdraw::color col_border{ 33, 44, 38, 255 };
+	inline xdraw::color col_border{ 38, 42, 52, 255 };
 
 	constexpr auto sidebar_w{ 192.0f };
 	constexpr auto tab_icon_size{ 35.0f };

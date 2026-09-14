@@ -1325,13 +1325,6 @@ namespace rendering {
                 edge, center, center, edge);
             dl.rect_filled_gradient(accent_x + half_w, wy, half_w, 2.0f,
                 center, edge, edge, center);
-            // Liquid glass top highlight and glass perimeter rim
-            dl.rect_filled_gradient(wx + 1.0f, wy + 1.0f, ww - 2.0f, 32.0f,
-                xdraw::color{ 255, 255, 255, static_cast<std::uint8_t>(20.0f * menu_reveal) },
-                xdraw::color{ 255, 255, 255, static_cast<std::uint8_t>(20.0f * menu_reveal) },
-                xdraw::color{ 255, 255, 255, 0 },
-                xdraw::color{ 255, 255, 255, 0 },
-                xdraw::corner_radius::top(tokens::window_rounding - 1.0f));
             dl.rect(wx, wy, ww, wh, xdraw::color{ 255, 255, 255, static_cast<std::uint8_t>(32.0f * menu_reveal) }, xdraw::corner_radius{ tokens::window_rounding }, 1.0f);
             const auto content_x = sb_x + sb_w + tokens::gap;
             const auto content_y = sb_y;
@@ -2096,12 +2089,6 @@ namespace rendering {
         top_dl.rect_filled_blurred(main_x, main_y, main_w, main_h, xdraw::corner_radius{ 8.0f },
             xdraw::color{ 50, 55, 65, static_cast<std::uint8_t>(170.0f * anim) });
         top_dl.rect_filled(main_x, main_y, main_w, main_h, main_bg, xdraw::corner_radius{ 8.0f });
-        top_dl.rect_filled_gradient(main_x, main_y, main_w, 24.0f,
-            xdraw::color{ 255, 255, 255, static_cast<std::uint8_t>(18.0f * anim) },
-            xdraw::color{ 255, 255, 255, static_cast<std::uint8_t>(18.0f * anim) },
-            xdraw::color{ 255, 255, 255, 1 },
-            xdraw::color{ 255, 255, 255, 1 },
-            xdraw::corner_radius::top(8.0f));
         top_dl.rect(main_x, main_y, main_w, main_h, main_border, xdraw::corner_radius{ 8.0f }, 1.0f);
         // Menu-matching accent glow top stripe
         const auto m_accent_x = main_x + 8.0f;
@@ -2309,12 +2296,6 @@ namespace rendering {
             top_dl.rect_filled_blurred(sub_x, sub_y, sub_w, sub_h, xdraw::corner_radius{ 8.0f },
                 xdraw::color{ 50, 55, 65, static_cast<std::uint8_t>(170.0f * sub_anim) });
             top_dl.rect_filled(sub_x, sub_y, sub_w, sub_h, s_bg, xdraw::corner_radius{ 8.0f });
-            top_dl.rect_filled_gradient(sub_x, sub_y, sub_w, 24.0f,
-                xdraw::color{ 255, 255, 255, static_cast<std::uint8_t>(18.0f * sub_anim) },
-                xdraw::color{ 255, 255, 255, static_cast<std::uint8_t>(18.0f * sub_anim) },
-                xdraw::color{ 255, 255, 255, 1 },
-                xdraw::color{ 255, 255, 255, 1 },
-                xdraw::corner_radius::top(8.0f));
             top_dl.rect(sub_x, sub_y, sub_w, sub_h, s_border, xdraw::corner_radius{ 8.0f }, 1.0f);
             // Menu-matching accent glow top stripe
             const auto s_accent_x = sub_x + 8.0f;

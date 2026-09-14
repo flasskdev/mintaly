@@ -283,6 +283,17 @@ namespace diag {
 						g_module_end =
 							reinterpret_cast<std::uintptr_t>( module_handle ) +
 							nt_headers->OptionalHeader.SizeOfImage;
+
+#if defined( _M_X64 )
+						const auto& exc_dir = nt_headers->OptionalHeader.DataDirectory[ IMAGE_DIRECTORY_ENTRY_EXCEPTION ];
+						if ( exc_dir.VirtualAddress && exc_dir.Size )
+						{
+							auto* funcs = reinterpret_cast<PRUNTIME_FUNCTION>(
+								reinterpret_cast<std::uintptr_t>( module_handle ) + exc_dir.VirtualAddress );
+							const DWORD count = exc_dir.Size / sizeof( RUNTIME_FUNCTION );
+							RtlAddFunctionTable( funcs, count, reinterpret_cast<DWORD64>( module_handle ) );
+						}
+#endif
 					}
 				}
 			}

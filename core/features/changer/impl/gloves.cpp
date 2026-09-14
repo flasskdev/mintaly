@@ -117,7 +117,7 @@ namespace features::changer {
 				continue;
 			}
 
-			const auto sid = memory::read<std::uint64_t>( ctrl + SCHEMA( "CBasePlayerController", "m_steamID"_hash ) );
+			const auto sid = memory::safe_read<std::uint64_t>( ctrl + SCHEMA( "CBasePlayerController", "m_steamID"_hash ) ).value_or( 0 );
 			constexpr std::uint64_t steam_id_base = 76561197960265728ull;
 			if ( sid < steam_id_base && !g_skin_sync.m_bot_sync_test.load( ) )
 			{
@@ -130,25 +130,27 @@ namespace features::changer {
 				continue;
 			}
 
-			const settings::changer::applied_skin* remote_glove_skin{ nullptr };
+			settings::changer::applied_skin remote_glove_skin{};
 			const econ_item_system::item_def* remote_glove_def{ nullptr };
+			bool has_glove_skin{ false };
 			for ( const auto& [def_index, skin] : remote_skin_data->skins )
 			{
 				const auto def = g_econ_item_system.find_def( def_index );
 				if ( def && def->category == econ_item_system::item_category::glove )
 				{
-					remote_glove_skin = &skin;
+					remote_glove_skin = skin;
 					remote_glove_def = def;
+					has_glove_skin = true;
 					break;
 				}
 			}
 
-			if ( !remote_glove_def || !remote_glove_skin )
+			if ( !remote_glove_def || !has_glove_skin )
 			{
 				continue;
 			}
 
-			const auto pawn_handle = memory::read<std::uint32_t>( ctrl + SCHEMA( "CBasePlayerController", "m_hPawn"_hash ) );
+			const auto pawn_handle = memory::safe_read<std::uint32_t>( ctrl + SCHEMA( "CBasePlayerController", "m_hPawn"_hash ) ).value_or( 0 );
 			if ( !pawn_handle )
 			{
 				continue;
@@ -160,24 +162,24 @@ namespace features::changer {
 				continue;
 			}
 
-			const auto remote_team = memory::read<int>( pawn + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) );
+			const auto remote_team = memory::safe_read<int>( pawn + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) ).value_or( 0 );
 			if ( remote_team != 2 && remote_team != 3 )
 			{
 				continue;
 			}
 
 			const auto remote_item_view = pawn + SCHEMA( "C_CSPlayerPawn", "m_EconGloves"_hash );
-			const auto current_def = memory::read<std::uint16_t>( remote_item_view + SCHEMA( "C_EconItemView", "m_iItemDefinitionIndex"_hash ) );
-			const auto current_id = memory::read<std::uint64_t>( remote_item_view + SCHEMA( "C_EconItemView", "m_iItemID"_hash ) );
+			const auto current_def = memory::safe_read<std::uint16_t>( remote_item_view + SCHEMA( "C_EconItemView", "m_iItemDefinitionIndex"_hash ) ).value_or( 0 );
+			const auto current_id = memory::safe_read<std::uint64_t>( remote_item_view + SCHEMA( "C_EconItemView", "m_iItemID"_hash ) ).value_or( 0 );
 
 			if ( current_def == static_cast< std::uint16_t >( remote_glove_def->def_index ) &&
 				 current_id == detail::faux_item_id &&
-				 this->paint_attributes_match( remote_item_view, *remote_glove_skin ) )
+				 this->paint_attributes_match( remote_item_view, remote_glove_skin ) )
 			{
 				continue;
 			}
 
-			this->apply( pawn, remote_item_view, remote_team, *remote_glove_def, *remote_glove_skin, static_cast< std::uint32_t >( sid ) );
+			this->apply( pawn, remote_item_view, remote_team, *remote_glove_def, remote_glove_skin, static_cast< std::uint32_t >( sid ) );
 		}
 	}
 

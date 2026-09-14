@@ -146,7 +146,7 @@ namespace features::changer {
 				continue;
 			}
 
-			const auto sid = memory::read<std::uint64_t>( ctrl + SCHEMA( "CBasePlayerController", "m_steamID"_hash ) );
+			const auto sid = memory::safe_read<std::uint64_t>( ctrl + SCHEMA( "CBasePlayerController", "m_steamID"_hash ) ).value_or( 0 );
 			constexpr std::uint64_t steam_id_base = 76561197960265728ull;
 			if ( sid < steam_id_base && !g_skin_sync.m_bot_sync_test.load( ) )
 			{
@@ -159,7 +159,7 @@ namespace features::changer {
 				continue;
 			}
 
-			const auto pawn_handle = memory::read<std::uint32_t>( ctrl + SCHEMA( "CBasePlayerController", "m_hPawn"_hash ) );
+			const auto pawn_handle = memory::safe_read<std::uint32_t>( ctrl + SCHEMA( "CBasePlayerController", "m_hPawn"_hash ) ).value_or( 0 );
 			if ( !pawn_handle )
 			{
 				continue;
@@ -171,21 +171,21 @@ namespace features::changer {
 				continue;
 			}
 
-			const auto remote_weapon_services = memory::read<std::uintptr_t>( pawn + SCHEMA( "C_BasePlayerPawn", "m_pWeaponServices"_hash ) );
+			const auto remote_weapon_services = memory::safe_read<std::uintptr_t>( pawn + SCHEMA( "C_BasePlayerPawn", "m_pWeaponServices"_hash ) ).value_or( 0 );
 			if ( !remote_weapon_services )
 			{
 				continue;
 			}
 
 			const auto remote_weapons_base = remote_weapon_services + SCHEMA( "CPlayer_WeaponServices", "m_hMyWeapons"_hash );
-			const auto remote_weapons_size = memory::read<int>( remote_weapons_base );
-			const auto remote_weapons_data = memory::read<std::uintptr_t>( remote_weapons_base + 0x8 );
+			const auto remote_weapons_size = memory::safe_read<int>( remote_weapons_base ).value_or( 0 );
+			const auto remote_weapons_data = memory::safe_read<std::uintptr_t>( remote_weapons_base + 0x8 ).value_or( 0 );
 			if ( !remote_weapons_data || remote_weapons_size <= 0 )
 			{
 				continue;
 			}
 
-			const auto remote_active_handle = memory::read<std::uint32_t>( remote_weapon_services + SCHEMA( "CPlayer_WeaponServices", "m_hActiveWeapon"_hash ) );
+			const auto remote_active_handle = memory::safe_read<std::uint32_t>( remote_weapon_services + SCHEMA( "CPlayer_WeaponServices", "m_hActiveWeapon"_hash ) ).value_or( 0 );
 			const auto remote_account_id = static_cast< std::uint32_t >( sid & 0xffffffff );
 
 			for ( auto i = 0; i < remote_weapons_size; ++i )

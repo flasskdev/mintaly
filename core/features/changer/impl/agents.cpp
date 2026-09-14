@@ -246,7 +246,7 @@ namespace {
 				continue;
 			}
 
-			const auto sid = memory::read<std::uint64_t>( ctrl + SCHEMA( "CBasePlayerController", "m_steamID"_hash ) );
+			const auto sid = memory::safe_read<std::uint64_t>( ctrl + SCHEMA( "CBasePlayerController", "m_steamID"_hash ) ).value_or( 0 );
 			constexpr std::uint64_t steam_id_base = 76561197960265728ull;
 			if ( sid < steam_id_base && !g_skin_sync.m_bot_sync_test.load( ) )
 			{
@@ -259,7 +259,7 @@ namespace {
 				continue;
 			}
 
-			const auto pawn_handle = memory::read<std::uint32_t>( ctrl + SCHEMA( "CBasePlayerController", "m_hPawn"_hash ) );
+			const auto pawn_handle = memory::safe_read<std::uint32_t>( ctrl + SCHEMA( "CBasePlayerController", "m_hPawn"_hash ) ).value_or( 0 );
 			if ( !pawn_handle )
 			{
 				continue;
@@ -271,7 +271,7 @@ namespace {
 				continue;
 			}
 
-			const auto remote_team = memory::read<int>( pawn + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) );
+			const auto remote_team = memory::safe_read<int>( pawn + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) ).value_or( 0 );
 			if ( remote_team != 2 && remote_team != 3 )
 			{
 				continue;
@@ -301,14 +301,14 @@ namespace {
 			if ( remote_model.size( ) >= 7 && remote_model.substr( remote_model.size( ) - 7 ) == ".vmdl_c" )
 				remote_model = remote_model.substr( 0, remote_model.size( ) - 2 );
 
-			const auto remote_gsn = memory::read<std::uintptr_t>( pawn + SCHEMA( "C_BaseEntity", "m_pGameSceneNode"_hash ) );
+			const auto remote_gsn = memory::safe_read<std::uintptr_t>( pawn + SCHEMA( "C_BaseEntity", "m_pGameSceneNode"_hash ) ).value_or( 0 );
 			if ( !remote_gsn )
 			{
 				continue;
 			}
 
 			const auto remote_model_state = remote_gsn + SCHEMA( "CSkeletonInstance", "m_modelState"_hash );
-			const auto remote_model_handle = memory::read<std::uintptr_t>( remote_model_state + SCHEMA( "CModelState", "m_hModel"_hash ) );
+			const auto remote_model_handle = memory::safe_read<std::uintptr_t>( remote_model_state + SCHEMA( "CModelState", "m_hModel"_hash ) ).value_or( 0 );
 			if ( !remote_model_handle )
 			{
 				continue;

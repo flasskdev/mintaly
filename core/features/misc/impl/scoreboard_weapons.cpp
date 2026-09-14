@@ -224,109 +224,200 @@ namespace features::misc {
 			}
 			return null;
 		}
+		function isPlayerRow(panel) {
+			if (!isValid(panel)) return false;
+			if (panel.BHasClass && (panel.BHasClass("sb-row") || panel.BHasClass("sb-row--localplayer") || panel.BHasClass("sb-row--local"))) {
+				return true;
+			}
+			if (panel.id && (panel.id.indexOf("player-") === 0 || panel.id.indexOf("id-player-") === 0)) {
+				return true;
+			}
+			return false;
+		}
+
 		function getRow(sb, xuid, account_id, name) {
+			if (!isValid(sb)) return null;
 			var keys = [String(xuid || ""), String(account_id || "")];
-			var prefixes = ["player-", "id-", "id-player-", "player_"];
+			var prefixes = ["player-", "id-player-", "player_", "id-"];
 			for (var i = 0; i < keys.length; ++i) {
 				if (!keys[i] || keys[i] === "0") continue;
 				for (var j = 0; j < prefixes.length; ++j) {
-					var row = sb.FindChildTraverse(prefixes[j] + keys[i]);
-					if (isValid(row)) return row;
+					var r = sb.FindChildTraverse(prefixes[j] + keys[i]);
+					if (isValid(r) && isPlayerRow(r)) return r;
 				}
 			}
 			if (typeof MyPersonaAPI !== "undefined" && typeof MyPersonaAPI.GetXuid === "function" &&
 				String(MyPersonaAPI.GetXuid()) === keys[0]) {
-				var localRows = sb.FindChildrenWithClassTraverse("sb-row--local");
-				if (localRows && localRows.length === 1 && isValid(localRows[0])) return localRows[0];
+				var localRows = sb.FindChildrenWithClassTraverse("sb-row--localplayer");
+				if (!localRows || !localRows.length) localRows = sb.FindChildrenWithClassTraverse("sb-row--local");
+				for (var lr = 0; localRows && lr < localRows.length; ++lr) {
+					if (isValid(localRows[lr]) && isPlayerRow(localRows[lr])) return localRows[lr];
+				}
 			}
-			// Name fallback is allowed only for one unambiguous row.
 			if (!name) return null;
 			var labels = sb.FindChildrenWithClassTraverse("sb-name__label");
 			if (!labels || !labels.length) labels = sb.FindChildrenWithClassTraverse("id-sb-name__label");
-			var match = null;
 			for (var k = 0; labels && k < labels.length; ++k) {
 				var label = labels[k];
 				if (!isValid(label) || label.text !== name) continue;
-				var parent = label.GetParent();
-				while (isValid(parent) && parent !== sb) {
-					if (isValid(parent.FindChildTraverse("id-sb-name__nameicons"))) {
-						if (match && match !== parent) return null;
-						match = parent;
-						break;
+				for (var cur = label.GetParent(); isValid(cur) && cur !== sb; cur = cur.GetParent()) {
+					if (isPlayerRow(cur)) {
+						return cur;
 					}
-					parent = parent.GetParent();
 				}
 			}
-			return match;
+			return null;
 		}
-		function visibleBranch(panel, row) {
-			for (var p = panel; isValid(p); p = p.GetParent()) {
-				if (p.visible === false || p.style.visibility === "collapse" || p.style.visibility === "hidden") return false;
-				if (p === row) return true;
+		function getStatusCell(row) {
+			if (!isValid(row) || !isPlayerRow(row)) return null;
+			var slot = row.FindChild("r-STATUS");
+			if (isValid(slot)) return slot;
+
+			var list = row.FindChildrenWithClassTraverse("sb-row__cell--status");
+			if (list && list.length > 0 && isValid(list[0])) return list[0];
+
+			slot = row.FindChildTraverse("r-STATUS");
+			if (isValid(slot)) return slot;
+
+			slot = row.FindChildTraverse("id-sb-status");
+			if (isValid(slot)) return slot;
+
+			return null;
+		}
+		function cleanOrphanBadges(sb) {
+			if (!isValid(sb)) return;
+			var badges = sb.FindChildrenWithClassTraverse("mintaly-indicator-badge");
+			for (var i = 0; badges && i < badges.length; ++i) {
+				var b = badges[i];
+				if (!isValid(b)) continue;
+				var p = b.GetParent();
+				var isInsideValidRow = false;
+				if (isValid(p)) {
+					for (var cur = p; isValid(cur) && cur !== sb; cur = cur.GetParent()) {
+						if (isPlayerRow(cur)) {
+							isInsideValidRow = true;
+							break;
+						}
+					}
+				}
+				if (!isInsideValidRow) {
+					b.style.visibility = "collapse";
+					if (isValid(p) && typeof p.GetChildCount === "function") {
+						for (var c = 0; c < p.GetChildCount(); ++c) {
+							var ch = p.GetChild(c);
+							if (isValid(ch) && ch !== b) ch.style.visibility = "visible";
+						}
+					}
+					if (typeof b.DeleteAsync === "function") b.DeleteAsync(0);
+				}
 			}
-			return false;
 		}
 		function updateIndicator(xuid, account_id, name, show) {
 			var sb = getScoreboard();
 			if (!sb) return;
+
+			cleanOrphanBadges(sb);
+
 			var row = getRow(sb, xuid, account_id, name);
 			if (!row) return;
-			// A fixed ID is safe within a row and survives SteamID/name changes.
+
+			var statusSlot = getStatusCell(row);
+			if (!isValid(statusSlot)) return;
+
 			var id = "mintaly_user_indicator";
-			var badge = row.FindChildTraverse(id);
+			var badge = statusSlot.FindChildTraverse(id);
+
 			if (!show) {
-				if (isValid(badge)) badge.style.visibility = "collapse";
+				if (isValid(badge)) {
+					badge.style.visibility = "collapse";
+				}
+				if (typeof statusSlot.GetChildCount === "function") {
+					for (var c = 0; c < statusSlot.GetChildCount(); ++c) {
+						var ch = statusSlot.GetChild(c);
+						if (isValid(ch) && ch !== badge) {
+							ch.style.visibility = "visible";
+						}
+					}
+				}
 				return;
 			}
-			// The medals column can be collapsed for players without medals.
-			// Use name icons instead, without hiding any native UI children.
-			var parent = row.FindChildTraverse("id-sb-name__nameicons");
-			if (!isValid(parent) || !visibleBranch(parent, row)) parent = row;
-			if (isValid(badge) && badge.GetParent() !== parent) {
-				if (typeof badge.SetParent !== "function") return;
-				badge.SetParent(parent);
+
+			if (typeof statusSlot.GetChildCount === "function") {
+				for (var c = 0; c < statusSlot.GetChildCount(); ++c) {
+					var ch = statusSlot.GetChild(c);
+					if (isValid(ch) && ch !== badge && ch.id !== id) {
+						ch.style.visibility = "collapse";
+					}
+				}
 			}
+
 			if (!isValid(badge)) {
-				badge = $.CreatePanel("Panel", parent, id);
+				badge = $.CreatePanel("Panel", statusSlot, id);
 				badge.AddClass("mintaly-indicator-badge");
 			}
-			badge.visible = true;
+
+			statusSlot.style.flowChildren = "none";
+			badge.style.horizontalAlign = "center";
 			badge.style.verticalAlign = "center";
-			badge.style.horizontalAlign = "left";
 			badge.style.flowChildren = "none";
-			badge.style.height = "18px";
 			badge.style.width = "18px";
+			badge.style.height = "18px";
 			badge.style.minWidth = "18px";
-			badge.style.margin = "0px 3px";
-			badge.style.padding = "0px";
+			badge.style.maxWidth = "18px";
+			badge.style.minHeight = "18px";
+			badge.style.maxHeight = "18px";
 			badge.style.borderRadius = "3px";
-			badge.style.backgroundColor = "#0C0C10F2";
-			badge.style.border = "1px solid #FFFFFF47";
-			badge.style.opacity = "1";
-			var label = badge.FindChildTraverse(id + "_txt");
-			if (!isValid(label)) label = $.CreatePanel("Label", badge, id + "_txt");
-			label.text = "M";
-			label.visible = true;
-			label.style.color = "#FFFFFF";
-			label.style.fontSize = "12px";
-			label.style.fontWeight = "bold";
-			label.style.fontFamily = "Stratum2";
-			label.style.textAlign = "center";
-			label.style.verticalAlign = "center";
-			label.style.horizontalAlign = "center";
-			label.style.margin = "0px";
-			label.style.padding = "0px";
-			label.style.visibility = "visible";
+			badge.style.backgroundColor = "rgba(12, 12, 16, 0.95)";
+			badge.style.border = "1px solid rgba(255, 255, 255, 0.35)";
+			badge.style.boxShadow = "0px 0px 4px rgba(0, 0, 0, 0.8)";
+			badge.style.margin = "0px";
+			badge.style.padding = "0px";
 			badge.style.visibility = "visible";
+
+			var label = badge.FindChildTraverse(id + "_txt");
+			if (!isValid(label)) {
+				label = $.CreatePanel("Label", badge, id + "_txt");
+			}
+			label.text = "M";
+			if (typeof label.SetText === "function") {
+				label.SetText("M");
+			}
+			label.style.width = "100%";
+			label.style.height = "18px";
+			label.style.lineHeight = "18px";
+			label.style.color = "#FFFFFF";
+			label.style.fontSize = "11px";
+			label.style.fontWeight = "bold";
+			label.style.fontFamily = "Arial, sans-serif";
+			label.style.textAlign = "center";
+			label.style.horizontalAlign = "center";
+			label.style.verticalAlign = "center";
+			label.style.marginTop = "-3px";
+			label.style.marginRight = "0px";
+			label.style.marginBottom = "0px";
+			label.style.marginLeft = "0px";
+			label.style.padding = "0px";
+			label.style.transform = "none";
+			label.style.visibility = "visible";
 		}
 		return {
 			update: updateIndicator,
 			clear: function () {
 				var sb = getScoreboard();
 				if (!sb) return;
-				var badges = sb.FindChildrenWithClassTraverse("mintaly-indicator-badge");
-				for (var i = 0; badges && i < badges.length; ++i) {
-					if (isValid(badges[i])) badges[i].style.visibility = "collapse";
+				var all = sb.FindChildrenWithClassTraverse("mintaly-indicator-badge");
+				for (var i = 0; all && i < all.length; ++i) {
+					if (isValid(all[i])) {
+						all[i].style.visibility = "collapse";
+						var p = all[i].GetParent();
+						if (isValid(p) && typeof p.GetChildCount === "function") {
+							for (var c = 0; c < p.GetChildCount(); ++c) {
+								var ch = p.GetChild(c);
+								if (isValid(ch) && ch !== all[i]) ch.style.visibility = "visible";
+							}
+						}
+						if (typeof all[i].DeleteAsync === "function") all[i].DeleteAsync(0);
+					}
 				}
 			}
 		};
