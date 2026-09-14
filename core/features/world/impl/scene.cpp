@@ -333,8 +333,9 @@ namespace features::world {
 	}
 
 	void scene::on_draw_scene_object_array (std::uintptr_t object_array) const {
-		const auto fullbright_on = settings::g_world.m_scene.fullbright.value;
-		if (!object_array || (!settings::g_world.m_scene.world_setting.value && !fullbright_on)) {
+		// Fullbright uses scoped light/primitive overrides, not persistent aggregate records.
+		const auto fullbright_on = false;
+		if (!object_array || !settings::g_world.m_scene.world_setting.value) {
 			return;
 		}
 

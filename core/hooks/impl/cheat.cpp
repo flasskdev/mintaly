@@ -730,12 +730,21 @@ namespace hooks {
 			return m_light_scene_object.call<std::uintptr_t>( thisptr, object, a3 );
 		}
 
-		features::world::g_scene.on_light_scene_object_pre( object );
-		features::misc::g_dlight.apply_scene_color( object );
+		const auto original_color = object
+			? memory::safe_read<std::array<float, 3>>( object + 0xe4 ) : std::nullopt;
+		if ( original_color )
+		{
+			features::world::g_scene.on_light_scene_object_pre( object );
+			features::misc::g_dlight.apply_scene_color( object );
+		}
 
 		const auto result = m_light_scene_object.call<std::uintptr_t>( thisptr, object, a3 );
 
 		features::world::g_scene.on_light_scene_object_post( object );
+		if ( original_color )
+		{
+			(void) memory::safe_write( object + 0xe4, *original_color );
+		}
 
 		return result;
 	}
@@ -755,13 +764,35 @@ namespace hooks {
 
 	std::uintptr_t __fastcall cheat::draw_scene_object( std::uintptr_t a1, std::uintptr_t a2, std::uintptr_t batch, int batch_count, int a5, std::uintptr_t a6, std::uintptr_t a7, std::uintptr_t a8 )
 	{
-		if ( !lifecycle::is_unloading( ) )
+		std::vector<std::pair<std::uintptr_t, std::uint32_t>> original_colors;
+		const auto& scene = settings::g_world.m_scene;
+		if ( !lifecycle::is_unloading( ) && batch && batch_count > 0 && batch_count <= ( 1 << 20 )
+			&& ( scene.fullbright.value || scene.world_setting.value || scene.skybox.custom_color.value ) )
 		{
-			diag::exception_scope exception_scope{ "world: primitive tint" };
-			features::world::g_scene.on_draw_scene_object( batch, batch_count );
+			original_colors.reserve( batch_count );
+			for ( auto i = 0; i < batch_count; ++i )
+			{
+				const auto address = batch + static_cast<std::size_t>( i ) * 0x70 + 0x50;
+				const auto color = memory::safe_read<std::uint32_t>( address );
+				if ( color )
+				{
+					original_colors.emplace_back( address, *color );
+				}
+			}
+			// Only tint a batch when all of its original colors can be restored.
+			if ( original_colors.size( ) == static_cast<std::size_t>( batch_count ) )
+			{
+				diag::exception_scope exception_scope{ "world: primitive tint" };
+				features::world::g_scene.on_draw_scene_object( batch, batch_count );
+			}
 		}
 
-		return m_draw_scene_object.call<std::uintptr_t>( a1, a2, batch, batch_count, a5, a6, a7, a8 );
+		const auto result = m_draw_scene_object.call<std::uintptr_t>( a1, a2, batch, batch_count, a5, a6, a7, a8 );
+		for ( const auto& [address, color] : original_colors )
+		{
+			(void) memory::safe_write( address, color );
+		}
+		return result;
 	}
 
 	bool __fastcall cheat::is_glowing( std::uintptr_t glow_property )

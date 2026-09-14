@@ -105,6 +105,9 @@ namespace features::misc {
                 std::chrono::steady_clock::time_point m_last_throw_time{};
                 bool m_was_holding{};
                 bool m_should_preview{};
+                std::uintptr_t m_toss_weapon{};
+                math::vector3 m_toss_angles{};
+                bool m_toss_angles_locked{};
 
                 bool m_was_forward_only{};
                 bool m_delay_release{};

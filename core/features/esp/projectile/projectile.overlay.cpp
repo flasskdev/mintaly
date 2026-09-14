@@ -432,7 +432,14 @@ namespace features::esp::projectile {
 		constexpr auto lerp_speed{ 6.0f };
 
 		const auto delta_time = xdraw::delta_time( );
-		const auto drawable_count = memory::read<int>( entity.ptr + 0x8570 );
+		const auto count_offset = SCHEMA( "C_Inferno", "m_fireCount"_hash );
+		const auto positions_offset = SCHEMA( "C_Inferno", "m_firePositions"_hash );
+		const auto burning_offset = SCHEMA( "C_Inferno", "m_bFireIsBurning"_hash );
+		if ( !entity.ptr || !count_offset || !positions_offset || !burning_offset )
+		{
+			return;
+		}
+		const auto drawable_count = memory::safe_read<int>( entity.ptr + count_offset ).value_or( 0 );
 		auto& state = this->m_inferno_states[ entity.ptr ];
 
 		const auto count = std::min( std::max( drawable_count, 0 ), 64 );
@@ -445,17 +452,22 @@ namespace features::esp::projectile {
 
 		for ( auto i = 0; i < count; ++i )
 		{
-			if ( !memory::read<bool>( entity.ptr + SCHEMA( "C_Inferno", "m_bFireIsBurning"_hash ) + i ) )
+			if ( !memory::safe_read<bool>( entity.ptr + burning_offset + i ).value_or( false ) )
 			{
 				continue;
 			}
 
-			const auto base = entity.ptr + 0x1970 + static_cast< std::size_t >( i ) * 432u;
-			const auto position = memory::read<math::vector3>( base );
-			const auto current_radius = memory::read<float>( base + 0x1a8 );
-			const auto target_radius = memory::read<float>( base + 0x1ac );
+			const auto fire_position = memory::safe_read<math::vector3>(
+				entity.ptr + positions_offset + static_cast<std::size_t>( i ) * sizeof( math::vector3 ) );
+			if ( !fire_position )
+			{
+				continue;
+			}
+			const auto position = *fire_position;
+			// Approximate each burning patch; avoid private drawable-structure offsets.
+			constexpr auto current_radius = 60.0f;
 
-			if ( current_radius < 1.0f )
+			if ( !std::isfinite( position.x ) || !std::isfinite( position.y ) || !std::isfinite( position.z ) )
 			{
 				continue;
 			}
@@ -514,8 +526,10 @@ namespace features::esp::projectile {
 				const auto dx = std::cosf( angle );
 				const auto dy = std::sinf( angle );
 
-				const auto trace_frac = memory::read<float>( base + 0x38 + d * sizeof( float ) );
-				const auto target = std::fminf( trace_frac * target_radius, extent );
+				const auto trace_start = position + math::vector3{ 0.0f, 0.0f, 6.0f };
+				const auto boundary = systems::g_tracing.trace(
+					trace_start, trace_start + math::vector3{ dx * extent, dy * extent, 0.0f }, entity.ptr );
+				const auto target = std::clamp( boundary.fraction, 0.0f, 1.0f ) * extent;
 
 				state.current_radii[ idx ] += ( target - state.current_radii[ idx ] ) * lerp_t;
 

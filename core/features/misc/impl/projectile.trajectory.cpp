@@ -147,8 +147,11 @@ namespace features::misc {
 		this->m_should_preview = false;
 		this->m_needs_air_stop = false;
 
-		if ( !settings::g_misc.m_projectile_trajectory.enabled.value || systems::g_local.is_in_cinematic( ) )
+		const auto& config = settings::g_misc.m_projectile_trajectory;
+		if ( !cmd || ( !config.enabled.value && !config.super_toss.value ) || systems::g_local.is_in_cinematic( ) )
 		{
+			this->m_toss_angles_locked = false;
+			this->m_toss_weapon = 0;
 			this->m_delay_release = false;
 			this->m_delay_ticks = 0;
 			return;
@@ -157,6 +160,8 @@ namespace features::misc {
 		const auto local = systems::g_local.get( );
 		if ( !local.pawn || !local.is_alive )
 		{
+			this->m_toss_angles_locked = false;
+			this->m_toss_weapon = 0;
 			this->m_delay_release = false;
 			this->m_delay_ticks = 0;
 			return;
@@ -168,8 +173,10 @@ namespace features::misc {
 		this->update_in_flight( local );
 
 		const auto& ctx = combat::g_shared.ctx( );
-		if ( ctx.weapon_type != cstypes::weapon_type::grenade )
+		if ( ctx.weapon_type != cstypes::weapon_type::grenade || !ctx.weapon || !ctx.weapon_vdata )
 		{
+			this->m_toss_angles_locked = false;
+			this->m_toss_weapon = 0;
 			this->m_delay_release = false;
 			this->m_delay_ticks = 0;
 			return;
@@ -182,6 +189,30 @@ namespace features::misc {
 		const auto attacking = ( cmd->buttons.value & cstypes::command_buttons::in_attack ) != 0;
 		const auto attacking2 = ( cmd->buttons.value & cstypes::command_buttons::in_second_attack ) != 0;
 		const auto holding_attack = attacking || attacking2;
+
+		if ( config.super_toss.value )
+		{
+			// Compensate velocity without stopping movement or delaying the release.
+			this->m_delay_release = false;
+			this->m_delay_ticks = 0;
+			if ( this->m_toss_weapon != ctx.weapon || holding_attack || ( !pin_pulled && throw_time <= 0.0f ) )
+			{
+				this->m_toss_angles_locked = false;
+			}
+			this->m_toss_weapon = ctx.weapon;
+			if ( !holding_attack && ( pin_pulled || throw_time > 0.0f ) )
+			{
+				if ( !this->m_toss_angles_locked )
+				{
+					this->m_toss_angles = systems::g_input.get_view_angles( );
+					this->m_toss_angles_locked = true;
+				}
+				this->correct_throw_angles( cmd, local, ctx.weapon );
+			}
+			this->m_should_preview = pin_pulled && throw_time <= 0.0f;
+			return;
+		}
+		this->m_toss_angles_locked = false;
 
 		if ( throw_time > 0.0f )
 		{
@@ -831,7 +862,7 @@ namespace features::misc {
 	void projectile_trajectory::correct_throw_angles( systems::input::usercmd* cmd, const systems::local::snapshot& local, std::uintptr_t weapon )
 	{
 		const auto throw_time = memory::read<float>( weapon + SCHEMA( "C_BaseCSGrenade", "m_fThrowTime"_hash ) );
-		if ( throw_time <= 0.0f )
+		if ( throw_time <= 0.0f && !this->m_toss_angles_locked )
 		{
 			return;
 		}
@@ -909,7 +940,8 @@ namespace features::misc {
 
 	void projectile_trajectory::compute_desired_direction( math::vector3& desired_forward ) const
 	{
-		auto angles = systems::g_input.get_view_angles( );
+		auto angles = settings::g_misc.m_projectile_trajectory.super_toss.value && this->m_toss_angles_locked
+			? this->m_toss_angles : systems::g_input.get_view_angles( );
 
 		if ( angles.x > 90.0f )
 		{
