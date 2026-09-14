@@ -1730,10 +1730,6 @@ namespace settings {
                         xui::setting hit_marker_glow{ true,{}, "glow", "hit marker" };
                         config::val<float> hit_marker_glow_strength{ 1.0f, "hit marker", "glow strength" };
 
-                        xui::setting damage_effect{ false,{}, "damage effect", "impacts" };
-                        config::col damage_effect_color{ { 255, 90, 90, 255 }, "impacts", "damage effect color" };
-                        config::val<float> damage_effect_duration{ 2.5f, "impacts", "damage effect duration" };
-                        config::val<float> damage_effect_size{ 1.0f, "impacts", "damage effect size" };
                 } m_impacts{};
 
                 struct removals

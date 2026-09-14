@@ -1430,9 +1430,8 @@ namespace features::misc {
 	{
 		const auto& cfg = settings::g_misc.m_impacts;
 		const auto has_hitmarker = cfg.hit_marker.value;
-		const auto has_damage_effect = cfg.damage_effect.value;
 
-		if ( !has_hitmarker && !has_damage_effect )
+		if ( !has_hitmarker )
 		{
 			return;
 		}
@@ -1441,7 +1440,7 @@ namespace features::misc {
 
 		for ( auto it = this->m_hitmarkers.begin( ); it != this->m_hitmarkers.end( ); )
 		{
-			const auto duration = has_damage_effect ? std::max( cfg.hit_marker_duration.value, cfg.damage_effect_duration.value ) : cfg.hit_marker_duration.value;
+			const auto duration = cfg.hit_marker_duration.value;
 			const auto elapsed = time - it->time;
 
 			if ( elapsed > duration )
@@ -1460,7 +1459,7 @@ namespace features::misc {
 			const auto x = screen.x, y = screen.y;
 
 			const auto show_classic = has_hitmarker && ( cfg.hit_marker_type == settings::misc::impacts::marker_type::classic || cfg.hit_marker_type == settings::misc::impacts::marker_type::both );
-			const auto show_damage = ( has_hitmarker && ( cfg.hit_marker_type == settings::misc::impacts::marker_type::damage || cfg.hit_marker_type == settings::misc::impacts::marker_type::both ) ) || has_damage_effect;
+			const auto show_damage = has_hitmarker && ( cfg.hit_marker_type == settings::misc::impacts::marker_type::damage || cfg.hit_marker_type == settings::misc::impacts::marker_type::both );
 
 			auto size{ 0.0f };
 			auto gap{ 0.0f };
@@ -1513,23 +1512,15 @@ namespace features::misc {
 
 				damage_text = std::to_string( it->damage );
 
-				auto dmg_duration = has_damage_effect ? cfg.damage_effect_duration.value : cfg.hit_marker_duration.value;
+				auto dmg_duration = cfg.hit_marker_duration.value;
 				if ( dmg_duration <= 0.05f ) dmg_duration = 0.05f;
 				const auto dmg_progress = std::clamp( elapsed / dmg_duration, 0.0f, 1.0f );
 				const auto dmg_ease = 1.0f - ( dmg_progress * dmg_progress );
 				const auto dmg_alpha = static_cast< std::uint8_t >( dmg_ease * 255.0f );
 
-				const auto dmg_base = has_damage_effect ? cfg.damage_effect_color.value : cfg.hit_marker_color.value;
+				const auto dmg_base = cfg.hit_marker_color.value;
 				final_dmg_col = xdraw::color( dmg_base.r, dmg_base.g, dmg_base.b, dmg_alpha );
-
-				const auto dmg_size = has_damage_effect ? cfg.damage_effect_size.value : 1.0f;
-				if ( dmg_size > 1.8f ) {
-					dmg_font = rendering::g_fonts.inter_bold[ rendering::fonts::size::big ];
-				} else if ( dmg_size > 1.2f ) {
-					dmg_font = rendering::g_fonts.inter_bold[ rendering::fonts::size::normal ];
-				} else {
-					dmg_font = rendering::g_fonts.inter_bold[ rendering::fonts::size::petite ];
-				}
+				dmg_font = rendering::g_fonts.inter_bold[ rendering::fonts::size::petite ];
 
 				const auto [text_w, text_h] = xdraw::measure_text( damage_text, dmg_font );
 
@@ -1563,7 +1554,7 @@ namespace features::misc {
 					}
 				}
 
-				if ( show_damage && !has_damage_effect )
+				if ( show_damage )
 				{
 					glow.text( draw_x, draw_y, damage_text, glow_col, dmg_font );
 				}

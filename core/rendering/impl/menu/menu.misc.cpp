@@ -472,15 +472,6 @@ namespace rendering {
                                         xui::end_popup( );
                                 }
                                 xui::layout::spacing( 3.0f );
-                                xui::toggle( "Damage Effect", impacts.damage_effect );
-                                if ( xui::begin_popup( "##restore_damage_effect", 220.0f, &impacts.damage_effect_color.value ) )
-                                {
-                                        xui::color_picker( "color##dmgeff", impacts.damage_effect_color );
-                                        xui::slider_float( "delay for hide##dmgeff", impacts.damage_effect_duration, 0.1f, 10.0f, "%.1fs" );
-                                        xui::slider_float( "size##dmgeff", impacts.damage_effect_size, 0.5f, 5.0f, "%.1fx" );
-                                        xui::end_popup( );
-                                }
-                                xui::layout::spacing( 3.0f );
                                 xui::toggle( "Kill Sound", impacts.death_sound );
                                 if ( xui::begin_popup( "##restore_deathsound", 250.0f ) )
                                 {
@@ -541,7 +532,6 @@ namespace rendering {
                                 if ( xui::begin_popup( "##restore_trajectory", 250.0f ) )
                                 {
                                         xui::checkbox( "straight throw##traj", m.m_projectile_trajectory.straight_throw );
-                                        xui::checkbox( "super toss##traj", m.m_projectile_trajectory.super_toss );
                                         xui::color_picker( "held##traj", m.m_projectile_trajectory.held_color );
                                         xui::color_picker( "thrown##traj", m.m_projectile_trajectory.thrown_color );
                                         xui::color_picker( "held damage##traj", m.m_projectile_trajectory.will_deal_damage_held_color );
@@ -559,20 +549,6 @@ namespace rendering {
                                         xui::color_picker( "color##dlight", m.m_dlight.color );
                                         xui::slider_float( "radius##dlight", m.m_dlight.radius, 1.0f, 1000.0f, "%.0f" );
                                         xui::slider_float( "z offset##dlight", m.m_dlight.z_offset, -100.0f, 100.0f, "%.1f" );
-                                        xui::end_popup( );
-                                }
-                                xui::layout::spacing( 3.0f );
-                                xui::toggle( "Custom Smoke Color", m.m_smoke_and_fire_color.custom_smoke );
-                                if ( xui::begin_popup( "##restore_smoke_col", 220.0f ) )
-                                {
-                                        xui::color_picker( "color##smoke_misc", m.m_smoke_and_fire_color.smoke_color );
-                                        xui::end_popup( );
-                                }
-                                xui::layout::spacing( 3.0f );
-                                xui::toggle( "Custom Molotov Color", m.m_smoke_and_fire_color.custom_molotov );
-                                if ( xui::begin_popup( "##restore_molo_col", 220.0f ) )
-                                {
-                                        xui::color_picker( "color##molo_misc", m.m_smoke_and_fire_color.molotov_color );
                                         xui::end_popup( );
                                 }
                                 xui::layout::spacing( 3.0f );

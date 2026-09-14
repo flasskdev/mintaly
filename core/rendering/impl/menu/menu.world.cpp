@@ -767,7 +767,20 @@ namespace rendering {
                 xui::end_popup();
             }
 
-            // 7. Weather (with > arrow popup)
+            xui::toggle("Override Bloom", scene.bloom);
+            if (xui::begin_popup("##amb_bloom_popup", 220.0f))
+            {
+                xui::slider_float("value##bloom", scene.bloom_value, 0.0f, 2.0f, "%.2f");
+                xui::end_popup();
+            }
+
+            xui::toggle("Override Gamma", scene.gamma);
+            if (xui::begin_popup("##amb_gamma_popup", 220.0f))
+            {
+                xui::slider_float("value##gamma", scene.gamma_value, 0.5f, 5.0f, "%.1f");
+                xui::end_popup();
+            }
+
             xui::toggle("Weather", weather.enabled);
             if (xui::begin_popup("##amb_weather_popup", 220.0f, nullptr, true))
             {
@@ -781,22 +794,6 @@ namespace rendering {
                 xui::slider_float("wind strength", weather.wind_strength, 0.0f, 5.0f, "%.1f");
                 xui::slider_float("wind direction", weather.wind_direction, 0.0f, 360.0f, "%.0f");
                 xui::slider_float("wind turbulence", weather.wind_turbulence, 0.0f, 5.0f, "%.1f");
-                xui::end_popup();
-            }
-
-            // 8. Override Bloom
-            xui::toggle("Override Bloom", scene.bloom);
-            if (xui::begin_popup("##amb_bloom_popup", 220.0f))
-            {
-                xui::slider_float("value##bloom", scene.bloom_value, 0.0f, 2.0f, "%.2f");
-                xui::end_popup();
-            }
-
-            // 9. Override Gamma
-            xui::toggle("Override Gamma", scene.gamma);
-            if (xui::begin_popup("##amb_gamma_popup", 220.0f))
-            {
-                xui::slider_float("value##gamma", scene.gamma_value, 0.5f, 5.0f, "%.1f");
                 xui::end_popup();
             }
 
