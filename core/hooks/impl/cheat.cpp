@@ -1,0 +1,1950 @@
+#include <pch/pch.hpp>
+#include <utilities/memory/memory.hpp>
+#include <utilities/math/math.hpp>
+#include <utilities/addresses/addresses.hpp>
+#include <utilities/diag.hpp>
+#include <utilities/hooking/hooking.hpp>
+#include <utilities/logging/logging.hpp>
+#include <utilities/security/security.hpp>
+#include <core/rendering/rendering.hpp>
+#include <core/systems/systems.hpp>
+#include <core/features/features.hpp>
+#include <protection/game_addresses.hpp>
+#include <external/xdraw/xui/xui.hpp>
+#include <utilities/lifecycle.hpp>
+#include <utilities/loader_session.hpp>
+#include <utilities/steam/steam.hpp>
+#include "../hooks.hpp"
+
+namespace hooks {
+
+	namespace detail {
+		struct viewmodel_anim_state
+		{
+			bool initialized{ false };
+			float current_x{ 0.0f };
+			float current_y{ 0.0f };
+			float current_z{ 0.0f };
+			float current_fov{ 68.0f };
+			float sway_x{ 0.0f };
+			float sway_z{ 0.0f };
+			math::vector3 last_view_angles{};
+			std::chrono::steady_clock::time_point last_time{};
+		};
+
+		inline viewmodel_anim_state g_vm_anim{};
+	}
+
+	bool cheat::initialize () {
+		m_level_shutting_down.store( false, std::memory_order_release );
+		m_was_connected = false;
+		m_seen_disconnected = false;
+		if (!hooking::manager::create ({
+			{ &m_present, &present, xs ("present"), addresses::functions::present },
+			{ &m_resize_buffers, &resize_buffers, xs ("resize_buffers"), addresses::functions::resize_buffers }
+			})) {
+			return false;
+		}
+
+		const hooking::manager::entry feature_hooks[] {
+			{ &m_cmd_interpreter, &cmd_interpreter, xs ("cmd_interpreter"), PATTERN (patterns::cmd_interpreter) },
+			{ &m_frame_stage_notify, &frame_stage_notify, xs ("frame_stage_notify"), PATTERN (patterns::frame_stage_notify) },
+			{ &m_create_move, &create_move, xs ("create_move"), PATTERN (patterns::create_move) },
+			{ &m_handle_view_angles, &handle_view_angles, xs ("handle_view_angles"), PATTERN (patterns::handle_view_angles) },
+			{ &m_add_entity, &add_entity, xs ("add_entity"), PATTERN (patterns::add_entity) },
+			{ &m_remove_entity, &remove_entity, xs ("remove_entity"), PATTERN (patterns::remove_entity) },
+			{ &m_render_view, &render_view, xs ("render_view"), PATTERN (patterns::render_view) },
+			{ &m_draw_skybox_array, &draw_skybox_array, xs ("draw_skybox_array"), PATTERN (patterns::draw_skybox_array) },
+			{ &m_light_scene_object, &light_scene_object, xs ("light_scene_object"), PATTERN (patterns::light_scene_object) },
+			{ &m_draw_scene_object_array, &draw_scene_object_array, xs ("draw_scene_object_array"), PATTERN (patterns::draw_scene_object_array) },
+			{ &m_draw_scene_object, &draw_scene_object, xs ("draw_scene_object"), PATTERN (patterns::draw_scene_object) },
+			{ &m_is_glowing, &is_glowing, xs ("is_glowing"), PATTERN (patterns::is_glowing) },
+			{ &m_get_glow_color, &get_glow_color, xs ("get_glow_color"), PATTERN (patterns::get_glow_color) },
+			{ &m_generate_primitives, &generate_primitives, xs ("generate_primitives"), PATTERN (patterns::generate_primitives) },
+			{ &m_parse_report_hit, &parse_report_hit, xs ("parse_report_hit"), PATTERN (patterns::parse_report_hit) },
+			{ &m_vote_start, &vote_start, xs ("vote_start"), PATTERN (patterns::vote_start) },
+			{ &m_vote_pass, &vote_pass, xs ("vote_pass"), PATTERN (patterns::vote_pass) },
+			{ &m_vote_failed, &vote_failed, xs ("vote_failed"), PATTERN (patterns::vote_failed) },
+			{ &m_panorama_event, &panorama_event, xs ("panorama_event"), PATTERN (patterns::panorama_event) },
+			{ &m_setup_fog, &setup_fog, xs ("setup_fog"), PATTERN (patterns::setup_fog) },
+			{ &m_set_shader_param, &set_shader_param, xs ("set_shader_param"), PATTERN (patterns::set_shader_param) },
+			{ &m_set_postprocess_vec, &set_postprocess_vec, xs ("set_postprocess_vec"), PATTERN (patterns::set_postprocess_vec) },
+			{ &m_override_view, &override_view, xs ("override_view"), PATTERN (patterns::override_view) },
+			{ &m_update_fov_sensitivity, &update_fov_sensitivity, xs ("update_fov_sensitivity"), PATTERN (patterns::update_fov_sensitivity) },
+			{ &m_render_scope, &render_scope, xs ("render_scope"), PATTERN (patterns::render_scope) },
+			{ &m_render_crosshair, &render_crosshair, xs ("render_crosshair"), PATTERN (patterns::render_crosshair) },
+			{ &m_prepare_scene_material, &prepare_scene_material, xs ("prepare_scene_material"), PATTERN (patterns::prepare_scene_material) },
+			{ &m_post_network_data_received, &post_network_data_received, xs ("post_network_data_received"), PATTERN (patterns::post_network_data_received) },
+			{ &m_draw_overhead, &draw_overhead, xs ("draw_overhead"), PATTERN (patterns::draw_overhead) },
+			{ &m_draw_legs, &draw_legs, xs ("draw_legs"), PATTERN (patterns::draw_legs) },
+			{ &m_get_transforms_for_hitbox_list, &get_transforms_for_hitbox_list, xs ("get_transforms_for_hitbox_list"), PATTERN (patterns::get_transforms_for_hitbox_list) },
+			{ &m_sort_primitives, &sort_primitives, xs ("sort_primitives"), PATTERN (patterns::sort_primitives) },
+			{ &m_get_interpolated_shoot_position, &get_interpolated_shoot_position, xs ("get_interpolated_shoot_position"), PATTERN (patterns::get_interpolated_shoot_position) },
+			{ &m_level_initialization, &level_initialization, xs ("level_initialization"), PATTERN (patterns::level_initialization) },
+			{ &m_level_shutdown, &level_shutdown, xs ("level_shutdown"), PATTERN (patterns::level_shutdown) },
+			{ &m_read_frame_input, &read_frame_input, xs ("read_frame_input"), PATTERN (patterns::read_frame_input) },
+			{ &m_process_input_event, &process_input_event, xs ("process_input_event"), PATTERN (patterns::process_input_event) },
+			{ &m_render_decals, &render_decals, xs ("render_decals"), PATTERN (patterns::render_decals) },
+			{ &m_render_smoke, &render_smoke, xs ("render_smoke"), PATTERN (patterns::render_smoke) },
+			{ &m_draw_flash_effect, &draw_flash_effect, xs ("draw_flash_effect"), PATTERN (patterns::draw_flash_effect) },
+			{ &m_set_info, &set_info, xs ("set_info"), PATTERN (patterns::set_info) },
+			{ &m_calculate_viewmodel, &calculate_viewmodel, xs ("calculate_viewmodel"), PATTERN (patterns::calculate_viewmodel) },
+			{ &m_spec_cmds_handler, &spec_cmds_handler, xs ("spec_cmds_handler"), PATTERN (patterns::spec_cmds_handler) },
+			{ &m_collect_attached_entities, &collect_attached_entities, xs ("collect_attached_entities"), PATTERN (patterns::collect_attached_entities) },
+			{ &m_play_music, &play_music, xs ("play_music"), PATTERN (patterns::play_music) }
+		};
+
+		auto unavailable_hooks = 0u;
+		for (const auto& entry : feature_hooks) {
+			if (!hooking::manager::create ({ entry })) {
+				++unavailable_hooks;
+				logging::console::print (xs ("skipping unavailable hook: {}"), entry.name);
+			}
+		}
+
+		if (unavailable_hooks) {
+			logging::console::print (
+				xs ("feature hooks initialized with {} unavailable"),
+				unavailable_hooks);
+		}
+
+		return true;
+	}
+
+	void cheat::shutdown( )
+	{
+		m_wnd_proc.reset( );
+		m_present.reset( );
+		m_resize_buffers.reset( );
+		m_cmd_interpreter.reset( );
+		m_frame_stage_notify.reset( );
+		m_create_move.reset( );
+		m_handle_view_angles.reset( );
+		m_add_entity.reset( );
+		m_remove_entity.reset( );
+		m_render_view.reset( );
+		m_draw_skybox_array.reset( );
+		m_light_scene_object.reset( );
+		m_draw_scene_object_array.reset( );
+		m_draw_scene_object.reset( );
+		m_is_glowing.reset( );
+		m_get_glow_color.reset( );
+		m_generate_primitives.reset( );
+		m_parse_report_hit.reset( );
+		m_vote_start.reset( );
+		m_vote_pass.reset( );
+		m_vote_failed.reset( );
+		m_panorama_event.reset( );
+		m_setup_fog.reset( );
+		m_set_shader_param.reset( );
+		m_set_postprocess_vec.reset( );
+		m_override_view.reset( );
+		m_update_fov_sensitivity.reset( );
+		m_render_scope.reset( );
+		m_render_crosshair.reset( );
+		m_prepare_scene_material.reset( );
+		m_post_network_data_received.reset( );
+		m_draw_overhead.reset( );
+		m_draw_legs.reset( );
+		m_get_transforms_for_hitbox_list.reset( );
+		m_sort_primitives.reset( );
+		m_get_inaccuracy.reset( );
+		m_get_interpolated_shoot_position.reset( );
+		m_level_initialization.reset( );
+		m_level_shutdown.reset( );
+		m_read_frame_input.reset( );
+		m_process_input_event.reset( );
+		m_render_decals.reset( );
+		m_render_smoke.reset( );
+		m_render_smoke_map.reset( );
+		m_render_smoke_unmap.reset( );
+		m_draw_flash_effect.reset( );
+		m_set_info.reset( );
+		m_calculate_viewmodel.reset( );
+		m_spec_cmds_handler.reset( );
+		m_collect_attached_entities.reset( );
+		m_play_music.reset( );
+	}
+
+	HRESULT __fastcall cheat::present( IDXGISwapChain* thisptr, UINT sync_interval, UINT flags )
+	{
+		if ( lifecycle::is_unloading( ) )
+		{
+			return m_present.call<HRESULT>( thisptr, sync_interval, flags );
+		}
+
+		static auto last_sub_check = std::chrono::steady_clock::now( );
+		const auto now = std::chrono::steady_clock::now( );
+		if ( now - last_sub_check >= std::chrono::seconds( 60 ) )
+		{
+			last_sub_check = now;
+			if ( loader_session::check_access( ) != loader_session::access_status::granted )
+			{
+				diag::write( diag::level::info, "subscription expired during present, requesting unload" );
+				lifecycle::request_unload( );
+				return m_present.call<HRESULT>( thisptr, sync_interval, flags );
+			}
+		}
+
+		rendering::g_context.on_present( thisptr );
+		features::misc::g_auto_accept.run( );
+
+		static std::uint16_t s_last_active_lobby_kit{ 0 };
+		if ( rendering::g_widgets.s_map_name.empty( ) )
+		{
+			const auto current_kit = static_cast< std::uint16_t >( settings::g_changer.music.id );
+			if ( current_kit != s_last_active_lobby_kit )
+			{
+				s_last_active_lobby_kit = current_kit;
+				trigger_lobby_music( current_kit );
+			}
+		}
+		else
+		{
+			s_last_active_lobby_kit = 0;
+		}
+
+		if ( !m_wnd_proc.is_enabled( ) && rendering::g_context.get_window( ) )
+		{
+			if ( m_wnd_proc.create( reinterpret_cast< void* >( GetWindowLongPtrW( rendering::g_context.get_window( ), GWLP_WNDPROC ) ), &wnd_proc ) )
+			{
+				m_wnd_proc.enable( );
+			}
+		}
+
+		return m_present.call<HRESULT>( thisptr, sync_interval, flags );
+	}
+
+	HRESULT __fastcall cheat::resize_buffers( IDXGISwapChain* thisptr, UINT buffer_count, UINT width, UINT height, DXGI_FORMAT new_format, UINT swap_chain_flags )
+	{
+		if ( lifecycle::is_unloading( ) )
+		{
+			return m_resize_buffers.call<long>( thisptr, buffer_count, width, height, new_format, swap_chain_flags );
+		}
+
+		rendering::g_context.on_resize_buffers( );
+
+		const auto result = m_resize_buffers.call<long>( thisptr, buffer_count, width, height, new_format, swap_chain_flags );
+		if ( SUCCEEDED( result ) )
+		{
+			rendering::g_context.on_resize_buffers_post( thisptr );
+		}
+
+		return result;
+	}
+
+	LRESULT __stdcall cheat::wnd_proc( HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam )
+	{
+		if ( lifecycle::is_unloading( ) )
+		{
+			return m_wnd_proc.call<LRESULT>( hwnd, msg, wparam, lparam );
+		}
+		if ( msg == WM_ACTIVATE && LOWORD( wparam ) != WA_INACTIVE && rendering::g_menu.is_open( ) && rendering::g_context.get_window( ) == hwnd )
+		{
+			if ( addresses::globals::input_system )
+			{
+				memory::call_vfunc<void>( addresses::globals::input_system, 76, false );
+			}
+
+			SetCursor( LoadCursor( nullptr, IDC_ARROW ) );
+			rendering::g_menu.apply_saved_cursor( );
+		}
+
+		if ( msg == WM_KEYDOWN && !( lparam & ( 1 << 30 ) ) && static_cast< int >( wparam ) == settings::g_misc.menu_key )
+		{
+			rendering::g_menu.toggle( );
+			return 0;
+		}
+
+		xui::wndproc( msg, wparam, lparam );
+
+
+		if ( rendering::g_menu.is_open( ) )
+		{
+			const auto& ui_ctx = xui::ctx( );
+			const bool has_active_input = ui_ctx.active_text_input != xui::null_id
+				|| ui_ctx.active_keybind != xui::null_id
+				|| ui_ctx.active_slider_edit != xui::null_id;
+
+			switch ( msg )
+			{
+			case WM_LBUTTONDOWN: case WM_LBUTTONUP: case WM_LBUTTONDBLCLK:
+			case WM_RBUTTONDOWN: case WM_RBUTTONUP: case WM_RBUTTONDBLCLK:
+			case WM_MBUTTONDOWN: case WM_MBUTTONUP: case WM_MBUTTONDBLCLK:
+			case WM_MOUSEWHEEL: case WM_MOUSEHWHEEL:
+			case WM_MOUSEMOVE:
+				return 0;
+
+			case WM_KEYDOWN: case WM_KEYUP:
+			case WM_SYSKEYDOWN: case WM_SYSKEYUP:
+			case WM_CHAR:
+				if ( has_active_input )
+					return 0;
+				break;
+
+			default:
+				break;
+			}
+		}
+		else if ( features::misc::g_camera.is_freecam_active( ) || features::misc::g_camera.is_spec_thirdperson_active( ) )
+		{
+			if ( msg == WM_INPUT )
+			{
+				RAWINPUT raw{};
+				UINT size = sizeof( raw );
+				if ( GetRawInputData( reinterpret_cast< HRAWINPUT >( lparam ), RID_INPUT, &raw, &size, sizeof( RAWINPUTHEADER ) ) != static_cast< UINT >( -1 ) )
+				{
+					if ( raw.header.dwType == RIM_TYPEMOUSE && ( raw.data.mouse.usFlags & MOUSE_MOVE_ABSOLUTE ) == 0 )
+					{
+						const long dx = raw.data.mouse.lLastX;
+						const long dy = raw.data.mouse.lLastY;
+						if ( dx != 0 || dy != 0 )
+						{
+							float sens = 1.0f;
+							if ( const auto cvar = CONVAR( "sensitivity" ) ) sens = cvar->get< float >( );
+							sens = std::clamp( sens, 0.001f, 100.0f );
+
+							float m_pitch = 0.022f;
+							if ( const auto cvar = CONVAR( "m_pitch" ) ) m_pitch = cvar->get< float >( );
+							float m_yaw = 0.022f;
+							if ( const auto cvar = CONVAR( "m_yaw" ) ) m_yaw = cvar->get< float >( );
+
+							const float d_pitch = static_cast< float >( dy ) * m_pitch * sens;
+							const float d_yaw = -static_cast< float >( dx ) * m_yaw * sens;
+
+							if ( features::misc::g_camera.is_freecam_active( ) )
+							{
+								features::misc::g_camera.on_mouse_delta( d_pitch, d_yaw );
+							}
+							else if ( features::misc::g_camera.is_spec_thirdperson_active( ) )
+							{
+								features::misc::g_camera.on_spec_thirdperson_mouse_delta( d_pitch, d_yaw );
+							}
+						}
+					}
+				}
+
+				if ( features::misc::g_camera.is_freecam_active( ) )
+				{
+					if ( settings::g_misc.m_camera.freecam_block_input.value )
+					{
+						return DefWindowProcW( hwnd, msg, wparam, lparam );
+					}
+				}
+				else if ( features::misc::g_camera.is_spec_thirdperson_active( ) )
+				{
+					return DefWindowProcW( hwnd, msg, wparam, lparam );
+				}
+			}
+		}
+
+		return m_wnd_proc.call<LRESULT>( hwnd, msg, wparam, lparam );
+	}
+
+	void __fastcall cheat::cmd_interpreter( std::uintptr_t render_thread, std::uintptr_t item, std::uint8_t flag )
+	{
+		m_cmd_interpreter.call<void>( render_thread, item, flag );
+	}
+
+	void __fastcall cheat::frame_stage_notify( std::uintptr_t thisptr, int stage )
+	{
+		if ( lifecycle::is_unloading( ) )
+		{
+			m_frame_stage_notify.call<void>( thisptr, stage );
+			return;
+		}
+
+		const auto local_player_controller = memory::safe_read<std::uintptr_t>( addresses::globals::local_player_controller ).value_or( 0 );
+		if ( !local_player_controller )
+		{
+			m_seen_disconnected = true;
+			if ( m_was_connected )
+			{
+				// The controller is already gone. Engine-owned scene/particle
+				// handles must be forgotten, not destroyed through stale managers.
+				do_level_shutdown( false );
+			}
+			m_was_connected = false;
+		}
+		else if ( !m_level_initialization.is_enabled( ) && m_seen_disconnected )
+		{
+			// Fallback for an unavailable level-init hook: require an observed
+			// disconnected -> connected edge before enabling map features again.
+			m_seen_disconnected = false;
+			m_level_shutting_down.store( false, std::memory_order_release );
+		}
+
+		features::misc::g_auto_accept.run( );
+		if ( !local_player_controller || is_level_shutting_down( ) )
+		{
+			systems::g_local.reset( );
+			systems::g_view.reset( );
+			systems::g_frame_data.reset( );
+			m_frame_stage_notify.call<void>( thisptr, stage );
+			return;
+		}
+
+		m_was_connected = true;
+		if ( systems::g_entities.is_empty( ) )
+		{
+			systems::g_entities.force_update( );
+		}
+		systems::g_local.update( );
+
+		if ( stage == 6 || stage == 7 )
+		{
+			features::changer::g_skin_sync.on_frame_stage_notify( );
+		}
+
+		if ( systems::g_local.get( ).is_valid( ) && systems::g_view.has_camera( ) )
+		{
+			if ( stage == 6 || stage == 7 )
+			{
+				features::changer::g_guns.on_frame_stage_notify( );
+			}
+
+			if ( stage == 6 || stage == 7 )
+			{
+				features::changer::g_music.on_frame_stage_notify( );
+			}
+
+			if ( stage == 7 )
+			{
+				features::changer::g_agents.on_frame_stage_notify( );
+				features::changer::g_gloves.on_frame_stage_notify( );
+				features::changer::g_knives.on_frame_stage_notify( );
+
+				features::world::g_scene.on_frame_stage_notify( );
+				features::world::g_weather.on_frame_stage_notify( );
+				features::world::g_smoke.on_frame_stage_notify( );
+				features::misc::g_other.on_frame_stage_notify( );
+				features::misc::g_impacts.on_frame_stage_notify( );
+			}
+		}
+
+		{
+			static auto was_active{ false };
+			const auto is_active = settings::g_misc.m_removals.skybox_3d.value;
+
+			if ( is_active != was_active )
+			{
+				CONVAR ("r_draw3dskybox")->m_value.i1 = is_active;
+				was_active = is_active;
+			}
+		}
+
+		// Source 2 copies dynamic-light entries into scene objects during this stage.
+		// Publish our entry first, while keeping all manager mutations on the game thread.
+		if ( stage == 6 )
+		{
+			features::misc::g_dlight.on_frame_stage_notify( );
+			features::world::g_smoke.on_frame_stage_notify( );
+		}
+
+		m_frame_stage_notify.call<void>( thisptr, stage );
+
+		// The original callback may itself trigger LevelShutdown.
+		if ( is_level_shutting_down( ) )
+		{
+			return;
+		}
+
+		// The current frame's world-to-projection matrix is published by the
+		// engine during render-start stage 12.
+		if ( stage == 12 )
+		{
+			systems::g_view.update_matrix( );
+			systems::g_frame_data.update( );
+			features::world::g_smoke.on_frame_stage_notify( );
+		}
+
+		if (systems::g_local.get ().is_valid () && systems::g_view.has_camera ()) {
+			if (stage == 6) {
+				// Capture lag records only after Source 2 has committed this network update,
+				// so the simulation timestamp, world origin and evaluated bones agree.
+				features::combat::g_shared.lc( ).run( );
+				features::esp::player::g_chams.bt( ).update( );
+				features::esp::player::g_chams.os ().update ();
+
+				features::misc::g_scoreboard_weapons.on_frame_stage_notify ();
+				features::misc::g_other.do_kill_feed_preservation( );
+			}
+		}
+	}
+
+	void __fastcall cheat::create_move( std::uintptr_t thisptr, int slot, bool active )
+	{
+		if ( lifecycle::is_unloading( ) || is_level_shutting_down( ) )
+		{
+			return m_create_move.call<void>( thisptr, slot, active );
+		}
+
+		const auto local = systems::g_local.get( );
+
+		if ( !local.pawn || !local.controller )
+		{
+			return m_create_move.call<void>( thisptr, slot, active );
+		}
+
+		const auto cmd = systems::g_input.get_current_cmd( local.controller );
+		if ( cmd && systems::g_input.is_subtick_overwrite( cmd ) )
+		{
+			systems::g_input.set_weapon_select( cmd, thisptr );
+			return;
+		}
+
+		m_create_move.call<void>( thisptr, slot, active );
+
+		{
+			features::combat::g_shared.invalidate_if_needed( );
+			features::combat::g_legit.invalidate_if_needed( );
+			features::combat::g_misc.quickpeek( ).reset_if_needed( );
+		}
+
+		if ( !local.is_alive || !systems::g_view.has_camera( ) )
+		{
+			return;
+		}
+
+		const auto movement_services = memory::read<std::uintptr_t>( local.pawn + SCHEMA( "C_BasePlayerPawn", "m_pMovementServices"_hash ) );
+		if ( !movement_services )
+		{
+			return;
+		}
+
+		const auto last_cmd_processed = memory::read<std::uint32_t>( movement_services + SCHEMA( "CPlayer_MovementServices", "m_nLastCommandNumberProcessed"_hash ) );
+		if ( !last_cmd_processed )
+		{
+			return;
+		}
+
+		systems::g_input.update( );
+		{
+			const auto current_cmd = systems::g_input.get( );
+			if ( !current_cmd || !current_cmd->csgo_user_cmd.has_base( ) )
+			{
+				return;
+			}
+
+			static std::atomic_bool first_create_move_traced{};
+			const auto trace = !first_create_move_traced.exchange( true, std::memory_order_relaxed );
+			diag::exception_scope exception_scope{ "create_move: desubtick" };
+			if ( trace )
+			{
+				diag::step( "create_move: feature pipeline begin" );
+			}
+
+			const auto original_movement_buttons = current_cmd->buttons.value | current_cmd->buttons.value_scroll;
+			systems::g_input.desubtick( current_cmd );
+			systems::g_prediction.capture_prestate( local.pawn, movement_services );
+
+			if ( features::misc::g_camera.is_freecam_active( ) )
+			{
+				features::misc::g_camera.on_create_move( current_cmd );
+				systems::g_input.apply( );
+				return;
+			}
+
+			{
+				diag::set_exception_phase( "create_move: shared update" );
+				features::combat::g_shared.update( );
+
+				diag::set_exception_phase( "create_move: pre-combat movement" );
+				features::movement::g_slowwalk.on_create_move( current_cmd );
+				features::movement::g_edgejump.on_create_move( current_cmd );
+				features::movement::g_quickstop.on_create_move( current_cmd );
+				features::movement::g_bhop.on_create_move( current_cmd );
+				features::movement::g_fastladder.on_create_move( current_cmd );
+
+				diag::set_exception_phase( "create_move: combat misc" );
+				features::combat::g_misc.antiaim( ).on_create_move( current_cmd );
+				features::combat::g_misc.autostop( ).on_create_move( current_cmd );
+			}
+			if ( trace )
+			{
+				diag::step( "create_move: shared, movement and combat misc ready" );
+				diag::step( "create_move: rage begin" );
+			}
+
+			{
+				diag::set_exception_phase( "create_move: rage" );
+				features::combat::g_rage.on_create_move( current_cmd );
+				if ( trace )
+				{
+					diag::step( "create_move: rage end" );
+					diag::step( "create_move: legit begin" );
+				}
+				diag::set_exception_phase( "create_move: legit" );
+				features::combat::g_legit.on_create_move( current_cmd );
+				if ( trace )
+				{
+					diag::step( "create_move: legit end" );
+				}
+			}
+
+			if ( ( current_cmd->buttons.value & cstypes::command_buttons::in_attack ) != 0 && features::combat::g_misc.antiaim( ).has_modified_angles( ) )
+			{
+				if ( const auto base = current_cmd->csgo_user_cmd.mutable_base( ) )
+				{
+					if ( const auto angles = base->mutable_viewangles( ) )
+					{
+						const auto va = systems::g_input.get_view_angles( );
+						angles->set_x( va.x );
+						angles->set_y( va.y );
+					}
+				}
+			}
+
+			diag::set_exception_phase( "create_move: post-combat movement" );
+			features::combat::g_misc.duckpeek( ).on_create_move( current_cmd );
+			features::movement::g_test_strafer.on_create_move( current_cmd );
+			features::misc::g_projectile_trajectory.on_create_move( current_cmd );
+			if ( trace )
+			{
+				diag::step( "create_move: post-combat movement end" );
+			}
+
+			diag::set_exception_phase( "create_move: quickpeek" );
+			features::combat::g_misc.quickpeek( ).on_create_move( current_cmd );
+			if ( trace )
+			{
+				diag::step( "create_move: quickpeek end" );
+				diag::step( "create_move: final subtick begin" );
+			}
+
+			// Run last: duckpeek, bhop and strafing must not overwrite this command.
+			features::movement::g_jumpbug.on_create_move( current_cmd, original_movement_buttons );
+
+			diag::set_exception_phase( "create_move: final subtick" );
+			const auto final_base = current_cmd->csgo_user_cmd.mutable_base( );
+			if ( final_base && systems::g_input.has_analog_subticks( final_base )
+				&& !features::movement::g_test_strafer.handled_this_tick( )
+				&& !features::movement::g_slowwalk.active_this_tick( ) )
+			{
+				final_base->set_forwardmove( 0.0f );
+				final_base->set_leftmove( 0.0f );
+			}
+			if ( trace )
+			{
+				diag::step( "create_move: final subtick end" );
+			}
+
+			//systems::g_legit_input.on_create_move( current_cmd );
+		}
+		static std::atomic_bool first_input_apply_traced{};
+		const auto trace_apply =
+			!first_input_apply_traced.exchange( true, std::memory_order_relaxed );
+		if ( trace_apply )
+		{
+			diag::step( "create_move: input apply begin" );
+		}
+		diag::exception_scope exception_scope{ "create_move: input apply" };
+		systems::g_input.apply( );
+		if ( trace_apply )
+		{
+			diag::step( "create_move: input apply end" );
+		}
+	}
+
+	void __fastcall cheat::handle_view_angles( std::uintptr_t thisptr, int a2 )
+	{
+		if ( lifecycle::is_unloading( ) || !systems::g_local.get( ).is_valid( ) )
+		{
+			m_handle_view_angles.call<void>( thisptr, a2 );
+			return;
+		}
+
+		const auto view_angles = systems::g_input.get_view_angles( );
+
+		m_handle_view_angles.call<void>( thisptr, a2 );
+
+		systems::g_input.set_view_angles( view_angles );
+	}
+
+	void __fastcall cheat::add_entity( std::uintptr_t thisptr, std::uintptr_t entity, std::uint32_t handle )
+	{
+		if ( lifecycle::is_unloading( ) )
+		{
+			m_add_entity.call<void>( thisptr, entity, handle );
+			return;
+		}
+
+		systems::g_entities.on_add_entity( entity, handle );
+
+		m_add_entity.call<void>( thisptr, entity, handle );
+	}
+
+	void __fastcall cheat::remove_entity( std::uintptr_t thisptr, std::uintptr_t entity, std::uint32_t handle )
+	{
+		if ( lifecycle::is_unloading( ) )
+		{
+			m_remove_entity.call<void>( thisptr, entity, handle );
+			return;
+		}
+
+		systems::g_entities.on_remove_entity( entity, handle );
+
+		m_remove_entity.call<void>( thisptr, entity, handle );
+	}
+
+	void __fastcall cheat::render_view( std::uintptr_t thisptr )
+	{
+		m_render_view.call<void>( thisptr );
+
+		if ( lifecycle::is_unloading( ) || is_level_shutting_down( ) || !systems::g_local.get( ).is_valid( ) )
+		{
+			systems::g_view.reset( );
+			systems::g_frame_data.reset( );
+			return;
+		}
+
+		systems::g_view.update( thisptr + 0x10 );
+		systems::g_frame_data.update( );
+	}
+
+	void __fastcall cheat::draw_skybox_array( std::uintptr_t thisptr, std::uintptr_t a2, std::uintptr_t mesh_array, int mesh_count, int a5, std::uintptr_t a6, std::uintptr_t a7, std::uintptr_t a8 )
+	{
+		if ( lifecycle::is_unloading( ) )
+		{
+			m_draw_skybox_array.call<void>( thisptr, a2, mesh_array, mesh_count, a5, a6, a7, a8 );
+			return;
+		}
+
+		features::world::g_scene.on_draw_skybox_array_pre( mesh_array, mesh_count );
+
+		m_draw_skybox_array.call<void>( thisptr, a2, mesh_array, mesh_count, a5, a6, a7, a8 );
+
+		features::world::g_scene.on_draw_skybox_array_post( );
+	}
+
+	std::uintptr_t __fastcall cheat::light_scene_object( std::uintptr_t thisptr, std::uintptr_t object, std::uintptr_t a3 )
+	{
+		if ( lifecycle::is_unloading( ) )
+		{
+			return m_light_scene_object.call<std::uintptr_t>( thisptr, object, a3 );
+		}
+
+		features::world::g_scene.on_light_scene_object_pre( object );
+		features::misc::g_dlight.apply_scene_color( object );
+
+		const auto result = m_light_scene_object.call<std::uintptr_t>( thisptr, object, a3 );
+
+		features::world::g_scene.on_light_scene_object_post( object );
+
+		return result;
+	}
+
+	void __fastcall cheat::draw_scene_object_array( std::uintptr_t thisptr, std::uintptr_t a2, std::uintptr_t object_array )
+	{
+		m_draw_scene_object_array.call<void>( thisptr, a2, object_array );
+
+		if ( lifecycle::is_unloading( ) )
+		{
+			return;
+		}
+
+		diag::exception_scope exception_scope{ "world: aggregate records" };
+		features::world::g_scene.on_draw_scene_object_array( object_array );
+	}
+
+	std::uintptr_t __fastcall cheat::draw_scene_object( std::uintptr_t a1, std::uintptr_t a2, std::uintptr_t batch, int batch_count, int a5, std::uintptr_t a6, std::uintptr_t a7, std::uintptr_t a8 )
+	{
+		if ( !lifecycle::is_unloading( ) )
+		{
+			diag::exception_scope exception_scope{ "world: primitive tint" };
+			features::world::g_scene.on_draw_scene_object( batch, batch_count );
+		}
+
+		return m_draw_scene_object.call<std::uintptr_t>( a1, a2, batch, batch_count, a5, a6, a7, a8 );
+	}
+
+	bool __fastcall cheat::is_glowing( std::uintptr_t glow_property )
+	{
+		if ( lifecycle::is_unloading( ) )
+		{
+			return m_is_glowing.call<bool>( glow_property );
+		}
+
+		if ( glow_property )
+		{
+			const auto owner_entity = memory::safe_read<std::uintptr_t>( glow_property + 0x18 ).value_or( 0 );
+			if ( owner_entity )
+			{
+				const auto schema_name = systems::g_entities.get_schema_name( owner_entity );
+				if ( schema_name )
+				{
+					const auto owner_hash = fnv1a::runtime_hash( schema_name );
+					if ( owner_hash )
+					{
+						if ( features::esp::player::g_glow.on_is_glowing( owner_entity, owner_hash ) )
+						{
+							return true;
+						}
+
+						if ( features::esp::item::g_glow.on_is_glowing( owner_entity, owner_hash ) )
+						{
+							return true;
+						}
+					}
+				}
+			}
+		}
+
+		return m_is_glowing.call<bool>( glow_property );
+	}
+
+	void __fastcall cheat::get_glow_color( std::uintptr_t glow_property, float* color )
+	{
+		if ( lifecycle::is_unloading( ) )
+		{
+			m_get_glow_color.call<void>( glow_property, color );
+			return;
+		}
+
+		if ( glow_property )
+		{
+			const auto owner_entity = memory::safe_read<std::uintptr_t>( glow_property + 0x18 ).value_or( 0 );
+			if ( owner_entity )
+			{
+				const auto schema_name = systems::g_entities.get_schema_name( owner_entity );
+				if ( schema_name )
+				{
+					const auto owner_hash = fnv1a::runtime_hash( schema_name );
+					if ( owner_hash )
+					{
+						if ( features::esp::player::g_glow.on_get_glow_color( owner_entity, owner_hash, color ) )
+						{
+							return;
+						}
+
+						if ( features::esp::item::g_glow.on_get_glow_color( owner_entity, owner_hash, color ) )
+						{
+							return;
+						}
+					}
+				}
+			}
+		}
+
+		m_get_glow_color.call<void>( glow_property, color );
+	}
+
+	void __fastcall cheat::generate_primitives( std::uintptr_t thisptr, std::uintptr_t scene_object, std::uintptr_t scene_view, std::uintptr_t primitive_buffer )
+	{
+		diag::exception_scope exception_scope{ "chams: generate primitives" };
+
+		if ( lifecycle::is_unloading( ) || is_level_shutting_down( ) )
+		{
+			m_generate_primitives.call<void>( thisptr, scene_object, scene_view, primitive_buffer );
+			return;
+		}
+
+		if ( scene_object )
+		{
+			if ( features::esp::player::g_chams.bt( ).is_active( scene_object ) )
+			{
+				return;
+			}
+
+			if ( features::esp::player::g_chams.os( ).is_active( scene_object ) ) 
+			{
+				return;
+			}
+
+			const auto owner_handle = memory::safe_read<std::uint32_t>( scene_object + 0xc0 ).value_or( 0 );
+			if ( owner_handle )
+			{
+				const auto owner_entity = systems::g_entities.lookup( owner_handle );
+				if ( owner_entity )
+				{
+					const auto schema_name = systems::g_entities.get_schema_name( owner_entity );
+					if ( schema_name )
+					{
+						const auto owner_hash = fnv1a::runtime_hash( schema_name );
+						if ( owner_hash )
+						{
+							if ( features::esp::player::g_chams.on_generate_primitives( owner_entity, owner_hash, scene_object, primitive_buffer, m_generate_primitives.original<void( __fastcall* )( std::uintptr_t, std::uintptr_t, std::uintptr_t, std::uintptr_t )>( ), thisptr, scene_view ) )
+							{
+								return;
+							}
+
+						if ( features::esp::item::g_chams.on_generate_primitives( owner_entity, owner_hash, scene_object, primitive_buffer, m_generate_primitives.original<void( __fastcall* )( std::uintptr_t, std::uintptr_t, std::uintptr_t, std::uintptr_t )>( ), thisptr, scene_view ) )
+						{
+							return;
+						}
+
+						systems::g_model_preview.on_generate_primitives(
+							owner_entity,
+							owner_hash,
+							scene_object,
+							primitive_buffer,
+							m_generate_primitives.original<void( __fastcall* )( std::uintptr_t, std::uintptr_t, std::uintptr_t, std::uintptr_t )>( ),
+							thisptr,
+							scene_view
+						);
+					}
+				}
+			}
+		}
+	}
+
+		m_generate_primitives.call<void>( thisptr, scene_object, scene_view, primitive_buffer );
+	}
+
+	std::uintptr_t __fastcall cheat::parse_report_hit( std::uintptr_t thisptr, std::uint8_t deleting )
+	{
+		// A report's deleting destructor can also run while the level is torn down.
+		if ( !lifecycle::is_unloading( ) && !is_level_shutting_down( ) && systems::g_local.get( ).is_valid( ) )
+		{
+			features::misc::g_impacts.on_report_hit( thisptr );
+		}
+
+		return m_parse_report_hit.call<std::uintptr_t>( thisptr, deleting );
+	}
+
+	void __fastcall cheat::vote_start( void* panel, std::uintptr_t msg )
+	{
+		if ( !lifecycle::is_unloading( ) )
+		{
+			features::misc::g_vote_logs.on_vote_start( msg );
+		}
+		m_vote_start.call<void>( panel, msg );
+	}
+
+	void __fastcall cheat::vote_pass( void* panel, std::uintptr_t msg )
+	{
+		if ( !lifecycle::is_unloading( ) )
+		{
+			features::misc::g_vote_logs.on_vote_pass( msg );
+		}
+		m_vote_pass.call<void>( panel, msg );
+	}
+
+	void __fastcall cheat::vote_failed( void* panel, std::uintptr_t msg )
+	{
+		if ( !lifecycle::is_unloading( ) )
+		{
+			features::misc::g_vote_logs.on_vote_failed( msg );
+		}
+		m_vote_failed.call<void>( panel, msg );
+	}
+
+	void* __fastcall cheat::panorama_event( void* thisptr, const char* event_name, void* p1, void* p2 )
+	{
+		if ( !lifecycle::is_unloading( ) && event_name )
+		{
+			features::misc::g_auto_accept.on_panorama_event( event_name );
+		}
+
+		return m_panorama_event.call<void*>( thisptr, event_name, p1, p2 );
+	}
+
+	std::uintptr_t __fastcall cheat::setup_fog( __m128i* output, int* mode )
+	{
+		if ( lifecycle::is_unloading( ) )
+		{
+			return m_setup_fog.call<std::uintptr_t>( output, mode );
+		}
+
+		if ( features::world::g_scene.on_setup_fog( output, mode ) )
+		{
+			return 0;
+		}
+
+		return m_setup_fog.call<std::uintptr_t>( output, mode );
+	}
+
+	std::uintptr_t __fastcall cheat::set_shader_param( __m128i* map, std::uint32_t hash, __m128i* value )
+	{
+		if ( lifecycle::is_unloading( ) )
+		{
+			return m_set_shader_param.call<std::uintptr_t>( map, hash, value );
+		}
+
+		features::world::g_scene.on_set_shader_param( value, hash );
+
+		return m_set_shader_param.call<std::uintptr_t>( map, hash, value );
+	}
+
+	std::uintptr_t __fastcall cheat::set_postprocess_vec( __m128i* map, std::uint32_t hash, __m128i* value )
+	{
+		if ( lifecycle::is_unloading( ) )
+		{
+			return m_set_postprocess_vec.call<std::uintptr_t>( map, hash, value );
+		}
+
+		constexpr std::uint32_t dof_ranges{ 0x2ACAB07C };
+
+		// The engine only publishes DofRanges when the active camera enables DOF.
+		// Insert it alongside any post-process vector, matching Artisan's live path.
+		if ( settings::g_world.m_scene.dof.value && hash != dof_ranges )
+		{
+			__m128i* dof_value{};
+			features::world::g_scene.on_set_shader_param( dof_value, dof_ranges );
+			if ( dof_value )
+			{
+				m_set_postprocess_vec.call<std::uintptr_t>( map, dof_ranges, dof_value );
+			}
+		}
+
+		features::world::g_scene.on_set_shader_param( value, hash );
+		return m_set_postprocess_vec.call<std::uintptr_t>( map, hash, value );
+	}
+
+	void __fastcall cheat::override_view( std::uintptr_t thisptr, std::uintptr_t view_setup )
+	{
+		m_override_view.call<void>( thisptr, view_setup );
+
+		if ( lifecycle::is_unloading( ) || !view_setup )
+		{
+			return;
+		}
+
+		__try
+		{
+			features::misc::g_camera.on_override_view( view_setup );
+			features::misc::g_removals.on_override_view( view_setup );
+			features::combat::g_misc.duckpeek( ).on_override_view( view_setup );
+		}
+		__except ( EXCEPTION_EXECUTE_HANDLER )
+		{
+		}
+	}
+
+	void __fastcall cheat::update_fov_sensitivity( std::uintptr_t thisptr )
+	{
+		m_update_fov_sensitivity.call<void>( thisptr );
+
+		if ( lifecycle::is_unloading( ) )
+		{
+			return;
+		}
+
+		features::misc::g_camera.update_fov_sensitivity( thisptr );
+	}
+
+	void __fastcall cheat::render_scope( std::uintptr_t a1, std::uintptr_t a2 )
+	{
+		m_render_scope.call<void>( a1, a2 );
+
+		if ( lifecycle::is_unloading( ) )
+		{
+			return;
+		}
+
+		if ( settings::g_misc.m_removals.scope.value )
+		{
+			memory::write<std::uint8_t>( a2 + 4, 0 );
+		}
+	}
+
+	bool __fastcall cheat::render_crosshair( std::uintptr_t a1 )
+	{
+		if ( !lifecycle::is_unloading( ) && settings::g_misc.m_removals.crosshair.value )
+		{
+			return false;
+		}
+
+		return m_render_crosshair.call<bool>( a1 );
+	}
+
+	float __fastcall cheat::prepare_scene_material( std::uintptr_t material, void* a2, float a3 )
+	{
+		if ( !lifecycle::is_unloading( ) )
+		{
+			features::misc::g_removals.on_prepare_scene_material( material );
+		}
+
+		return m_prepare_scene_material.call<float>( material, a2, a3 );
+	}
+
+	void __fastcall cheat::post_network_data_received( std::uintptr_t thisptr )
+	{
+		m_post_network_data_received.call<void>( thisptr );
+	}
+
+	bool __fastcall cheat::draw_overhead( std::uintptr_t pawn, std::uint32_t player_slot )
+	{
+		if ( !lifecycle::is_unloading( ) && settings::g_misc.m_removals.overhead.value && pawn == systems::g_local.get( ).pawn )
+		{
+			return false;
+		}
+
+		return m_draw_overhead.call<bool>( pawn, player_slot );
+	}
+
+	std::uintptr_t __fastcall cheat::draw_legs( std::uintptr_t a1, std::uintptr_t a2, std::uintptr_t a3, std::uintptr_t a4, std::uintptr_t a5 )
+	{
+		if ( !lifecycle::is_unloading( ) && settings::g_misc.m_removals.legs.value )
+		{
+			return 0;
+		}
+
+		return m_draw_legs.call<std::uintptr_t>( a1, a2, a3, a4, a5 );
+	}
+
+	bool __fastcall cheat::get_transforms_for_hitbox_list( std::uintptr_t a1, std::uintptr_t a2, int* a3 )
+	{
+		if ( lifecycle::is_unloading( ) || !features::combat::g_shared.autowalling( ) )
+		{
+			return m_get_transforms_for_hitbox_list.call<bool>( a1, a2, a3 );
+		}
+
+		const auto record = features::combat::g_shared.current_autowall_record( );
+		if ( !record || !record->valid )
+		{
+			return m_get_transforms_for_hitbox_list.call<bool>( a1, a2, a3 );
+		}
+
+		const auto count = memory::safe_read<int>( reinterpret_cast< std::uintptr_t >( a3 ) ).value_or( 0 );
+		const auto shape_array = memory::safe_read<std::uintptr_t>( reinterpret_cast< std::uintptr_t >( a3 ) + 8 ).value_or( 0 );
+		const auto entity_bone_cache = memory::safe_read<std::uintptr_t>( a1 + 0x1c0 ).value_or( 0 );
+		const auto model_handle = memory::safe_read<std::uintptr_t>( a1 + 0x1e0 ).value_or( 0 );
+		const auto model = model_handle ? memory::safe_read<std::uintptr_t>( model_handle ).value_or( 0 ) : 0;
+
+		if ( count <= 0 || count > 256 || !shape_array || !entity_bone_cache || !model )
+		{
+			return false;
+		}
+
+		static const auto get_bone_index = PATTERN( patterns::get_bone_index );
+		if ( !get_bone_index )
+		{
+			return false;
+		}
+
+		// The client dereferences every resolved transform without checking the
+		// backing cache. Reject a stale scene node instead of faulting in it.
+		for ( auto i = 0; i < count; ++i )
+		{
+			const auto shape_ptr = shape_array + 16ull * i;
+			const auto bone_index = memory::call<int>( get_bone_index, model, shape_ptr );
+
+			if ( bone_index >= 0 &&
+				( bone_index >= 256 ||
+					!memory::safe_read<systems::bones::data>( entity_bone_cache + sizeof( systems::bones::data ) * bone_index ) ) )
+			{
+				return false;
+			}
+		}
+
+		const auto target_scene = record->game_scene_node ? record->game_scene_node : memory::read<std::uintptr_t>( record->pawn + SCHEMA( "C_BaseEntity", "m_pGameSceneNode"_hash ) );
+		const auto target_bone_cache = target_scene ? memory::safe_read<std::uintptr_t>( target_scene + SCHEMA( "CSkeletonInstance", "m_modelState"_hash ) + 0x80 ).value_or( 0 ) : 0;
+		const auto result = m_get_transforms_for_hitbox_list.call<bool>( a1, a2, a3 );
+
+		if ( !result )
+		{
+			return false;
+		}
+
+		const auto is_plausible = [ ]( std::uintptr_t ptr ) noexcept -> bool
+			{
+				return ptr >= 0x10000ull && ptr < 0x00007FFFFFFFFFFFull;
+			};
+
+		if ( !is_plausible( entity_bone_cache ) || !is_plausible( target_bone_cache ) || entity_bone_cache != target_bone_cache )
+		{
+			return result;
+		}
+
+		const auto output_array = memory::safe_read<std::uintptr_t>( a2 + 16 ).value_or( 0 );
+
+		if ( !output_array || count <= 0 )
+		{
+			return result;
+		}
+
+		for ( auto i = 0; i < count; ++i )
+		{
+			const auto shape_ptr = shape_array + 16ull * i;
+			const auto bone_index = memory::call<int>( get_bone_index, model, shape_ptr );
+
+			if ( bone_index < 0 || bone_index >= record->bone_count )
+			{
+				continue;
+			}
+
+			const auto dst = output_array + 32ull * i;
+			std::memcpy( reinterpret_cast< void* >( dst ), &record->bones[ bone_index ], 32 );
+		}
+
+		return true;
+	}
+
+	void __fastcall cheat::sort_primitives( std::uintptr_t thisptr, std::uintptr_t a2, std::uintptr_t a3, std::uint32_t a4 )
+	{
+		m_sort_primitives.call<void>( thisptr, a2, a3, a4 );
+
+		if ( lifecycle::is_unloading( ) )
+		{
+			return;
+		}
+
+		diag::exception_scope exception_scope{ "chams: sort primitives" };
+		features::esp::player::g_chams.on_sort_primitives( a3, a4 );
+	}
+
+	float __fastcall cheat::get_inaccuracy( std::uintptr_t thisptr, float* a2, float* a3 )
+	{
+		const auto result = m_get_inaccuracy.call<float>( thisptr, a2, a3 );
+
+		if ( lifecycle::is_unloading( ) )
+		{
+			return result;
+		}
+
+#if defined(__clang__) || defined(__GNUC__)
+		const auto result_address = reinterpret_cast< std::uintptr_t >( __builtin_return_address( 0 ) );
+#else
+		const auto result_address = reinterpret_cast< std::uintptr_t >( _ReturnAddress( ) );
+#endif
+
+		static const auto base_fire_guns_get_inaccuracy = PATTERN( patterns::base_fire_guns_get_inaccuracy );
+		if ( base_fire_guns_get_inaccuracy &&
+			result_address > base_fire_guns_get_inaccuracy &&
+			result_address < base_fire_guns_get_inaccuracy + 0x600 )
+		{
+			features::misc::g_impacts.on_base_fire_guns_get_inaccuracy( thisptr, result );
+		}
+
+		return result;
+	}
+
+	float* __fastcall cheat::get_interpolated_shoot_position( std::uintptr_t thisptr, float* out, int* tick_frac )
+	{
+		const auto result = m_get_interpolated_shoot_position.call<float*>( thisptr, out, tick_frac );
+
+		if ( lifecycle::is_unloading( ) )
+		{
+			return result;
+		}
+
+		// Prediction calls this helper while building the next command as well.
+		// Only the call made for an actual rage shot is its authoritative origin.
+		if ( features::combat::g_rage.is_firing_this_tick( ) )
+		{
+			features::misc::g_impacts.on_get_interpolated_shoot_position( thisptr, out );
+		}
+
+		return result;
+	}
+
+	std::uintptr_t __fastcall cheat::level_initialization( std::uintptr_t a1, const char* new_map )
+	{
+		if ( lifecycle::is_unloading( ) )
+		{
+			return m_level_initialization.call<std::uintptr_t>( a1, new_map );
+		}
+
+		// If shutdown was missed, old map objects are no longer ours to delete.
+		do_level_shutdown( false );
+
+		if ( new_map && new_map[ 0 ] )
+		{
+			const char* leaf = std::strrchr( new_map, '/' );
+			rendering::g_widgets.s_map_name = leaf ? leaf + 1 : new_map;
+		}
+		else
+		{
+			rendering::g_widgets.s_map_name.clear( );
+		}
+		settings::g_world.update_active( rendering::g_widgets.s_map_name );
+
+		const auto result = m_level_initialization.call<std::uintptr_t>( a1, new_map );
+		m_was_connected = false;
+		m_seen_disconnected = false;
+		m_level_shutting_down.store( false, std::memory_order_release );
+		return result;
+	}
+
+	void cheat::do_level_shutdown( bool release_engine_resources )
+	{
+		// LevelShutdown and the controller-loss fallback share one cleanup state.
+		if ( m_level_shutting_down.exchange( true, std::memory_order_acq_rel ) )
+		{
+			return;
+		}
+		m_was_connected = false;
+
+		diag::exception_scope exception_scope{ "level shutdown: invalidate snapshots" };
+		diag::step( release_engine_resources
+			? "level shutdown: pre-engine cleanup"
+			: "level shutdown: cache-only cleanup" );
+
+		// Stop publishing the old level before entering engine destructors.
+		systems::g_local.reset( );
+		systems::g_view.reset( );
+		systems::g_frame_data.reset( );
+		systems::g_model_preview.reset( );
+		rendering::g_widgets.s_map_name.clear( );
+		settings::g_world.update_active( "" );
+
+		diag::set_exception_phase( "level shutdown: backtrack objects" );
+		features::esp::player::g_chams.bt( ).shutdown( release_engine_resources );
+		diag::set_exception_phase( "level shutdown: onshot objects" );
+		features::esp::player::g_chams.os( ).shutdown( release_engine_resources );
+		diag::set_exception_phase( "level shutdown: weather" );
+		features::world::g_weather.release( release_engine_resources );
+		diag::set_exception_phase( "level shutdown: dynamic light" );
+		features::misc::g_dlight.on_level_shutdown( release_engine_resources );
+
+		diag::set_exception_phase( "level shutdown: local caches" );
+		systems::materials::clear_clones( );
+		features::misc::g_vote_logs.reset( );
+		// Do not restore view angles into input objects belonging to the old map.
+		features::misc::g_camera.reset( false );
+		// Motion-blur state is render-thread owned; its next Present resets it
+		// after observing the invalid local snapshot.
+		features::misc::g_impacts.on_level_change( );
+		features::misc::g_scoreboard_weapons.on_level_change( );
+		features::world::g_scene.reset_skybox_state( );
+
+		features::changer::g_guns.reset( );
+		features::changer::g_knives.reset( );
+		features::changer::g_gloves.reset( );
+		features::changer::g_agents.reset( );
+		features::changer::g_music.reset( );
+		systems::g_entities.reset( );
+		features::combat::g_shared.lc( ).clear( );
+		detail::g_vm_anim.initialized = false;
+		diag::step( "level shutdown: cleanup complete" );
+	}
+
+	std::uintptr_t __fastcall cheat::level_shutdown( std::uintptr_t a1 )
+	{
+		if ( lifecycle::is_unloading( ) )
+		{
+			return m_level_shutdown.call<std::uintptr_t>( a1 );
+		}
+
+		do_level_shutdown( true );
+		diag::exception_scope exception_scope{ "level shutdown: engine" };
+		return m_level_shutdown.call<std::uintptr_t>( a1 );
+	}
+
+	void __fastcall cheat::read_frame_input( std::uintptr_t a1, std::uint32_t a2 )
+	{
+		m_read_frame_input.call<void>( a1, a2 );
+	}
+
+	void __fastcall cheat::process_input_event( std::uintptr_t csgo_input, int slot, float frametime )
+	{
+		if ( lifecycle::is_unloading( ) )
+		{
+			m_process_input_event.call<void>( csgo_input, slot, frametime );
+			return;
+		}
+
+		if ( slot == 0 && csgo_input && features::misc::g_camera.is_freecam_active( ) )
+		{
+			if ( settings::g_misc.m_camera.freecam_block_input.value )
+			{
+				const auto saved = features::misc::g_camera.get_saved_viewangles( );
+				const auto p_pitch = reinterpret_cast< float* >( csgo_input + 1672 );
+				const auto p_yaw = reinterpret_cast< float* >( csgo_input + 1676 );
+				if ( std::isfinite( saved.x ) && std::isfinite( saved.y ) )
+				{
+					*p_pitch = saved.x;
+					*p_yaw = saved.y;
+				}
+			}
+
+			m_process_input_event.call<void>( csgo_input, slot, frametime );
+
+			if ( settings::g_misc.m_camera.freecam_block_input.value )
+			{
+				const auto saved = features::misc::g_camera.get_saved_viewangles( );
+				const auto p_pitch = reinterpret_cast< float* >( csgo_input + 1672 );
+				const auto p_yaw = reinterpret_cast< float* >( csgo_input + 1676 );
+				if ( std::isfinite( saved.x ) && std::isfinite( saved.y ) )
+				{
+					*p_pitch = saved.x;
+					*p_yaw = saved.y;
+				}
+			}
+			return;
+		}
+
+		systems::g_legit_input.on_process_input_event( csgo_input, slot );
+		m_process_input_event.call<void>( csgo_input, slot, frametime );
+	}
+
+	std::uintptr_t __fastcall cheat::render_decals( std::uintptr_t render_context, std::uintptr_t** render_view, bool pass_flag_a, bool pass_flag_b )
+	{
+		if ( !lifecycle::is_unloading( ) && settings::g_misc.m_removals.decals.value )
+		{
+			return 0;
+		}
+
+		return m_render_decals.call<std::uintptr_t>( render_context, render_view, pass_flag_a, pass_flag_b );
+	}
+
+	void __fastcall cheat::render_smoke( std::uintptr_t a1, std::uintptr_t a2, int a3, int a4, std::uintptr_t a5, std::uintptr_t a6 )
+	{
+		if ( lifecycle::is_unloading( ) )
+		{
+			m_render_smoke.call<void>( a1, a2, a3, a4, a5, a6 );
+			return;
+		}
+
+		static std::once_flag alright;
+		std::call_once( alright, [ & ]
+			{
+				if ( !a2 )
+				{
+					return;
+				}
+
+				if ( m_render_smoke_map.create( reinterpret_cast< void* >( memory::get_vfunc( a2, 32 ) ), &render_smoke_map ) )
+				{
+					m_render_smoke_map.enable( );
+				}
+
+				if ( m_render_smoke_unmap.create( reinterpret_cast< void* >( memory::get_vfunc( a2, 33 ) ), &render_smoke_unmap ) )
+				{
+					m_render_smoke_unmap.enable( );
+				}
+			} );
+
+		if ( settings::g_misc.m_removals.smoke.value )
+		{
+			return;
+		}
+
+		m_render_smoke.call<void>( a1, a2, a3, a4, a5, a6 );
+	}
+
+	std::uintptr_t __fastcall cheat::render_smoke_map( std::uintptr_t thisptr, std::size_t size, std::uintptr_t* out_ptr )
+	{
+		const auto result = m_render_smoke_map.call<std::uintptr_t>( thisptr, size, out_ptr );
+
+		if ( !lifecycle::is_unloading( ) )
+		{
+			features::world::g_smoke.on_map( result, size, out_ptr && *out_ptr ? *out_ptr : 0 );
+		}
+
+		return result;
+	}
+
+	void __fastcall cheat::render_smoke_unmap( std::uintptr_t thisptr, std::uintptr_t ctx, std::size_t size )
+	{
+		if ( !lifecycle::is_unloading( ) )
+		{
+			features::world::g_smoke.on_unmap( ctx );
+		}
+		m_render_smoke_unmap.call<void>( thisptr, ctx, size );
+	}
+
+	char __fastcall cheat::set_info( std::uintptr_t rcx, std::uintptr_t a2 )
+	{
+		if ( lifecycle::is_unloading( ) )
+		{
+			return m_set_info.call<char>( rcx, a2 );
+		}
+
+		const auto& cfg = settings::g_misc.m_name_changer;
+		const auto should_override = cfg.clantag.value || cfg.override_name.value || features::misc::other::s_name_change_pending || !features::misc::other::s_display_name.empty();
+		if ( should_override && a2 )
+		{
+			const auto arg_list = memory::safe_read<std::uintptr_t>( a2 + 0x440 ).value_or( 0 );
+			const auto key = arg_list
+				? memory::safe_read<const char*>( arg_list + 0x8 ).value_or( nullptr )
+				: nullptr;
+
+			if ( key && _stricmp( key, "name" ) == 0 )
+			{
+				constexpr std::uint64_t fcvar_protected = 1ull << 5;
+				constexpr std::uint64_t fcvar_userinfo = 1ull << 9;
+				constexpr std::uint64_t fcvar_registry_restricted = 1ull << 10;
+
+				if ( addresses::globals::cvar )
+				{
+					if ( const auto name_cvar = addresses::globals::cvar->find( "name"_hash ) )
+					{
+						const auto flags_address = reinterpret_cast<std::uintptr_t>( name_cvar ) + offsetof( c_convar, m_flags );
+						if ( const auto flags = memory::safe_read<std::uint64_t>( flags_address ) )
+						{
+							static_cast<void>( memory::safe_write<std::uint64_t>( flags_address,
+								( *flags | fcvar_userinfo ) & ~( fcvar_protected | fcvar_registry_restricted ) ) );
+						}
+					}
+				}
+
+				static char s_display_name_buf[ 256 ]{};
+				std::string final_name = features::misc::other::s_display_name;
+				if ( final_name.empty( ) || final_name == "x" )
+				{
+					if ( const auto* steam_p = steam::friends::get_persona_name( ); steam_p && *steam_p && std::strcmp( steam_p, "x" ) != 0 )
+					{
+						final_name = steam_p;
+					}
+				}
+
+				if ( !final_name.empty( ) && final_name != "x" )
+				{
+					std::strncpy( s_display_name_buf, final_name.c_str( ), sizeof( s_display_name_buf ) - 1 );
+					s_display_name_buf[ sizeof( s_display_name_buf ) - 1 ] = '\0';
+					static_cast<void>( memory::safe_write<const char*>( arg_list + 0x10, s_display_name_buf ) );
+				}
+				features::misc::other::s_name_change_pending = false;
+			}
+		}
+
+		return m_set_info.call<char>( rcx, a2 );
+	}
+
+	void __fastcall cheat::draw_flash_effect( std::uintptr_t a1, int a2, std::uintptr_t* a3, std::uintptr_t a4, __m128* a5 )
+	{
+		if ( lifecycle::is_unloading( ) )
+		{
+			m_draw_flash_effect.call<void>( a1, a2, a3, a4, a5 );
+			return;
+		}
+
+		if ( settings::g_misc.m_removals.flash_alpha.value < 100.0f && settings::g_misc.m_removals.flash_alpha.value != 0.0f )
+		{
+			const auto view_pawn = systems::g_local.get( ).view_pawn( );
+			if ( view_pawn )
+			{
+				const auto max = settings::g_misc.m_removals.flash_alpha.value / 100.0f * 255.0f;
+				memory::write<float>( view_pawn + SCHEMA( "C_CSPlayerPawnBase", "m_flFlashMaxAlpha"_hash ), max );
+			}
+		}
+
+		if ( settings::g_misc.m_removals.flash_alpha.value != 0.0f )
+		{
+			m_draw_flash_effect.call<void>( a1, a2, a3, a4, a5 );
+		}
+	}
+
+	void __fastcall cheat::calculate_viewmodel( std::uintptr_t thisptr, float* offsets, float* fov )
+	{
+		m_calculate_viewmodel.call<void>( thisptr, offsets, fov );
+
+		if ( lifecycle::is_unloading( ) || !offsets || !fov )
+			return;
+
+		if ( !systems::g_local.get( ).is_valid( ) || !systems::g_view.has_camera( ) )
+		{
+			detail::g_vm_anim.initialized = false;
+			return;
+		}
+
+		if ( features::misc::g_camera.is_freecam_active( ) )
+		{
+			offsets[ 0 ] = 0.0f;
+			offsets[ 1 ] = -500.0f;
+			offsets[ 2 ] = -500.0f;
+			// Keep fov intact to avoid dividing by zero in engine projection matrix!
+			if ( fov[ 0 ] < 10.0f || !std::isfinite( fov[ 0 ] ) )
+			{
+				fov[ 0 ] = 68.0f;
+			}
+			return;
+		}
+
+		if ( fov[ 0 ] < 10.0f || !std::isfinite( fov[ 0 ] ) )
+		{
+			fov[ 0 ] = 68.0f;
+		}
+
+		const auto& cfg = settings::g_misc.m_viewmodel_adjust;
+		const auto now = std::chrono::steady_clock::now( );
+
+		if ( !detail::g_vm_anim.initialized )
+		{
+			detail::g_vm_anim.current_x = offsets[ 0 ];
+			detail::g_vm_anim.current_y = offsets[ 1 ];
+			detail::g_vm_anim.current_z = offsets[ 2 ];
+			detail::g_vm_anim.current_fov = fov[ 0 ];
+			detail::g_vm_anim.last_time = now;
+			detail::g_vm_anim.last_view_angles = systems::g_input.get_view_angles( );
+			detail::g_vm_anim.initialized = true;
+		}
+
+		float dt = std::chrono::duration<float>( now - detail::g_vm_anim.last_time ).count( );
+		detail::g_vm_anim.last_time = now;
+		dt = std::clamp( dt, 0.0f, 0.1f );
+
+		const auto current_angles = systems::g_input.get_view_angles( );
+		auto delta_yaw = current_angles.y - detail::g_vm_anim.last_view_angles.y;
+		auto delta_pitch = current_angles.x - detail::g_vm_anim.last_view_angles.x;
+		detail::g_vm_anim.last_view_angles = current_angles;
+
+		math::helpers::normalize_angle( delta_yaw );
+
+		float target_x = offsets[ 0 ];
+		float target_y = offsets[ 1 ];
+		float target_z = offsets[ 2 ];
+		float target_fov = fov[ 0 ];
+
+		if ( cfg.enabled.value )
+		{
+			if ( std::isfinite( cfg.offset_x.value ) ) target_x = cfg.offset_x.value;
+			if ( std::isfinite( cfg.offset_y.value ) ) target_y = cfg.offset_y.value;
+			if ( std::isfinite( cfg.offset_z.value ) ) target_z = cfg.offset_z.value;
+			if ( std::isfinite( cfg.fov.value ) && cfg.fov.value >= 10.0f ) target_fov = std::clamp( cfg.fov.value, 10.0f, 170.0f );
+		}
+
+		if ( dt > 0.0f )
+		{
+			constexpr float k_animation_speed = 15.0f;
+			const float factor = 1.0f - std::exp( -k_animation_speed * dt );
+
+			if ( cfg.enabled.value )
+			{
+				constexpr float k_sway_scale = 0.06f;
+				const float target_sway_x = std::clamp( -delta_yaw * k_sway_scale, -1.5f, 1.5f );
+				const float target_sway_z = std::clamp( delta_pitch * k_sway_scale, -1.5f, 1.5f );
+
+				detail::g_vm_anim.sway_x = std::lerp( detail::g_vm_anim.sway_x, target_sway_x, factor );
+				detail::g_vm_anim.sway_z = std::lerp( detail::g_vm_anim.sway_z, target_sway_z, factor );
+			}
+			else
+			{
+				detail::g_vm_anim.sway_x = std::lerp( detail::g_vm_anim.sway_x, 0.0f, factor );
+				detail::g_vm_anim.sway_z = std::lerp( detail::g_vm_anim.sway_z, 0.0f, factor );
+			}
+
+			detail::g_vm_anim.current_x = std::lerp( detail::g_vm_anim.current_x, target_x, factor );
+			detail::g_vm_anim.current_y = std::lerp( detail::g_vm_anim.current_y, target_y, factor );
+			detail::g_vm_anim.current_z = std::lerp( detail::g_vm_anim.current_z, target_z, factor );
+			detail::g_vm_anim.current_fov = std::lerp( detail::g_vm_anim.current_fov, target_fov, factor );
+
+			const bool still_animating = cfg.enabled.value ||
+				( std::abs( detail::g_vm_anim.current_x - target_x ) > 0.005f ||
+				  std::abs( detail::g_vm_anim.current_y - target_y ) > 0.005f ||
+				  std::abs( detail::g_vm_anim.current_z - target_z ) > 0.005f ||
+				  std::abs( detail::g_vm_anim.current_fov - target_fov ) > 0.05f ||
+				  std::abs( detail::g_vm_anim.sway_x ) > 0.005f ||
+				  std::abs( detail::g_vm_anim.sway_z ) > 0.005f );
+
+			if ( still_animating )
+			{
+				offsets[ 0 ] = detail::g_vm_anim.current_x + detail::g_vm_anim.sway_x;
+				offsets[ 1 ] = detail::g_vm_anim.current_y;
+				offsets[ 2 ] = detail::g_vm_anim.current_z + detail::g_vm_anim.sway_z;
+				fov[ 0 ]     = detail::g_vm_anim.current_fov;
+			}
+			else
+			{
+				detail::g_vm_anim.current_x = target_x;
+				detail::g_vm_anim.current_y = target_y;
+				detail::g_vm_anim.current_z = target_z;
+				detail::g_vm_anim.current_fov = target_fov;
+			}
+		}
+		else if ( cfg.enabled.value )
+		{
+			detail::g_vm_anim.current_x = target_x;
+			detail::g_vm_anim.current_y = target_y;
+			detail::g_vm_anim.current_z = target_z;
+			detail::g_vm_anim.current_fov = target_fov;
+
+			offsets[ 0 ] = target_x;
+			offsets[ 1 ] = target_y;
+			offsets[ 2 ] = target_z;
+			fov[ 0 ]     = target_fov;
+		}
+	}
+
+	void __fastcall cheat::spec_cmds_handler( void* cmd )
+	{
+		if ( lifecycle::is_unloading( ) || !cmd || !settings::g_misc.m_camera.unlock_spectating.value )
+		{
+			m_spec_cmds_handler.call<void>( cmd );
+			return;
+		}
+
+		const auto local = systems::g_local.get( );
+		if ( !local.is_valid( ) || local.is_alive )
+		{
+			m_spec_cmds_handler.call<void>( cmd );
+			return;
+		}
+
+		// Always keep mp_forcecamera at 0 while unlock_spectating is enabled
+		if ( const auto cvar = CONVAR( "mp_forcecamera" ) )
+		{
+			if ( cvar->m_value.i32 != 0 )
+			{
+				cvar->m_value.i32 = 0;
+			}
+		}
+
+		const auto argc = memory::safe_read<std::int32_t>( reinterpret_cast<std::uintptr_t>( cmd ) + 0x438 ).value_or( 0 );
+		const char* cmd_name = "";
+		if ( argc > 0 )
+		{
+			const auto str_ptr = memory::safe_read<const char*>( reinterpret_cast<std::uintptr_t>( cmd ) + 0x10 ).value_or( nullptr );
+			if ( str_ptr )
+			{
+				cmd_name = str_ptr;
+			}
+		}
+
+		const bool is_next = ( std::strcmp( cmd_name, "spec_next" ) == 0 );
+		const bool is_prev = ( std::strcmp( cmd_name, "spec_prev" ) == 0 );
+		const bool is_player = ( std::strcmp( cmd_name, "spec_player" ) == 0 );
+
+		if ( !is_next && !is_prev && !is_player )
+		{
+			m_spec_cmds_handler.call<void>( cmd );
+			return;
+		}
+
+		// Collect all valid alive player pawns across all teams
+		struct target_entry_t
+		{
+			std::uintptr_t pawn{};
+			int index{};
+		};
+
+		std::vector<target_entry_t> candidates{};
+		for ( const auto& p : systems::g_entities.get_by_type( systems::entities::type::player ) )
+		{
+			const auto controller = p.ptr;
+			if ( !controller )
+				continue;
+
+			const auto is_alive = memory::read<bool>( controller + SCHEMA( "CCSPlayerController", "m_bPawnIsAlive"_hash ) );
+			if ( !is_alive )
+				continue;
+
+			const auto pawn_handle = memory::read<std::uint32_t>( controller + SCHEMA( "CBasePlayerController", "m_hPawn"_hash ) );
+			if ( !pawn_handle )
+				continue;
+
+			const auto pawn = systems::g_entities.lookup( pawn_handle );
+			if ( !pawn )
+				continue;
+
+			if ( pawn == local.pawn )
+				continue;
+
+			const auto health = memory::read<int>( pawn + SCHEMA( "C_BaseEntity", "m_iHealth"_hash ) );
+			const auto life_state = memory::read<std::uint8_t>( pawn + SCHEMA( "C_BaseEntity", "m_lifeState"_hash ) );
+			if ( health <= 0 || life_state != 0 )
+				continue;
+
+			candidates.push_back( { pawn, static_cast<int>( p.index ) } );
+		}
+
+		if ( candidates.empty( ) )
+		{
+			m_spec_cmds_handler.call<void>( cmd );
+			return;
+		}
+
+		std::sort( candidates.begin( ), candidates.end( ), []( const target_entry_t& a, const target_entry_t& b )
+		{
+			return a.index < b.index;
+		} );
+
+		std::uintptr_t target_pawn = 0;
+		if ( is_player )
+		{
+			const auto argv = *reinterpret_cast<const char* const* const*>( reinterpret_cast<std::uintptr_t>( cmd ) + 0x440 );
+			if ( argv && argc >= 2 && argv[ 1 ] )
+			{
+				const int requested_slot = std::atoi( argv[ 1 ] );
+				for ( const auto& c : candidates )
+				{
+					if ( c.index == requested_slot )
+					{
+						target_pawn = c.pawn;
+						break;
+					}
+				}
+			}
+		}
+		else
+		{
+			const auto current = local.observer_pawn;
+			int current_idx = -1;
+			for ( size_t i = 0; i < candidates.size( ); ++i )
+			{
+				if ( candidates[ i ].pawn == current )
+				{
+					current_idx = static_cast<int>( i );
+					break;
+				}
+			}
+
+			if ( is_next )
+			{
+				const int next_idx = ( current_idx + 1 ) % static_cast<int>( candidates.size( ) );
+				target_pawn = candidates[ next_idx ].pawn;
+			}
+			else if ( is_prev )
+			{
+				const int prev_idx = ( current_idx - 1 + static_cast<int>( candidates.size( ) ) ) % static_cast<int>( candidates.size( ) );
+				target_pawn = candidates[ prev_idx ].pawn;
+			}
+		}
+
+		if ( !target_pawn )
+		{
+			target_pawn = candidates[ 0 ].pawn;
+		}
+
+		const auto local_player_controller = memory::read<std::uintptr_t>( addresses::globals::local_player_controller );
+		if ( !local_player_controller )
+			return;
+
+		const auto observer_pawn_handle = memory::read<std::uint32_t>( local_player_controller + SCHEMA( "CCSPlayerController", "m_hObserverPawn"_hash ) );
+		if ( !observer_pawn_handle )
+			return;
+
+		const auto observer_pawn = systems::g_entities.lookup( observer_pawn_handle );
+		if ( !observer_pawn )
+			return;
+
+		const auto observer_services = memory::read<std::uintptr_t>( observer_pawn + SCHEMA( "C_BasePlayerPawn", "m_pObserverServices"_hash ) );
+		if ( !observer_services )
+			return;
+
+		const auto vtable = *reinterpret_cast<std::uintptr_t**>( observer_services );
+		if ( vtable && vtable[ 35 ] )
+		{
+			using set_observer_target_fn = void( __fastcall* )( std::uintptr_t, std::uintptr_t );
+			reinterpret_cast<set_observer_target_fn>( vtable[ 35 ] )( observer_services, target_pawn );
+		}
+	}
+
+	int __fastcall cheat::collect_attached_entities( std::uintptr_t entity, std::uintptr_t out_vec )
+	{
+		if ( lifecycle::is_unloading( ) )
+		{
+			return m_collect_attached_entities.call<int>( entity, out_vec );
+		}
+
+		if ( !entity )
+		{
+			return out_vec ? memory::safe_read<int>( out_vec ).value_or( 0 ) : 0;
+		}
+
+		const auto scene_node = memory::safe_read<std::uintptr_t>(
+			entity + SCHEMA( "C_BaseEntity", "m_pGameSceneNode"_hash ) ).value_or( 0 );
+		if ( !scene_node )
+		{
+			return out_vec ? memory::safe_read<int>( out_vec ).value_or( 0 ) : 0;
+		}
+
+		return m_collect_attached_entities.call<int>( entity, out_vec );
+	}
+
+	static void* s_last_music_thisptr{ nullptr };
+
+	void cheat::trigger_lobby_music( std::uint16_t kit_id )
+	{
+		if ( lifecycle::is_unloading( ) )
+			return;
+
+		if ( !rendering::g_widgets.s_map_name.empty( ) )
+			return;
+
+		const auto fn_stop = PATTERN( patterns::stop_item_preview_music );
+		if ( fn_stop )
+		{
+			using stop_fn_t = void( __fastcall* )( );
+			using get_mgr_fn_t = void*( __fastcall* )( );
+			using set_bg_fn_t = void( __fastcall* )( void*, const char*, const char*, float );
+			using update_bg_fn_t = void( __fastcall* )( void* );
+
+			const auto p = reinterpret_cast< const std::uint8_t* >( fn_stop );
+			const auto disp_mgr = *reinterpret_cast< const std::int32_t* >( p + 5 );
+			const auto fn_get_mgr = reinterpret_cast< get_mgr_fn_t >( const_cast< std::uint8_t* >( p + 9 + disp_mgr ) );
+
+			const auto disp_set = *reinterpret_cast< const std::int32_t* >( p + 25 );
+			const auto fn_set_bg = reinterpret_cast< set_bg_fn_t >( const_cast< std::uint8_t* >( p + 29 + disp_set ) );
+			const auto fn_update_bg = reinterpret_cast< update_bg_fn_t >( PATTERN( patterns::update_bg_music ) );
+
+			// Stop any currently playing preview/background music
+			reinterpret_cast< stop_fn_t >( const_cast< std::uint8_t* >( p ) )( );
+
+			if ( kit_id == 0 )
+			{
+				if ( addresses::globals::source2engine_to_client && PATTERN( patterns::engine_client_cmd ) )
+				{
+					memory::call<void>( PATTERN( patterns::engine_client_cmd ), addresses::globals::source2engine_to_client, 0, "stopsound", 0x7ffef001 );
+				}
+			}
+			else
+			{
+				const auto kit = features::changer::g_econ_item_system.find_music_kit( kit_id );
+				if ( kit && !kit->name.empty( ) )
+				{
+					void* mgr = fn_get_mgr( );
+					if ( mgr )
+					{
+						fn_set_bg( mgr, kit->name.c_str( ), nullptr, 0.0f );
+						if ( fn_update_bg )
+						{
+							fn_update_bg( mgr );
+						}
+					}
+
+					// Trigger lobby music (track 1) immediately via game's play_music
+					if ( m_play_music.is_valid( ) )
+					{
+						m_play_music.call<void>( s_last_music_thisptr, 1, kit_id, 0.7f );
+					}
+
+					// Also play directly via engine client sound command for instant start
+					if ( addresses::globals::source2engine_to_client && PATTERN( patterns::engine_client_cmd ) )
+					{
+						const std::string cmd = "playvol Music.Background." + kit->name + " 0.7";
+						memory::call<void>( PATTERN( patterns::engine_client_cmd ), addresses::globals::source2engine_to_client, 0, cmd.c_str( ), 0x7ffef001 );
+					}
+				}
+			}
+		}
+	}
+
+	void __fastcall cheat::play_music( void* thisptr, int track_type, std::uint16_t music_kit_id, float volume )
+	{
+		if ( lifecycle::is_unloading( ) )
+		{
+			m_play_music.call<void>( thisptr, track_type, music_kit_id, volume );
+			return;
+		}
+
+		if ( thisptr )
+		{
+			s_last_music_thisptr = thisptr;
+		}
+
+		const auto custom_kit = static_cast< std::uint16_t >( settings::g_changer.music.id );
+		if ( custom_kit > 0 )
+		{
+			if ( track_type == 11 ) // Music.MVPAnthem
+			{
+				const auto mvp_kit = features::changer::get_current_mvp_kit_id( );
+				if ( mvp_kit > 0 )
+				{
+					music_kit_id = static_cast< std::uint16_t >( mvp_kit );
+				}
+				else if ( features::changer::g_music.is_local_mvp( ) || music_kit_id == 0 || music_kit_id == 0xffff )
+				{
+					music_kit_id = custom_kit;
+				}
+			}
+			else if ( track_type == 1 ) // Main Menu / Lobby music
+			{
+				music_kit_id = custom_kit;
+				if ( volume <= 0.01f )
+				{
+					volume = 0.7f;
+				}
+			}
+			else
+			{
+				music_kit_id = custom_kit;
+			}
+		}
+
+		m_play_music.call<void>( thisptr, track_type, music_kit_id, volume );
+	}
+
+} // namespace hooks

@@ -1,0 +1,72 @@
+#pragma once
+
+namespace features::movement {
+
+	class bhop
+	{
+	public:
+		void on_create_move( systems::input::usercmd* cmd ) const;
+	};
+
+	class fastladder
+	{
+	public:
+		void on_create_move( systems::input::usercmd* cmd ) const;
+	};
+
+	class edgejump
+	{
+	public:
+		void on_create_move( systems::input::usercmd* cmd ) const;
+	};
+
+	class quickstop
+	{
+	public:
+		void on_create_move( systems::input::usercmd* cmd ) const;
+	};
+
+	class jumpbug
+	{
+	public:
+		void on_create_move( systems::input::usercmd* cmd, std::uint64_t original_buttons );
+
+		[[nodiscard]] bool active_this_tick( ) const { return this->m_active_this_tick; }
+
+	private:
+		bool m_active_this_tick{ false };
+		bool m_fired_last_tick{ false };
+	};
+
+	class slowwalk
+	{
+	public:
+		void on_create_move( systems::input::usercmd* cmd );
+
+		[[nodiscard]] bool active_this_tick( ) const { return this->m_active_this_tick; }
+
+	private:
+		bool m_active_this_tick{ false };
+	};
+
+	class test_strafer
+	{
+	public:
+		void on_create_move( systems::input::usercmd* cmd );
+		[[nodiscard]] bool is_active( ) const;
+		[[nodiscard]] bool handled_this_tick( ) const { return this->m_handled_this_tick; }
+
+	private:
+		void quantized_path( systems::input::usercmd* cmd );
+		void antiaim_strafe_path( systems::input::usercmd* cmd );
+		[[nodiscard]] bool apply_yaw_subtick( proto::base_usercmd_pb* base, float when, float yaw_delta ) const;
+		void check_button( std::uintptr_t current_buttons, std::uintptr_t button );
+		[[nodiscard]] static math::vector2 movement_from_buttons( std::uintptr_t pressed );
+
+		std::uintptr_t m_last_buttons{};
+		std::uintptr_t m_last_pressed{};
+		int m_substep_counter{};
+		bool m_handled_this_tick{};
+	};
+
+} // namespace features::movement

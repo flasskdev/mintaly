@@ -1,0 +1,412 @@
+#include <pch/pch.hpp>
+#include <core/settings.hpp>
+
+#include "../../rendering.hpp"
+
+namespace rendering {
+
+	namespace detail {
+
+		inline static void draw_outline_glow_sliders( const char* id_suffix, settings::esp::outline_glow_config& cfg )
+		{
+			char buf[ 64 ]{};
+
+			xui::text( "glow settings", tokens::col_accent );
+
+			std::snprintf( buf, sizeof( buf ), "intensity##%s", id_suffix );
+			xui::slider_float( buf, cfg.intensity, 1.0f, 50.0f, "%.1f" );
+
+			std::snprintf( buf, sizeof( buf ), "thickness##%s", id_suffix );
+			xui::slider_float( buf, cfg.thickness, 0.5f, 10.0f, "%.1f" );
+
+			std::snprintf( buf, sizeof( buf ), "softness##%s", id_suffix );
+			xui::slider_float( buf, cfg.softness, 0.2f, 4.0f, "%.2f" );
+
+			std::snprintf( buf, sizeof( buf ), "opacity##%s", id_suffix );
+			xui::slider_float( buf, cfg.opacity, 0.0f, 1.0f, "%.2f" );
+
+			std::snprintf( buf, sizeof( buf ), "inner spread##%s", id_suffix );
+			xui::slider_float( buf, cfg.inner_spread, 0.0f, 1.0f, "%.2f" );
+
+			std::snprintf( buf, sizeof( buf ), "pulse speed##%s", id_suffix );
+			xui::slider_float( buf, cfg.pulse_speed, 0.0f, 5.0f, "%.1f" );
+		}
+
+		inline static void draw_chams_layer( const char* label, const char* popup_id, settings::esp::chams_layer& layer, bool is_through_wall = false )
+		{
+			xui::toggle( label, layer.enabled );
+			if ( xui::begin_popup( popup_id, 220.0f ) )
+			{
+				const bool is_outline = settings::esp::is_outline_material( layer.material.value );
+				const bool is_glow_outline = ( layer.material.value == settings::esp::cham_ids::outline_glow ||
+				                               layer.material.value == settings::esp::cham_ids::outline_glow_ignorez );
+
+				const auto prev_mat = layer.material.value;
+				if ( is_through_wall )
+				{
+					int mat_idx = settings::esp::get_iz_index( layer.material.value );
+					if ( xui::combo( "material", mat_idx, settings::esp::k_iz_material_names, settings::esp::k_iz_material_count ) )
+					{
+						layer.material.value = settings::esp::k_iz_materials[ mat_idx ];
+						if ( ( layer.material.value == settings::esp::cham_ids::outline_glow || layer.material.value == settings::esp::cham_ids::outline_glow_ignorez ) &&
+						     ( prev_mat != settings::esp::cham_ids::outline_glow && prev_mat != settings::esp::cham_ids::outline_glow_ignorez ) )
+						{
+							layer.filled.value = true;
+						}
+					}
+				}
+				else
+				{
+					int mat_idx = settings::esp::get_non_iz_index( layer.material.value );
+					if ( xui::combo( "material", mat_idx, settings::esp::k_non_iz_material_names, settings::esp::k_non_iz_material_count ) )
+					{
+						layer.material.value = settings::esp::k_non_iz_materials[ mat_idx ];
+						if ( ( layer.material.value == settings::esp::cham_ids::outline_glow || layer.material.value == settings::esp::cham_ids::outline_glow_ignorez ) &&
+						     ( prev_mat != settings::esp::cham_ids::outline_glow && prev_mat != settings::esp::cham_ids::outline_glow_ignorez ) )
+						{
+							layer.filled.value = true;
+						}
+					}
+				}
+
+				xui::color_picker( "color", layer.color, 0.0f, true, is_outline ? &layer.filled.value : nullptr );
+				if ( is_outline )
+				{
+					xui::checkbox( "filled", layer.filled );
+				}
+				if ( is_glow_outline )
+				{
+					xui::layout::spacing( 5.0f );
+					xui::layout::separator( );
+					draw_outline_glow_sliders( popup_id, layer.glow );
+				}
+				xui::end_popup( );
+			}
+		}
+
+		inline static void draw_chams_config( const char* label, const char* id_suffix, settings::esp::chams_config& cfg, bool show_overlay = true )
+		{
+			xui::toggle( label, cfg.enabled );
+
+			char label_buf[ 64 ]{};
+			char popup_id[ 64 ]{};
+
+			std::snprintf( label_buf, sizeof( label_buf ), "primary layer##%s", id_suffix );
+			std::snprintf( popup_id, sizeof( popup_id ), "##primary_%s", id_suffix );
+			draw_chams_layer( label_buf, popup_id, cfg.primary, false );
+
+			std::snprintf( label_buf, sizeof( label_buf ), "through wall##%s", id_suffix );
+			std::snprintf( popup_id, sizeof( popup_id ), "##secondary_%s", id_suffix );
+			draw_chams_layer( label_buf, popup_id, cfg.secondary, true );
+
+			if ( show_overlay )
+			{
+				std::snprintf( label_buf, sizeof( label_buf ), "overlay##%s", id_suffix );
+				std::snprintf( popup_id, sizeof( popup_id ), "##overlay_%s", id_suffix );
+				draw_chams_layer( label_buf, popup_id, cfg.overlay, false );
+			}
+		}
+
+	} // namespace detail
+
+	void menu::draw_player(float group_w, int subtab) const
+	{
+		auto& esp = settings::g_esp;
+		auto& p = esp.m_player;
+		const auto col_w = (this->m_body_w - tokens::gap) * 0.5f;
+		subtab = std::clamp(subtab, 0, 2);
+		const auto has_overlay = (subtab <= 1);
+		auto& glow = (subtab == 0) ? p.m_glow.enemy : p.m_glow.team;
+		auto& glow_ragdoll = (subtab == 0) ? p.m_glow.enemy_ragdoll : p.m_glow.team_ragdoll;
+		xui::layout::set_cursor(this->m_body_x - this->m_x, this->m_body_y - this->m_y);
+		if (has_overlay)
+		{
+			auto& ov = p.m_overlay[subtab];
+			if (xui::begin_child("##player_esp", col_w, this->m_body_h, true))
+			{
+				xui::toggle("enable", ov.enabled);
+				char popup_enable_id[32]{};
+				std::snprintf(popup_enable_id, sizeof(popup_enable_id), "##ov_enable_popup_%d", subtab);
+				if (xui::begin_popup(popup_enable_id, 220.0f))
+				{
+					xui::checkbox("only visible", ov.only_visible);
+					xui::end_popup();
+				}
+				xui::toggle("box", ov.m_box.enabled);
+				if (xui::begin_popup("##box_popup", 220.0f))
+				{
+					constexpr const char* box_styles[]{ "full", "cornered" };
+					xui::combo("style##box", ov.m_box.style.value, box_styles, 2);
+					xui::checkbox("fill", ov.m_box.fill);
+					xui::checkbox("outline", ov.m_box.outline);
+					xui::slider_float("corner length", ov.m_box.corner_length, 2.0f, 20.0f, "%.0f");
+					xui::color_picker("visible color##box", ov.m_box.visible_color);
+					xui::color_picker("occluded color##box", ov.m_box.occluded_color);
+					xui::end_popup();
+				}
+				xui::toggle("skeleton", ov.m_skeleton.enabled);
+				if (xui::begin_popup("##skeleton_popup", 220.0f))
+				{
+					constexpr const char* skel_modes[]{ "normal", "backtrack" };
+					xui::combo("mode##skel", ov.m_skeleton.type.value, skel_modes, 2);
+					xui::slider_float("thickness##skel", ov.m_skeleton.thickness, 0.5f, 4.0f, "%.1f");
+					xui::color_picker("visible color##skel", ov.m_skeleton.visible_color);
+					xui::color_picker("occluded color##skel", ov.m_skeleton.occluded_color);
+					xui::end_popup();
+				}
+				xui::toggle("health bar", ov.m_health_bar.enabled);
+				if (xui::begin_popup("##health_popup", 220.0f))
+				{
+					constexpr const char* bar_positions[]{ "left", "top", "bottom" };
+					xui::combo("position##hp", ov.m_health_bar.position.value, bar_positions, 3);
+					xui::checkbox("outline##hp", ov.m_health_bar.outline_setting);
+					xui::checkbox("gradient##hp", ov.m_health_bar.gradient);
+					xui::checkbox("show value##hp", ov.m_health_bar.show_value);
+					xui::checkbox("glow##hp", ov.m_health_bar.glow);
+					xui::color_picker("full color##hp", ov.m_health_bar.full_color);
+					xui::color_picker("low color##hp", ov.m_health_bar.low_color);
+					xui::color_picker("background##hp", ov.m_health_bar.background_color);
+					xui::color_picker("outline color##hp", ov.m_health_bar.outline_color);
+					xui::color_picker("text color##hp", ov.m_health_bar.text_color);
+					xui::color_picker("glow color##hp", ov.m_health_bar.glow_color);
+					xui::slider_float("glow strength##hp", ov.m_health_bar.glow_strength, 0.1f, 1.0f, "%.2f");
+					xui::end_popup();
+				}
+				xui::toggle("ammo bar", ov.m_ammo_bar.enabled);
+				if (xui::begin_popup("##ammo_popup", 220.0f))
+				{
+					constexpr const char* bar_positions[]{ "left", "top", "bottom" };
+					xui::combo("position##ammo", ov.m_ammo_bar.position.value, bar_positions, 3);
+					xui::checkbox("outline##ammo", ov.m_ammo_bar.outline_setting);
+					xui::checkbox("gradient##ammo", ov.m_ammo_bar.gradient);
+					xui::checkbox("show value##ammo", ov.m_ammo_bar.show_value);
+					xui::checkbox("glow##ammo", ov.m_ammo_bar.glow);
+					xui::color_picker("full color##ammo", ov.m_ammo_bar.full_color);
+					xui::color_picker("low color##ammo", ov.m_ammo_bar.low_color);
+					xui::color_picker("background##ammo", ov.m_ammo_bar.background_color);
+					xui::color_picker("outline color##ammo", ov.m_ammo_bar.outline_color);
+					xui::color_picker("text color##ammo", ov.m_ammo_bar.text_color);
+					xui::color_picker("glow color##ammo", ov.m_ammo_bar.glow_color);
+					xui::slider_float("glow strength##ammo", ov.m_ammo_bar.glow_strength, 0.1f, 1.0f, "%.2f");
+					xui::end_popup();
+				}
+				xui::toggle("name", ov.m_name.enabled);
+				if (xui::begin_popup("##name_popup", 220.0f))
+				{
+					xui::color_picker("color##name", ov.m_name.color);
+					xui::end_popup();
+				}
+				xui::toggle("weapon", ov.m_weapon.enabled);
+				if (xui::begin_popup("##weapon_popup", 220.0f))
+				{
+					constexpr const char* display_types[]{ "text", "icon", "text + icon" };
+					xui::combo("display##wep", ov.m_weapon.display.value, display_types, 3);
+					xui::color_picker("text color##wep", ov.m_weapon.text_color);
+					xui::color_picker("icon color##wep", ov.m_weapon.icon_color);
+					xui::end_popup();
+				}
+				xui::toggle("flags", ov.m_info_flags.enabled);
+				if (xui::begin_popup("##flags_popup", 220.0f))
+				{
+					constexpr const char* flag_names[]{ "money", "armor", "kit", "scoped", "defusing", "flashed", "ping", "distance" };
+					xui::multicombo("flags##mc", ov.m_info_flags.flags, flag_names, settings::esp::player::overlay::info_flags::count);
+					xui::color_picker("money##flags", ov.m_info_flags.money_color);
+					xui::color_picker("armor##flags", ov.m_info_flags.armor_color);
+					xui::color_picker("kit##flags", ov.m_info_flags.kit_color);
+					xui::color_picker("scoped##flags", ov.m_info_flags.scoped_color);
+					xui::color_picker("defusing##flags", ov.m_info_flags.defusing_color);
+					xui::color_picker("flashed##flags", ov.m_info_flags.flashed_color);
+					xui::color_picker("distance##flags", ov.m_info_flags.distance_color);
+					xui::end_popup();
+				}
+				xui::toggle("oof arrows", ov.m_oof_arrow.enabled);
+				if (xui::begin_popup("##oof_popup", 220.0f))
+				{
+					xui::checkbox("glow##oof", ov.m_oof_arrow.glow);
+					xui::slider_float("width##oof", ov.m_oof_arrow.width, 4.0f, 40.0f, "%.0f");
+					xui::slider_float("height##oof", ov.m_oof_arrow.height, 4.0f, 40.0f, "%.0f");
+					xui::slider_float("radius x##oof", ov.m_oof_arrow.radius_x, 50.0f, 600.0f, "%.0f");
+					xui::slider_float("radius y##oof", ov.m_oof_arrow.radius_y, 50.0f, 600.0f, "%.0f");
+					xui::slider_float("glow strength##oof", ov.m_oof_arrow.glow_strength, 0.1f, 1.0f, "%.2f");
+					xui::color_picker("visible color##oof", ov.m_oof_arrow.visible_color);
+					xui::color_picker("occluded color##oof", ov.m_oof_arrow.occluded_color);
+					xui::end_popup();
+				}
+				xui::end_child();
+				if (xui::begin_child("##player_glow", col_w, this->m_body_h, true)) {
+					xui::toggle("glow", glow.enabled);
+					if (xui::begin_popup("##glow_popup", 220.0f)) {
+						xui::color_picker("color##glow", glow.color);
+						xui::end_popup();
+					}
+					xui::toggle("ragdoll glow", glow_ragdoll.enabled);
+					if (xui::begin_popup("##glow_rag_popup", 220.0f)) {
+						xui::color_picker("color##glow_rag", glow_ragdoll.color);
+						xui::end_popup();
+					}
+					xui::end_child();
+				}
+			}
+		}
+		else
+		{
+			if (xui::begin_child("##local_chams_glow", col_w, this->m_body_h, true))
+			{
+				detail::draw_chams_config("chams", "local_main", p.m_chams.local);
+				xui::layout::separator();
+				xui::toggle("lower opacity", esp.m_local_alpha.enabled);
+				if (xui::begin_popup("##local_alpha_popup", 220.0f))
+				{
+					xui::slider_float("opacity", esp.m_local_alpha.opacity, 0.0f, 1.0f, "%.2f");
+					xui::checkbox("only when scoped", esp.m_local_alpha.only_scoped);
+					xui::end_popup();
+				}
+				xui::layout::separator();
+				detail::draw_chams_config("ragdoll chams", "local_ragdoll", p.m_chams.local_ragdoll, false);
+				xui::layout::separator();
+				xui::toggle("glow", p.m_glow.local.enabled);
+				if (xui::begin_popup("##local_glow_popup", 220.0f))
+				{
+					xui::color_picker("color##local_glow", p.m_glow.local.color);
+					xui::end_popup();
+				}
+				xui::toggle("ragdoll glow", p.m_glow.local_ragdoll.enabled);
+				if (xui::begin_popup("##local_glow_rag_popup", 220.0f))
+				{
+					xui::color_picker("color##local_glow_rag", p.m_glow.local_ragdoll.color);
+					xui::end_popup();
+				}
+				xui::end_child();
+			}
+		}
+
+		// --- RIGHT COLUMN: Player Chams ---
+		xui::layout::set_cursor(this->m_body_x - this->m_x + col_w + tokens::gap, this->m_body_y - this->m_y);
+		if (has_overlay)
+		{
+			auto& chams = (subtab == 0) ? p.m_chams.enemy : p.m_chams.team;
+			auto& chams_ragdoll = (subtab == 0) ? p.m_chams.enemy_ragdoll : p.m_chams.team_ragdoll;
+			if (xui::begin_child("##player_chams", col_w, this->m_body_h, true))
+			{
+				xui::toggle("player chams", chams.enabled);
+				chams.primary.enabled.value = chams.enabled.value;
+				if (xui::begin_popup("##player_chams_popup", 235.0f))
+				{
+					const bool is_vis_outline = settings::esp::is_outline_material(chams.primary.material.value);
+					const bool is_vis_glow = ( chams.primary.material.value == settings::esp::cham_ids::outline_glow || chams.primary.material.value == settings::esp::cham_ids::outline_glow_ignorez );
+					const auto prev_vis_mat = chams.primary.material.value;
+					xui::color_picker("color##visible", chams.primary.color, 0.0f, true, is_vis_outline ? &chams.primary.filled.value : nullptr);
+					int vis_mat_idx = settings::esp::get_non_iz_index(chams.primary.material.value);
+					if ( xui::combo("material##visible", vis_mat_idx, settings::esp::k_non_iz_material_names, settings::esp::k_non_iz_material_count) )
+					{
+						chams.primary.material.value = settings::esp::k_non_iz_materials[vis_mat_idx];
+						if ( ( chams.primary.material.value == settings::esp::cham_ids::outline_glow || chams.primary.material.value == settings::esp::cham_ids::outline_glow_ignorez ) &&
+						     ( prev_vis_mat != settings::esp::cham_ids::outline_glow && prev_vis_mat != settings::esp::cham_ids::outline_glow_ignorez ) )
+						{
+							chams.primary.filled.value = true;
+						}
+					}
+					if (is_vis_outline)
+					{
+						xui::checkbox("filled##visible", chams.primary.filled);
+					}
+					if (is_vis_glow)
+					{
+						xui::layout::spacing( 5.0f );
+						xui::layout::separator( );
+						detail::draw_outline_glow_sliders( "p_vis_glow", chams.primary.glow );
+					}
+
+					xui::layout::spacing(5.0f);
+
+					// Through Wall checkbox (secondary layer, ignorez materials without (iz) in name)
+					xui::checkbox("through wall", chams.secondary.enabled);
+					if (chams.secondary.enabled)
+					{
+						const bool is_wall_outline = settings::esp::is_outline_material(chams.secondary.material.value);
+						const bool is_wall_glow = ( chams.secondary.material.value == settings::esp::cham_ids::outline_glow || chams.secondary.material.value == settings::esp::cham_ids::outline_glow_ignorez );
+						const auto prev_wall_mat = chams.secondary.material.value;
+						xui::color_picker("color##wall", chams.secondary.color, 0.0f, true, is_wall_outline ? &chams.secondary.filled.value : nullptr);
+						int wall_mat_idx = settings::esp::get_iz_index(chams.secondary.material.value);
+						if (xui::combo("material##wall", wall_mat_idx, settings::esp::k_iz_material_names, settings::esp::k_iz_material_count))
+						{
+							chams.secondary.material.value = settings::esp::k_iz_materials[wall_mat_idx];
+							if ( ( chams.secondary.material.value == settings::esp::cham_ids::outline_glow || chams.secondary.material.value == settings::esp::cham_ids::outline_glow_ignorez ) &&
+							     ( prev_wall_mat != settings::esp::cham_ids::outline_glow && prev_wall_mat != settings::esp::cham_ids::outline_glow_ignorez ) )
+							{
+								chams.secondary.filled.value = true;
+							}
+						}
+						if (is_wall_outline)
+						{
+							xui::checkbox("filled##wall", chams.secondary.filled);
+						}
+						if (is_wall_glow)
+						{
+							xui::layout::spacing( 5.0f );
+							xui::layout::separator( );
+							detail::draw_outline_glow_sliders( "p_wall_glow", chams.secondary.glow );
+						}
+					}
+
+					xui::layout::spacing(5.0f);
+
+					// Overlay checkbox (overlay layer, non-iz materials)
+					xui::checkbox("overlay", chams.overlay.enabled);
+					if (chams.overlay.enabled)
+					{
+						const bool is_ov_outline = settings::esp::is_outline_material(chams.overlay.material.value);
+						const bool is_ov_glow = ( chams.overlay.material.value == settings::esp::cham_ids::outline_glow || chams.overlay.material.value == settings::esp::cham_ids::outline_glow_ignorez );
+						const auto prev_ov_mat = chams.overlay.material.value;
+						xui::color_picker("color##overlay", chams.overlay.color, 0.0f, true, is_ov_outline ? &chams.overlay.filled.value : nullptr);
+						int ov_mat_idx = settings::esp::get_non_iz_index(chams.overlay.material.value);
+						if ( xui::combo("material##overlay", ov_mat_idx, settings::esp::k_non_iz_material_names, settings::esp::k_non_iz_material_count) )
+						{
+							chams.overlay.material.value = settings::esp::k_non_iz_materials[ov_mat_idx];
+							if ( ( chams.overlay.material.value == settings::esp::cham_ids::outline_glow || chams.overlay.material.value == settings::esp::cham_ids::outline_glow_ignorez ) &&
+							     ( prev_ov_mat != settings::esp::cham_ids::outline_glow && prev_ov_mat != settings::esp::cham_ids::outline_glow_ignorez ) )
+							{
+								chams.overlay.filled.value = true;
+							}
+						}
+						if (is_ov_outline)
+						{
+							xui::checkbox("filled##overlay", chams.overlay.filled);
+						}
+						if (is_ov_glow)
+						{
+							xui::layout::spacing( 5.0f );
+							xui::layout::separator( );
+							detail::draw_outline_glow_sliders( "p_ov_glow", chams.overlay.glow );
+						}
+					}
+
+					xui::end_popup();
+				}
+
+				xui::layout::separator();
+				detail::draw_chams_config("ragdoll chams", "ragdoll", chams_ragdoll, false);
+				if (subtab == 0)
+				{
+					xui::layout::separator();
+					detail::draw_chams_config("backtrack chams", "bt", p.m_chams.backtrack, false);
+					/*					xui::layout::separator (); not enough menu space with this*/
+					detail::draw_chams_config("onshot chams", "os", p.m_chams.onshot, false);
+					xui::slider_float("fade##ft", p.m_chams.onshot_fade_time, 0.1f, 5.0f, "%.0f");
+				}
+				xui::end_child();
+			}
+		}
+		else
+		{
+			if (xui::begin_child("##viewmodel", col_w, this->m_body_h, true))
+			{
+				detail::draw_chams_config("weapon chams", "vm_weapon", esp.m_viewmodel.weapon);
+				xui::layout::separator();
+				detail::draw_chams_config("arms chams", "vm_arms", esp.m_viewmodel.arms);
+				xui::end_child();
+			}
+		}
+	}
+
+} // namespace rendering
