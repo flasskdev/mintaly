@@ -19,6 +19,10 @@ namespace steam {
 
 	std::uint64_t user::get_steam_id( )
 	{
+		// Optional Steam initialization may fail in development builds. A valid
+		// export still must not be called with a null ISteamUser instance.
+		if ( !detail::user_interface )
+			return 0;
 		return memory::call<std::uint64_t>( MODULE_EXPORT( "steam_api64.dll:SteamAPI_ISteamUser_GetSteamID" ), detail::user_interface );
 	}
 

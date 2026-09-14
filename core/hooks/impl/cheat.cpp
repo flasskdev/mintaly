@@ -458,6 +458,13 @@ namespace hooks {
 			features::world::g_smoke.on_frame_stage_notify( );
 		}
 
+		// Scoreboard presence needs controllers and a HUD, not a spawned local
+		// pawn or a camera matrix (team selection / spectator mode).
+		if ( stage == 6 )
+		{
+			features::misc::g_scoreboard_weapons.on_frame_stage_notify( );
+		}
+
 		if (systems::g_local.get ().is_valid () && systems::g_view.has_camera ()) {
 			if (stage == 6) {
 				// Capture lag records only after Source 2 has committed this network update,
@@ -466,7 +473,6 @@ namespace hooks {
 				features::esp::player::g_chams.bt( ).update( );
 				features::esp::player::g_chams.os ().update ();
 
-				features::misc::g_scoreboard_weapons.on_frame_stage_notify ();
 				features::misc::g_other.do_kill_feed_preservation( );
 			}
 		}

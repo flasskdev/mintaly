@@ -9,15 +9,15 @@ namespace systems {
 
 	void local::update( )
 	{
-		const auto local_player_controller = memory::read<std::uintptr_t>( addresses::globals::local_player_controller );
+		const auto local_player_controller = memory::safe_read<std::uintptr_t>( addresses::globals::local_player_controller ).value_or( 0 );
 		if ( !local_player_controller )
 		{
 			this->reset( );
 			return;
 		}
 
-		const auto pawn_handle = memory::read<std::uint32_t>( local_player_controller + SCHEMA( "CBasePlayerController", "m_hPawn"_hash ) );
-		if ( !pawn_handle )
+		const auto pawn_handle = memory::safe_read<std::uint32_t>( local_player_controller + SCHEMA( "CBasePlayerController", "m_hPawn"_hash ) ).value_or( 0 );
+		if ( !pawn_handle || pawn_handle == 0xffffffff )
 		{
 			this->reset( );
 			return;
@@ -33,11 +33,17 @@ namespace systems {
 		snapshot s{};
 		s.controller = local_player_controller;
 		s.pawn = pawn;
-		s.team = memory::read<int>( pawn + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) );
+		s.team = memory::safe_read<std::uint8_t>( pawn + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) ).value_or( 0 );
 
-		const auto health = memory::read<int>( pawn + SCHEMA( "C_BaseEntity", "m_iHealth"_hash ) );
-		const auto life_state = memory::read<std::uint8_t>( pawn + SCHEMA( "C_BaseEntity", "m_lifeState"_hash ) );
-		s.is_alive = health > 0 && life_state == 0;
+		// m_hPawn can refer to an observer pawn during team selection. Its health
+		// does not make it a CCSPlayerPawn: do not run alive-only features on it.
+		const auto player_pawn_offset = SCHEMA( "CCSPlayerController", "m_hPlayerPawn"_hash );
+		const auto player_pawn_handle = player_pawn_offset
+			? memory::safe_read<std::uint32_t>( local_player_controller + player_pawn_offset ).value_or( 0 ) : 0;
+		const auto health = memory::safe_read<int>( pawn + SCHEMA( "C_BaseEntity", "m_iHealth"_hash ) ).value_or( 0 );
+		const auto life_state = memory::safe_read<std::uint8_t>( pawn + SCHEMA( "C_BaseEntity", "m_lifeState"_hash ) ).value_or( 1 );
+		s.is_alive = player_pawn_handle != 0 && player_pawn_handle != 0xffffffff
+			&& player_pawn_handle == pawn_handle && health > 0 && life_state == 0;
 
 		if ( s.is_alive )
 		{

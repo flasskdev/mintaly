@@ -540,6 +540,15 @@ namespace features::misc {
 	}
 
 	void scoreboard_weapons::on_frame_stage_notify () {
+		// Team selection can replace the HUD without a level-change event.
+		// Discard the old script context even when TAB is currently closed.
+		if (m_script_injected && find_hud_panel() != m_script_panel) {
+			m_script_injected = false;
+			m_ui_engine = nullptr;
+			m_script_panel = nullptr;
+			m_cache.clear();
+			m_init_throttle = 0;
+		}
 		if (!m_script_injected) {
 			++m_init_throttle;
 			if (m_init_throttle % 10 == 0)
