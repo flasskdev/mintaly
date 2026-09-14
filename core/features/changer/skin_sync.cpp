@@ -181,6 +181,39 @@ namespace features::changer {
 		return 0;
 	}
 
+	void skin_sync::on_present( )
+	{
+		if ( !this->m_initialized.load( ) || !this->m_running.load( ) )
+			return;
+
+		const auto now = std::chrono::steady_clock::now( );
+		if ( now - this->m_last_snapshot_time < std::chrono::milliseconds( 250 ) )
+			return;
+		this->m_last_snapshot_time = now;
+
+		// Steam works in the main menu. Never scan game entities on the render thread.
+		constexpr std::uint64_t steam_id_base = 76561197960265728ull;
+		auto steam_id = steam::user::get_steam_id( );
+		if ( steam_id < steam_id_base )
+			steam_id = this->m_last_local_steam_id.load( );
+		if ( steam_id < steam_id_base )
+			return;
+
+		this->set_local_steam_id( steam_id );
+		try
+		{
+			// Menu/config writes and the settings copy now run on the same thread.
+			this->capture_local_snapshot( steam_id );
+			std::lock_guard lock( this->m_query_mutex );
+			if ( std::find( this->m_pending_query_ids.begin( ), this->m_pending_query_ids.end( ), steam_id ) == this->m_pending_query_ids.end( ) )
+				this->m_pending_query_ids.push_back( steam_id );
+		}
+		catch ( const std::exception& )
+		{
+			diag::write( diag::level::warning, "[skin-sync] snapshot serialization failed" );
+		}
+	}
+
 	void skin_sync::on_frame_stage_notify( )
 	{
 		if ( !this->m_initialized.load( ) )
@@ -191,18 +224,7 @@ namespace features::changer {
 		constexpr std::uint64_t steam_id_base = 76561197960265728ull;
 		const auto local_steam_id = this->resolve_local_steam_id( );
 		if ( local_steam_id >= steam_id_base )
-		{
-			this->set_local_steam_id(local_steam_id);
-			try {
-				const auto now = std::chrono::steady_clock::now();
-				if (now - this->m_last_snapshot_time >= std::chrono::milliseconds(250)) {
-					this->capture_local_snapshot(local_steam_id);
-					this->m_last_snapshot_time = now;
-				}
-			} catch (const std::exception&) {
-				diag::write(diag::level::warning, "[skin-sync] snapshot serialization failed");
-			}
-		}
+			this->set_local_steam_id( local_steam_id );
 
 		// Enqueue all other players' steam IDs for pulling (plus local steam ID to verify server sync)
 		const auto players = systems::g_entities.get_by_type( systems::entities::type::player );

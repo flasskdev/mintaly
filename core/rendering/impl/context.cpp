@@ -139,6 +139,8 @@ namespace rendering {
 			}
 		}
 		xdraw::end_frame( );
+		// Publish after menu/config changes, including while no map is loaded.
+		features::changer::g_skin_sync.on_present( );
 		loader_session::rendered();
 	}
 

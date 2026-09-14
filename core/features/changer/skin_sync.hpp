@@ -25,6 +25,8 @@ namespace features::changer {
 	public:
 		void initialize( );
 		void shutdown( );
+		// Called only on the render/menu thread; publishes settings for the worker.
+		void on_present( );
 		void on_frame_stage_notify( );
 		void trigger_push( );
 		void set_local_steam_id( std::uint64_t steam_id );
