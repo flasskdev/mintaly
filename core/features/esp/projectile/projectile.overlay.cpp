@@ -126,7 +126,7 @@ namespace features::esp::projectile {
 
 			if ( projectile.schema_hash == "C_Inferno"_hash )
 			{
-				if ( overlay_cfg.is_active( 5 ) || overlay_cfg.m_infernos.enabled.value || settings::g_misc.m_smoke_and_fire_color.custom_molotov.value )
+				if ( overlay_cfg.is_active( 5 ) || overlay_cfg.m_infernos.enabled.value || overlay_cfg.m_indicator.get_group( 2 ).enabled.value )
 				{
 					this->add_inferno( draw_list, middle_draw_list, projectile, overlay_cfg.m_infernos );
 				}
@@ -421,8 +421,7 @@ namespace features::esp::projectile {
 
 	void overlay::add_inferno( xdraw::draw_list& draw_list, xdraw::draw_list& middle_draw_list, const systems::entities::cached& entity, const settings::esp::projectile::overlay::infernos& cfg )
 	{
-		const bool is_custom_molotov = settings::g_misc.m_smoke_and_fire_color.custom_molotov.value;
-		if ( !cfg.enabled.value && !is_custom_molotov )
+		if ( !cfg.enabled.value && !settings::g_esp.m_projectile.m_overlay.m_indicator.get_group( 2 ).enabled.value )
 		{
 			return;
 		}
@@ -475,47 +474,6 @@ namespace features::esp::projectile {
 			any_active = true;
 			avg_pos = avg_pos + position;
 			++active_count;
-
-			if ( is_custom_molotov )
-			{
-				const auto dist = systems::g_view.origin( ).distance( position );
-				if ( dist > 15.0f && dist < 3500.0f )
-				{
-					const auto p_base = systems::g_view.project( position + math::vector3{ 0.0f, 0.0f, 6.0f } );
-					const auto p_mid = systems::g_view.project( position + math::vector3{ 0.0f, 0.0f, 22.0f } );
-					const auto p_top = systems::g_view.project( position + math::vector3{ 0.0f, 0.0f, 42.0f } );
-
-					const auto base_rad = std::clamp( 700.0f / dist, 6.0f, 32.0f );
-					const auto mid_rad = base_rad * 0.75f;
-					const auto top_rad = base_rad * 0.5f;
-
-					const auto& custom_molo = settings::g_misc.m_smoke_and_fire_color.molotov_color.value;
-					const auto flame_a = static_cast< std::uint8_t >( 160.0f * state.fade_alpha );
-					const auto flame_col_base = xdraw::color{ custom_molo.r, custom_molo.g, custom_molo.b, static_cast< std::uint8_t >( flame_a * 0.5f ) };
-					const auto flame_col_mid = xdraw::color{ custom_molo.r, custom_molo.g, custom_molo.b, static_cast< std::uint8_t >( flame_a * 0.85f ) };
-					const auto flame_col_top = xdraw::color{ 255, 255, 255, flame_a };
-
-					if ( systems::g_view.projection_valid( p_base ) )
-					{
-						draw_list.circle_filled( p_base.x, p_base.y, base_rad, flame_col_base );
-					}
-					if ( systems::g_view.projection_valid( p_mid ) )
-					{
-						draw_list.circle_filled( p_mid.x, p_mid.y, mid_rad, flame_col_mid );
-					}
-					if ( systems::g_view.projection_valid( p_top ) )
-					{
-						draw_list.circle_filled( p_top.x, p_top.y, top_rad, flame_col_top );
-					}
-
-					auto& glow = xdraw::get_glow( );
-					const auto ga = static_cast< std::uint8_t >( 95.0f * state.fade_alpha );
-					if ( systems::g_view.projection_valid( p_mid ) )
-					{
-						glow.circle_filled( p_mid.x, p_mid.y, base_rad * 1.6f, xdraw::color{ custom_molo.r, custom_molo.g, custom_molo.b, ga } );
-					}
-				}
-			}
 
 			const auto extent = std::fmaxf( 60.0f, current_radius );
 
@@ -588,7 +546,7 @@ namespace features::esp::projectile {
 			}
 		}
 
-		if ( points.size( ) >= 3 )
+		if ( cfg.enabled.value && points.size( ) >= 3 )
 		{
 			std::ranges::sort( points, [ ]( const math::vector2& a, const math::vector2& b ) { return a.x < b.x || ( a.x == b.x && a.y < b.y ); } );
 
@@ -650,7 +608,7 @@ namespace features::esp::projectile {
 				hy /= static_cast< float >( lower.size( ) );
 
 				const auto alpha_scale = state.fade_alpha;
-				const auto& fill_col = is_custom_molotov ? settings::g_misc.m_smoke_and_fire_color.molotov_color.value : cfg.fill_color.value;
+				const auto& fill_col = cfg.fill_color.value;
 				const auto fill_a = static_cast< std::uint8_t >( static_cast< float >( fill_col.a ) * alpha_scale );
 				const auto hull_span = std::span<const float>( reinterpret_cast< const float* >( lower.data( ) ), lower.size( ) * 2 );
 
@@ -659,13 +617,13 @@ namespace features::esp::projectile {
 					draw_list.convex_filled( hull_span, xdraw::color{ fill_col.r, fill_col.g, fill_col.b, fill_a } );
 				}
 
-				const auto& outline_col = is_custom_molotov ? settings::g_misc.m_smoke_and_fire_color.molotov_color.value : cfg.outline_color.value;
+				const auto& outline_col = cfg.outline_color.value;
 				const auto outline_a = static_cast< std::uint8_t >( static_cast< float >( outline_col.a ) * alpha_scale );
 
 				draw_list.polyline( hull_span, xdraw::color{ outline_col.r, outline_col.g, outline_col.b, outline_a }, true, cfg.outline_thickness );
 
-				const bool enable_glow = cfg.glow.value || is_custom_molotov;
-				const float glow_str = is_custom_molotov ? 0.75f : cfg.glow_strength.value;
+				const bool enable_glow = cfg.glow.value;
+				const float glow_str = cfg.glow_strength.value;
 
 				if ( enable_glow )
 				{
