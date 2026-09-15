@@ -1903,12 +1903,17 @@ namespace settings {
                         xui::setting keybinds_list{ true,{}, "keybinds list", "widgets" };
                         config::val<float> keybinds_x{ -1.0f, "widgets", "keybinds x" };
                         config::val<float> keybinds_y{ -1.0f, "widgets", "keybinds y" };
-                        xui::setting keybinds_teammates_damage{ false,{}, "keybinds teammates damage", "widgets" };
+                        config::val<float> keybinds_opacity{ 100.0f, "widgets", "keybinds opacity" };
 
                         xui::setting spectator_list{ true,{}, "spectator list", "widgets" };
                         config::val<float> spectator_x{ -1.0f, "widgets", "spectator x" };
                         config::val<float> spectator_y{ -1.0f, "widgets", "spectator y" };
-                        xui::setting spectator_teammates_damage{ false,{}, "spectator teammates damage", "widgets" };
+                        config::val<float> spectator_opacity{ 100.0f, "widgets", "spectator opacity" };
+
+                        xui::setting teammate_damage{ false,{}, "teammate damage", "widgets" };
+                        config::val<float> teammate_damage_x{ -1.0f, "widgets", "teammate damage x" };
+                        config::val<float> teammate_damage_y{ -1.0f, "widgets", "teammate damage y" };
+                        config::val<float> teammate_damage_opacity{ 100.0f, "widgets", "teammate damage opacity" };
 
                         enum class style : std::uint8_t { modern, classic, neo, glass };
 

@@ -382,14 +382,21 @@ namespace rendering {
                                 xui::toggle( "Keybinds List", m.m_widgets.keybinds_list );
                                 if ( xui::begin_popup( "##keybinds_cfg", 200.0f ) )
                                 {
-                                        xui::checkbox( "Teammates damage", m.m_widgets.keybinds_teammates_damage );
+                                        xui::slider_float( "Opacity##keybinds", m.m_widgets.keybinds_opacity, 0.0f, 100.0f, "%.0f%%" );
                                         xui::end_popup( );
                                 }
                                 xui::layout::spacing( 3.0f );
                                 xui::toggle( "Spectator List", m.m_widgets.spectator_list );
                                 if ( xui::begin_popup( "##spectator_cfg", 200.0f ) )
                                 {
-                                        xui::checkbox( "Teammates damage", m.m_widgets.spectator_teammates_damage );
+                                        xui::slider_float( "Opacity##spectators", m.m_widgets.spectator_opacity, 0.0f, 100.0f, "%.0f%%" );
+                                        xui::end_popup( );
+                                }
+                                xui::layout::spacing( 3.0f );
+                                xui::toggle( "Teammate Damage", m.m_widgets.teammate_damage );
+                                if ( xui::begin_popup( "##teammate_damage_cfg", 200.0f ) )
+                                {
+                                        xui::slider_float( "Opacity##teammate_damage", m.m_widgets.teammate_damage_opacity, 0.0f, 100.0f, "%.0f%%" );
                                         xui::end_popup( );
                                 }
 
