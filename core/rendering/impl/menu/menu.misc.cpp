@@ -563,6 +563,13 @@ namespace rendering {
                                         xui::slider_float( "glow strength##molo_r_m", settings::g_esp.m_projectile.m_overlay.m_infernos.glow_strength, 0.1f, 1.0f, "%.2f" );
                                         xui::end_popup( );
                                 }
+                                xui::layout::spacing( 3.0f );
+                                xui::toggle( "Custom Smoke Color", m.m_smoke_and_fire_color.custom_smoke );
+                                if ( xui::begin_popup( "##restore_smoke_col_misc", 220.0f ) )
+                                {
+                                        xui::color_picker( "color##smoke_misc", m.m_smoke_and_fire_color.smoke_color );
+                                        xui::end_popup( );
+                                }
 
                                 xui::end_child( );
                         }

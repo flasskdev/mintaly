@@ -767,8 +767,7 @@ namespace hooks {
 		std::vector<std::pair<std::uintptr_t, std::uint32_t>> original_colors;
 		const auto& scene = settings::g_world.m_scene;
 		if ( !lifecycle::is_unloading( ) && batch && batch_count > 0 && batch_count <= ( 1 << 20 )
-			&& ( scene.fullbright.value || scene.world_setting.value || scene.skybox.custom_color.value
-				|| settings::g_misc.m_smoke_and_fire_color.custom_molotov.value ) )
+			&& ( scene.fullbright.value || scene.world_setting.value || scene.skybox.custom_color.value ) )
 		{
 			original_colors.reserve( batch_count );
 			for ( auto i = 0; i < batch_count; ++i )

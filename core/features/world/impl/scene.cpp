@@ -72,66 +72,6 @@ namespace features::world {
 			return safe_material_hash_impl (material);
 		}
 
-		enum class fire_material_kind { none, generic, molotov };
-
-		[[nodiscard]] fire_material_kind fire_material_kind_impl (std::uintptr_t material) noexcept {
-			if (!material) {
-				return fire_material_kind::none;
-			}
-			__try {
-				const auto name = memory::call_vfunc<const char*> (material, 0);
-				if (!name) {
-					return fire_material_kind::none;
-				}
-				char path[512] {};
-				auto length = std::size_t {};
-				for (; length < sizeof(path) - 1 && name[length]; ++length) {
-					const auto c = static_cast<unsigned char> (name[length]);
-					path[length] = c == '\\' ? '/' : static_cast<char> (std::tolower(c));
-				}
-				if (length == sizeof(path) - 1 ||
-					(std::strncmp(path, "materials/particle/", 19) != 0 &&
-					 std::strncmp(path, "materials/particles/", 20) != 0)) {
-					return fire_material_kind::none;
-				}
-				// Exclude smoke, sparks and embers; never tint a weapon or HUD material.
-				if (std::strstr(path, "smoke") || std::strstr(path, "spark") || std::strstr(path, "ember") ||
-					(!std::strstr(path, "fire") && !std::strstr(path, "flame"))) {
-					return fire_material_kind::none;
-				}
-				if (std::strstr(path, "molotov") || std::strstr(path, "incendiary") || std::strstr(path, "inferno")) {
-					return fire_material_kind::molotov;
-				}
-				return fire_material_kind::generic;
-			} __except (EXCEPTION_EXECUTE_HANDLER) {
-				return fire_material_kind::none;
-			}
-		}
-
-		[[nodiscard]] bool is_molotov_fire (std::uintptr_t mesh, std::uintptr_t material) {
-			diag::probe_scope probe;
-			const auto kind = fire_material_kind_impl(material);
-			if (kind == fire_material_kind::molotov) {
-				return true;
-			}
-			if (kind != fire_material_kind::generic) {
-				return false;
-			}
-			// Generic fire textures are shared. Require the same owner mapping used by GeneratePrimitives.
-			const auto object = memory::safe_read<std::uintptr_t>(
-				mesh + offsetof(features::esp::detail::mesh_primitive, scene_object)).value_or(0);
-			const auto handle = object ? memory::safe_read<std::uint32_t>(object + 0xc0).value_or(0) : 0;
-			if (!handle || handle == 0xffffffffu) {
-				return false;
-			}
-			const auto owner = systems::g_entities.lookup(handle);
-			if (!owner) {
-				return false;
-			}
-			const auto name = systems::g_entities.get_schema_name(owner);
-			return name && fnv1a::runtime_hash(name) == "C_Inferno"_hash;
-		}
-
 		[[nodiscard]] std::filesystem::path find_skybox_directory () {
 			std::array<wchar_t, 32768> module_path {};
 			const auto length = GetModuleFileNameW (
@@ -452,9 +392,8 @@ namespace features::world {
 		}
 
 		const auto fullbright_on = settings::g_world.m_scene.fullbright.value;
-		const auto& fire = settings::g_misc.m_smoke_and_fire_color;
 		const auto& config = settings::g_world.m_scene.skybox;
-		if (!config.custom_color.value && !settings::g_world.m_scene.world_setting.value && !fullbright_on && !fire.custom_molotov.value) {
+		if (!config.custom_color.value && !settings::g_world.m_scene.world_setting.value && !fullbright_on) {
 			return;
 		}
 
@@ -483,18 +422,6 @@ namespace features::world {
 			const auto material = memory::safe_read<std::uintptr_t> (mesh + 0x20);
 
 			if (!material || !*material) {
-				continue;
-			}
-
-			if (fire.custom_molotov.value && is_molotov_fire(mesh, *material)) {
-				const auto address = mesh + features::esp::detail::primitive_color_offset;
-				const auto original = memory::safe_read<xdraw::color>(address);
-				if (original) {
-					const auto& color = fire.molotov_color.value;
-					// Preserve engine alpha, opacity, material, depth state and draw order.
-					// The draw hook restores RGB after this draw; shared materials are never changed.
-					(void) memory::safe_write<xdraw::color>(address, {color.r, color.g, color.b, original->a});
-				}
 				continue;
 			}
 

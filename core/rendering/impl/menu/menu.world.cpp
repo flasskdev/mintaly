@@ -298,21 +298,7 @@ namespace rendering {
                 xui::slider_float("glow strength##molo_r", proj.m_overlay.m_infernos.glow_strength, 0.1f, 1.0f, "%.2f");
                 xui::end_popup();
             }
-            xui::layout::spacing(3.0f);
 
-            xui::toggle("custom smoke color", settings::g_misc.m_smoke_and_fire_color.custom_smoke);
-            if (xui::begin_popup("##smoke_col_world", 220.0f))
-            {
-                xui::color_picker("color##smoke_world", settings::g_misc.m_smoke_and_fire_color.smoke_color);
-                xui::end_popup();
-            }
-            xui::layout::spacing(3.0f);
-            xui::toggle("custom molotov color", settings::g_misc.m_smoke_and_fire_color.custom_molotov);
-            if (xui::begin_popup("##molo_col_world", 220.0f))
-            {
-                xui::color_picker("color##molo_world", settings::g_misc.m_smoke_and_fire_color.molotov_color);
-                xui::end_popup();
-            }
             xui::end_child();
         }
 
@@ -794,6 +780,13 @@ namespace rendering {
                 xui::slider_float("wind strength", weather.wind_strength, 0.0f, 5.0f, "%.1f");
                 xui::slider_float("wind direction", weather.wind_direction, 0.0f, 360.0f, "%.0f");
                 xui::slider_float("wind turbulence", weather.wind_turbulence, 0.0f, 5.0f, "%.1f");
+                xui::end_popup();
+            }
+
+            xui::toggle("Custom Smoke Color", settings::g_misc.m_smoke_and_fire_color.custom_smoke);
+            if (xui::begin_popup("##amb_smoke_col_popup", 220.0f))
+            {
+                xui::color_picker("color##smoke_amb", settings::g_misc.m_smoke_and_fire_color.smoke_color);
                 xui::end_popup();
             }
 
