@@ -52,6 +52,8 @@ namespace rendering {
 			this->m_spectators_dragging = false;
 		}
 
+		this->teammate_damage( dl );
+
 		xdraw::pop_font( );
 		dl.pop_clip( );
 	}
@@ -947,11 +949,11 @@ namespace rendering {
 			return;
 		}
 
-		const auto master_alpha = container_alpha.alpha( );
+		const auto master_alpha = container_alpha.alpha( ) * std::clamp( settings::g_misc.m_widgets.keybinds_opacity.value, 0.0f, 100.0f ) / 100.0f;
 		const auto master_u8 = static_cast< std::uint8_t >( 255.0f * master_alpha );
 
 		constexpr auto header_h{ 28.0f };
-		constexpr auto header_gap{ 5.0f };
+		constexpr auto header_gap{ 10.0f };
 		constexpr auto row_h{ 26.0f };
 		constexpr auto row_gap{ 4.0f };
 		const auto card_r = xdraw::corner_radius{ 6.0f };
@@ -976,11 +978,8 @@ namespace rendering {
 			const auto& e = entries[ i ];
 			const auto [nw, nh] = xdraw::measure_text( e.name );
 			const auto [vw, vh] = xdraw::measure_text( e.value );
-			const bool has_key = ( e.key[ 0 ] != '\0' );
-			const auto [kw, kh] = has_key ? xdraw::measure_text( e.key ) : std::pair{ 0.0f, 0.0f };
-			const float key_w = has_key ? ( kw + 10.0f + 6.0f ) : 0.0f;
 			const float mode_w = std::max( 46.0f, vw + 14.0f );
-			const float row_w = 14.0f + nw + 16.0f + key_w + el_gap + mode_w;
+			const float row_w = 14.0f + nw + 16.0f + el_gap + mode_w;
 			if ( row_w > max_w )
 			{
 				max_w = row_w;
@@ -992,17 +991,6 @@ namespace rendering {
 		}
 
 		auto& widgets_cfg = settings::g_misc.m_widgets;
-		const bool show_td = widgets_cfg.keybinds_teammates_damage.value;
-		const auto td_text = show_td ? std::format( "{}/3 • {}/300", s_team_kills, s_team_damage ) : std::string{};
-		const auto [td_tw, td_th] = show_td ? xdraw::measure_text( td_text ) : std::pair{ 0.0f, 0.0f };
-		if ( show_td )
-		{
-			const float needed_w = 21.0f + header_tw + 16.0f + td_tw + 20.0f;
-			if ( needed_w > max_w )
-			{
-				max_w = needed_w;
-			}
-		}
 
 		const auto body_h = ( count > 0 )
 			? ( header_gap + static_cast< float >( count ) * row_h + static_cast< float >( count - 1 ) * row_gap )
@@ -1055,6 +1043,7 @@ namespace rendering {
 
 		const bool can_start_drag = menu_open
 			&& !this->m_spectators_dragging
+			&& !this->m_teammate_damage_dragging
 			&& !xui::ctx( ).overlay_blocking( )
 			&& xui::ctx( ).active_window == xui::null_id
 			&& xui::ctx( ).active_slider == xui::null_id
@@ -1125,35 +1114,6 @@ namespace rendering {
 		const auto title_y = base_ry + ( header_h - header_th ) * 0.5f - 0.5f;
 		draw_list.text( title_x, title_y, "Keybinds", tokens::col_text.alpha( static_cast< std::uint8_t >( 245.0f * master_alpha ) ), g_fonts.inter_bold[ fonts::size::petite ] );
 
-		if ( show_td )
-		{
-			const float badge_w = td_tw + 12.0f;
-			const float badge_h = 16.0f;
-			const float badge_x = x + max_w - badge_w - 8.0f;
-			const float badge_y = base_ry + ( header_h - badge_h ) * 0.5f;
-
-			xdraw::color badge_bg{ 255, 255, 255, static_cast< std::uint8_t >( 12.0f * master_alpha ) };
-			xdraw::color badge_border{ 255, 255, 255, static_cast< std::uint8_t >( 24.0f * master_alpha ) };
-			xdraw::color badge_col = tokens::col_text_dim.alpha( static_cast< std::uint8_t >( 210.0f * master_alpha ) );
-
-			if ( s_team_kills >= 2 || s_team_damage >= 200 )
-			{
-				badge_bg = xdraw::color{ 255, 65, 65, static_cast< std::uint8_t >( 35.0f * master_alpha ) };
-				badge_border = xdraw::color{ 255, 65, 65, static_cast< std::uint8_t >( 90.0f * master_alpha ) };
-				badge_col = xdraw::color{ 255, 100, 100, static_cast< std::uint8_t >( 255.0f * master_alpha ) };
-			}
-			else if ( s_team_kills >= 1 || s_team_damage >= 100 )
-			{
-				badge_bg = xdraw::color{ 255, 180, 50, static_cast< std::uint8_t >( 30.0f * master_alpha ) };
-				badge_border = xdraw::color{ 255, 180, 50, static_cast< std::uint8_t >( 80.0f * master_alpha ) };
-				badge_col = xdraw::color{ 255, 200, 80, static_cast< std::uint8_t >( 255.0f * master_alpha ) };
-			}
-
-			draw_list.rect_filled( badge_x, badge_y, badge_w, badge_h, badge_bg, xdraw::corner_radius{ 4.0f } );
-			draw_list.rect( badge_x, badge_y, badge_w, badge_h, badge_border, xdraw::corner_radius{ 4.0f }, 1.0f );
-			draw_list.text( badge_x + ( badge_w - td_tw ) * 0.5f, badge_y + ( badge_h - td_th ) * 0.5f - 0.5f, td_text, badge_col, g_fonts.inter_bold[ fonts::size::petite ] );
-		}
-
 		// Rows (separated individual cards)
 		if ( count == 0 && g_menu.is_open( ) )
 		{
@@ -1175,8 +1135,6 @@ namespace rendering {
 				const auto row_y = base_ry + header_h + header_gap + static_cast< float >( i ) * ( row_h + row_gap );
 				const auto [ nw, nh ] = xdraw::measure_text( e.name );
 				const auto [ vw, vh ] = xdraw::measure_text( e.value );
-				const bool has_key = ( e.key[ 0 ] != '\0' );
-				const auto [ kw, kh ] = has_key ? xdraw::measure_text( e.key ) : std::pair{ 0.0f, 0.0f };
 
 				const float mode_w = std::max( 46.0f, vw + 14.0f );
 				const float mode_x = x + max_w - mode_w;
@@ -1209,20 +1167,6 @@ namespace rendering {
 				// Name text
 				draw_list.text( bar_x + 2.5f + 7.0f, left_y + ( row_h - nh ) * 0.5f - 0.5f, e.name, tokens::col_text.alpha( static_cast< std::uint8_t >( 240.0f * master_alpha ) ) );
 
-				// Key badge on right inside Element 1
-				if ( has_key )
-				{
-					const auto key_badge_w = kw + 10.0f;
-					const auto key_badge_h = 16.0f;
-					const auto kx = left_x + left_w - key_badge_w - 6.0f;
-					const auto ky = left_y + ( row_h - key_badge_h ) * 0.5f;
-					const auto badge_r = xdraw::corner_radius{ 4.0f };
-
-					draw_list.rect_filled( kx, ky, key_badge_w, key_badge_h, tokens::col_elevated.alpha( static_cast< std::uint8_t >( 180.0f * master_alpha ) ), badge_r );
-					draw_list.rect( kx, ky, key_badge_w, key_badge_h, tokens::col_border.alpha( static_cast< std::uint8_t >( 120.0f * master_alpha ) ), badge_r, 1.0f );
-					draw_list.text( kx + 5.0f, ky + ( key_badge_h - kh ) * 0.5f - 0.5f, e.key, tokens::col_text.alpha( static_cast< std::uint8_t >( 245.0f * master_alpha ) ) );
-				}
-
 				// 2. Element 2 (Right: Mode / State)
 				draw_watermark_shadow( mode_x, mode_y, mode_w, row_h );
 				draw_list.rect_filled_blurred( mode_x, mode_y, mode_w, row_h, card_r, xdraw::color{ 255, 255, 255, master_u8 } );
@@ -1241,6 +1185,96 @@ namespace rendering {
 				}
 			}
 		}
+	}
+
+	void widgets::teammate_damage( xdraw::draw_list& draw_list )
+	{
+		auto& cfg = settings::g_misc.m_widgets;
+		const auto& ctx = xui::ctx( );
+		const auto& input = ctx.input;
+		const bool mouse_down = input.mouse_down && ( GetAsyncKeyState( VK_LBUTTON ) & 0x8000 ) != 0;
+		const bool mouse_clicked = mouse_down && !this->m_teammate_damage_mouse_down;
+		this->m_teammate_damage_mouse_down = mouse_down;
+		const bool menu_open = g_menu.is_open( );
+		if ( !cfg.teammate_damage.value )
+		{
+			this->m_teammate_damage_hovered = false;
+			this->m_teammate_damage_dragging = false;
+			return;
+		}
+
+		const auto [screen_w, screen_h] = xdraw::viewport_size( );
+		constexpr float header_h = 28.0f, header_gap = 10.0f, row_h = 26.0f;
+		constexpr float total_h = header_h + header_gap + row_h;
+		xdraw::push_font( g_fonts.inter_bold[ fonts::size::petite ] );
+		const auto [title_w, title_h] = xdraw::measure_text( "Teammate damage" );
+		xdraw::pop_font( );
+		const auto text = std::format( "Kills: {}/3  |  Damage: {}/300", s_team_kills, s_team_damage );
+		const auto [text_w, text_h] = xdraw::measure_text( text );
+		const auto width = std::max( 195.0f, std::max( title_w + 45.0f, text_w + 28.0f ) );
+		const auto max_x = std::max( 0.0f, static_cast<float>( screen_w ) - width );
+		const auto max_y = std::max( 0.0f, static_cast<float>( screen_h ) - total_h );
+		auto x = std::clamp( cfg.teammate_damage_x.value >= 0.0f ? cfg.teammate_damage_x.value : 10.0f, 0.0f, max_x );
+		auto y = std::clamp( cfg.teammate_damage_y.value >= 0.0f ? cfg.teammate_damage_y.value : static_cast<float>( screen_h ) * 0.75f, 0.0f, max_y );
+		const xui::rect bounds{ x, y, width, total_h };
+		this->m_teammate_damage_hovered = menu_open && bounds.contains( input.mouse_x, input.mouse_y );
+		if ( !menu_open || !mouse_down )
+			this->m_teammate_damage_dragging = false;
+
+		const bool can_start_drag = menu_open
+			&& !this->m_keybinds_dragging && !this->m_spectators_dragging
+			&& !ctx.overlay_blocking( )
+			&& ctx.active_window == xui::null_id
+			&& ctx.active_slider == xui::null_id
+			&& ctx.active_resize == xui::null_id
+			&& ctx.active_text_input == xui::null_id
+			&& ctx.active_child_scroll == xui::null_id;
+		if ( can_start_drag && this->m_teammate_damage_hovered && mouse_clicked )
+		{
+			this->m_teammate_damage_dragging = true;
+			this->m_teammate_damage_drag_x = input.mouse_x - x;
+			this->m_teammate_damage_drag_y = input.mouse_y - y;
+		}
+		if ( this->m_teammate_damage_dragging )
+		{
+			x = std::clamp( input.mouse_x - this->m_teammate_damage_drag_x, 0.0f, max_x );
+			y = std::clamp( input.mouse_y - this->m_teammate_damage_drag_y, 0.0f, max_y );
+			cfg.teammate_damage_x = x;
+			cfg.teammate_damage_y = y;
+		}
+
+		const auto opacity = std::clamp( cfg.teammate_damage_opacity.value, 0.0f, 100.0f ) / 100.0f;
+		const auto alpha = [opacity]( float value ) { return static_cast<std::uint8_t>( value * opacity ); };
+		const auto radius = xdraw::corner_radius{ 6.0f };
+		const auto& accent = ctx.style.accent;
+		const auto draw_card = [&]( float cy, float height, xdraw::color background, xdraw::color border ) {
+			draw_list.rect_filled( x - 6.0f, cy - 5.0f, width + 12.0f, height + 11.0f, xdraw::color{ 0, 0, 0, alpha( 15.0f ) }, xdraw::corner_radius{ 12.0f } );
+			draw_list.rect_filled( x - 4.0f, cy - 3.5f, width + 8.0f, height + 8.0f, xdraw::color{ 0, 0, 0, alpha( 30.0f ) }, xdraw::corner_radius{ 10.0f } );
+			draw_list.rect_filled( x - 2.5f, cy - 2.0f, width + 5.0f, height + 5.0f, xdraw::color{ 0, 0, 0, alpha( 50.0f ) }, xdraw::corner_radius{ 8.5f } );
+			draw_list.rect_filled( x - 1.0f, cy - 0.5f, width + 2.0f, height + 3.0f, xdraw::color{ 0, 0, 0, alpha( 75.0f ) }, xdraw::corner_radius{ 7.5f } );
+			draw_list.rect_filled_blurred( x, cy, width, height, radius, xdraw::color{ 255, 255, 255, alpha( 255.0f ) } );
+			draw_list.rect_filled( x, cy, width, height, background.alpha( alpha( 130.0f ) ), radius );
+			draw_list.rect( x, cy, width, height, border, radius, 1.0f );
+		};
+		const auto border = this->m_teammate_damage_hovered || this->m_teammate_damage_dragging
+			? accent.alpha( alpha( this->m_teammate_damage_dragging ? 220.0f : 140.0f ) )
+			: tokens::col_border.alpha( alpha( 120.0f ) );
+		draw_card( y, header_h, tokens::col_dark, border );
+		const auto half_w = ( width - 20.0f ) * 0.5f;
+		draw_list.rect_filled_gradient( x + 10.0f, y, half_w, 1.2f, accent.alpha( 0 ), accent.alpha( alpha( 170.0f ) ), accent.alpha( alpha( 170.0f ) ), accent.alpha( 0 ) );
+		draw_list.rect_filled_gradient( x + 10.0f + half_w, y, half_w, 1.2f, accent.alpha( alpha( 170.0f ) ), accent.alpha( 0 ), accent.alpha( 0 ), accent.alpha( alpha( 170.0f ) ) );
+		draw_list.circle_filled( x + 13.0f, y + header_h * 0.5f, 4.5f, accent.alpha( alpha( 45.0f ) ) );
+		draw_list.circle_filled( x + 13.0f, y + header_h * 0.5f, 2.2f, accent.alpha( alpha( 240.0f ) ) );
+		draw_list.circle_filled( x + 13.0f, y + header_h * 0.5f, 0.8f, xdraw::color{ 255, 255, 255, alpha( 240.0f ) } );
+		draw_list.text( x + 21.0f, y + ( header_h - title_h ) * 0.5f - 0.5f, "Teammate damage", tokens::col_text.alpha( alpha( 245.0f ) ), g_fonts.inter_bold[ fonts::size::petite ] );
+		const auto row_y = y + header_h + header_gap;
+		draw_card( row_y, row_h, tokens::col_card, tokens::col_border.alpha( alpha( 110.0f ) ) );
+		auto text_color = tokens::col_text;
+		if ( s_team_kills >= 2 || s_team_damage >= 200 )
+			text_color = xdraw::color{ 255, 100, 100, 255 };
+		else if ( s_team_kills >= 1 || s_team_damage >= 100 )
+			text_color = xdraw::color{ 255, 200, 80, 255 };
+		draw_list.text( x + ( width - text_w ) * 0.5f, row_y + ( row_h - text_h ) * 0.5f - 0.5f, text, text_color.alpha( alpha( 240.0f ) ) );
 	}
 
 	void widgets::spectators( xdraw::draw_list& draw_list )
@@ -1419,7 +1453,7 @@ namespace rendering {
 			return;
 		}
 
-		const auto master_alpha = container_alpha.alpha( );
+		const auto master_alpha = container_alpha.alpha( ) * std::clamp( settings::g_misc.m_widgets.spectator_opacity.value, 0.0f, 100.0f ) / 100.0f;
 		const auto master_u8 = static_cast< std::uint8_t >( 255.0f * master_alpha );
 
 		constexpr auto header_h{ 28.0f };
@@ -1458,17 +1492,6 @@ namespace rendering {
 		}
 
 		auto& widgets_cfg = settings::g_misc.m_widgets;
-		const bool show_td = widgets_cfg.spectator_teammates_damage.value;
-		const auto td_text = show_td ? std::format( "{}/3 • {}/300", s_team_kills, s_team_damage ) : std::string{};
-		const auto [td_tw, td_th] = show_td ? xdraw::measure_text( td_text ) : std::pair{ 0.0f, 0.0f };
-		if ( show_td )
-		{
-			const float needed_w = 21.0f + header_tw + 16.0f + td_tw + 20.0f;
-			if ( needed_w > max_w )
-			{
-				max_w = needed_w;
-			}
-		}
 
 		const auto body_h = ( count > 0 )
 			? ( header_gap + static_cast< float >( count ) * row_h + static_cast< float >( count - 1 ) * row_gap )
@@ -1521,6 +1544,7 @@ namespace rendering {
 
 		const bool can_start_drag = menu_open
 			&& !this->m_keybinds_dragging
+			&& !this->m_teammate_damage_dragging
 			&& !xui::ctx( ).overlay_blocking( )
 			&& xui::ctx( ).active_window == xui::null_id
 			&& xui::ctx( ).active_slider == xui::null_id
@@ -1590,35 +1614,6 @@ namespace rendering {
 		const auto title_x = dot_cx + 8.0f;
 		const auto title_y = base_ry + ( header_h - header_th ) * 0.5f - 0.5f;
 		draw_list.text( title_x, title_y, "Spectators", tokens::col_text.alpha( static_cast< std::uint8_t >( 245.0f * master_alpha ) ), g_fonts.inter_bold[ fonts::size::petite ] );
-
-		if ( show_td )
-		{
-			const float badge_w = td_tw + 12.0f;
-			const float badge_h = 16.0f;
-			const float badge_x = x + max_w - badge_w - 8.0f;
-			const float badge_y = base_ry + ( header_h - badge_h ) * 0.5f;
-
-			xdraw::color badge_bg{ 255, 255, 255, static_cast< std::uint8_t >( 12.0f * master_alpha ) };
-			xdraw::color badge_border{ 255, 255, 255, static_cast< std::uint8_t >( 24.0f * master_alpha ) };
-			xdraw::color badge_col = tokens::col_text_dim.alpha( static_cast< std::uint8_t >( 210.0f * master_alpha ) );
-
-			if ( s_team_kills >= 2 || s_team_damage >= 200 )
-			{
-				badge_bg = xdraw::color{ 255, 65, 65, static_cast< std::uint8_t >( 35.0f * master_alpha ) };
-				badge_border = xdraw::color{ 255, 65, 65, static_cast< std::uint8_t >( 90.0f * master_alpha ) };
-				badge_col = xdraw::color{ 255, 100, 100, static_cast< std::uint8_t >( 255.0f * master_alpha ) };
-			}
-			else if ( s_team_kills >= 1 || s_team_damage >= 100 )
-			{
-				badge_bg = xdraw::color{ 255, 180, 50, static_cast< std::uint8_t >( 30.0f * master_alpha ) };
-				badge_border = xdraw::color{ 255, 180, 50, static_cast< std::uint8_t >( 80.0f * master_alpha ) };
-				badge_col = xdraw::color{ 255, 200, 80, static_cast< std::uint8_t >( 255.0f * master_alpha ) };
-			}
-
-			draw_list.rect_filled( badge_x, badge_y, badge_w, badge_h, badge_bg, xdraw::corner_radius{ 4.0f } );
-			draw_list.rect( badge_x, badge_y, badge_w, badge_h, badge_border, xdraw::corner_radius{ 4.0f }, 1.0f );
-			draw_list.text( badge_x + ( badge_w - td_tw ) * 0.5f, badge_y + ( badge_h - td_th ) * 0.5f - 0.5f, td_text, badge_col, g_fonts.inter_bold[ fonts::size::petite ] );
-		}
 
 		// Rows (separated individual cards)
 		if ( count == 0 && g_menu.is_open( ) )

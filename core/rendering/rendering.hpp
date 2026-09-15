@@ -193,6 +193,12 @@ namespace rendering {
         void watermark(xdraw::draw_list& draw_list);
         void keybinds(xdraw::draw_list& draw_list);
         void spectators(xdraw::draw_list& draw_list);
+        void teammate_damage(xdraw::draw_list& draw_list);
+        bool m_teammate_damage_hovered{ false };
+        bool m_teammate_damage_dragging{ false };
+        bool m_teammate_damage_mouse_down{ false };
+        float m_teammate_damage_drag_x{};
+        float m_teammate_damage_drag_y{};
         bool m_keybinds_hovered{ false };
         bool m_keybinds_dragging{ false };
         bool m_spectators_hovered{ false };
