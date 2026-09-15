@@ -436,6 +436,7 @@ namespace {
 
 		diag::step ("stage: done");
 		features::changer::g_skin_sync.initialize( );
+		features::misc::g_impacts.initialize_audio( );
 		loader_session::ready( );
 		lifecycle::start_subscription_monitor( module_handle );
 		return 1;
@@ -468,6 +469,7 @@ void print_expired_chat_notification()
 
 void shutdown_all_cheat_systems()
 {
+	features::misc::g_impacts.shutdown_audio( );
 	features::changer::g_skin_sync.shutdown( );
 
 #if defined( DEV )

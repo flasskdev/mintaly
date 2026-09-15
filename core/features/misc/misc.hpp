@@ -121,6 +121,8 @@ namespace features::misc {
         class impacts
         {
         public:
+                void initialize_audio( );
+                void shutdown_audio( );
                 void on_render_early( xdraw::draw_list& draw_list );
                 void on_frame_stage_notify( );
                 void on_level_change( );

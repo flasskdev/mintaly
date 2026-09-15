@@ -1,6 +1,8 @@
 #include <pch/pch.hpp>
 #include <ShlObj.h>
 #include <filesystem>
+#include <condition_variable>
+#include <thread>
 
 #include <utilities/memory/memory.hpp>
 #include <utilities/addresses/addresses.hpp>
@@ -2010,72 +2012,6 @@ void play_engine_path( const char* sound_path, float volume )
 			memory::call<void>( PATTERN (patterns::play_sound), 0.0f, &args );
 		}
 
-		void play_wav_direct( const std::wstring& path, float volume )
-		{
-			using PlaySoundW_t = BOOL( WINAPI* )( LPCWSTR, HMODULE, DWORD );
-			using waveOutSetVolume_t = UINT( WINAPI* )( UINT_PTR, DWORD );
-
-			static const auto winmm = []() -> HMODULE {
-				HMODULE mod = GetModuleHandleW( L"winmm.dll" );
-				return mod ? mod : LoadLibraryW( L"winmm.dll" );
-			}();
-
-			if ( !winmm )
-			{
-				return;
-			}
-
-			static const auto play_fn = reinterpret_cast<PlaySoundW_t>( GetProcAddress( winmm, "PlaySoundW" ) );
-			if ( !play_fn )
-			{
-				return;
-			}
-
-			static const auto set_vol_fn = reinterpret_cast<waveOutSetVolume_t>( GetProcAddress( winmm, "waveOutSetVolume" ) );
-			if ( set_vol_fn )
-			{
-				const auto level = static_cast<WORD>( std::clamp( volume / 100.0f, 0.0f, 1.0f ) * 0xFFFFu );
-				const DWORD vol = static_cast<DWORD>( level ) | ( static_cast<DWORD>( level ) << 16 );
-				set_vol_fn( static_cast<UINT_PTR>( static_cast<UINT>( -1 ) ), vol ); // WAVE_MAPPER
-			}
-
-			// SND_FILENAME(0x20000) | SND_ASYNC(0x1) | SND_NODEFAULT(0x2)
-			play_fn( path.c_str( ), nullptr, 0x00020003u );
-		}
-
-		void play_wav_memory( const void* data, float volume )
-		{
-			using PlaySoundW_t = BOOL( WINAPI* )( LPCWSTR, HMODULE, DWORD );
-			using waveOutSetVolume_t = UINT( WINAPI* )( UINT_PTR, DWORD );
-
-			static const auto winmm = []() -> HMODULE {
-				HMODULE mod = GetModuleHandleW( L"winmm.dll" );
-				return mod ? mod : LoadLibraryW( L"winmm.dll" );
-			}();
-
-			if ( !winmm || !data )
-			{
-				return;
-			}
-
-			static const auto play_fn = reinterpret_cast<PlaySoundW_t>( GetProcAddress( winmm, "PlaySoundW" ) );
-			if ( !play_fn )
-			{
-				return;
-			}
-
-			static const auto set_vol_fn = reinterpret_cast<waveOutSetVolume_t>( GetProcAddress( winmm, "waveOutSetVolume" ) );
-			if ( set_vol_fn )
-			{
-				const auto level = static_cast<WORD>( std::clamp( volume / 100.0f, 0.0f, 1.0f ) * 0xFFFFu );
-				const DWORD vol = static_cast<DWORD>( level ) | ( static_cast<DWORD>( level ) << 16 );
-				set_vol_fn( static_cast<UINT_PTR>( static_cast<UINT>( -1 ) ), vol ); // WAVE_MAPPER
-			}
-
-			// SND_MEMORY(0x4) | SND_ASYNC(0x1) | SND_NODEFAULT(0x2)
-			play_fn( reinterpret_cast<LPCWSTR>( data ), nullptr, 0x00000007u );
-		}
-
 		[[nodiscard]] std::wstring resolve_sound_path( std::string_view filename )
 		{
 			const auto sanitized = sanitize_filename( filename );
@@ -2106,8 +2042,182 @@ void play_engine_path( const char* sound_path, float volume )
 			return {};
 		}
 
+		// Only this worker touches WinMM or WAV files. Producers hold the queue
+		// mutex briefly; initialization, file I/O and playback never hold it.
+		class audio_worker
+		{
+			using play_fn_t = BOOL( WINAPI* )( LPCWSTR, HMODULE, DWORD );
+			using volume_fn_t = UINT( WINAPI* )( UINT_PTR, DWORD );
+
+			struct request
+			{
+				std::string filename;
+				float volume{};
+				bool koch{};
+			};
+
+			struct cached_wav
+			{
+				std::wstring path;
+				std::filesystem::file_time_type modified{};
+				std::uintmax_t size{};
+				std::vector<char> bytes;
+			};
+
+		public:
+			void initialize( )
+			{
+				std::lock_guard lock( m_mutex );
+				if ( m_thread.joinable( ) ) return;
+				m_stopping = false;
+				try
+				{
+					m_thread = std::thread( [this] { run( ); } );
+				}
+				catch ( const std::exception& )
+				{
+					m_stopping = true;
+					diag::write( diag::level::warning, "failed to start hit audio worker" );
+				}
+			}
+
+			void shutdown( )
+			{
+				{
+					std::lock_guard lock( m_mutex );
+					m_stopping = true;
+					m_queue.clear( );
+				}
+				m_ready.notify_one( );
+				// Called by lifecycle shutdown, never from DllMain/loader lock.
+				if ( m_thread.joinable( ) ) m_thread.join( );
+			}
+
+			void enqueue( std::string_view filename, float volume, bool koch = false )
+			{
+				if ( !std::isfinite( volume ) || volume <= 0.0f || ( !koch && filename.empty( ) ) ) return;
+				{
+					std::lock_guard lock( m_mutex );
+					if ( m_stopping ) return;
+					// Drop oldest requests rather than accumulate an audio backlog.
+					if ( m_queue.size( ) >= 8 ) m_queue.pop_front( );
+					m_queue.push_back( { std::string( filename ), volume, koch } );
+				}
+				m_ready.notify_one( );
+			}
+
+		private:
+			const void* load_wav( std::string_view filename, play_fn_t play )
+			{
+				const auto path = resolve_sound_path( filename );
+				if ( path.empty( ) ) return nullptr;
+				std::error_code ec;
+				const auto modified = std::filesystem::last_write_time( path, ec );
+				if ( ec ) return nullptr;
+				const auto size = std::filesystem::file_size( path, ec );
+				// Bound memory usage for short hit/kill effects (two cache slots).
+				if ( ec || size < 12 || size > 16 * 1024 * 1024 ) return nullptr;
+
+				auto slot = m_cache.size( );
+				for ( std::size_t i = 0; i < m_cache.size( ); ++i )
+				{
+					if ( m_cache[i].path != path ) continue;
+					if ( m_cache[i].modified == modified && m_cache[i].size == size )
+						return m_cache[i].bytes.data( );
+					slot = i;
+					break;
+				}
+
+				std::ifstream file( std::filesystem::path( path ), std::ios::binary );
+				std::vector<char> bytes( static_cast<std::size_t>( size ) );
+				if ( !file.read( bytes.data( ), static_cast<std::streamsize>( size ) ) ||
+					std::memcmp( bytes.data( ), "RIFF", 4 ) || std::memcmp( bytes.data( ) + 8, "WAVE", 4 ) ) return nullptr;
+
+				if ( slot == m_cache.size( ) )
+				{
+					slot = m_next_slot;
+					m_next_slot = ( m_next_slot + 1 ) % m_cache.size( );
+				}
+				// SND_ASYNC retains the buffer: stop playback before replacing it.
+				play( nullptr, nullptr, 0 );
+				m_cache[slot] = { path, modified, size, std::move( bytes ) };
+				return m_cache[slot].bytes.data( );
+			}
+
+			void run( )
+			{
+				// Own a module reference until all asynchronous playback has stopped.
+				const auto module = LoadLibraryW( L"winmm.dll" );
+				const auto play = module ? reinterpret_cast<play_fn_t>( GetProcAddress( module, "PlaySoundW" ) ) : nullptr;
+				const auto set_volume = module ? reinterpret_cast<volume_fn_t>( GetProcAddress( module, "waveOutSetVolume" ) ) : nullptr;
+				if ( play )
+				{
+					// One silent 16-bit PCM sample warms the audio device on this thread.
+					static constexpr unsigned char silence[] = {
+						'R','I','F','F',38,0,0,0,'W','A','V','E',
+						'f','m','t',' ',16,0,0,0,1,0,1,0,
+						0x40,0x1f,0,0,0x80,0x3e,0,0,2,0,16,0,
+						'd','a','t','a',2,0,0,0,0,0
+					};
+					play( reinterpret_cast<LPCWSTR>( silence ), nullptr, 0x00000006u ); // MEMORY | NODEFAULT, synchronous
+				}
+
+				for ( ;; )
+				{
+					request item;
+					{
+						std::unique_lock lock( m_mutex );
+						m_ready.wait( lock, [this] { return m_stopping || !m_queue.empty( ); } );
+						if ( m_stopping ) break;
+						item = std::move( m_queue.front( ) );
+						m_queue.pop_front( );
+					}
+					if ( !play ) continue;
+					try
+					{
+						const void* data = item.koch ? static_cast<const void*>( sounds::g_koch_wav ) : load_wav( item.filename, play );
+						if ( !data ) continue;
+						if ( set_volume )
+						{
+							const auto level = static_cast<WORD>( std::clamp( item.volume / 100.0f, 0.0f, 1.0f ) * 0xFFFFu );
+							const DWORD volume = static_cast<DWORD>( level ) | ( static_cast<DWORD>( level ) << 16 );
+							set_volume( static_cast<UINT_PTR>( static_cast<UINT>( -1 ) ), volume );
+						}
+						play( reinterpret_cast<LPCWSTR>( data ), nullptr, 0x00000007u ); // MEMORY | ASYNC | NODEFAULT
+					}
+					catch ( const std::exception& )
+					{
+						diag::write( diag::level::warning, "failed to load custom hit sound" );
+					}
+				}
+
+				if ( play ) play( nullptr, nullptr, 0 );
+				m_cache = {};
+				if ( module ) FreeLibrary( module );
+			}
+
+			std::mutex m_mutex;
+			std::condition_variable m_ready;
+			std::deque<request> m_queue;
+			std::array<cached_wav, 2> m_cache;
+			std::size_t m_next_slot{};
+			bool m_stopping{ true };
+			std::thread m_thread;
+		};
+
+		audio_worker g_audio;
 
 } // namespace custom_sound_detail
+
+	void impacts::initialize_audio( )
+	{
+		custom_sound_detail::g_audio.initialize( );
+	}
+
+	void impacts::shutdown_audio( )
+	{
+		custom_sound_detail::g_audio.shutdown( );
+	}
 
 	std::string impacts::custom_sounds_directory_narrow( )
 	{
@@ -2158,11 +2268,7 @@ void play_engine_path( const char* sound_path, float volume )
 
 	void impacts::play_custom_sound( std::string_view filename, float volume ) const
 	{
-		const auto path = custom_sound_detail::resolve_sound_path( filename );
-		if ( !path.empty( ) )
-		{
-			custom_sound_detail::play_wav_direct( path, volume );
-		}
+		custom_sound_detail::g_audio.enqueue( filename, volume );
 	}
 
 	void impacts::play_sound( settings::misc::impacts::sound_type type, float volume, std::string_view custom_file )
@@ -2175,7 +2281,7 @@ void play_engine_path( const char* sound_path, float volume )
 
 		if ( type == settings::misc::impacts::sound_type::koch )
 		{
-			custom_sound_detail::play_wav_memory( sounds::g_koch_wav, volume );
+			custom_sound_detail::g_audio.enqueue( {}, volume, true );
 			return;
 		}
 
