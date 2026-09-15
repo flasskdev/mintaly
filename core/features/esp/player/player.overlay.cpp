@@ -19,29 +19,16 @@ namespace features::esp::player {
 			return;
 		}
 
-		auto players = systems::g_entities.get_by_type( systems::entities::type::player );
-		{
-			const auto camera = systems::g_view.origin( );
-
-			std::sort( players.begin( ), players.end( ), [ & ]( const systems::entities::cached& a, const systems::entities::cached& b )
-				{
-					const auto node_a = memory::read<std::uintptr_t>( a.ptr + SCHEMA( "C_BaseEntity", "m_pGameSceneNode"_hash ) );
-					const auto node_b = memory::read<std::uintptr_t>( b.ptr + SCHEMA( "C_BaseEntity", "m_pGameSceneNode"_hash ) );
-
-					if ( !node_a || !node_b )
-					{
-						return !node_a && node_b;
-					}
-
-					const auto da = node_a ? ( memory::read<math::vector3>( node_a + SCHEMA( "CGameSceneNode", "m_vecAbsOrigin"_hash ) ) - camera ).length_sqr( ) : 0.0f;
-					const auto db = node_b ? ( memory::read<math::vector3>( node_b + SCHEMA( "CGameSceneNode", "m_vecAbsOrigin"_hash ) ) - camera ).length_sqr( ) : 0.0f;
-
-					return da > db;
-				} );
-		}
+		const auto players = systems::g_entities.get_by_type( systems::entities::type::player );
+		const auto wants_c4 = []( const auto& cfg ) {
+			return cfg.enabled.value && cfg.m_info_flags.enabled.value &&
+				cfg.m_info_flags.has( settings::esp::player::overlay::info_flags::flag::c4 );
+		};
+		const auto needs_c4 = wants_c4( settings::g_esp.m_player.m_overlay[0] ) || wants_c4( settings::g_esp.m_player.m_overlay[1] );
 
 		std::uintptr_t c4_carrier_pawn = 0;
-		for ( const auto& item : systems::g_entities.get_by_type( systems::entities::type::item ) )
+		const auto items = needs_c4 ? systems::g_entities.get_by_type( systems::entities::type::item ) : std::vector<systems::entities::cached>{};
+		for ( const auto& item : items )
 		{
 			if ( item.schema_hash != "C_C4"_hash || !item.ptr )
 				continue;
@@ -70,14 +57,22 @@ namespace features::esp::player {
 			}
 		}
 
+		std::vector<overlay::info> render_players;
+		render_players.reserve( players.size( ) );
 		for ( const auto& player : players )
 		{
-			const auto info = this->get_info( player, local, -1, c4_carrier_pawn );
-			if ( !info.valid( ) )
-			{
-				continue;
-			}
+			auto info = this->get_info( player, local, -1, c4_carrier_pawn );
+			if ( info.valid( ) && std::isfinite( info.distance ) )
+				render_players.push_back( std::move( info ) );
+		}
+		// Sort a single pawn snapshot, not live controller scene nodes inside
+		// the comparator (which repeats memory reads and can change mid-sort).
+		std::sort( render_players.begin( ), render_players.end( ), []( const auto& a, const auto& b ) {
+			return a.distance > b.distance;
+		} );
 
+		for ( const auto& info : render_players )
+		{
 			const auto& cfg = settings::g_esp.m_player.m_overlay[ info.is_other_team ? 0 : 1 ];
 			if ( !cfg.enabled.value )
 			{
@@ -337,6 +332,10 @@ namespace features::esp::player {
 		}
 
 		constexpr auto step{ 0.08f };
+		std::vector<float> spline_points;
+		spline_points.reserve( 256 );
+		std::vector<math::vector2> screen_points;
+		screen_points.reserve( 9 ); // longest chain plus two endpoint duplicates
 
 		const auto flush_segment = [ & ]( std::vector<math::vector2>& screen_points )
 			{
@@ -349,8 +348,7 @@ namespace features::esp::player {
 				screen_points.insert( screen_points.begin( ), screen_points.front( ) );
 				screen_points.push_back( screen_points.back( ) );
 
-				std::vector<float> spline_points;
-				spline_points.reserve( ( screen_points.size( ) * static_cast< std::size_t >( 1.f / step ) + 1 ) * 2 );
+				spline_points.clear( );
 
 				for ( auto i = 0ull; i + 3 < screen_points.size( ); ++i )
 				{
@@ -379,8 +377,7 @@ namespace features::esp::player {
 
 		for ( const auto& chain : chains )
 		{
-			std::vector<math::vector2> screen_points;
-			screen_points.reserve( chain.size( ) );
+			screen_points.clear( );
 
 			for ( const auto& b : chain )
 			{
@@ -390,7 +387,7 @@ namespace features::esp::player {
 				}
 
 				const auto idx = static_cast< std::size_t >( b );
-				if ( idx >= 28 || positions[ idx ].length_sqr( ) < 1.0f )
+				if ( idx >= positions.size( ) || positions[ idx ].length_sqr( ) < 1.0f )
 				{
 					flush_segment( screen_points );
 					continue;
@@ -934,6 +931,10 @@ namespace features::esp::player {
 
 		info.team = memory::read<int>( info.pawn + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) );
 		info.is_other_team = local.is_this_other_team( info.team );
+		const auto& cfg = settings::g_esp.m_player.m_overlay[ info.is_other_team ? 0 : 1 ];
+		if ( !cfg.enabled.value ) return {};
+		using flag = settings::esp::player::overlay::info_flags::flag;
+		const auto needs_flag = [&cfg]( flag value ) { return cfg.m_info_flags.enabled.value && cfg.m_info_flags.has( value ); };
 
 		const auto game_scene_node = memory::read<std::uintptr_t>( info.pawn + SCHEMA( "C_BaseEntity", "m_pGameSceneNode"_hash ) );
 		if ( !game_scene_node )
@@ -944,20 +945,20 @@ namespace features::esp::player {
 		// m_bDormant is ambiguous across the current schema scopes and can
 		// resolve to unrelated data. Keep the last known transform, as chams do.
 
-		const auto name_ptr = memory::read<std::uintptr_t>( info.controller + SCHEMA( "CCSPlayerController", "m_sSanitizedPlayerName"_hash ) );
+		const auto name_ptr = cfg.m_name.enabled.value ? memory::read<std::uintptr_t>( info.controller + SCHEMA( "CCSPlayerController", "m_sSanitizedPlayerName"_hash ) ) : 0;
 		if ( name_ptr )
 		{
 			info.name = memory::read_string( name_ptr, 128 );
 			std::ranges::transform( info.name, info.name.begin( ), [ ]( unsigned char c ) { return std::tolower( c ); } );
 		}
 
-		const auto money_services = memory::read<std::uintptr_t>( info.controller + SCHEMA( "CCSPlayerController", "m_pInGameMoneyServices"_hash ) );
+		const auto money_services = needs_flag( flag::money ) ? memory::read<std::uintptr_t>( info.controller + SCHEMA( "CCSPlayerController", "m_pInGameMoneyServices"_hash ) ) : 0;
 		if ( money_services )
 		{
 			info.money = memory::read<int>( money_services + SCHEMA( "CCSPlayerController_InGameMoneyServices", "m_iAccount"_hash ) );
 		}
 
-		const auto item_services = memory::read<std::uintptr_t>( info.pawn + SCHEMA( "C_BasePlayerPawn", "m_pItemServices"_hash ) );
+		const auto item_services = ( needs_flag( flag::armor ) || needs_flag( flag::kit ) ) ? memory::read<std::uintptr_t>( info.pawn + SCHEMA( "C_BasePlayerPawn", "m_pItemServices"_hash ) ) : 0;
 		if ( item_services )
 		{
 			info.has_helmet = memory::read<bool>( item_services + SCHEMA( "CCSPlayer_ItemServices", "m_bHasHelmet"_hash ) );
@@ -966,15 +967,23 @@ namespace features::esp::player {
 
 		info.origin = memory::read<math::vector3>( game_scene_node + SCHEMA( "CGameSceneNode", "m_vecAbsOrigin"_hash ) );
 		info.distance = systems::g_view.origin( ).distance( info.origin ) * 0.01905f;
-		info.ping = memory::read<int>( info.controller + SCHEMA( "CCSPlayerController", "m_iPing"_hash ) );
-		info.armor = memory::read<int>( info.pawn + SCHEMA( "C_CSPlayerPawn", "m_ArmorValue"_hash ) );
-		info.is_scoped = memory::read<bool>( info.pawn + SCHEMA( "C_CSPlayerPawn", "m_bIsScoped"_hash ) );
-		info.is_defusing = memory::read<bool>( info.pawn + SCHEMA( "C_CSPlayerPawn", "m_bIsDefusing"_hash ) );
-		info.is_flashed = memory::read<float>( info.pawn + SCHEMA( "C_CSPlayerPawnBase", "m_flFlashBangTime"_hash ) ) > 0.0f;
-		info.bones = systems::g_bones.get_skeleton( info.pawn );
-		info.is_visible = systems::g_tracing.is_visible( systems::g_view.origin( ), info.bones[ cstypes::bone_ids::head ].position, info.pawn, local.view_pawn( ) );
+		if ( needs_flag( flag::ping ) ) info.ping = memory::read<int>( info.controller + SCHEMA( "CCSPlayerController", "m_iPing"_hash ) );
+		if ( needs_flag( flag::armor ) ) info.armor = memory::read<int>( info.pawn + SCHEMA( "C_CSPlayerPawn", "m_ArmorValue"_hash ) );
+		if ( needs_flag( flag::scoped ) ) info.is_scoped = memory::read<bool>( info.pawn + SCHEMA( "C_CSPlayerPawn", "m_bIsScoped"_hash ) );
+		if ( needs_flag( flag::defusing ) ) info.is_defusing = memory::read<bool>( info.pawn + SCHEMA( "C_CSPlayerPawn", "m_bIsDefusing"_hash ) );
+		if ( needs_flag( flag::flashed ) ) info.is_flashed = memory::read<float>( info.pawn + SCHEMA( "C_CSPlayerPawnBase", "m_flFlashBangTime"_hash ) ) > 0.0f;
 
-		const auto weapon_services = memory::read<std::uintptr_t>( info.pawn + SCHEMA( "C_BasePlayerPawn", "m_pWeaponServices"_hash ) );
+		const auto needs_visibility = []( const auto& element ) {
+			return element.enabled.value && element.visible_color.value.val != element.occluded_color.value.val;
+		};
+		const bool trace_visibility = needs_visibility( cfg.m_box ) || needs_visibility( cfg.m_skeleton ) || needs_visibility( cfg.m_oof_arrow );
+		if ( trace_visibility || cfg.m_skeleton.enabled.value || cfg.m_oof_arrow.enabled.value )
+			info.bones = systems::g_bones.get_skeleton( info.pawn );
+		if ( trace_visibility )
+			info.is_visible = systems::g_tracing.is_visible( systems::g_view.origin( ), info.bones[ cstypes::bone_ids::head ].position, info.pawn, local.view_pawn( ) );
+
+		const bool needs_weapon = cfg.m_weapon.enabled.value || cfg.m_ammo_bar.enabled.value || needs_flag( flag::c4 );
+		const auto weapon_services = needs_weapon ? memory::read<std::uintptr_t>( info.pawn + SCHEMA( "C_BasePlayerPawn", "m_pWeaponServices"_hash ) ) : 0;
 		if ( weapon_services )
 		{
 			const auto weapon_handle = memory::read<std::uint32_t>( weapon_services + SCHEMA( "CPlayer_WeaponServices", "m_hActiveWeapon"_hash ) );
@@ -1013,7 +1022,7 @@ namespace features::esp::player {
 			info.has_c4 = true;
 		}
 
-		if ( !info.has_c4 && weapon_services )
+		if ( needs_flag( flag::c4 ) && !info.has_c4 && weapon_services )
 		{
 			const auto weapons_base = weapon_services + SCHEMA( "CPlayer_WeaponServices", "m_hMyWeapons"_hash );
 			const auto weapons_size = memory::read<int>( weapons_base );

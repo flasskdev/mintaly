@@ -133,6 +133,8 @@ namespace features::esp::projectile {
 				continue;
 			}
 
+			// Smoke recoloring and inferno handling above are independent of labels.
+			if ( !overlay_cfg.is_active( this->get_projectile_group( projectile.schema_hash ) ) ) continue;
 			const auto info = this->get_info( projectile );
 			if ( !info.valid( ) || info.detonated )
 			{

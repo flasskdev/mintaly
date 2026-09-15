@@ -2513,6 +2513,9 @@ namespace xdraw {
 				d.context->Unmap( d.ib.Get( ), 0 );
 
 				auto pipeline_dirty{ true };
+				// Share one background snapshot within a layer. Text/panel draws
+				// must not trigger another full-screen copy and seven blur passes.
+				// The next layer captures again, preserving modal/top backgrounds.
 				auto blur_stale{ true };
 				ID3D11ShaderResourceView* bound_tex{ nullptr };
 				auto bound_scissor = full_scissor;
@@ -2527,22 +2530,6 @@ namespace xdraw {
 					}
 
 					const auto is_blur = blur_srv && cmd.texture == blur_srv;
-
-					if ( is_blur && blur_stale && d.blur_scene_tex )
-					{
-						detail::run_blur_pass( );
-						pipeline_dirty = true;
-						blur_stale = false;
-					}
-
-					if ( pipeline_dirty )
-					{
-						setup_pipeline( );
-						pipeline_dirty = false;
-						bound_tex = nullptr;
-						bound_scissor = full_scissor;
-					}
-
 					auto scissor = full_scissor;
 
 					if ( cmd.has_scissor )
@@ -2558,6 +2545,22 @@ namespace xdraw {
 						}
 					}
 
+					// Reject fully clipped commands before running any blur work.
+					if ( is_blur && blur_stale && d.blur_scene_tex )
+					{
+						detail::run_blur_pass( );
+						pipeline_dirty = true;
+						blur_stale = false;
+					}
+
+					if ( pipeline_dirty )
+					{
+						setup_pipeline( );
+						pipeline_dirty = false;
+						bound_tex = nullptr;
+						bound_scissor = full_scissor;
+					}
+
 					if ( scissor.left != bound_scissor.left || scissor.top != bound_scissor.top || scissor.right != bound_scissor.right || scissor.bottom != bound_scissor.bottom )
 					{
 						d.context->RSSetScissorRects( 1, &scissor );
@@ -2571,11 +2574,6 @@ namespace xdraw {
 					}
 
 					d.context->DrawIndexed( cmd.idx_count, cmd.idx_offset, 0 );
-
-					if ( !is_blur )
-					{
-						blur_stale = true;
-					}
 				}
 			};
 
