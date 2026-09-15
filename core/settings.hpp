@@ -1888,6 +1888,7 @@ namespace settings {
                         xui::setting enabled{ true,{}, "watermark",       "watermark" };
                         xui::setting show_fps{ true,{}, "show fps",        "watermark" };
                         xui::setting show_ping{ true,{}, "show ping",       "watermark" };
+                        xui::setting show_loss{ true,{}, "show loss",       "watermark" };
                         xui::setting show_time{ true,{}, "show time",       "watermark" };
                         xui::setting show_user{ true,{}, "show user",       "watermark" };
                         xui::setting show_map{ true,{}, "show map",        "watermark" };

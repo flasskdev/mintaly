@@ -2056,7 +2056,7 @@ namespace rendering {
         const bool sub_open = (this->m_user_subtab == 1 || this->m_user_subtab == 2);
         const auto sub_anim = xui::anim::lerp(xui::fnv1a("user_subpopup_anim"), (this->m_user_popup_open && sub_open) ? 1.0f : 0.0f, 16.0f);
         const float sub_w = (this->m_user_subtab == 1) ? 230.0f : 240.0f;
-        const float sub_h = (this->m_user_subtab == 1) ? 385.0f : 375.0f;
+        const float sub_h = (this->m_user_subtab == 1) ? 385.0f : 405.0f;
         const float sub_x = main_x + main_w + 6.0f;
         const float target_sub_y = std::clamp(main_y + main_h - sub_h, wy + 10.0f, wy + wh - sub_h - 10.0f);
         const float sub_y = target_sub_y + (1.0f - sub_anim) * 6.0f;
@@ -2486,6 +2486,7 @@ namespace rendering {
                 draw_toggle_row("Steam Username", m.m_watermark.show_user);
                 draw_toggle_row("FPS", m.m_watermark.show_fps);
                 draw_toggle_row("Ping", m.m_watermark.show_ping);
+                draw_toggle_row("Loss", m.m_watermark.show_loss);
                 draw_toggle_row("Clock", m.m_watermark.show_time);
                 draw_toggle_row("Map", m.m_watermark.show_map);
                 draw_toggle_row("Tick Rate", m.m_watermark.show_tick);

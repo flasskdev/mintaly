@@ -12,6 +12,7 @@
 #include <utilities/security/security.hpp>
 #include <utilities/steam/steam.hpp>
 #include <protection/game_addresses.hpp>
+#include <chrono>
 
 namespace rendering {
 
@@ -92,6 +93,25 @@ namespace rendering {
 		char ping_val[ 8 ]{};
 		std::snprintf( ping_val, sizeof( ping_val ), "%d", ping );
 
+		// ── packet loss (measured from network client misdelivery rate) ──────
+		auto loss_pct{ 0 };
+		if ( local.controller && systems::g_entities.exists( local.controller ) )
+		{
+			const auto net_client = addresses::globals::network_client_service;
+			const auto tick_state = net_client ? memory::call_vfunc<std::uintptr_t>( net_client, 23 ) : 0;
+			if ( tick_state )
+			{
+				const auto loss_in  = memory::call_vfunc<float>( tick_state, 68 );
+				const auto loss_out = memory::call_vfunc<float>( tick_state, 69 );
+				const auto max_loss = std::max( loss_in, loss_out );
+				if ( max_loss >= 0.0f && max_loss <= 1.0f )
+					loss_pct = static_cast<int>( std::round( max_loss * 100.0f ) );
+			}
+		}
+
+		char loss_val[ 8 ]{};
+		std::snprintf( loss_val, sizeof( loss_val ), "%d%%", loss_pct );
+
 		// ── map name (stored reliably from level_initialization hook) ────────
 		const bool has_map = wm.show_map.value && !s_map_name.empty( );
 
@@ -157,29 +177,84 @@ namespace rendering {
 
         xdraw::push_font(g_fonts.inter_medium[fonts::size::petite]);
         enum class wm_icon_type : int {
-            user,
+            user = 0,
             map,
             ping,
+            loss,
             velocity,
             fps,
             tick,
-            time
+            time,
+            count
         };
-        struct segment { wm_icon_type icon; std::string value, unit; float width; };
+        struct segment {
+            wm_icon_type icon;
+            std::string value, unit;
+            float full_width;
+            float anim_w;
+            float alpha_factor;
+        };
+
+        static float s_anim_factors[static_cast<int>(wm_icon_type::count)]{
+            1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f
+        };
+        static bool s_anim_inited = false;
+
+        const bool is_user_active     = wm.show_user.value;
+        const bool is_map_active      = has_map;
+        const bool is_ping_active     = wm.show_ping.value;
+        const bool is_loss_active     = wm.show_loss.value;
+        const bool is_velocity_active = has_velocity;
+        const bool is_fps_active      = wm.show_fps.value;
+        const bool is_tick_active     = has_tick;
+        const bool is_time_active     = wm.show_time.value;
+
+        if (!s_anim_inited)
+        {
+            s_anim_factors[static_cast<int>(wm_icon_type::user)]     = is_user_active ? 1.0f : 0.0f;
+            s_anim_factors[static_cast<int>(wm_icon_type::map)]      = is_map_active ? 1.0f : 0.0f;
+            s_anim_factors[static_cast<int>(wm_icon_type::ping)]     = is_ping_active ? 1.0f : 0.0f;
+            s_anim_factors[static_cast<int>(wm_icon_type::loss)]     = is_loss_active ? 1.0f : 0.0f;
+            s_anim_factors[static_cast<int>(wm_icon_type::velocity)] = is_velocity_active ? 1.0f : 0.0f;
+            s_anim_factors[static_cast<int>(wm_icon_type::fps)]      = is_fps_active ? 1.0f : 0.0f;
+            s_anim_factors[static_cast<int>(wm_icon_type::tick)]     = is_tick_active ? 1.0f : 0.0f;
+            s_anim_factors[static_cast<int>(wm_icon_type::time)]     = is_time_active ? 1.0f : 0.0f;
+            s_anim_inited = true;
+        }
+
+        const float dt = xdraw::delta_time();
+        const auto update_anim = [&](wm_icon_type type, bool active) -> float {
+            const int idx = static_cast<int>(type);
+            const float target = active ? 1.0f : 0.0f;
+            s_anim_factors[idx] += (target - s_anim_factors[idx]) * std::min(13.0f * dt, 1.0f);
+            if (std::abs(s_anim_factors[idx] - target) < 0.001f)
+                s_anim_factors[idx] = target;
+            return s_anim_factors[idx];
+        };
+
         std::vector<segment> segments;
-        const auto add = [&](wm_icon_type icon, std::string value, std::string unit = {}) {
+        const auto add = [&](wm_icon_type icon, bool active, std::string value, std::string unit = {}) {
+            const float factor = update_anim(icon, active);
+            if (factor <= 0.001f)
+                return;
+
             constexpr float icon_area_w = 14.0f + 6.0f;
-            const auto width = icon_area_w + xdraw::measure_text(value).first + xdraw::measure_text(unit).first + 18.0f;
-            segments.push_back({icon, std::move(value), std::move(unit), width});
+            const auto full_w = icon_area_w + xdraw::measure_text(value).first + xdraw::measure_text(unit).first + 18.0f;
+            const float eased = 1.0f - std::pow(1.0f - factor, 2.0f);
+            const float anim_w = full_w * eased;
+
+            segments.push_back({icon, std::move(value), std::move(unit), full_w, anim_w, factor});
         };
+
         const auto available = std::max(100.0f, static_cast<float>(screen_w) - 24.0f);
-        if (wm.show_user.value) add(wm_icon_type::user, theme::fit_text(g_menu.user_name(), std::min(140.0f, available * 0.25f)));
-        if (has_map) add(wm_icon_type::map, theme::fit_text(s_map_name, 130.0f));
-        if (wm.show_ping.value) add(wm_icon_type::ping, ping_val, " ms");
-        if (has_velocity) add(wm_icon_type::velocity, vel_val, " u/s");
-        if (wm.show_fps.value) add(wm_icon_type::fps, fps_val, " fps");
-        if (has_tick) add(wm_icon_type::tick, tick_val, " tick");
-        if (wm.show_time.value) add(wm_icon_type::time, time_buf);
+        add(wm_icon_type::user,     is_user_active,     theme::fit_text(g_menu.user_name(), std::min(140.0f, available * 0.25f)));
+        add(wm_icon_type::map,      is_map_active,      theme::fit_text(s_map_name, 130.0f));
+        add(wm_icon_type::ping,     is_ping_active,     ping_val, " ms");
+        add(wm_icon_type::loss,     is_loss_active,     loss_val, " loss");
+        add(wm_icon_type::velocity, is_velocity_active, vel_val, " u/s");
+        add(wm_icon_type::fps,      is_fps_active,      fps_val, " fps");
+        add(wm_icon_type::tick,     is_tick_active,     tick_val, " tick");
+        add(wm_icon_type::time,     is_time_active,     time_buf);
 
         constexpr float height = 34.0f, pad = 7.0f, gap = 5.0f;
         const auto brand_width = 29.0f + xdraw::measure_text("mintaly").first + 14.0f;
@@ -188,12 +263,13 @@ namespace rendering {
         std::vector<float> widths{brand_width + pad * 2.0f};
         for (auto& item : segments)
         {
-            if (widths.back() + gap + item.width > available)
+            const float item_span = gap * item.alpha_factor + item.anim_w;
+            if (widths.back() + item_span > available)
             {
                 rows.emplace_back();
                 widths.push_back(pad * 2.0f);
             }
-            widths.back() += gap + item.width;
+            widths.back() += item_span;
             rows.back().push_back(std::move(item));
         }
         const auto master_opacity = std::clamp( wm.opacity.value, 0.0f, 100.0f ) / 100.0f;
@@ -238,6 +314,34 @@ namespace rendering {
                 draw_list.line( ix + 3.5f, iy + 3.8f, ix + 3.5f, iy - 3.8f, col, 1.5f );
                 break;
             }
+            case wm_icon_type::loss:
+            {
+                // Bad connection / packet loss icon:
+                // Wi-Fi signal broadcast arcs with a diagonal disconnect / loss slash
+                std::vector<float> arc_outer{
+                    ix - 4.5f, iy - 1.5f,
+                    ix - 2.5f, iy - 3.8f,
+                    ix,        iy - 4.5f,
+                    ix + 2.5f, iy - 3.8f,
+                    ix + 4.5f, iy - 1.5f
+                };
+                draw_list.polyline( arc_outer, col, false, 1.3f );
+
+                std::vector<float> arc_inner{
+                    ix - 2.8f, iy + 0.8f,
+                    ix - 1.4f, iy - 0.8f,
+                    ix,        iy - 1.4f,
+                    ix + 1.4f, iy - 0.8f,
+                    ix + 2.8f, iy + 0.8f
+                };
+                draw_list.polyline( arc_inner, col, false, 1.3f );
+
+                draw_list.circle_filled( ix, iy + 3.8f, 1.2f, col );
+
+                // Diagonal disconnect slash cutting across
+                draw_list.line( ix - 4.8f, iy + 4.2f, ix + 4.8f, iy - 4.2f, col, 1.4f );
+                break;
+            }
             case wm_icon_type::velocity:
             {
                 draw_list.line( ix - 4.5f, iy - 2.6f, ix + 2.2f, iy - 2.6f, col, 1.4f );
@@ -280,12 +384,23 @@ namespace rendering {
                 draw_list.circle_filled( ix, iy, 1.0f, col );
                 break;
             }
+            default:
+                break;
             }
         };
 
+        static float s_smoothed_widths[8]{ 0.0f };
+        static bool s_widths_inited = false;
+
         for (std::size_t row = 0; row < rows.size(); ++row)
         {
-            const auto w = widths[row];
+            const auto target_w = widths[row];
+            if (!s_widths_inited || s_smoothed_widths[row] <= 0.0f)
+                s_smoothed_widths[row] = target_w;
+            else
+                s_smoothed_widths[row] += (target_w - s_smoothed_widths[row]) * std::min(15.0f * dt, 1.0f);
+
+            const auto w = s_smoothed_widths[row];
 
             // X anchor
             float x;
@@ -340,21 +455,39 @@ namespace rendering {
             }
             for (const auto& item : rows[row])
             {
-                cx += gap;
+                cx += gap * item.alpha_factor;
+                if (item.anim_w <= 0.5f)
+                    continue;
+
+                const bool needs_clip = (item.alpha_factor < 0.999f);
+                if (needs_clip)
+                    draw_list.push_clip( cx, y - 2.0f, item.anim_w, height + 4.0f );
+
                 const auto item_cy = y + height * 0.5f;
                 const auto icon_x = cx + 8.0f;
-                draw_wm_icon( item.icon, icon_x, item_cy, tint(tokens::col_accent) );
+
+                const auto item_col_accent = tint(tokens::col_accent).alpha(static_cast<std::uint8_t>(tokens::col_accent.a * master_opacity * item.alpha_factor));
+                const auto item_col_text   = tint(tokens::col_text).alpha(static_cast<std::uint8_t>(tokens::col_text.a * master_opacity * item.alpha_factor));
+                const auto item_col_dim    = tint(tokens::col_text_dim).alpha(static_cast<std::uint8_t>(tokens::col_text_dim.a * master_opacity * item.alpha_factor));
+
+                draw_wm_icon( item.icon, icon_x, item_cy, item_col_accent );
 
                 const auto text_x = icon_x + 11.0f;
                 const auto [vw, vh] = xdraw::measure_text(item.value);
                 const auto uh = xdraw::measure_text(item.unit).second;
-                draw_list.text(text_x, y + (height - vh) * 0.5f, item.value, tint(tokens::col_text));
+                draw_list.text(text_x, y + (height - vh) * 0.5f, item.value, item_col_text);
                 if (!item.unit.empty())
-                    draw_list.text(text_x + vw, y + (height - uh) * 0.5f, item.unit, tint(tokens::col_text_dim));
+                    draw_list.text(text_x + vw, y + (height - uh) * 0.5f, item.unit, item_col_dim);
 
-                cx += item.width;
+                if (needs_clip)
+                    draw_list.pop_clip();
+
+                cx += item.anim_w;
             }
         }
+        for (std::size_t r = rows.size(); r < 8; ++r)
+            s_smoothed_widths[r] = 0.0f;
+        s_widths_inited = true;
         xdraw::pop_font();
     }
 
@@ -452,9 +585,19 @@ namespace rendering {
 				s == &wg.flash_check || s == &wg.ground_check || s == &wg.visualize_fov;
 		};
 
+		// Ensure air strafer bind is always synchronized with airstrafe
+		settings::g_movement.m_test_strafer.enabled.bind = settings::g_movement.airstrafe.bind;
+		settings::g_movement.m_test_strafer.enabled.value = settings::g_movement.airstrafe.value;
+
 		for ( const auto setting : xui::binds::all( ) )
 		{
 			if ( !setting || setting->bind.key == 0 || !setting->bind.active || count >= k_max_entries )
+			{
+				continue;
+			}
+
+			// Do not show airstrafe as a duplicate; only "air strafer" will be shown
+			if ( setting == &settings::g_movement.airstrafe )
 			{
 				continue;
 			}
@@ -656,6 +799,10 @@ namespace rendering {
 			}
 
 			std::string clean_name = setting->name;
+			if ( clean_name == "airstrafe" )
+			{
+				clean_name = "air strafer";
+			}
 			if ( clean_name.empty( ) || clean_name == "enabled" )
 			{
 				if ( !setting->category.empty( ) )
@@ -810,7 +957,20 @@ namespace rendering {
 		const auto card_r = xdraw::corner_radius{ 6.0f };
 		const auto [header_tw, header_th] = xdraw::measure_text( "Keybinds" );
 
-		float max_w = 190.0f;
+		auto draw_watermark_shadow = [&]( float sx, float sy, float sw, float sh ) {
+			draw_list.rect_filled( sx - 6.0f, sy - 5.0f, sw + 12.0f, sh + 11.0f,
+				xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 15.0f * master_alpha ) }, xdraw::corner_radius{ 12.0f } );
+			draw_list.rect_filled( sx - 4.0f, sy - 3.5f, sw + 8.0f, sh + 8.0f,
+				xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 30.0f * master_alpha ) }, xdraw::corner_radius{ 10.0f } );
+			draw_list.rect_filled( sx - 2.5f, sy - 2.0f, sw + 5.0f, sh + 5.0f,
+				xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 50.0f * master_alpha ) }, xdraw::corner_radius{ 8.5f } );
+			draw_list.rect_filled( sx - 1.0f, sy - 0.5f, sw + 2.0f, sh + 3.0f,
+				xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 75.0f * master_alpha ) }, xdraw::corner_radius{ 7.5f } );
+		};
+
+		constexpr float el_gap = 5.0f;
+
+		float max_w = 195.0f;
 		for ( auto i = 0; i < count; ++i )
 		{
 			const auto& e = entries[ i ];
@@ -818,8 +978,9 @@ namespace rendering {
 			const auto [vw, vh] = xdraw::measure_text( e.value );
 			const bool has_key = ( e.key[ 0 ] != '\0' );
 			const auto [kw, kh] = has_key ? xdraw::measure_text( e.key ) : std::pair{ 0.0f, 0.0f };
-			const float key_w = has_key ? ( kw + 10.0f + 4.0f ) : 0.0f;
-			const float row_w = 14.0f + nw + 16.0f + ( vw + 10.0f ) + key_w + 7.0f;
+			const float key_w = has_key ? ( kw + 10.0f + 6.0f ) : 0.0f;
+			const float mode_w = std::max( 46.0f, vw + 14.0f );
+			const float row_w = 14.0f + nw + 16.0f + key_w + el_gap + mode_w;
 			if ( row_w > max_w )
 			{
 				max_w = row_w;
@@ -923,12 +1084,12 @@ namespace rendering {
 		const auto x = current_x;
 		const auto base_ry = current_y;
 
-		// Header drop shadow
-		draw_list.rect_filled( x, base_ry + 2.0f, max_w, header_h, xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 40.0f * master_alpha ) }, card_r );
+		// Header drop shadow (watermark style)
+		draw_watermark_shadow( x, base_ry, max_w, header_h );
 
-		// Floating glass capsule container for header
+		// Floating glass capsule container for header (semi-transparent)
 		draw_list.rect_filled_blurred( x, base_ry, max_w, header_h, card_r, xdraw::color{ 255, 255, 255, master_u8 } );
-		draw_list.rect_filled( x, base_ry, max_w, header_h, tokens::col_dark.alpha( static_cast< std::uint8_t >( 230.0f * master_alpha ) ), card_r );
+		draw_list.rect_filled( x, base_ry, max_w, header_h, tokens::col_dark.alpha( static_cast< std::uint8_t >( 130.0f * master_alpha ) ), card_r );
 
 		const auto header_border_col = ( menu_open && ( hovered || s_is_dragging ) )
 			? s.accent.alpha( static_cast< std::uint8_t >( ( s_is_dragging ? 220.0f : 140.0f ) * master_alpha ) )
@@ -997,9 +1158,9 @@ namespace rendering {
 		if ( count == 0 && g_menu.is_open( ) )
 		{
 			const auto empty_y = base_ry + header_h + header_gap;
-			draw_list.rect_filled( x, empty_y + 1.5f, max_w, row_h, xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 30.0f * master_alpha ) }, card_r );
+			draw_watermark_shadow( x, empty_y, max_w, row_h );
 			draw_list.rect_filled_blurred( x, empty_y, max_w, row_h, card_r, xdraw::color{ 255, 255, 255, master_u8 } );
-			draw_list.rect_filled( x, empty_y, max_w, row_h, tokens::col_card.alpha( static_cast< std::uint8_t >( 210.0f * master_alpha ) ), card_r );
+			draw_list.rect_filled( x, empty_y, max_w, row_h, tokens::col_card.alpha( static_cast< std::uint8_t >( 130.0f * master_alpha ) ), card_r );
 			draw_list.rect( x, empty_y, max_w, row_h, tokens::col_border.alpha( static_cast< std::uint8_t >( 100.0f * master_alpha ) ), card_r, 1.0f );
 
 			const auto empty_text = "No active binds";
@@ -1014,17 +1175,27 @@ namespace rendering {
 				const auto row_y = base_ry + header_h + header_gap + static_cast< float >( i ) * ( row_h + row_gap );
 				const auto [ nw, nh ] = xdraw::measure_text( e.name );
 				const auto [ vw, vh ] = xdraw::measure_text( e.value );
+				const bool has_key = ( e.key[ 0 ] != '\0' );
+				const auto [ kw, kh ] = has_key ? xdraw::measure_text( e.key ) : std::pair{ 0.0f, 0.0f };
 
-				// Individual separated card
-				draw_list.rect_filled( x, row_y + 1.5f, max_w, row_h, xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 30.0f * master_alpha ) }, card_r );
-				draw_list.rect_filled_blurred( x, row_y, max_w, row_h, card_r, xdraw::color{ 255, 255, 255, master_u8 } );
-				draw_list.rect_filled( x, row_y, max_w, row_h, tokens::col_card.alpha( static_cast< std::uint8_t >( 220.0f * master_alpha ) ), card_r );
-				draw_list.rect( x, row_y, max_w, row_h, tokens::col_border.alpha( static_cast< std::uint8_t >( 110.0f * master_alpha ) ), card_r, 1.0f );
+				const float mode_w = std::max( 46.0f, vw + 14.0f );
+				const float mode_x = x + max_w - mode_w;
+				const float mode_y = row_y;
+
+				const float left_x = x;
+				const float left_y = row_y;
+				const float left_w = mode_x - el_gap - left_x;
+
+				// 1. Element 1 (Left: Bind Name + Key)
+				draw_watermark_shadow( left_x, left_y, left_w, row_h );
+				draw_list.rect_filled_blurred( left_x, left_y, left_w, row_h, card_r, xdraw::color{ 255, 255, 255, master_u8 } );
+				draw_list.rect_filled( left_x, left_y, left_w, row_h, tokens::col_card.alpha( static_cast< std::uint8_t >( 130.0f * master_alpha ) ), card_r );
+				draw_list.rect( left_x, left_y, left_w, row_h, tokens::col_border.alpha( static_cast< std::uint8_t >( 110.0f * master_alpha ) ), card_r, 1.0f );
 
 				// Vertical accent status bar on left
 				const float bar_h = 14.0f;
-				const float bar_y = row_y + ( row_h - bar_h ) * 0.5f;
-				const float bar_x = x + 4.0f;
+				const float bar_y = left_y + ( row_h - bar_h ) * 0.5f;
+				const float bar_x = left_x + 4.0f;
 				if ( e.mode == xui::bind_mode::hold_off )
 				{
 					draw_list.rect_filled( bar_x, bar_y, 2.5f, bar_h, tokens::col_text_dim.alpha( static_cast< std::uint8_t >( 110.0f * master_alpha ) ), xdraw::corner_radius{ 1.25f } );
@@ -1036,47 +1207,37 @@ namespace rendering {
 				}
 
 				// Name text
-				draw_list.text( bar_x + 2.5f + 7.0f, row_y + ( row_h - nh ) * 0.5f - 0.5f, e.name, tokens::col_text.alpha( static_cast< std::uint8_t >( 240.0f * master_alpha ) ) );
+				draw_list.text( bar_x + 2.5f + 7.0f, left_y + ( row_h - nh ) * 0.5f - 0.5f, e.name, tokens::col_text.alpha( static_cast< std::uint8_t >( 240.0f * master_alpha ) ) );
 
-				// Badges on right
-				const auto badge_h = 16.0f;
-				const auto badge_r = xdraw::corner_radius{ 4.0f };
-				const auto by = row_y + ( row_h - badge_h ) * 0.5f;
-
-				const bool has_key = ( e.key[ 0 ] != '\0' );
-				const auto [kw, kh] = has_key ? xdraw::measure_text( e.key ) : std::pair{ 0.0f, 0.0f };
-				float current_right_x = x + max_w - 7.0f;
-
+				// Key badge on right inside Element 1
 				if ( has_key )
 				{
-					const auto key_w = kw + 10.0f;
-					const auto kx = current_right_x - key_w;
-					draw_list.rect_filled( kx, by, key_w, badge_h, tokens::col_elevated.alpha( static_cast< std::uint8_t >( 210.0f * master_alpha ) ), badge_r );
-					draw_list.rect( kx, by, key_w, badge_h, tokens::col_border.alpha( static_cast< std::uint8_t >( 140.0f * master_alpha ) ), badge_r, 1.0f );
-					draw_list.text( kx + 5.0f, by + ( badge_h - kh ) * 0.5f - 0.5f, e.key, tokens::col_text.alpha( static_cast< std::uint8_t >( 245.0f * master_alpha ) ) );
-					current_right_x = kx - 4.0f;
+					const auto key_badge_w = kw + 10.0f;
+					const auto key_badge_h = 16.0f;
+					const auto kx = left_x + left_w - key_badge_w - 6.0f;
+					const auto ky = left_y + ( row_h - key_badge_h ) * 0.5f;
+					const auto badge_r = xdraw::corner_radius{ 4.0f };
+
+					draw_list.rect_filled( kx, ky, key_badge_w, key_badge_h, tokens::col_elevated.alpha( static_cast< std::uint8_t >( 180.0f * master_alpha ) ), badge_r );
+					draw_list.rect( kx, ky, key_badge_w, key_badge_h, tokens::col_border.alpha( static_cast< std::uint8_t >( 120.0f * master_alpha ) ), badge_r, 1.0f );
+					draw_list.text( kx + 5.0f, ky + ( key_badge_h - kh ) * 0.5f - 0.5f, e.key, tokens::col_text.alpha( static_cast< std::uint8_t >( 245.0f * master_alpha ) ) );
 				}
 
-				const auto badge_w = vw + 10.0f;
-				const auto bx = current_right_x - badge_w;
+				// 2. Element 2 (Right: Mode / State)
+				draw_watermark_shadow( mode_x, mode_y, mode_w, row_h );
+				draw_list.rect_filled_blurred( mode_x, mode_y, mode_w, row_h, card_r, xdraw::color{ 255, 255, 255, master_u8 } );
+				draw_list.rect_filled( mode_x, mode_y, mode_w, row_h, tokens::col_card.alpha( static_cast< std::uint8_t >( 130.0f * master_alpha ) ), card_r );
 
-				if ( e.has_value_pill )
+				if ( e.has_value_pill || e.mode != xui::bind_mode::hold_off )
 				{
-					draw_list.rect_filled( bx, by, badge_w, badge_h, s.accent.alpha( static_cast< std::uint8_t >( 35.0f * master_alpha ) ), badge_r );
-					draw_list.rect( bx, by, badge_w, badge_h, s.accent.alpha( static_cast< std::uint8_t >( 120.0f * master_alpha ) ), badge_r, 1.0f );
-					draw_list.text( bx + 5.0f, by + ( badge_h - vh ) * 0.5f - 0.5f, e.value, s.accent.alpha( static_cast< std::uint8_t >( 255.0f * master_alpha ) ) );
-				}
-				else if ( e.mode == xui::bind_mode::hold_off )
-				{
-					draw_list.rect_filled( bx, by, badge_w, badge_h, tokens::col_elevated.alpha( static_cast< std::uint8_t >( 160.0f * master_alpha ) ), badge_r );
-					draw_list.rect( bx, by, badge_w, badge_h, tokens::col_border.alpha( static_cast< std::uint8_t >( 90.0f * master_alpha ) ), badge_r, 1.0f );
-					draw_list.text( bx + 5.0f, by + ( badge_h - vh ) * 0.5f - 0.5f, e.value, tokens::col_text_dim.alpha( static_cast< std::uint8_t >( 170.0f * master_alpha ) ) );
+					draw_list.rect_filled( mode_x, mode_y, mode_w, row_h, s.accent.alpha( static_cast< std::uint8_t >( 30.0f * master_alpha ) ), card_r );
+					draw_list.rect( mode_x, mode_y, mode_w, row_h, s.accent.alpha( static_cast< std::uint8_t >( 110.0f * master_alpha ) ), card_r, 1.0f );
+					draw_list.text( mode_x + ( mode_w - vw ) * 0.5f, mode_y + ( row_h - vh ) * 0.5f - 0.5f, e.value, s.accent.alpha( static_cast< std::uint8_t >( 255.0f * master_alpha ) ) );
 				}
 				else
 				{
-					draw_list.rect_filled( bx, by, badge_w, badge_h, s.accent.alpha( static_cast< std::uint8_t >( 28.0f * master_alpha ) ), badge_r );
-					draw_list.rect( bx, by, badge_w, badge_h, s.accent.alpha( static_cast< std::uint8_t >( 100.0f * master_alpha ) ), badge_r, 1.0f );
-					draw_list.text( bx + 5.0f, by + ( badge_h - vh ) * 0.5f - 0.5f, e.value, s.accent.alpha( static_cast< std::uint8_t >( 255.0f * master_alpha ) ) );
+					draw_list.rect( mode_x, mode_y, mode_w, row_h, tokens::col_border.alpha( static_cast< std::uint8_t >( 90.0f * master_alpha ) ), card_r, 1.0f );
+					draw_list.text( mode_x + ( mode_w - vw ) * 0.5f, mode_y + ( row_h - vh ) * 0.5f - 0.5f, e.value, tokens::col_text_dim.alpha( static_cast< std::uint8_t >( 170.0f * master_alpha ) ) );
 				}
 			}
 		}
@@ -1089,35 +1250,50 @@ namespace rendering {
 			struct entry
 			{
 				Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> texture{};
-				bool attempted{};
+				std::chrono::steady_clock::time_point last_request{};
 			};
 
-			std::unordered_map<std::uintptr_t, entry> m_entries{};
+			std::unordered_map<std::uint64_t, entry> m_entries{};
 
-			[[nodiscard]] ID3D11ShaderResourceView* get( std::uintptr_t steam_id )
+			[[nodiscard]] ID3D11ShaderResourceView* get( std::uint64_t steam_id )
 			{
+				if ( steam_id < 76561197960265728ull )
+				{
+					return nullptr;
+				}
+
 				auto it = this->m_entries.find( steam_id );
-				if ( it != this->m_entries.end( ) )
+				if ( it != this->m_entries.end( ) && it->second.texture )
 				{
 					return it->second.texture.Get( );
 				}
 
+				const auto now = std::chrono::steady_clock::now( );
+				if ( it != this->m_entries.end( ) )
+				{
+					if ( std::chrono::duration<float>( now - it->second.last_request ).count( ) < 0.5f )
+					{
+						return nullptr;
+					}
+				}
+
 				auto& e = this->m_entries[ steam_id ];
-				e.attempted = true;
+				e.last_request = now;
 
 				const auto image_handle = steam::friends::get_medium_friend_avatar( steam_id );
 				if ( image_handle <= 0 )
 				{
+					steam::friends::request_user_information( steam_id, false );
 					return nullptr;
 				}
 
 				std::uint32_t w{}, h{};
-				if ( !steam::utils::get_image_size( image_handle, &w, &h ) || !w || !h )
+				if ( !steam::utils::get_image_size( image_handle, &w, &h ) || !w || !h || w > 512 || h > 512 )
 				{
 					return nullptr;
 				}
 
-				std::vector<std::uint8_t> rgba( w * h * 4 );
+				std::vector<std::uint8_t> rgba( static_cast< std::size_t >( w ) * h * 4 );
 				if ( !steam::utils::get_image_rgba( image_handle, rgba.data( ), static_cast< int >( rgba.size( ) ) ) )
 				{
 					return nullptr;
@@ -1154,7 +1330,7 @@ namespace rendering {
 		struct spectator_entry
 		{
 			char name[ 128 ];
-			std::uintptr_t steam_id;
+			std::uint64_t steam_id;
 		};
 
 		spectator_entry entries[ 32 ]{};
@@ -1225,7 +1401,7 @@ namespace rendering {
 					auto& e = entries[ count++ ];
 					strncpy_s( e.name, name.c_str( ), sizeof( e.name ) - 1 );
 					e.name[ sizeof( e.name ) - 1 ] = '\0';
-					e.steam_id = memory::read<std::uintptr_t>( player.ptr + SCHEMA( "CBasePlayerController", "m_steamID"_hash ) );
+					e.steam_id = memory::safe_read<std::uint64_t>( player.ptr + SCHEMA( "CBasePlayerController", "m_steamID"_hash ) ).value_or( 0 );
 				}
 			}
 		}
@@ -1247,18 +1423,30 @@ namespace rendering {
 		const auto master_u8 = static_cast< std::uint8_t >( 255.0f * master_alpha );
 
 		constexpr auto header_h{ 28.0f };
-		constexpr auto header_gap{ 5.0f };
-		constexpr auto row_h{ 28.0f };
-		constexpr auto row_gap{ 4.0f };
+		constexpr auto header_gap{ 6.0f };
+		constexpr auto row_h{ 26.0f };
+		constexpr auto row_gap{ 8.0f };
 		const auto card_r = xdraw::corner_radius{ 6.0f };
 		const auto [header_tw, header_th] = xdraw::measure_text( "Spectators" );
 
-		float max_w = 180.0f;
+		auto draw_watermark_shadow = [&]( float sx, float sy, float sw, float sh ) {
+			draw_list.rect_filled( sx - 6.0f, sy - 5.0f, sw + 12.0f, sh + 11.0f,
+				xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 15.0f * master_alpha ) }, xdraw::corner_radius{ 12.0f } );
+			draw_list.rect_filled( sx - 4.0f, sy - 3.5f, sw + 8.0f, sh + 8.0f,
+				xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 30.0f * master_alpha ) }, xdraw::corner_radius{ 10.0f } );
+			draw_list.rect_filled( sx - 2.5f, sy - 2.0f, sw + 5.0f, sh + 5.0f,
+				xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 50.0f * master_alpha ) }, xdraw::corner_radius{ 8.5f } );
+			draw_list.rect_filled( sx - 1.0f, sy - 0.5f, sw + 2.0f, sh + 3.0f,
+				xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 75.0f * master_alpha ) }, xdraw::corner_radius{ 7.5f } );
+		};
+
+		constexpr float av_size = 32.0f;
+		float max_w = 175.0f;
 		for ( auto i = 0; i < count; ++i )
 		{
 			const auto& e = entries[ i ];
 			const auto [nw, nh] = xdraw::measure_text( e.name );
-			const float row_w = 7.0f + 18.0f + 7.0f + nw + 16.0f + 36.0f + 7.0f;
+			const float row_w = av_size + 14.0f + nw + 16.0f;
 			if ( row_w > max_w )
 			{
 				max_w = row_w;
@@ -1362,12 +1550,12 @@ namespace rendering {
 		const auto x = current_x;
 		const auto base_ry = current_y;
 
-		// Header drop shadow
-		draw_list.rect_filled( x, base_ry + 2.0f, max_w, header_h, xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 40.0f * master_alpha ) }, card_r );
+		// Header drop shadow (watermark style)
+		draw_watermark_shadow( x, base_ry, max_w, header_h );
 
-		// Floating glass capsule container for header
+		// Floating glass capsule container for header (semi-transparent)
 		draw_list.rect_filled_blurred( x, base_ry, max_w, header_h, card_r, xdraw::color{ 255, 255, 255, master_u8 } );
-		draw_list.rect_filled( x, base_ry, max_w, header_h, tokens::col_dark.alpha( static_cast< std::uint8_t >( 230.0f * master_alpha ) ), card_r );
+		draw_list.rect_filled( x, base_ry, max_w, header_h, tokens::col_dark.alpha( static_cast< std::uint8_t >( 130.0f * master_alpha ) ), card_r );
 
 		const auto header_border_col = ( menu_open && ( hovered || s_is_dragging ) )
 			? s.accent.alpha( static_cast< std::uint8_t >( ( s_is_dragging ? 220.0f : 140.0f ) * master_alpha ) )
@@ -1436,9 +1624,9 @@ namespace rendering {
 		if ( count == 0 && g_menu.is_open( ) )
 		{
 			const auto empty_y = base_ry + header_h + header_gap;
-			draw_list.rect_filled( x, empty_y + 1.5f, max_w, row_h, xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 30.0f * master_alpha ) }, card_r );
+			draw_watermark_shadow( x, empty_y, max_w, row_h );
 			draw_list.rect_filled_blurred( x, empty_y, max_w, row_h, card_r, xdraw::color{ 255, 255, 255, master_u8 } );
-			draw_list.rect_filled( x, empty_y, max_w, row_h, tokens::col_card.alpha( static_cast< std::uint8_t >( 210.0f * master_alpha ) ), card_r );
+			draw_list.rect_filled( x, empty_y, max_w, row_h, tokens::col_card.alpha( static_cast< std::uint8_t >( 130.0f * master_alpha ) ), card_r );
 			draw_list.rect( x, empty_y, max_w, row_h, tokens::col_border.alpha( static_cast< std::uint8_t >( 100.0f * master_alpha ) ), card_r, 1.0f );
 
 			const auto empty_text = "No spectators";
@@ -1453,46 +1641,42 @@ namespace rendering {
 				const auto row_y = base_ry + header_h + header_gap + static_cast< float >( i ) * ( row_h + row_gap );
 				const auto [ nw, nh ] = xdraw::measure_text( e.name );
 				const auto avatar_tex = avatars.get( e.steam_id );
-				constexpr auto av_size = 18.0f;
-				const auto av_x = x + 7.0f;
-				const auto av_y = row_y + ( ( row_h - 2.0f ) - av_size ) * 0.5f;
 
-				// Individual separated card
-				draw_list.rect_filled( x, row_y + 1.5f, max_w, row_h, xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 30.0f * master_alpha ) }, card_r );
-				draw_list.rect_filled_blurred( x, row_y, max_w, row_h, card_r, xdraw::color{ 255, 255, 255, master_u8 } );
-				draw_list.rect_filled( x, row_y, max_w, row_h, tokens::col_card.alpha( static_cast< std::uint8_t >( 220.0f * master_alpha ) ), card_r );
-				draw_list.rect( x, row_y, max_w, row_h, tokens::col_border.alpha( static_cast< std::uint8_t >( 110.0f * master_alpha ) ), card_r, 1.0f );
+				const auto card_x = x + 4.0f;
+				const auto card_w = max_w - 4.0f;
 
-				// Circular avatar
+				// Individual separated card (semi-transparent with watermark-style shadow)
+				draw_watermark_shadow( card_x, row_y, card_w, row_h );
+				draw_list.rect_filled_blurred( card_x, row_y, card_w, row_h, card_r, xdraw::color{ 255, 255, 255, master_u8 } );
+				draw_list.rect_filled( card_x, row_y, card_w, row_h, tokens::col_card.alpha( static_cast< std::uint8_t >( 130.0f * master_alpha ) ), card_r );
+				draw_list.rect( card_x, row_y, card_w, row_h, tokens::col_border.alpha( static_cast< std::uint8_t >( 110.0f * master_alpha ) ), card_r, 1.0f );
+
+				// Steam avatar icon: slightly larger than the element background card
+				const auto av_x = x;
+				const auto av_y = row_y + ( row_h - av_size ) * 0.5f;
+				const auto av_r = xdraw::corner_radius{ 6.0f };
+
+				// Avatar soft drop shadow
+				draw_list.rect_filled( av_x - 1.5f, av_y - 1.0f, av_size + 3.0f, av_size + 3.0f,
+					xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 70.0f * master_alpha ) }, xdraw::corner_radius{ 7.0f } );
+
 				if ( avatar_tex )
 				{
-					draw_list.image( av_x, av_y, av_size, av_size, avatar_tex, xdraw::corner_radius{ av_size * 0.5f }, xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 255.0f * master_alpha ) } );
-					draw_list.circle( av_x + av_size * 0.5f, av_y + av_size * 0.5f, av_size * 0.5f, tokens::col_border.alpha( static_cast< std::uint8_t >( 120.0f * master_alpha ) ), 1.0f );
+					draw_list.image( av_x, av_y, av_size, av_size, avatar_tex, av_r, xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 255.0f * master_alpha ) } );
+					draw_list.rect( av_x, av_y, av_size, av_size, tokens::col_border.alpha( static_cast< std::uint8_t >( 150.0f * master_alpha ) ), av_r, 1.0f );
 				}
 				else
 				{
-					const auto cx_av = av_x + av_size * 0.5f;
-					const auto cy_av = av_y + av_size * 0.5f;
-					draw_list.circle_filled( cx_av, cy_av, av_size * 0.5f, tokens::col_elevated.alpha( static_cast< std::uint8_t >( 210.0f * master_alpha ) ) );
-					draw_list.circle( cx_av, cy_av, av_size * 0.5f, tokens::col_border.alpha( static_cast< std::uint8_t >( 110.0f * master_alpha ) ), 1.0f );
-					draw_list.circle_filled( cx_av, cy_av - 2.2f, 2.6f, s.accent.alpha( static_cast< std::uint8_t >( 190.0f * master_alpha ) ) );
-					draw_list.circle_filled( cx_av, cy_av + 4.8f, 3.8f, s.accent.alpha( static_cast< std::uint8_t >( 140.0f * master_alpha ) ) );
+					draw_list.rect_filled( av_x, av_y, av_size, av_size, tokens::col_elevated.alpha( static_cast< std::uint8_t >( 220.0f * master_alpha ) ), av_r );
+					draw_list.rect( av_x, av_y, av_size, av_size, tokens::col_border.alpha( static_cast< std::uint8_t >( 130.0f * master_alpha ) ), av_r, 1.0f );
+					const char letter_str[ 2 ] = { static_cast< char >( std::toupper( static_cast< unsigned char >( e.name[ 0 ] ? e.name[ 0 ] : '?' ) ) ), '\0' };
+					const auto [ lw, lh ] = xdraw::measure_text( letter_str );
+					draw_list.text( av_x + ( av_size - lw ) * 0.5f, av_y + ( av_size - lh ) * 0.5f - 0.5f, letter_str, tokens::col_text_dim.alpha( static_cast< std::uint8_t >( 200.0f * master_alpha ) ) );
 				}
 
-				// Name text
-				draw_list.text( av_x + av_size + 7.0f, row_y + ( row_h - nh ) * 0.5f - 0.5f, e.name, tokens::col_text.alpha( static_cast< std::uint8_t >( 240.0f * master_alpha ) ) );
-
-				// SPEC badge on right
-				const auto badge_h = 16.0f;
-				const auto badge_w = 36.0f;
-				const auto bx = x + max_w - badge_w - 7.0f;
-				const auto by = row_y + ( row_h - badge_h ) * 0.5f;
-				const auto badge_r = xdraw::corner_radius{ 4.0f };
-
-				draw_list.rect_filled( bx, by, badge_w, badge_h, s.accent.alpha( static_cast< std::uint8_t >( 25.0f * master_alpha ) ), badge_r );
-				draw_list.rect( bx, by, badge_w, badge_h, s.accent.alpha( static_cast< std::uint8_t >( 90.0f * master_alpha ) ), badge_r, 1.0f );
-				const auto [ sw, sh ] = xdraw::measure_text( "SPEC" );
-				draw_list.text( bx + ( badge_w - sw ) * 0.5f, by + ( badge_h - sh ) * 0.5f - 0.5f, "SPEC", s.accent.alpha( static_cast< std::uint8_t >( 250.0f * master_alpha ) ) );
+				// Name text (SPEC badge removed)
+				const float name_x = av_x + av_size + 8.0f;
+				draw_list.text( name_x, row_y + ( row_h - nh ) * 0.5f - 0.5f, e.name, tokens::col_text.alpha( static_cast< std::uint8_t >( 245.0f * master_alpha ) ) );
 			}
 		}
 	}

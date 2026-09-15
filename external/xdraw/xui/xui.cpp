@@ -2209,6 +2209,7 @@ namespace xui {
 			{ "steam username", "Shows your Steam profile name in watermark" },
 			{ "fps", "Shows current real-time frames per second" },
 			{ "ping", "Shows current latency round-trip time in milliseconds" },
+			{ "loss", "Shows packet loss percentage in watermark" },
 			{ "clock", "Shows local system clock time" },
 			{ "map", "Shows currently loaded map name" },
 			{ "tick rate", "Shows current server tickrate" },
