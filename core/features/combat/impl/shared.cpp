@@ -968,106 +968,96 @@ namespace features::combat {
                 return out;
         }
 
-        float shared::calculate_hitchance( const math::vector3& shoot_position, const math::vector3& aim_angle, const systems::hitboxes::entry& hitbox, const systems::bones::data& bone, float inaccuracy, float spread, int samples ) const
+        shared::spread_cache shared::build_spread_cache( float inaccuracy, float spread, int samples ) const
         {
-                const auto total = spread + inaccuracy;
-                if ( total < 0.0001f )
-                {
-                        return 1.0f;
-                }
-
-                if ( samples <= 0 )
-                {
-                        return 0.0f;
-                }
-
-                const auto capsule_start = bone.rotation.rotate_vector( hitbox.mins ) + bone.position;
-                const auto capsule_end = bone.rotation.rotate_vector( hitbox.maxs ) + bone.position;
-                const auto is_capsule = hitbox.radius > 0.001f;
-                auto inverse_rotation = bone.rotation;
-                inverse_rotation.x = -inverse_rotation.x;
-                inverse_rotation.y = -inverse_rotation.y;
-                inverse_rotation.z = -inverse_rotation.z;
-                const auto box_ray_origin = inverse_rotation.rotate_vector( shoot_position - bone.position );
-
-                const auto ray_vs_box = [ & ]( const math::vector3& ray_direction )
-                {
-                        const auto direction = inverse_rotation.rotate_vector( ray_direction );
-                        auto entry{ 0.0f };
-                        auto exit{ 1.0f };
-
-                        const auto intersect_axis = [ & ]( float origin, float delta, float minimum, float maximum )
-                        {
-                                if ( std::fabs( delta ) < 1.0e-8f )
-                                {
-                                        return origin >= minimum && origin <= maximum;
-                                }
-
-                                auto first = ( minimum - origin ) / delta;
-                                auto second = ( maximum - origin ) / delta;
-                                if ( first > second )
-                                {
-                                        std::swap( first, second );
-                                }
-
-                                entry = std::max( entry, first );
-                                exit = std::min( exit, second );
-                                return entry <= exit;
-                        };
-
-                        return intersect_axis( box_ray_origin.x, direction.x, hitbox.mins.x, hitbox.maxs.x ) &&
-                                intersect_axis( box_ray_origin.y, direction.y, hitbox.mins.y, hitbox.maxs.y ) &&
-                                intersect_axis( box_ray_origin.z, direction.z, hitbox.mins.z, hitbox.maxs.z );
-                };
-
-                math::vector3 forward{}, left{}, up{};
-                math::helpers::angle_vectors_left( aim_angle, &forward, &left, &up );
-
-                // Every candidate in a scan uses the same weapon state. The engine spread
-                // function is much more expensive than the capsule test, so calculate each
-                // deterministic seed once and reuse it for all candidate points.
-                struct spread_cache
-                {
-                        float inaccuracy{};
-                        float spread{};
-                        float recoil_index{};
-                        int item_def_idx{};
-                        int num_bullets{};
-                        int count{};
-                        bool initialized{};
-                        std::array<math::vector2, 256> values{};
-                };
-
                 spread_cache cache{};
                 cache.inaccuracy = inaccuracy;
                 cache.spread = spread;
                 cache.recoil_index = this->m_ctx.recoil_index;
                 cache.item_def_idx = this->m_ctx.item_def_idx;
                 cache.num_bullets = this->m_ctx.num_bullets;
-                cache.count = 0;
                 cache.initialized = true;
 
-                const auto cached_samples = std::min( samples, static_cast< int >( cache.values.size( ) ) );
-                for ( auto i = 0; i < cached_samples; ++i )
+                const auto n = std::min( samples, static_cast< int >( cache.values.size( ) ) );
+                for ( auto i = 0; i < n; ++i )
                 {
-                        cache.values[ i ] = this->calculate_spread( i, inaccuracy, spread, this->m_ctx.recoil_index, this->m_ctx.item_def_idx, this->m_ctx.num_bullets );
+                        cache.values[ i ] = this->calculate_spread( i, inaccuracy, spread,
+                                this->m_ctx.recoil_index, this->m_ctx.item_def_idx, this->m_ctx.num_bullets );
                 }
-                cache.count = cached_samples;
+                cache.count = n;
+                return cache;
+        }
+
+        float shared::calculate_hitchance( const math::vector3& shoot_position, const math::vector3& aim_angle, const systems::hitboxes::entry& hitbox, const systems::bones::data& bone, float inaccuracy, float spread, int samples ) const
+        {
+                const auto total = spread + inaccuracy;
+                if ( total < 0.0001f )
+                        return 1.0f;
+                if ( samples <= 0 )
+                        return 0.0f;
+
+                const auto cache = this->build_spread_cache( inaccuracy, spread, samples );
+                return this->calculate_hitchance( shoot_position, aim_angle, hitbox, bone, cache );
+        }
+
+        float shared::calculate_hitchance( const math::vector3& shoot_position, const math::vector3& aim_angle, const systems::hitboxes::entry& hitbox, const systems::bones::data& bone, const spread_cache& cache ) const
+        {
+                if ( cache.count <= 0 )
+                        return 0.0f;
+
+                const auto total = cache.spread + cache.inaccuracy;
+                if ( total < 0.0001f )
+                        return 1.0f;
+
+                const auto capsule_start = bone.rotation.rotate_vector( hitbox.mins ) + bone.position;
+                const auto capsule_end   = bone.rotation.rotate_vector( hitbox.maxs ) + bone.position;
+                const auto is_capsule    = hitbox.radius > 0.001f;
+
+                auto inverse_rotation = bone.rotation;
+                inverse_rotation.x = -inverse_rotation.x;
+                inverse_rotation.y = -inverse_rotation.y;
+                inverse_rotation.z = -inverse_rotation.z;
+                const auto box_ray_origin = inverse_rotation.rotate_vector( shoot_position - bone.position );
+
+                const auto ray_vs_box = [ & ]( const math::vector3& ray_direction ) -> bool
+                {
+                        const auto direction = inverse_rotation.rotate_vector( ray_direction );
+                        auto entry{ 0.0f };
+                        auto exit{ 1.0f };
+
+                        const auto intersect_axis = [ & ]( float origin, float delta, float minimum, float maximum ) -> bool
+                        {
+                                if ( std::fabs( delta ) < 1.0e-8f )
+                                        return origin >= minimum && origin <= maximum;
+                                auto first  = ( minimum - origin ) / delta;
+                                auto second = ( maximum - origin ) / delta;
+                                if ( first > second ) std::swap( first, second );
+                                entry = std::max( entry, first );
+                                exit  = std::min( exit,  second );
+                                return entry <= exit;
+                        };
+
+                        return intersect_axis( box_ray_origin.x, direction.x, hitbox.mins.x, hitbox.maxs.x ) &&
+                               intersect_axis( box_ray_origin.y, direction.y, hitbox.mins.y, hitbox.maxs.y ) &&
+                               intersect_axis( box_ray_origin.z, direction.z, hitbox.mins.z, hitbox.maxs.z );
+                };
+
+                math::vector3 forward{}, left{}, up{};
+                math::helpers::angle_vectors_left( aim_angle, &forward, &left, &up );
 
                 auto hits{ 0 };
+                const auto n = cache.count;
 
-                for ( auto i = 0; i < samples; ++i )
+                for ( auto i = 0; i < n; ++i )
                 {
-                        const auto calculated_spread = i < cached_samples
-                                ? cache.values[ i ]
-                                : this->calculate_spread( i, inaccuracy, spread, this->m_ctx.recoil_index, this->m_ctx.item_def_idx, this->m_ctx.num_bullets );
-                        const auto direction = forward + ( left * calculated_spread.x ) + ( up * calculated_spread.y );
-                        const auto ray_end = direction.normalized( ) * 8192.0f;
+                        const auto& sp       = cache.values[ i ];
+                        const auto direction = forward + ( left * sp.x ) + ( up * sp.y );
+                        const auto ray_end   = direction.normalized( ) * 8192.0f;
 
-                        auto hit{ false };
+                        bool hit{ false };
                         if ( is_capsule )
                         {
-                                auto fraction{ 1.0f };
+                                float fraction{ 1.0f };
                                 hit = this->ray_vs_capsule( shoot_position, ray_end, capsule_start, capsule_end, hitbox.radius, fraction );
                         }
                         else
@@ -1075,13 +1065,10 @@ namespace features::combat {
                                 hit = ray_vs_box( ray_end );
                         }
 
-                        if ( hit )
-                        {
-                                ++hits;
-                        }
+                        if ( hit ) ++hits;
                 }
 
-                return static_cast< float >( hits ) / static_cast< float >( samples );
+                return static_cast< float >( hits ) / static_cast< float >( n );
         }
 
         math::vector3 shared::find_spread_correction( const math::vector3& aim_angle, int tick ) const
