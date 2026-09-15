@@ -1,4 +1,7 @@
 #include <pch/pch.hpp>
+#include <cstring>
+#include <new>
+#include <thread>
 #include <utilities/memory/memory.hpp>
 #include <protection/game_addresses.hpp>
 #include "threadpool.hpp"
@@ -28,7 +31,13 @@ namespace threadpool {
 		constexpr std::size_t k_sbo_buffer_size {56};
 		constexpr std::size_t k_vti_add_job {16};
 
+		// This bridge requires the x64 MSVC std::function layout used by tier0.
+		static_assert (sizeof (std::function<void ()>) ==
+			k_job_alloc_size - offsets::sbo_buffer);
+		static_assert (offsets::sbo_buffer % alignof (std::function<void ()>) == 0);
+
 		inline std::uintptr_t std_function_job_vtable {0};
+		inline std::uintptr_t g_mem_alloc {};
 		inline pool g_pool {};
 
 	} // namespace detail
@@ -131,41 +140,25 @@ namespace threadpool {
 	}
 
 	std::uintptr_t make_job (std::function<void ()>&& func, job_priority priority, const char* debug_name) {
-		auto raw = reinterpret_cast<std::uintptr_t>(new std::uint8_t [detail::k_job_alloc_size] ());
+		// CStdFunctionJob::Release destroys this allocation in tier0. Do not
+		// use our overridden new[]: it returns a pointer past a private header,
+		// which is not a valid allocation base for the engine's Free.
+		auto raw = reinterpret_cast<std::uintptr_t>(memory::call_vfunc<void*> (
+			detail::g_mem_alloc, 1, detail::k_job_alloc_size));
 		if (!raw) {
-			return 0;
+			throw std::bad_alloc ();
 		}
+		std::memset (reinterpret_cast<void*>(raw), 0, detail::k_job_alloc_size);
 
 		*reinterpret_cast<std::uintptr_t*>(raw) = detail::std_function_job_vtable;
 		*reinterpret_cast<std::int32_t*>(raw + detail::offsets::refcount) = 1;
 		*reinterpret_cast<volatile int*>(raw + detail::offsets::status) = static_cast<int>(job_status::reset);
 		*reinterpret_cast<std::uint8_t*>(raw + detail::offsets::priority) = static_cast<std::uint8_t>(priority);
 
-		auto dest_sbo = reinterpret_cast<void*>(raw + detail::offsets::sbo_buffer);
-		auto dest_impl = reinterpret_cast<std::uintptr_t*>(raw + detail::offsets::callable_impl);
-
-		alignas(16) std::uint8_t temp [sizeof (std::function<void ()>)] {};
-		auto fn = new (temp) std::function<void ()> (std::move (func));
-
-		auto src_sbo = reinterpret_cast<std::uint8_t*>(fn);
-		auto src_impl = *reinterpret_cast<std::uintptr_t*>(src_sbo + detail::k_sbo_buffer_size);
-
-		if (src_impl) {
-			auto src_addr = reinterpret_cast<std::uintptr_t>(src_sbo);
-			auto is_sbo = (src_impl >= src_addr && src_impl < src_addr + detail::k_sbo_buffer_size);
-
-			std::memcpy (dest_sbo, src_sbo, detail::k_sbo_buffer_size);
-
-			if (is_sbo) {
-				*dest_impl = reinterpret_cast<std::uintptr_t> (dest_sbo) + (src_impl - src_addr);
-			} else {
-				*dest_impl = src_impl;
-			}
-
-			*reinterpret_cast<std::uintptr_t*> (src_sbo + detail::k_sbo_buffer_size) = 0;
-		}
-
-		fn->~function ();
+		// Move-construct in place so non-trivial small callables are moved
+		// correctly instead of byte-relocating their internal objects.
+		::new (reinterpret_cast<void*>(raw + detail::offsets::sbo_buffer))
+			std::function<void ()> (std::move (func));
 
 		if (debug_name) {
 			auto dst = reinterpret_cast<char*>(raw + detail::offsets::name_buffer);
@@ -187,6 +180,15 @@ namespace threadpool {
 	bool initialize () {
 		const auto tier0 = MODULE_BASE ("tier0.dll");
 		if (!tier0) {
+			return false;
+		}
+
+		const auto allocator_export = MODULE_EXPORT ("tier0.dll:g_pMemAlloc");
+		if (!allocator_export) {
+			return false;
+		}
+		detail::g_mem_alloc = memory::read<std::uintptr_t> (allocator_export);
+		if (!detail::g_mem_alloc) {
 			return false;
 		}
 

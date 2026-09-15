@@ -87,7 +87,7 @@ namespace diag {
 		TlsSetValue( g_diag_tls_phase, const_cast<void*>( static_cast<const void*>( phase ) ) );
 	}
 
-#if defined( DEV )
+	// Keep crash reporting available in release builds as well.
 	// DbgHelp declares this structure under 4-byte packing, including on x64.
 #pragma pack( push, 4 )
 	struct minidump_exception_information
@@ -129,7 +129,6 @@ namespace diag {
 	inline constexpr unsigned long minidump_with_indirectly_referenced_memory = 0x40;
 	inline constexpr unsigned long minidump_with_thread_info = 0x1000;
 	inline constexpr DWORD diagnostic_snapshot_code = 0xE0560001;
-#endif
 
 	inline const char* level_name( level value )
 	{
@@ -381,7 +380,6 @@ namespace diag {
 			}
 		}
 
-#if defined( DEV )
 		make_artifact_path(
 			g_dump_path,
 			MAX_PATH,
@@ -396,7 +394,6 @@ namespace diag {
 			g_dump_path,
 			g_previous_dump_path,
 			MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH );
-#endif
 
 		writef(
 			level::info,
@@ -411,7 +408,6 @@ namespace diag {
 
 	inline void initialize_crash_dumps( )
 	{
-#if defined( DEV )
 		// Resolve outside the loader lock; LoadLibrary is unsafe from DLL attach.
 		if ( const auto dbghelp = LoadLibraryW( L"dbghelp.dll" ) )
 		{
@@ -424,7 +420,6 @@ namespace diag {
 			"crash dumps %s; path=%ls",
 			g_minidump_write ? "enabled" : "unavailable",
 			g_dump_path );
-#endif
 	}
 
 	inline bool is_module_address( const void* address )
@@ -484,7 +479,6 @@ namespace diag {
 		return get_probe_scope_depth( ) != 0;
 	}
 
-#if defined( DEV )
 	inline const char* exception_name( DWORD code )
 	{
 		switch ( code )
@@ -503,6 +497,8 @@ namespace diag {
 			return "PRIV_INSTRUCTION";
 		case 0xC0000409:
 			return "STACK_BUFFER_OVERRUN";
+		case 0xC0000374:
+			return "HEAP_CORRUPTION";
 		case diagnostic_snapshot_code:
 			return "DIAGNOSTIC_SNAPSHOT";
 		default:
@@ -521,6 +517,7 @@ namespace diag {
 		case EXCEPTION_INT_DIVIDE_BY_ZERO:
 		case EXCEPTION_PRIV_INSTRUCTION:
 		case 0xC0000409:
+		case 0xC0000374:
 			return true;
 		default:
 			return false;
@@ -781,6 +778,13 @@ namespace diag {
 		}
 
 		const DWORD fault_thread_id = GetCurrentThreadId( );
+		// Persist a minimal report before creating a worker: damaged heaps or
+		// loader-lock contention can prevent the worker from ever starting.
+		writef( level::fatal,
+			"crash observed; stage=\"%s\" code=0x%08lX address=0x%p",
+			stage ? stage : "unknown",
+			info->ExceptionRecord->ExceptionCode,
+			info->ExceptionRecord->ExceptionAddress );
 		g_crash_request.record = *info->ExceptionRecord;
 		g_crash_request.record.ExceptionRecord = nullptr;
 		if ( info->ContextRecord )
@@ -813,9 +817,13 @@ namespace diag {
 			CloseHandle( thread );
 			if ( wait_result == WAIT_OBJECT_0 )
 			{
+				// A first-chance exception can be handled by the game. Allow a
+				// later, fatal exception to replace its report once the worker exits.
+				InterlockedExchange( &g_crash_claimed, 0 );
 				return;
 			}
 
+			// Keep the claim while a timed-out worker may still use the request.
 			writef(
 				level::error,
 				"minidump worker did not complete; wait_result=0x%08lX",
@@ -831,6 +839,7 @@ namespace diag {
 			&g_crash_request.pointers,
 			g_crash_request.stage,
 			fault_thread_id );
+		InterlockedExchange( &g_crash_claimed, 0 );
 	}
 
 	inline void capture_snapshot( const char* stage )
@@ -850,20 +859,6 @@ namespace diag {
 		EXCEPTION_POINTERS info{ &record, &context };
 		record_crash( &info, stage );
 	}
-#else
-	inline bool is_serious_exception( DWORD )
-	{
-		return false;
-	}
-
-	inline void record_crash( EXCEPTION_POINTERS*, const char* )
-	{
-	}
-
-	inline void capture_snapshot( const char* )
-	{
-	}
-#endif
 
 	inline void step( const char* message )
 	{
