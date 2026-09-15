@@ -661,6 +661,11 @@ namespace systems {
 		bool has_texture( ) const { return m_current_texture != nullptr; }
 
 		void reset( ) { m_current_texture = nullptr; }
+
+	void shutdown( ) {
+		m_current_texture = nullptr;
+		m_initialized = false;
+	}
 	};
 
 	inline input g_input{};
