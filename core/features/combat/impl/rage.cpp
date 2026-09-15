@@ -1047,6 +1047,13 @@ namespace features::combat {
             static_cast<float>(config.hitchance_override_value) / 100.0f :
             static_cast<float>(config.hitchance) / 100.0f;
 
+        // Build the spread cache once for the entire evaluation loop.
+        // Previously calculate_hitchance() rebuilt it for every single hit,
+        // causing thousands of engine calls per tick with multipoints enabled.
+        const auto hc_cache = config.no_spread.value
+            ? shared::spread_cache{}
+            : g_shared.build_spread_cache( eval_inaccuracy, aim_ctx.spread );
+
         for (auto& group : groups)
         {
             if (!group.record || !group.record->valid)
@@ -1061,7 +1068,7 @@ namespace features::combat {
                 const auto& bone = group.record->bones[h.bone_index];
                 const auto hc = config.no_spread.value ?
                     1.0f :
-                    g_shared.calculate_hitchance(h.source_eye.position, h.aim_angle, h.hitbox, bone, eval_inaccuracy, aim_ctx.spread);
+                    g_shared.calculate_hitchance(h.source_eye.position, h.aim_angle, h.hitbox, bone, hc_cache);
 
                 const auto hp = static_cast<float>(h.health);
                 const auto can_kill = h.damage >= hp;

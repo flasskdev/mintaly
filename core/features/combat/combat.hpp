@@ -219,7 +219,26 @@ namespace features::combat {
                 [[nodiscard]] std::uint32_t get_spread_seed( const math::vector3& angles, int tick ) const;
                 [[nodiscard]] math::vector2 calculate_spread( int seed, float accuracy, float spread, float recoil_index, int item_def_idx, int num_bullets ) const;
                 [[nodiscard]] math::vector3 get_aim_punch( std::uintptr_t local_pawn ) const;
-                [[nodiscard]] float calculate_hitchance( const math::vector3& shoot_position, const math::vector3& aim_angle, const systems::hitboxes::entry& hitbox, const systems::bones::data& bone, float inaccuracy, float spread, int samples = 256 ) const;
+                struct spread_cache
+                {
+                        float inaccuracy{};
+                        float spread{};
+                        float recoil_index{};
+                        int item_def_idx{};
+                        int num_bullets{};
+                        int count{};
+                        bool initialized{};
+                        std::array<math::vector2, 256> values{};
+                };
+
+                // Build a spread cache once and reuse it across many hitchance calls
+                // (e.g. all points in select_best) to avoid redundant engine calls.
+                [[nodiscard]] spread_cache build_spread_cache( float inaccuracy, float spread, int samples = 128 ) const;
+
+                // Standard overload: builds its own cache internally (for one-off calls).
+                [[nodiscard]] float calculate_hitchance( const math::vector3& shoot_position, const math::vector3& aim_angle, const systems::hitboxes::entry& hitbox, const systems::bones::data& bone, float inaccuracy, float spread, int samples = 128 ) const;
+                // Fast overload: uses a pre-built cache (no engine calls inside).
+                [[nodiscard]] float calculate_hitchance( const math::vector3& shoot_position, const math::vector3& aim_angle, const systems::hitboxes::entry& hitbox, const systems::bones::data& bone, const spread_cache& cache ) const;
                 [[nodiscard]] math::vector3 find_spread_correction( const math::vector3& aim_angle, int tick ) const;
                 [[nodiscard]] math::vector3 get_eye_position( std::uintptr_t local_pawn ) const;
                 [[nodiscard]] math::vector3 get_shoot_position( ) const;
