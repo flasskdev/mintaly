@@ -167,6 +167,14 @@ namespace features::misc {
                         math::vector3 target_velocity{};
                         bool forced{};
                         std::uint32_t weapon_type{};
+
+                        // Snapshot of victim state captured in on_boom() while the entity is
+                        // still alive. Used by classify_shot_deviation(), hitbox helpers and
+                        // add_miss_log() so they never touch victim_pawn from the render thread.
+                        std::uint8_t victim_life_state{ 0 };   // 0 = alive at shot time
+                        int          victim_health_snapshot{}; // health at shot time
+                        std::string  victim_name{};            // pre-resolved display name
+                        systems::hitboxes::set cached_hitbox_set{}; // hitbox geometry snapshot
                 };
 
                 struct prepared_revolver_shot
