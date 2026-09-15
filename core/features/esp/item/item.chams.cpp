@@ -97,9 +97,20 @@ namespace features::esp::item {
 			return;
 		}
 
-		for ( auto i = prev_count; i < new_count; ++i )
+		const auto prim_color = color.val;
+		__try
 		{
-			detail::replace_primitive( after->at( i ), material, color );
+			for ( auto i = prev_count; i < new_count; ++i )
+			{
+				const auto prim = after->at_fast( i );
+				if ( prim )
+				{
+					detail::replace_primitive_fast( prim, material, prim_color );
+				}
+			}
+		}
+		__except ( EXCEPTION_EXECUTE_HANDLER )
+		{
 		}
 	}
 

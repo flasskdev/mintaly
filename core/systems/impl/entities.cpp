@@ -156,26 +156,38 @@ namespace systems {
 
 	const char* entities::get_schema_name( std::uintptr_t entity ) const
 	{
-		const auto identity = memory::safe_read<std::uintptr_t>( entity + 0x10 ).value_or( 0 );
-		if ( !identity )
+		if ( !entity || entity < 0x10000 )
 		{
 			return nullptr;
 		}
 
-		const auto entity_class = memory::safe_read<std::uintptr_t>( identity + 0x8 ).value_or( 0 );
-		if ( !entity_class )
+		__try
+		{
+			const auto identity = *reinterpret_cast<const std::uintptr_t*>( entity + 0x10 );
+			if ( !identity )
+			{
+				return nullptr;
+			}
+
+			const auto entity_class = *reinterpret_cast<const std::uintptr_t*>( identity + 0x8 );
+			if ( !entity_class )
+			{
+				return nullptr;
+			}
+
+			// CEntityClass owns the current SchemaClassInfo pointer at 0x58.
+			const auto class_info = *reinterpret_cast<const std::uintptr_t*>( entity_class + 0x58 );
+			if ( !class_info )
+			{
+				return nullptr;
+			}
+
+			return *reinterpret_cast<const char* const*>( class_info + 0x8 );
+		}
+		__except ( EXCEPTION_EXECUTE_HANDLER )
 		{
 			return nullptr;
 		}
-
-		// CEntityClass owns the current SchemaClassInfo pointer at 0x58.
-		const auto class_info = memory::safe_read<std::uintptr_t>( entity_class + 0x58 ).value_or( 0 );
-		if ( !class_info )
-		{
-			return nullptr;
-		}
-
-		return memory::safe_read<const char*>( class_info + 0x8 ).value_or( nullptr );
 	}
 
 	std::uintptr_t entities::get_by_index( std::int32_t index )
@@ -224,25 +236,32 @@ namespace systems {
 			return 0;
 		}
 
-		const auto entity_list = memory::safe_read<std::uintptr_t>( addresses::globals::entity_list ).value_or( 0 );
-		if ( !entity_list )
+		__try
+		{
+			const auto entity_list = *reinterpret_cast<const std::uintptr_t*>( addresses::globals::entity_list );
+			if ( !entity_list )
+			{
+				return 0;
+			}
+
+			const auto list_entry = *reinterpret_cast<const std::uintptr_t*>( entity_list + ( static_cast< std::uintptr_t >( ( handle & 0x7fff ) >> 9 ) * 8 ) + 0x10 );
+			if ( !list_entry || list_entry == 0xffffffffffffffff )
+			{
+				return 0;
+			}
+
+			const auto entity = *reinterpret_cast<const std::uintptr_t*>( list_entry + ( static_cast< std::uintptr_t >( handle & 0x1ff ) * 112 ) );
+			if ( !entity || entity == 0xffffffffffffffff || entity < 0x10000 )
+			{
+				return 0;
+			}
+
+			return entity;
+		}
+		__except ( EXCEPTION_EXECUTE_HANDLER )
 		{
 			return 0;
 		}
-
-		const auto list_entry = memory::safe_read<std::uintptr_t>( entity_list + ( static_cast< std::uintptr_t >( ( handle & 0x7fff ) >> 9 ) * 8 ) + 0x10 ).value_or( 0 );
-		if ( !list_entry || list_entry == 0xffffffffffffffff )
-		{
-			return 0;
-		}
-
-		const auto entity = memory::safe_read<std::uintptr_t>( list_entry + ( static_cast< std::uintptr_t >( handle & 0x1ff ) * 112 ) ).value_or( 0 );
-		if ( !entity || entity == 0xffffffffffffffff || entity < 0x10000 )
-		{
-			return 0;
-		}
-
-		return entity;
 	}
 
 	std::vector<entities::cached> entities::get_by_type( type type ) const

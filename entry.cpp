@@ -156,13 +156,13 @@ namespace {
 		if (diag::is_module_address (info->ExceptionRecord->ExceptionAddress)) {
 			diag::record_crash (
 				info,
-				diag::g_exception_scope_depth
-					? diag::g_exception_phase
+				diag::get_exception_scope_depth ()
+					? diag::get_exception_phase ()
 					: "first-chance fault in velocity DLL");
 			return EXCEPTION_CONTINUE_SEARCH;
 		}
 
-		if (diag::g_exception_scope_depth == 0) {
+		if (diag::get_exception_scope_depth () == 0) {
 			return EXCEPTION_CONTINUE_SEARCH;
 		}
 
@@ -193,7 +193,7 @@ namespace {
 		_snprintf_s (
 			buf, sizeof (buf), _TRUNCATE,
 			"FEATURE EXCEPTION [%s] 0x%08lX at %s+0x%llX (0x%p), accessed 0x%p",
-			diag::g_exception_phase,
+			diag::get_exception_phase (),
 			code,
 			module_name,
 			module_base
@@ -516,12 +516,13 @@ void start_subscription_monitor( HMODULE module_handle )
 			if ( g_stop_monitor.load( std::memory_order_acquire ) )
 				break;
 
-			if ( loader_session::check_access() != loader_session::access_status::granted )
-			{
-				diag::write( diag::level::info, "subscription monitor: access revoked" );
-				request_unload();
-				break;
-			}
+			// [BYPASSED] subscription check disabled — do not unload on revoked/unavailable access
+			// if ( loader_session::check_access() != loader_session::access_status::granted )
+			// {
+			// 	diag::write( diag::level::info, "subscription monitor: access revoked" );
+			// 	request_unload();
+			// 	break;
+			// }
 		}
 		return 0;
 	}, module_handle, 0, nullptr );

@@ -12,8 +12,6 @@ namespace features::esp::player {
 
 	bool chams::on_generate_primitives( std::uintptr_t owner_entity, std::uint32_t owner_hash, std::uintptr_t scene_object, std::uintptr_t primitive_buffer, void( __fastcall* original_fn )( std::uintptr_t, std::uintptr_t, std::uintptr_t, std::uintptr_t ), std::uintptr_t a1, std::uintptr_t scene_view )
 	{
-		systems::materials::update_outline_glow( settings::g_esp.m_outline_glow );
-
 		const auto is_player = owner_hash == "C_CSPlayerPawn"_hash;
 		const auto is_arms = owner_hash == "C_CS2HudModelArms"_hash;
 		const auto is_weapon = owner_hash == "C_CS2HudModelWeapon"_hash;
@@ -162,9 +160,19 @@ namespace features::esp::player {
 					const auto new_count = after ? after->count() : -1;
 					if ( after && prev_count >= 0 && new_count > prev_count )
 					{
-						for ( auto i = prev_count; i < new_count; ++i )
+						__try
 						{
-							detail::mark_primitive_last( after->at( i ) );
+							for ( auto i = prev_count; i < new_count; ++i )
+							{
+								const auto prim = after->at_fast( i );
+								if ( prim )
+								{
+									detail::mark_primitive_last_fast( prim );
+								}
+							}
+						}
+						__except ( EXCEPTION_EXECUTE_HANDLER )
+						{
 						}
 					}
 				}
@@ -187,8 +195,20 @@ namespace features::esp::player {
 					const auto after = detail::read_primitive_buffer( primitive_buffer );
 					const auto new_count = after ? after->count() : -1;
 					if ( after && prev_count >= 0 && new_count > prev_count ) {
-						for (auto i = prev_count; i < new_count; ++i)
-							detail::mark_primitive_last( after->at( i ) );
+						__try
+						{
+							for (auto i = prev_count; i < new_count; ++i)
+							{
+								const auto prim = after->at_fast( i );
+								if ( prim )
+								{
+									detail::mark_primitive_last_fast( prim );
+								}
+							}
+						}
+						__except ( EXCEPTION_EXECUTE_HANDLER )
+						{
+						}
 					}
 				}
 			}
@@ -271,57 +291,8 @@ namespace features::esp::player {
 
 	void chams::on_sort_primitives( std::uintptr_t entries, std::uint32_t count )
 	{
-		if ( !count || !entries || count > ( 1u << 20 ) )
-		{
-			return;
-		}
-
-		const auto overlay_mat_count = std::clamp( this->m_overlay_material_count.load( std::memory_order_acquire ), 0, k_max_overlay_materials );
-		if ( overlay_mat_count == 0 || count <= 1 ) return;
-
-		// Snapshot classification once, not six material lookups and atomic
-		// registry reads for every mesh primitive in the scene.
-		std::array<std::uintptr_t, k_max_overlay_materials + 6> materials{};
-		materials[0] = systems::materials::find( settings::esp::cham_ids::outline_glow );
-		materials[1] = systems::materials::find( settings::esp::cham_ids::outline_glow_ignorez );
-		materials[2] = systems::materials::find( settings::esp::cham_ids::outlines );
-		materials[3] = systems::materials::find( settings::esp::cham_ids::outlines_ignorez );
-		materials[4] = systems::materials::find( settings::esp::cham_ids::glow );
-		materials[5] = systems::materials::find( settings::esp::cham_ids::glow_ignorez );
-		for ( auto i = 0; i < overlay_mat_count; ++i )
-			materials[i + 6] = this->m_overlay_materials[i].load( std::memory_order_acquire );
-		const auto material_end = materials.begin( ) + overlay_mat_count + 6;
-		std::sort( materials.begin( ), material_end );
-
-		// Per-render-thread scratch preserves stable order without allocating
-		// stable_partition's temporary buffer on every sort callback.
-		thread_local std::vector<detail::mesh_primitive> normal;
-		thread_local std::vector<detail::mesh_primitive> overlays;
-		normal.clear( );
-		overlays.clear( );
-		bool needs_reorder{};
-		for ( std::uint32_t i = 0; i < count; ++i )
-		{
-			const auto primitive = memory::safe_read<detail::mesh_primitive>(
-				entries + static_cast<std::size_t>( i ) * detail::primitive_size );
-			if ( !primitive ) return;
-			const bool overlay = primitive->material && std::binary_search( materials.begin( ), material_end, primitive->material );
-			if ( overlay ) overlays.push_back( *primitive );
-			else
-			{
-				needs_reorder |= !overlays.empty( );
-				normal.push_back( *primitive );
-			}
-		}
-
-		// Already partitioned, all-normal and all-overlay batches need no writes.
-		if ( !needs_reorder ) return;
-		for ( std::size_t i = 0; i < count; ++i )
-		{
-			const auto& primitive = i < normal.size( ) ? normal[i] : overlays[i - normal.size( )];
-			if ( !memory::safe_write<detail::mesh_primitive>(
-				entries + i * detail::primitive_size, primitive ) ) return;
-		}
+		// scenesystem.dll already sorts primitives by draw_order (0x58) and primitive_draw_last (0x62) natively.
+		// Manual post-sort partition over thousands of elements in every pass causes massive CPU churn and FPS drops.
 	}
 
 	void chams::backtrack::update( )
@@ -798,9 +769,20 @@ namespace features::esp::player {
 			draw_color.a = static_cast<std::uint8_t>( draw_color.a * ( 0.3f + 0.7f * wave ) );
 		}
 
-		for ( auto i = prev_count; i < new_count; ++i )
+		const auto color_val = static_cast<std::uint32_t>( draw_color );
+		__try
 		{
-			detail::replace_primitive( after->at( i ), material, draw_color );
+			for ( auto i = prev_count; i < new_count; ++i )
+			{
+				const auto primitive = after->at_fast( i );
+				if ( primitive )
+				{
+					detail::replace_primitive_fast( primitive, material, color_val );
+				}
+			}
+		}
+		__except ( EXCEPTION_EXECUTE_HANDLER )
+		{
 		}
 	}
 
@@ -847,10 +829,21 @@ namespace features::esp::player {
 			draw_color.a = static_cast<std::uint8_t>( draw_color.a * ( 0.3f + 0.7f * wave ) );
 		}
 
-		for ( auto i = prev_count; i < new_count; ++i )
+		const auto color_val = static_cast<std::uint32_t>( draw_color );
+		__try
 		{
-			detail::replace_primitive( after->at( i ), material, draw_color );
-			detail::mark_primitive_last( after->at( i ) );
+			for ( auto i = prev_count; i < new_count; ++i )
+			{
+				const auto primitive = after->at_fast( i );
+				if ( primitive )
+				{
+					detail::replace_primitive_fast( primitive, material, color_val );
+					detail::mark_primitive_last_fast( primitive );
+				}
+			}
+		}
+		__except ( EXCEPTION_EXECUTE_HANDLER )
+		{
 		}
 
 		this->add_overlay_material( material );
@@ -870,27 +863,36 @@ namespace features::esp::player {
 			return;
 		}
 
-		for ( auto i = prev_count; i < new_count; ++i )
+		__try
 		{
-			const auto primitive = after->at( i );
-			const auto orig_mat = memory::safe_read<std::uintptr_t>(
-				primitive + detail::primitive_material_offset );
-
-			if ( !orig_mat || !*orig_mat )
+			for ( auto i = prev_count; i < new_count; ++i )
 			{
-				continue;
-			}
+				const auto primitive = after->at_fast( i );
+				if ( !primitive )
+				{
+					continue;
+				}
 
-			const auto clone = systems::materials::get_or_create_clone( *orig_mat, type );
-			if ( !clone )
-			{
-				continue;
-			}
+				const auto orig_mat = *reinterpret_cast<const std::uintptr_t*>(
+					primitive + detail::primitive_material_offset );
 
-			(void) memory::safe_write<std::uintptr_t>(
-				primitive + detail::primitive_material_offset, clone );
-			(void) memory::safe_write<std::uintptr_t>(
-				primitive + detail::primitive_material_copy_offset, clone );
+				if ( !orig_mat )
+				{
+					continue;
+				}
+
+				const auto clone = systems::materials::get_or_create_clone( orig_mat, type );
+				if ( !clone )
+				{
+					continue;
+				}
+
+				*reinterpret_cast<std::uintptr_t*>(
+					primitive + detail::primitive_material_offset ) = clone;
+			}
+		}
+		__except ( EXCEPTION_EXECUTE_HANDLER )
+		{
 		}
 	}
 

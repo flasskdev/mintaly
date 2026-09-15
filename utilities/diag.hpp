@@ -21,9 +21,71 @@ namespace diag {
 	inline HANDLE g_log_file{};
 	inline HMODULE g_module{};
 	inline std::uintptr_t g_module_end{};
-	inline thread_local std::uint32_t g_exception_scope_depth{};
-	inline thread_local std::uint32_t g_probe_scope_depth{};
-	inline thread_local const char* g_exception_phase{ "none" };
+	inline DWORD g_diag_tls_depth = TLS_OUT_OF_INDEXES;
+	inline DWORD g_diag_tls_phase = TLS_OUT_OF_INDEXES;
+
+	inline void ensure_diag_tls( ) noexcept
+	{
+		if ( g_diag_tls_depth == TLS_OUT_OF_INDEXES )
+		{
+			const auto idx = TlsAlloc( );
+			if ( InterlockedCompareExchange( reinterpret_cast<volatile LONG*>( &g_diag_tls_depth ), static_cast<LONG>( idx ), static_cast<LONG>( TLS_OUT_OF_INDEXES ) ) != static_cast<LONG>( TLS_OUT_OF_INDEXES ) )
+			{
+				TlsFree( idx );
+			}
+		}
+		if ( g_diag_tls_phase == TLS_OUT_OF_INDEXES )
+		{
+			const auto idx = TlsAlloc( );
+			if ( InterlockedCompareExchange( reinterpret_cast<volatile LONG*>( &g_diag_tls_phase ), static_cast<LONG>( idx ), static_cast<LONG>( TLS_OUT_OF_INDEXES ) ) != static_cast<LONG>( TLS_OUT_OF_INDEXES ) )
+			{
+				TlsFree( idx );
+			}
+		}
+	}
+
+	inline std::uint32_t get_exception_scope_depth( ) noexcept
+	{
+		if ( g_diag_tls_depth == TLS_OUT_OF_INDEXES ) return 0;
+		const auto val = reinterpret_cast<std::uintptr_t>( TlsGetValue( g_diag_tls_depth ) );
+		return static_cast<std::uint32_t>( val & 0xFFFFFFFF );
+	}
+
+	inline void set_exception_scope_depth( std::uint32_t depth ) noexcept
+	{
+		ensure_diag_tls( );
+		const auto val = reinterpret_cast<std::uintptr_t>( TlsGetValue( g_diag_tls_depth ) );
+		const auto newVal = ( val & 0xFFFFFFFF00000000ULL ) | depth;
+		TlsSetValue( g_diag_tls_depth, reinterpret_cast<LPVOID>( newVal ) );
+	}
+
+	inline std::uint32_t get_probe_scope_depth( ) noexcept
+	{
+		if ( g_diag_tls_depth == TLS_OUT_OF_INDEXES ) return 0;
+		const auto val = reinterpret_cast<std::uintptr_t>( TlsGetValue( g_diag_tls_depth ) );
+		return static_cast<std::uint32_t>( ( val >> 32 ) & 0xFFFFFFFF );
+	}
+
+	inline void set_probe_scope_depth( std::uint32_t depth ) noexcept
+	{
+		ensure_diag_tls( );
+		const auto val = reinterpret_cast<std::uintptr_t>( TlsGetValue( g_diag_tls_depth ) );
+		const auto newVal = ( val & 0x00000000FFFFFFFFULL ) | ( static_cast<std::uint64_t>( depth ) << 32 );
+		TlsSetValue( g_diag_tls_depth, reinterpret_cast<LPVOID>( newVal ) );
+	}
+
+	inline const char* get_exception_phase( ) noexcept
+	{
+		if ( g_diag_tls_phase == TLS_OUT_OF_INDEXES ) return "none";
+		const auto phase = static_cast<const char*>( TlsGetValue( g_diag_tls_phase ) );
+		return phase ? phase : "none";
+	}
+
+	inline void set_exception_phase( const char* phase ) noexcept
+	{
+		ensure_diag_tls( );
+		TlsSetValue( g_diag_tls_phase, const_cast<void*>( static_cast<const void*>( phase ) ) );
+	}
 
 #if defined( DEV )
 	// DbgHelp declares this structure under 4-byte packing, including on x64.
@@ -48,7 +110,7 @@ namespace diag {
 
 	inline minidump_write_fn g_minidump_write{};
 	inline volatile LONG g_crash_claimed{};
-	inline thread_local bool g_writing_minidump{};
+	inline volatile bool g_writing_minidump{};
 
 	struct crash_report_request
 	{
@@ -376,16 +438,17 @@ namespace diag {
 	{
 	public:
 		explicit exception_scope( const char* phase = "feature pipeline" )
-			: m_previous_phase( g_exception_phase )
+			: m_previous_phase( get_exception_phase( ) )
 		{
-			++g_exception_scope_depth;
-			g_exception_phase = phase;
+			set_exception_scope_depth( get_exception_scope_depth( ) + 1 );
+			set_exception_phase( phase );
 		}
 
 		~exception_scope( )
 		{
-			g_exception_phase = m_previous_phase;
-			--g_exception_scope_depth;
+			set_exception_phase( m_previous_phase );
+			const auto depth = get_exception_scope_depth( );
+			set_exception_scope_depth( depth ? depth - 1 : 0 );
 		}
 
 		exception_scope( const exception_scope& ) = delete;
@@ -403,12 +466,13 @@ namespace diag {
 	public:
 		probe_scope( )
 		{
-			++g_probe_scope_depth;
+			set_probe_scope_depth( get_probe_scope_depth( ) + 1 );
 		}
 
 		~probe_scope( )
 		{
-			--g_probe_scope_depth;
+			const auto depth = get_probe_scope_depth( );
+			set_probe_scope_depth( depth ? depth - 1 : 0 );
 		}
 
 		probe_scope( const probe_scope& ) = delete;
@@ -417,12 +481,7 @@ namespace diag {
 
 	inline bool probe_active( )
 	{
-		return g_probe_scope_depth != 0;
-	}
-
-	inline void set_exception_phase( const char* phase )
-	{
-		g_exception_phase = phase;
+		return get_probe_scope_depth( ) != 0;
 	}
 
 #if defined( DEV )

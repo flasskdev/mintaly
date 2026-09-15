@@ -868,8 +868,6 @@ namespace hooks {
 
 	void __fastcall cheat::generate_primitives( std::uintptr_t thisptr, std::uintptr_t scene_object, std::uintptr_t scene_view, std::uintptr_t primitive_buffer )
 	{
-		diag::exception_scope exception_scope{ "chams: generate primitives" };
-
 		if ( lifecycle::is_unloading( ) || is_level_shutting_down( ) )
 		{
 			m_generate_primitives.call<void>( thisptr, scene_object, scene_view, primitive_buffer );
@@ -1211,14 +1209,6 @@ namespace hooks {
 	void __fastcall cheat::sort_primitives( std::uintptr_t thisptr, std::uintptr_t a2, std::uintptr_t a3, std::uint32_t a4 )
 	{
 		m_sort_primitives.call<void>( thisptr, a2, a3, a4 );
-
-		if ( lifecycle::is_unloading( ) )
-		{
-			return;
-		}
-
-		diag::exception_scope exception_scope{ "chams: sort primitives" };
-		features::esp::player::g_chams.on_sort_primitives( a3, a4 );
 	}
 
 	float __fastcall cheat::get_inaccuracy( std::uintptr_t thisptr, float* a2, float* a3 )

@@ -81,6 +81,15 @@ namespace features::esp::detail {
 			return overflow_data +
 				static_cast<std::size_t>( index - fixed_count ) * primitive_size;
 		}
+		[[nodiscard]] std::uintptr_t at_fast( int index ) const noexcept
+		{
+			if ( index < fixed_count ) {
+				return fixed_data + static_cast<std::size_t>( index ) * primitive_size;
+			}
+
+			return overflow_data +
+				static_cast<std::size_t>( index - fixed_count ) * primitive_size;
+		}
 	};
 
 	static_assert( sizeof( primitive_output_buffer ) == 0x28 );
@@ -103,6 +112,23 @@ namespace features::esp::detail {
 		return result;
 	}
 
+	inline void replace_primitive_fast(
+		std::uintptr_t primitive, std::uintptr_t material,
+		std::uint32_t color_val ) noexcept
+	{
+		*reinterpret_cast<std::uintptr_t*>( primitive + primitive_material_offset ) = material;
+		*reinterpret_cast<std::uint32_t*>( primitive + primitive_color_offset ) = color_val;
+	}
+
+	inline void mark_primitive_last_fast( std::uintptr_t primitive, std::int32_t extra_order = 1000 ) noexcept
+	{
+		auto* const flags = reinterpret_cast<std::uint16_t*>( primitive + primitive_flags_offset );
+		*flags |= primitive_draw_last;
+
+		auto* const order = reinterpret_cast<std::int32_t*>( primitive + primitive_draw_order_offset );
+		*order = extra_order;
+	}
+
 	inline void replace_primitive(
 		std::uintptr_t primitive, std::uintptr_t material,
 		const xdraw::color& color )
@@ -113,8 +139,6 @@ namespace features::esp::detail {
 
 		(void) memory::safe_write<std::uintptr_t>(
 			primitive + primitive_material_offset, material );
-		(void) memory::safe_write<std::uintptr_t>(
-			primitive + primitive_material_copy_offset, material );
 		(void) memory::safe_write<std::uint32_t>(
 			primitive + primitive_color_offset, color );
 	}

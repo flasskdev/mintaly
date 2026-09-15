@@ -1043,7 +1043,7 @@ format:generic:version{{7412167c-06e9-4698-aff2-e63eb59037e7}} -->
 	};
 
 	static std::unordered_map<std::uint64_t, glow_cache_entry> s_glow_cache{};
-	static std::mutex s_glow_cache_mtx{};
+	static std::shared_mutex s_glow_cache_mtx{};
 	static std::uint32_t s_glow_version{ 0 };
 
 	std::uintptr_t materials::get_outline_glow( const settings::esp::outline_glow_config& cfg, bool ignorez )
@@ -1056,7 +1056,30 @@ format:generic:version{{7412167c-06e9-4698-aff2-e63eb59037e7}} -->
 		const float cur_opacity = cfg.opacity.value;
 		const float cur_inner_spread = cfg.inner_spread.value;
 
-		std::scoped_lock lock( s_glow_cache_mtx );
+		// Fast path: shared read lock prevents worker thread contention during rendering passes
+		{
+			std::shared_lock read_lock( s_glow_cache_mtx );
+			const auto it = s_glow_cache.find( key );
+			if ( it != s_glow_cache.end( ) )
+			{
+				const auto& entry = it->second;
+				const bool changed =
+					entry.mat == 0 ||
+					std::abs( cur_intensity - entry.last_intensity ) > 0.05f ||
+					std::abs( cur_thickness - entry.last_thickness ) > 0.02f ||
+					std::abs( cur_softness - entry.last_softness ) > 0.02f ||
+					std::abs( cur_opacity - entry.last_opacity ) > 0.01f ||
+					std::abs( cur_inner_spread - entry.last_inner_spread ) > 0.01f;
+
+				if ( !changed )
+				{
+					return entry.mat;
+				}
+			}
+		}
+
+		// Slow path: exclusive write lock when material needs to be compiled or updated
+		std::unique_lock write_lock( s_glow_cache_mtx );
 		auto& entry = s_glow_cache[ key ];
 
 		const bool changed =
@@ -1073,9 +1096,13 @@ format:generic:version{{7412167c-06e9-4698-aff2-e63eb59037e7}} -->
 		}
 
 		const auto now = std::chrono::steady_clock::now( );
-		if ( entry.mat != 0 && std::chrono::duration_cast<std::chrono::milliseconds>( now - entry.last_reload ).count( ) < 40 )
+		if ( std::chrono::duration_cast<std::chrono::milliseconds>( now - entry.last_reload ).count( ) < 100 )
 		{
-			return entry.mat;
+			if ( entry.mat )
+			{
+				return entry.mat;
+			}
+			return find( ignorez ? settings::esp::cham_ids::outline_glow_ignorez : settings::esp::cham_ids::outline_glow );
 		}
 
 		entry.last_reload = now;
@@ -1096,6 +1123,10 @@ format:generic:version{{7412167c-06e9-4698-aff2-e63eb59037e7}} -->
 		if ( new_mat )
 		{
 			entry.mat = new_mat;
+		}
+		else if ( !entry.mat )
+		{
+			entry.mat = find( ignorez ? settings::esp::cham_ids::outline_glow_ignorez : settings::esp::cham_ids::outline_glow );
 		}
 
 		return entry.mat;
