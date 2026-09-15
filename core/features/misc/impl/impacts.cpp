@@ -214,6 +214,10 @@ namespace features::misc {
 		this->m_hitmarkers.clear( );
 		this->m_logs.clear( );
 		this->m_pending_hits.clear( );
+		// Invalidate cached hitbox geometry so stale pointers from the previous
+		// map are not used if any shot somehow survives the clear below.
+		for ( auto& s : this->m_pending_shots )
+			s.cached_hitbox_set.count = 0;
 		this->m_pending_shots.clear( );
 		this->m_prepared_revolver_shots.clear( );
 		this->m_revolver_weapon_handle = 0;
@@ -612,6 +616,21 @@ namespace features::misc {
 		const auto bt_ticks = ( tick > 0 && current_tick >= tick ) ? ( current_tick - tick ) : 0;
 		const auto victim_controller = detail::resolve_controller( victim_pawn );
 
+		// Capture victim state while the entity is guaranteed valid (game thread).
+		const auto victim_life_state_now = memory::safe_read<std::uint8_t>(
+			victim_pawn + SCHEMA( "C_BaseEntity", "m_lifeState"_hash ) ).value_or( 0 );
+		const auto victim_health_now = memory::safe_read<int>(
+			victim_pawn + SCHEMA( "C_BaseEntity", "m_iHealth"_hash ) ).value_or( 0 );
+		const auto victim_name_now = this->get_player_name_from_pawn( victim_pawn );
+
+		systems::hitboxes::set cached_hbs{};
+		{
+			const auto gsn = memory::safe_read<std::uintptr_t>(
+				victim_pawn + SCHEMA( "C_BaseEntity", "m_pGameSceneNode"_hash ) ).value_or( 0 );
+			if ( gsn )
+				cached_hbs = systems::g_hitboxes.query( gsn );
+		}
+
 		shot_record shot
 			{
 				.victim_pawn = victim_pawn,
@@ -634,6 +653,10 @@ namespace features::misc {
 				.target_velocity = target_velocity,
 				.forced = forced,
 				.weapon_type = features::combat::g_shared.ctx( ).weapon_type,
+				.victim_life_state = victim_life_state_now,
+				.victim_health_snapshot = victim_health_now,
+				.victim_name = victim_name_now,
+				.cached_hitbox_set = cached_hbs,
 			};
 
 		if ( deferred_weapon )
@@ -720,17 +743,10 @@ namespace features::misc {
 
 	const char* impacts::classify_shot_deviation( const shot_record& shot ) const
 	{
-		// 1. Check if the victim is actually dead
-		bool victim_dead = false;
-		if ( shot.victim_pawn )
-		{
-			const auto life_state = memory::read<std::uint8_t>( shot.victim_pawn + SCHEMA( "C_BaseEntity", "m_lifeState"_hash ) );
-			const auto health = memory::read<int>( shot.victim_pawn + SCHEMA( "C_BaseEntity", "m_iHealth"_hash ) );
-			if ( life_state != 0 || health <= 0 )
-			{
-				victim_dead = true;
-			}
-		}
+		// 1. Check if the victim was dead at shot time using the pre-captured snapshot.
+		//    Never dereference shot.victim_pawn here — this runs from the render thread
+		//    up to 1.2 s after the shot, by which time the entity may be freed.
+		const bool victim_dead = ( shot.victim_life_state != 0 || shot.victim_health_snapshot <= 0 );
 
 		if ( victim_dead )
 		{
@@ -1059,13 +1075,8 @@ namespace features::misc {
 			return -1.0f;
 		}
 
-		const auto game_scene_node = memory::read<std::uintptr_t>( shot.victim_pawn + SCHEMA( "C_BaseEntity", "m_pGameSceneNode"_hash ) );
-		if ( !game_scene_node )
-		{
-			return -1.0f;
-		}
-
-		const auto hitbox_set = systems::g_hitboxes.query( game_scene_node );
+		// Use the hitbox set captured in on_boom() — never touch victim_pawn here.
+		const auto& hitbox_set = shot.cached_hitbox_set;
 		if ( hitbox_set.count <= 0 )
 		{
 			return -1.0f;
@@ -1125,13 +1136,8 @@ namespace features::misc {
 
 	float impacts::ray_distance_to_nearest_hitbox( const shot_record& shot, const math::vector3& direction ) const
 	{
-		const auto game_scene_node = memory::read<std::uintptr_t>( shot.victim_pawn + SCHEMA( "C_BaseEntity", "m_pGameSceneNode"_hash ) );
-		if ( !game_scene_node )
-		{
-			return FLT_MAX;
-		}
-
-		const auto hitbox_set = systems::g_hitboxes.query( game_scene_node );
+		// Use the hitbox set captured in on_boom() — never touch victim_pawn here.
+		const auto& hitbox_set = shot.cached_hitbox_set;
 		if ( hitbox_set.count <= 0 )
 		{
 			return FLT_MAX;
@@ -1311,7 +1317,9 @@ namespace features::misc {
 		const auto current_time = memory::read<float>( global_vars + 0x30 );
 		const auto& cfg = settings::g_misc.m_impacts;
 
-		const auto raw_name = this->get_player_name_from_pawn( shot.victim_pawn );
+		// Use the name captured in on_boom() — never call get_player_name_from_pawn
+		// here because shot.victim_pawn may be stale (render-thread context).
+		const auto& raw_name = shot.victim_name;
 		const auto name = ( raw_name.empty( ) || raw_name == "unknown" ) ? "enemy" : raw_name;
 		const char* raw_group = systems::g_hitboxes.hitgroup_to_name( shot.hitgroup );
 		const char* group = ( !raw_group || !*raw_group ) ? "body" : raw_group;
