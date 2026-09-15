@@ -41,8 +41,12 @@ namespace features::esp::player {
 				return parent_owner == view_pawn;
 			};
 
-		const auto apply_config = [ & ]( const settings::esp::chams_config& cfg, std::uintptr_t target_scene_obj, bool force_original = false )
+		const auto apply_config = [ & ]( const settings::esp::chams_config& cfg, std::uintptr_t target_scene_obj, bool force_original = false, float alpha = 1.0f )
 			{
+				const auto fade = [alpha]( xdraw::color color ) {
+					color.a = static_cast<std::uint8_t>( color.a * alpha );
+					return color;
+				};
 				const bool overlay_is_outline = cfg.overlay.enabled.value && settings::esp::is_outline_material( cfg.overlay.material.value );
 				const bool overlay_suppress_fill = overlay_is_outline && !cfg.overlay.filled.value;
 
@@ -58,18 +62,18 @@ namespace features::esp::player {
 				{
 					if ( secondary_is_outline )
 					{
-						this->apply_overlay( primitive_buffer, original_fn, a1, target_scene_obj, scene_view, cfg.secondary.color, cfg.secondary.material, &cfg.secondary.glow );
+						this->apply_overlay( primitive_buffer, original_fn, a1, target_scene_obj, scene_view, fade( cfg.secondary.color ), cfg.secondary.material, &cfg.secondary.glow );
 					}
 					else if ( !secondary_suppress_fill && !suppress_fill )
 					{
-						this->apply_layer( primitive_buffer, original_fn, a1, target_scene_obj, scene_view, cfg.secondary.color, cfg.secondary.material, &cfg.secondary.glow );
+						this->apply_layer( primitive_buffer, original_fn, a1, target_scene_obj, scene_view, fade( cfg.secondary.color ), cfg.secondary.material, &cfg.secondary.glow );
 					}
 				}
 
 				const bool has_primary_fill = cfg.primary.enabled.value && !primary_is_outline && !suppress_fill;
 				if ( has_primary_fill )
 				{
-					this->apply_layer( primitive_buffer, original_fn, a1, target_scene_obj, scene_view, cfg.primary.color, cfg.primary.material, &cfg.primary.glow );
+					this->apply_layer( primitive_buffer, original_fn, a1, target_scene_obj, scene_view, fade( cfg.primary.color ), cfg.primary.material, &cfg.primary.glow );
 				}
 
 				const bool has_secondary_fill = cfg.secondary.enabled.value && !secondary_is_outline && !suppress_fill;
@@ -83,12 +87,12 @@ namespace features::esp::player {
 
 				if ( primary_is_outline )
 				{
-					this->apply_overlay( primitive_buffer, original_fn, a1, target_scene_obj, scene_view, cfg.primary.color, cfg.primary.material, &cfg.primary.glow );
+					this->apply_overlay( primitive_buffer, original_fn, a1, target_scene_obj, scene_view, fade( cfg.primary.color ), cfg.primary.material, &cfg.primary.glow );
 				}
 
 				if ( cfg.overlay.enabled.value )
 				{
-					this->apply_overlay( primitive_buffer, original_fn, a1, target_scene_obj, scene_view, cfg.overlay.color, cfg.overlay.material, &cfg.overlay.glow );
+					this->apply_overlay( primitive_buffer, original_fn, a1, target_scene_obj, scene_view, fade( cfg.overlay.color ), cfg.overlay.material, &cfg.overlay.glow );
 				}
 			};
 
@@ -173,26 +177,12 @@ namespace features::esp::player {
 					const auto& ocfg = chams_cfg.onshot;
 
 					const auto alpha = this->m_onshot.get_alpha (owner_entity);
-					const auto fade = [alpha] (xdraw::color c) -> xdraw::color {
-						c.a = static_cast<std::uint8_t>(c.a * alpha);
-						return c;
-					};
-
-					auto faded_cfg = ocfg;
-
-					if (faded_cfg.primary.enabled.value)
-						faded_cfg.primary.color.value = fade (faded_cfg.primary.color.value);
-
-					if (faded_cfg.secondary.enabled.value)
-						faded_cfg.secondary.color.value = fade (faded_cfg.secondary.color.value);
-
-					if (faded_cfg.overlay.enabled.value)
-						faded_cfg.overlay.color.value = fade (faded_cfg.overlay.color.value);
-
 					const auto before = detail::read_primitive_buffer( primitive_buffer );
 					const auto prev_count = before ? before->count() : -1;
 
-					apply_config (faded_cfg, os_obj, true);
+					// Fade colors only. Keep configuration addresses stable for the
+					// outline material cache and avoid copying settings/strings per mesh.
+					apply_config (ocfg, os_obj, true, alpha);
 
 					const auto after = detail::read_primitive_buffer( primitive_buffer );
 					const auto new_count = after ? after->count() : -1;
@@ -286,51 +276,51 @@ namespace features::esp::player {
 			return;
 		}
 
-		const auto overlay_mat_count = this->m_overlay_material_count.load( std::memory_order_acquire );
-		if ( overlay_mat_count <= 0 )
-		{
-			return;
-		}
+		const auto overlay_mat_count = std::clamp( this->m_overlay_material_count.load( std::memory_order_acquire ), 0, k_max_overlay_materials );
+		if ( overlay_mat_count == 0 || count <= 1 ) return;
 
-		const auto total = static_cast< int >( count );
-		if ( total <= 1 )
-		{
-			return;
-		}
+		// Snapshot classification once, not six material lookups and atomic
+		// registry reads for every mesh primitive in the scene.
+		std::array<std::uintptr_t, k_max_overlay_materials + 6> materials{};
+		materials[0] = systems::materials::find( settings::esp::cham_ids::outline_glow );
+		materials[1] = systems::materials::find( settings::esp::cham_ids::outline_glow_ignorez );
+		materials[2] = systems::materials::find( settings::esp::cham_ids::outlines );
+		materials[3] = systems::materials::find( settings::esp::cham_ids::outlines_ignorez );
+		materials[4] = systems::materials::find( settings::esp::cham_ids::glow );
+		materials[5] = systems::materials::find( settings::esp::cham_ids::glow_ignorez );
+		for ( auto i = 0; i < overlay_mat_count; ++i )
+			materials[i + 6] = this->m_overlay_materials[i].load( std::memory_order_acquire );
+		const auto material_end = materials.begin( ) + overlay_mat_count + 6;
+		std::sort( materials.begin( ), material_end );
 
-		std::vector<detail::mesh_primitive> sorted;
-		sorted.reserve( total );
-
-		for ( auto i = 0; i < total; ++i )
+		// Per-render-thread scratch preserves stable order without allocating
+		// stable_partition's temporary buffer on every sort callback.
+		thread_local std::vector<detail::mesh_primitive> normal;
+		thread_local std::vector<detail::mesh_primitive> overlays;
+		normal.clear( );
+		overlays.clear( );
+		bool needs_reorder{};
+		for ( std::uint32_t i = 0; i < count; ++i )
 		{
 			const auto primitive = memory::safe_read<detail::mesh_primitive>(
 				entries + static_cast<std::size_t>( i ) * detail::primitive_size );
-			if ( !primitive ) {
-				return;
+			if ( !primitive ) return;
+			const bool overlay = primitive->material && std::binary_search( materials.begin( ), material_end, primitive->material );
+			if ( overlay ) overlays.push_back( *primitive );
+			else
+			{
+				needs_reorder |= !overlays.empty( );
+				normal.push_back( *primitive );
 			}
-
-			sorted.push_back( *primitive );
 		}
 
-		const auto overlay_begin = std::stable_partition(
-			sorted.begin(), sorted.end(), [ this ]( const auto& primitive ) {
-				return !this->is_overlay_material( primitive.material );
-			} );
-		const auto overlay_count = static_cast<int>(
-			std::distance( overlay_begin, sorted.end() ) );
-
-		if ( overlay_count <= 0 || overlay_count >= total )
+		// Already partitioned, all-normal and all-overlay batches need no writes.
+		if ( !needs_reorder ) return;
+		for ( std::size_t i = 0; i < count; ++i )
 		{
-			return;
-		}
-
-		for ( auto i = 0; i < total; ++i )
-		{
+			const auto& primitive = i < normal.size( ) ? normal[i] : overlays[i - normal.size( )];
 			if ( !memory::safe_write<detail::mesh_primitive>(
-					entries + static_cast<std::size_t>( i ) * detail::primitive_size,
-					sorted[ i ] ) ) {
-				return;
-			}
+				entries + i * detail::primitive_size, primitive ) ) return;
 		}
 	}
 

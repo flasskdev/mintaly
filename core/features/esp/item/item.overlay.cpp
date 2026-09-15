@@ -16,15 +16,15 @@ namespace features::esp::item {
 
 		for ( const auto& item : systems::g_entities.get_by_type( systems::entities::type::item ) )
 		{
+			const auto group_id = this->get_item_group( item.schema_hash );
+			if ( !overlay_cfg.is_active( group_id ) ) continue;
 			const auto info = this->get_info( item );
 			if ( !info.valid( ) )
 			{
 				continue;
 			}
 
-			const auto group_id = this->get_item_group( info.schema_hash );
-
-			if ( !overlay_cfg.is_active( group_id ) || info.distance > overlay_cfg.get_group( group_id ).max_distance )
+			if ( info.distance > overlay_cfg.get_group( group_id ).max_distance )
 			{
 				continue;
 			}

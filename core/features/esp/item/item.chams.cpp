@@ -17,10 +17,13 @@ namespace features::esp::item {
 		}
 
 		const auto group_id = this->get_item_group( owner_hash );
-		if ( group_id == UINT32_MAX )
+		if ( group_id == UINT32_MAX || !chams_cfg.is_active( group_id ) )
 		{
 			return false;
 		}
+
+		const auto& cfg = chams_cfg.get_group( group_id );
+		if ( !cfg.enabled.value || ( !cfg.primary.enabled.value && !cfg.secondary.enabled.value ) ) return false;
 
 		if ( !owner_entity || owner_entity < 0x10000 )
 		{
@@ -41,17 +44,6 @@ namespace features::esp::item {
 			{
 				return false;
 			}
-		}
-
-		const auto& cfg = chams_cfg.get_group( group_id );
-		if ( !cfg.enabled.value )
-		{
-			return false;
-		}
-
-		if ( !cfg.primary.enabled.value && !cfg.secondary.enabled.value )
-		{
-			return false;
 		}
 
 		{
