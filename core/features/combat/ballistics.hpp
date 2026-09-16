@@ -60,6 +60,23 @@ namespace features::combat::ballistics {
         return static_cast<float>(hits) / static_cast<float>(count);
     }
 
+    // Monotone in hitchance for positive damage/health. Evaluating at 1.0
+    // therefore gives a conservative upper bound for target pruning.
+    [[nodiscard]] inline float target_score(float damage, int health, float hitchance,
+        float needed, bool no_spread, bool penetrated, bool center, int priority, float fov)
+    {
+        auto score = no_spread || hitchance >= needed ? 1000000.0f : 0.0f;
+        if (damage >= static_cast<float>(health))
+            score += 100000.0f + hitchance * 10000.0f;
+        else
+            score += damage * hitchance * 100.0f + damage * 5.0f;
+        score += penetrated ? 0.0f : 250.0f;
+        score += center ? 50.0f : 0.0f;
+        score += static_cast<float>(priority) * 2.0f;
+        score -= fov * 0.1f;
+        return score;
+    }
+
     // Engine-independent control flow: callbacks supply the real seed hash
     // and inverse-spread calculation. No RNG approximation or heap allocation.
     template <typename Angle, typename Seed, typename Correct>

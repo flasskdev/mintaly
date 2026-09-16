@@ -1,5 +1,6 @@
 #include <pch/pch.hpp>
 #include <cassert>
+#include <core/features/combat/ballistics.hpp>
 #include <utilities/threadpool/threadpool.hpp>
 #include <utilities/memory/memory.hpp>
 #include <utilities/addresses/addresses.hpp>
@@ -1107,30 +1108,8 @@ namespace features::combat {
             }
         }
 
-        constexpr auto top_k_per_record{ 8 };
-        auto cheap_score = [&](const scan_hit& h) -> float
-            {
-                const auto lethal_bonus = h.damage >= static_cast<float>(h.health) ? 100000.0f : 0.0f;
-                const auto direct_bonus = h.penetrated ? 0.0f : 5000.0f;
-                const auto center_bonus = h.is_center ? 2000.0f : 0.0f;
-                return lethal_bonus + direct_bonus + center_bonus + h.damage * 20.0f +
-                    static_cast<float>(hitgroup_priority(h.hitbox_index)) * 10.0f - h.fov;
-            };
-
-        for (auto& group : groups)
-        {
-            if (static_cast<int>(group.hit_indices.size()) <= top_k_per_record)
-                continue;
-
-            std::partial_sort
-            (
-                group.hit_indices.begin(),
-                group.hit_indices.begin() + top_k_per_record,
-                group.hit_indices.end(),
-                [&](int a, int b) { return cheap_score(hits[a]) > cheap_score(hits[b]); }
-            );
-            group.hit_indices.resize(top_k_per_record);
-        }
+        // Keep every valid hit; a damage-only top-eight shortlist can remove
+        // the sole point meeting hitchance. Prune by a score bound instead.
 
         // Select as we evaluate, preserving traversal order and tie-breaking
         // without an intermediate allocation or a second pass over the hits.
@@ -1140,6 +1119,19 @@ namespace features::combat {
         const auto needed_hc = config.hitchance_override.value ?
             static_cast<float>(config.hitchance_override_value) / 100.0f :
             static_cast<float>(config.hitchance) / 100.0f;
+
+        const auto score_for = [&](const scan_hit& hit, float hc)
+        {
+            return ballistics::target_score(hit.damage, hit.health, hc, needed_hc,
+                config.no_spread.value, hit.penetrated, hit.is_center,
+                hitgroup_priority(hit.hitbox_index), hit.fov);
+        };
+        const auto valid_hit = [](const scan_hit& hit)
+        {
+            return hit.health > 0 && std::isfinite(hit.damage) && hit.damage > 0.0f &&
+                std::isfinite(hit.fov) && ballistics::finite(hit.aim_angle) &&
+                ballistics::finite(hit.source_eye.position);
+        };
 
         struct hitchance_query
         {
@@ -1155,7 +1147,7 @@ namespace features::combat {
         if (!config.no_spread.value)
         {
             std::vector<hitchance_query> queries;
-            queries.reserve(groups.size() * top_k_per_record);
+            queries.reserve(hits.size());
             for (const auto& group : groups)
             {
                 if (!group.record || !group.record->valid)
@@ -1163,7 +1155,7 @@ namespace features::combat {
                 for (const auto idx : group.hit_indices)
                 {
                     const auto& h = hits[idx];
-                    if (!h.record || !h.record->valid || h.bone_index < 0 ||
+                    if (!valid_hit(h) || !h.record || !h.record->valid || h.bone_index < 0 ||
                         h.bone_index >= h.record->bone_count ||
                         h.bone_index >= static_cast<int>(std::size(h.record->bones)))
                         continue;
@@ -1179,27 +1171,24 @@ namespace features::combat {
             const auto cache = g_shared.build_spread_cache(eval_inaccuracy, aim_ctx.spread);
             const auto range = g_shared.ctx().range;
             hitchances.resize(hits.size());
-            const auto evaluate = [&](int begin, int end)
+            std::sort(queries.begin(), queries.end(), [&](const auto& a, const auto& b)
             {
-                for (auto i = begin; i < end; ++i)
-                {
-                    auto& query = queries[i];
-                    query.result = g_shared.calculate_hitchance(query.eye, query.angle,
-                        query.hitbox, query.bone, cache, range);
-                }
-            };
-            // Hitchance evaluation runs serially on the cached seeds with early bailout (fast and thread-safe)
-            evaluate(0, static_cast<int>(queries.size()));
-
-            // parallel_for joins before snapshots are destroyed or targets ranked.
-            for (const auto& query : queries)
+                const auto first = score_for(hits[a.hit_index], 1.0f);
+                const auto second = score_for(hits[b.hit_index], 1.0f);
+                return first != second ? first > second : a.hit_index < b.hit_index;
+            });
+            auto best_evaluated_score = -std::numeric_limits<float>::infinity();
+            for (auto& query : queries)
             {
-#ifndef NDEBUG
-                const auto reference = g_shared.calculate_hitchance(query.eye, query.angle,
+                const auto& hit = hits[query.hit_index];
+                // Preserve the final ranking's near-tie rule. No prefix-based
+                // hitchance estimate and no fixed shortlist can reject a winner.
+                if (score_for(hit, 1.0f) + 0.01f < best_evaluated_score)
+                    break;
+                query.result = g_shared.calculate_hitchance(query.eye, query.angle,
                     query.hitbox, query.bone, cache, range);
-                assert(query.result == reference);
-#endif
                 hitchances[query.hit_index] = query.result;
+                best_evaluated_score = std::max(best_evaluated_score, score_for(hit, query.result));
             }
         }
 
@@ -1211,27 +1200,13 @@ namespace features::combat {
             for (const auto idx : group.hit_indices)
             {
                 const auto& h = hits[idx];
-                if (!h.record || !h.record->valid || h.bone_index < 0 ||
+                if (!valid_hit(h) || !h.record || !h.record->valid || h.bone_index < 0 ||
                     h.bone_index >= h.record->bone_count ||
                     h.bone_index >= static_cast<int>(std::size(h.record->bones)))
                     continue;
 
                 const auto hc = config.no_spread.value ? 1.0f : hitchances[idx];
-
-                const auto hp = static_cast<float>(h.health);
-                const auto can_kill = h.damage >= hp;
-                const auto passes_hitchance = config.no_spread.value || hc >= needed_hc;
-
-                auto score = passes_hitchance ? 1000000.0f : 0.0f;
-                if (can_kill)
-                    score += 100000.0f + hc * 10000.0f;
-                else
-                    score += h.damage * hc * 100.0f + h.damage * 5.0f;
-
-                score += h.penetrated ? 0.0f : 250.0f;
-                score += h.is_center ? 50.0f : 0.0f;
-                score += static_cast<float>(hitgroup_priority(h.hitbox_index)) * 2.0f;
-                score -= h.fov * 0.1f;
+                const auto score = score_for(h, hc);
 
                 auto is_better = !best.valid || score > best.score;
                 if (best.valid && std::fabsf(score - best.score) < 0.01f)
