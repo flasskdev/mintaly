@@ -128,6 +128,11 @@ namespace features::esp::item {
 			info.name.erase( 0, 7 );
 		}
 
+		if ( info.name == "knife_t" || info.name == "knife_ct" )
+		{
+			info.name = "knife";
+		}
+
 		return info;
 	}
 
