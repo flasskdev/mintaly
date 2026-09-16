@@ -978,6 +978,17 @@ namespace features::combat {
                 cache.num_bullets = this->m_ctx.num_bullets;
                 cache.initialized = true;
 
+                if ( samples <= 0 || !std::isfinite( inaccuracy ) || inaccuracy < 0.0f ||
+                        !std::isfinite( spread ) || spread < 0.0f )
+                        return cache;
+
+                // Even a zero-spread shot must intersect the hitbox within weapon range.
+                if ( inaccuracy == 0.0f && spread == 0.0f )
+                {
+                        cache.count = 1;
+                        return cache;
+                }
+
                 const auto n = std::min( samples, static_cast< int >( cache.values.size( ) ) );
                 for ( auto i = 0; i < n; ++i )
                 {
@@ -990,24 +1001,16 @@ namespace features::combat {
 
         float shared::calculate_hitchance( const math::vector3& shoot_position, const math::vector3& aim_angle, const systems::hitboxes::entry& hitbox, const systems::bones::data& bone, float inaccuracy, float spread, int samples ) const
         {
-                const auto total = spread + inaccuracy;
-                if ( total < 0.0001f )
-                        return 1.0f;
-                if ( samples <= 0 )
-                        return 0.0f;
-
                 const auto cache = this->build_spread_cache( inaccuracy, spread, samples );
                 return this->calculate_hitchance( shoot_position, aim_angle, hitbox, bone, cache );
         }
 
         float shared::calculate_hitchance( const math::vector3& shoot_position, const math::vector3& aim_angle, const systems::hitboxes::entry& hitbox, const systems::bones::data& bone, const spread_cache& cache ) const
         {
-                if ( cache.count <= 0 )
+                if ( cache.count <= 0 || cache.count > static_cast< int >( cache.values.size( ) ) ||
+                        !std::isfinite( this->m_ctx.range ) || this->m_ctx.range <= 0.0f ||
+                        !std::isfinite( aim_angle.x ) || !std::isfinite( aim_angle.y ) || !std::isfinite( aim_angle.z ) )
                         return 0.0f;
-
-                const auto total = cache.spread + cache.inaccuracy;
-                if ( total < 0.0001f )
-                        return 1.0f;
 
                 const auto capsule_start = bone.rotation.rotate_vector( hitbox.mins ) + bone.position;
                 const auto capsule_end   = bone.rotation.rotate_vector( hitbox.maxs ) + bone.position;
@@ -1051,8 +1054,10 @@ namespace features::combat {
                 for ( auto i = 0; i < n; ++i )
                 {
                         const auto& sp       = cache.values[ i ];
+                        if ( !std::isfinite( sp.x ) || !std::isfinite( sp.y ) )
+                                continue;
                         const auto direction = forward + ( left * sp.x ) + ( up * sp.y );
-                        const auto ray_end   = direction.normalized( ) * 8192.0f;
+                        const auto ray_end   = direction.normalized( ) * this->m_ctx.range;
 
                         bool hit{ false };
                         if ( is_capsule )
