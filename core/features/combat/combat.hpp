@@ -105,8 +105,20 @@ namespace features::combat {
                                 float t_body;
                         };
 
+                        struct prepared_hitbox
+                        {
+                                systems::hitboxes::entry hitbox{};
+                                math::vector3 capsule_start{};
+                                math::vector3 capsule_end{};
+                                math::vector3 position{};
+                                math::quaternion inverse_rotation{};
+                        };
+
                         struct run_context
                         {
+                                // Prepared once per pose, reused by every multipoint ray.
+                                std::array<prepared_hitbox, 20> geometry{};
+                                int geometry_count{};
                                 std::uintptr_t target_pawn{};
                                 int target_armor{};
                                 int target_team{};
@@ -250,6 +262,7 @@ namespace features::combat {
                 // Worker overload: consumes snapshots only; never reads the live context.
                 [[nodiscard]] float calculate_hitchance( const math::vector3& shoot_position, const math::vector3& aim_angle, const systems::hitboxes::entry& hitbox, const systems::bones::data& bone, const spread_cache& cache, float range ) const;
                 [[nodiscard]] math::vector3 find_spread_correction( const math::vector3& aim_angle, int tick ) const;
+                [[nodiscard]] std::optional<math::vector3> solve_spread_correction( const math::vector3& aim_angle, int tick ) const;
                 [[nodiscard]] math::vector3 get_eye_position( std::uintptr_t local_pawn ) const;
                 [[nodiscard]] math::vector3 get_shoot_position( ) const;
                 [[nodiscard]] math::vector3 get_interpolated_shoot_position( std::uintptr_t local_pawn, bool newest = false ) const;
