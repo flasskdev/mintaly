@@ -3,161 +3,155 @@
 #include <core/systems/systems.hpp>
 #include <core/features/features.hpp>
 #include <core/settings.hpp>
-
 #include "../movement.hpp"
 #include <protection/game_addresses.hpp>
 
 namespace features::movement {
+    namespace {
+        [[nodiscard]] bool finite_vector(const math::vector3& value)
+        {
+            return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
+        }
 
-	namespace {
+        [[nodiscard]] std::optional<float> predict_landing_fraction(std::uintptr_t pawn,
+            std::uintptr_t movement_services, const systems::prediction::state& pre)
+        {
+            if (!finite_vector(pre.networked_origin) || !finite_vector(pre.networked_velocity) ||
+                !finite_vector(pre.collision_mins) || !finite_vector(pre.collision_maxs) ||
+                pre.collision_maxs.x <= pre.collision_mins.x ||
+                pre.collision_maxs.y <= pre.collision_mins.y ||
+                pre.collision_maxs.z <= pre.collision_mins.z ||
+                !PATTERN(patterns::trace_hull) || !PATTERN(patterns::trace_filter_set_collision))
+                return std::nullopt;
 
-		[[nodiscard]] std::optional<float> predict_landing_fraction(
-			std::uintptr_t local_pawn,
-			std::uintptr_t movement_services,
-			const systems::prediction::state& prestate,
-			bool holding_duck)
-		{
-			if (prestate.networked_velocity.z > 0.0f)
-			{
-				return std::nullopt;
-			}
+            const auto pawn_ptr = memory::read<std::uintptr_t>(movement_services + 56);
+            if (!pawn_ptr)
+                return std::nullopt;
+            auto mask = memory::read<std::uintptr_t>(pawn_ptr + 0xd48);
+            if (memory::read<std::uint32_t>(pawn_ptr + 0x3f8) & 0x10)
+                mask |= 0x20;
 
-			const auto duck_amount = memory::read<float>(movement_services + SCHEMA("CCSPlayer_MovementServices", "m_flDuckAmount"_hash));
-			const auto mins = memory::read<math::vector3>(local_pawn + SCHEMA("C_BaseModelEntity", "m_Collision"_hash) + SCHEMA("CCollisionProperty", "m_vecMins"_hash));
-			auto maxs = memory::read<math::vector3>(local_pawn + SCHEMA("C_BaseModelEntity", "m_Collision"_hash) + SCHEMA("CCollisionProperty", "m_vecMaxs"_hash));
+            const auto gravity_var = CONVAR("sv_gravity");
+            const auto normal_var = CONVAR("sv_standable_normal");
+            if (!gravity_var || !normal_var)
+                return std::nullopt;
+            const auto gravity = gravity_var->get<float>() * pre.gravity_scale;
+            const auto standable = normal_var->get<float>();
+            if (!std::isfinite(gravity) || gravity < 0.0f ||
+                !std::isfinite(standable) || standable <= 0.0f || standable > 1.0f)
+                return std::nullopt;
 
-			auto trace_origin = prestate.networked_origin;
-			if (holding_duck && duck_amount > 0.0f)
-			{
-				const auto standing_height{ 72.0f };
-				const auto duck_hull_diff = standing_height - maxs.z;
-				trace_origin.z -= duck_hull_diff * 0.5f;
-				maxs.z = standing_height;
-			}
+            const auto filter = systems::g_tracing.make_player_movement_filter(pawn, mask, 11);
+            // Use the actual captured hull. Expanding a crouched player to a
+            // standing hull falsely predicts contact with stair risers/ceilings.
+            const systems::tracing::bbox_collision hull{ pre.collision_mins, pre.collision_maxs };
+            auto origin = pre.networked_origin;
+            auto velocity = pre.networked_velocity;
+            velocity.z -= gravity * cstypes::tick_interval * 0.5f;
+            auto remaining = 1.0f;
+            auto elapsed = 0.0f;
 
-			auto trace_mask{ 0ull };
-			{
-				const auto pawn_ptr = memory::read<std::uintptr_t>(movement_services + 56);
-				trace_mask = memory::read<std::uintptr_t>(pawn_ptr + 0xd48);
+            for (auto bump = 0; bump < 4 && remaining > 0.0f; ++bump)
+            {
+                // Do not extend the trajectory downward by a ground-snap probe:
+                // its hit fraction is not a time fraction and fires jump early.
+                const auto end = origin + velocity * (remaining * cstypes::tick_interval);
+                const auto trace = systems::g_tracing.trace_player_bbox(origin, end, hull, filter, movement_services);
+                if (trace.all_solid || !std::isfinite(trace.fraction) || trace.fraction < 0.0f ||
+                    trace.fraction > 1.0f || !finite_vector(trace.normal) || !finite_vector(trace.end_pos))
+                    return std::nullopt;
+                if (trace.fraction == 1.0f)
+                    return std::nullopt;
+                if (trace.normal.length_sqr() < 0.5f)
+                    return std::nullopt;
 
-				if (!pawn_ptr || (memory::read<std::uint32_t>(pawn_ptr + 0x3f8) & 0x10))
-				{
-					trace_mask |= 0x20;
-				}
-			}
+                elapsed += remaining * trace.fraction;
+                remaining *= 1.0f - trace.fraction;
+                if (velocity.z <= 0.0f && trace.normal.z >= standable)
+                {
+                    // Contact at fraction zero is valid on slopes and stair
+                    // edges. Press just AFTER contact, never round it backward.
+                    const auto when = std::max(1.0f / 64.0f, std::nextafter(elapsed, 1.0f));
+                    return when < 1.0f ? std::optional<float>{ when } : std::nullopt;
+                }
 
-			const auto filter = systems::g_tracing.make_player_movement_filter(local_pawn, trace_mask, 11);
-			const auto sv_gravity = CONVAR("sv_gravity")->get<float>();
-			const auto sv_standable_normal = CONVAR("sv_standable_normal")->get<float>();
-			const auto gravity_scale = memory::read<float>(local_pawn + SCHEMA("C_BaseEntity", "m_flGravityScale"_hash));
+                // A riser/wall is not ground. Continue the remaining downward
+                // slide to find a subsequent floor contact within this tick.
+                const auto normal = trace.normal.normalized();
+                const auto into_plane = velocity.dot(normal);
+                if (into_plane >= -0.001f)
+                    return std::nullopt;
+                origin = trace.end_pos;
+                velocity -= normal * into_plane;
+            }
+            return std::nullopt;
+        }
 
-			auto velocity = prestate.networked_velocity;
-			velocity.z -= (gravity_scale * sv_gravity * cstypes::tick_interval) * 0.5f;
+        bool apply_landing_jump(proto::base_usercmd_pb* base, float when)
+        {
+            const auto moves = base->mutable_subtick_moves();
+            if (!moves)
+                return false;
+            const auto old_size = moves->m_current_size;
+            const auto release = systems::g_input.acquire_subtick_step(moves);
+            const auto press = release ? systems::g_input.acquire_subtick_step(moves) : nullptr;
+            if (!release || !press)
+            {
+                moves->m_current_size = old_size;
+                return false;
+            }
 
-			const math::vector3 trace_start = trace_origin;
-			math::vector3 trace_end{};
+            release->set_when(0.0f);
+            release->set_button(cstypes::command_buttons::in_jump);
+            release->set_pressed(false);
+            release->set_analog_forward_delta(0.0f);
+            release->set_analog_left_delta(0.0f);
+            press->set_when(when);
+            press->set_button(cstypes::command_buttons::in_jump);
+            press->set_pressed(true);
+            press->set_analog_forward_delta(0.0f);
+            press->set_analog_left_delta(0.0f);
+            return true;
+        }
+    }
 
-			trace_end.x = trace_origin.x + velocity.x * cstypes::tick_interval;
-			trace_end.y = trace_origin.y + velocity.y * cstypes::tick_interval;
-			trace_end.z = trace_origin.z + velocity.z * cstypes::tick_interval;
-			trace_end.z -= 2.0f;
+    void bhop::on_create_move(systems::input::usercmd* cmd) const
+    {
+        if (!cmd || !settings::g_movement.bhop.value)
+            return;
+        const auto autobhop = CONVAR("sv_autobunnyhopping");
+        if (autobhop && autobhop->get<bool>())
+            return;
+        if (!((cmd->buttons.value | cmd->buttons.value_scroll) & cstypes::command_buttons::in_jump))
+            return;
 
-			const auto result = systems::g_tracing.trace_player_bbox(trace_start, trace_end, { mins, maxs }, filter, movement_services);
-			if (result.fraction <= 0.0f || result.fraction >= 1.0f || result.normal.z < sv_standable_normal)
-			{
-				return std::nullopt;
-			}
+        const auto local = systems::g_local.get();
+        const auto& pre = systems::g_prediction.pre();
+        if (!local.is_alive || !local.pawn || !pre.movement_valid || pre.pawn != local.pawn)
+            return;
+        const auto move_type = memory::read<std::uint8_t>(local.pawn + SCHEMA("C_BaseEntity", "m_nActualMoveType"_hash));
+        if (move_type == cstypes::move_type::ladder || move_type == cstypes::move_type::noclip)
+            return;
+        if (pre.flags & cstypes::entity_flags::on_ground)
+            return;
 
-			return std::clamp(std::round(result.fraction * 64.0f) / 64.0f, 1.0f / 64.0f, 63.0f / 64.0f);
-		}
+        const auto base = cmd->csgo_user_cmd.mutable_base();
+        if (!base)
+            return;
+        cmd->buttons.value &= ~cstypes::command_buttons::in_jump;
+        cmd->buttons.value_changed |= cstypes::command_buttons::in_jump;
+        cmd->buttons.value_scroll &= ~cstypes::command_buttons::in_jump;
+        for (auto i = 0; i < base->subtick_moves_size(); ++i)
+        {
+            if (const auto step = base->mutable_subtick_moves(i))
+                step->set_button(step->button() & ~cstypes::command_buttons::in_jump);
+        }
 
-		void apply_landing_jump(proto::base_usercmd_pb* base, float when)
-		{
-			const auto subtick_moves = base->mutable_subtick_moves();
-			const auto release_when = std::clamp(when - 1.0f / 64.0f, 1.0f / 64.0f, 63.0f / 64.0f);
-
-			if (release_when < when)
-			{
-				if (const auto jump_up = systems::g_input.acquire_subtick_step(subtick_moves))
-				{
-					jump_up->set_button(cstypes::command_buttons::in_jump);
-					jump_up->set_pressed(false);
-					jump_up->set_when(release_when);
-					jump_up->set_analog_forward_delta(0.0f);
-					jump_up->set_analog_left_delta(0.0f);
-				}
-			}
-
-			if (const auto jump_down = systems::g_input.acquire_subtick_step(subtick_moves))
-			{
-				jump_down->set_button(cstypes::command_buttons::in_jump);
-				jump_down->set_pressed(true);
-				jump_down->set_when(when);
-				jump_down->set_analog_forward_delta(0.0f);
-				jump_down->set_analog_left_delta(0.0f);
-			}
-		}
-
-	} // namespace
-
-	void bhop::on_create_move(systems::input::usercmd* cmd) const
-	{
-		if (!settings::g_movement.bhop.value)
-		{
-			return;
-		}
-
-		if (CONVAR("sv_autobunnyhopping")->get<bool>())
-		{
-			return;
-		}
-
-		if (!(cmd->buttons.value & cstypes::command_buttons::in_jump))
-		{
-			return;
-		}
-
-		const auto local = systems::g_local.get();
-		if (!local.pawn)
-		{
-			return;
-		}
-
-		const auto move_type = memory::read<std::uint8_t>(local.pawn + SCHEMA("C_BaseEntity", "m_nActualMoveType"_hash));
-		if (move_type == cstypes::move_type::ladder || move_type == cstypes::move_type::noclip)
-		{
-			return;
-		}
-
-		const auto& prestate = systems::g_prediction.pre();
-		if (prestate.flags & cstypes::entity_flags::on_ground)
-		{
-			return;
-		}
-
-		cmd->buttons.value &= ~cstypes::command_buttons::in_jump;
-
-		const auto movement_services = memory::read<std::uintptr_t>(local.pawn + SCHEMA("C_BasePlayerPawn", "m_pMovementServices"_hash));
-		if (!movement_services)
-		{
-			return;
-		}
-
-		const auto holding_duck = (cmd->buttons.value & cstypes::command_buttons::in_duck) != 0;
-		const auto landing = predict_landing_fraction(local.pawn, movement_services, prestate, holding_duck);
-		if (!landing)
-		{
-			return;
-		}
-
-		const auto base = cmd->csgo_user_cmd.mutable_base();
-		if (!base)
-		{
-			return;
-		}
-
-
-		apply_landing_jump(base, *landing);
-	}
+        const auto movement_services = memory::read<std::uintptr_t>(local.pawn + SCHEMA("C_BasePlayerPawn", "m_pMovementServices"_hash));
+        if (!movement_services)
+            return;
+        if (const auto landing = predict_landing_fraction(local.pawn, movement_services, pre))
+            apply_landing_jump(base, *landing);
+    }
 
 } // namespace features::movement
