@@ -225,7 +225,7 @@ namespace features::combat {
                 [[nodiscard]] int& last_shoot_tick( ) { return this->m_last_shoot_tick; }
 
                 [[nodiscard]] std::uint32_t get_spread_seed( const math::vector3& angles, int tick ) const;
-                [[nodiscard]] math::vector2 calculate_spread( int seed, float accuracy, float spread, float recoil_index, int item_def_idx, int num_bullets ) const;
+                [[nodiscard]] math::vector2 calculate_spread( std::uint32_t seed, float accuracy, float spread, float recoil_index, int item_def_idx, int num_bullets ) const;
                 [[nodiscard]] math::vector3 get_aim_punch( std::uintptr_t local_pawn ) const;
                 struct spread_cache
                 {

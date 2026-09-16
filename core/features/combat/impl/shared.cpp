@@ -117,6 +117,7 @@ namespace features::combat {
         {
                 if ( !weapon_vdata || !weapon )
                 {
+                        this->m_weapon_data = {};
                         return;
                 }
 
@@ -169,19 +170,26 @@ namespace features::combat {
 
         bool shared::penetration::run( const math::vector3& start, const math::vector3& end, const run_context& ctx, std::uintptr_t local_pawn, int local_team, result& out ) const
         {
-                if ( this->m_weapon_data.damage <= 0.0f )
+                out = {};
+                if ( !std::isfinite( this->m_weapon_data.damage ) || this->m_weapon_data.damage <= 0.0f ||
+                        !std::isfinite( this->m_weapon_data.range ) || this->m_weapon_data.range <= 0.0f ||
+                        !std::isfinite( start.x ) || !std::isfinite( start.y ) || !std::isfinite( start.z ) ||
+                        !std::isfinite( end.x ) || !std::isfinite( end.y ) || !std::isfinite( end.z ) )
                 {
                         return false;
                 }
 
-                const auto direction = ( end - start ).normalized( );
+                const auto delta = end - start;
+                const auto distance_sq = delta.length_sqr( );
+                if ( !std::isfinite( distance_sq ) || distance_sq <= 0.0f )
+                        return false;
+
+                const auto direction = delta.normalized( );
                 const auto trace_delta = direction * this->m_weapon_data.range;
 
                 auto filter = systems::g_tracing.make_filter( local_pawn, 0x1c300b, 3, 15 );
-                // Rage scanning calls this hundreds of times in a frame. Reuse the large
-                // trace buffer per worker instead of allocating and freeing 7 KB per point.
+                // A single value-initialized stack buffer keeps traces independent.
                 systems::tracing::trace_data trace_storage{};
-                trace_storage = {};
                 auto* trace = &trace_storage;
                 trace->array_pointer = &trace->elements;
                 trace->hit_array_pointer = &trace->hit_elements;
@@ -284,9 +292,9 @@ namespace features::combat {
                 for ( auto i = 0; i < num_hits; ++i )
                 {
                         auto hit = reinterpret_cast< detail::bullet_trace_record* >( hit_array + i * sizeof( detail::bullet_trace_record ) );
-                        const auto damage = *reinterpret_cast< float* >( reinterpret_cast< std::uintptr_t >( hit ) + 8 );
+                        const auto damage = hit->damage_applied;
 
-                        if ( damage <= 0.0f )
+                        if ( !std::isfinite( damage ) || damage <= 0.0f )
                         {
                                 break;
                         }
@@ -327,6 +335,11 @@ namespace features::combat {
                         out.damage = damage;
 
                         this->scale_damage( out.hitgroup, ctx.target_armor, ctx.has_helmet, ctx.target_team, ctx.armor_ratio, ctx.headshot_multiplier, ctx.scales, out.damage );
+                        if ( !std::isfinite( out.damage ) || out.damage <= 0.0f )
+                        {
+                                out = {};
+                                return false;
+                        }
 
                         return true;
                 }
@@ -349,7 +362,6 @@ namespace features::combat {
 
                 auto filter = systems::g_tracing.make_filter( local.pawn, 0x1c300b, 3, 15 );
                 systems::tracing::trace_data trace_storage{};
-                trace_storage = {};
                 auto* trace = &trace_storage;
                 trace->array_pointer = &trace->elements;
                 trace->hit_array_pointer = &trace->hit_elements;
@@ -372,7 +384,7 @@ namespace features::combat {
                         auto hit = reinterpret_cast< detail::bullet_trace_record* >( hit_array + i * sizeof( detail::bullet_trace_record ) );
                         const auto damage = hit->damage_applied;
 
-                        if ( damage <= 0.0f )
+                        if ( !std::isfinite( damage ) || damage <= 0.0f )
                         {
                                 break;
                         }
@@ -1068,12 +1080,13 @@ namespace features::combat {
                 return memory::call<std::uint32_t>(PATTERN (patterns::get_tick_view_angles), nullptr, &angles, tick );
         }
 
-        math::vector2 shared::calculate_spread( int seed, float accuracy, float spread, float recoil_index, int item_def_idx, int num_bullets ) const
+        math::vector2 shared::calculate_spread( std::uint32_t seed, float accuracy, float spread, float recoil_index, int item_def_idx, int num_bullets ) const
         {
                 math::vector2 out{};
 
                 const auto fire_mode = this->quick_revolver_active( ) ? 1 : 0;
-                memory::call<void>(PATTERN (patterns::weapon_calculate_spread), static_cast< std::int16_t >( item_def_idx ), num_bullets, fire_mode, static_cast< std::uint32_t >( seed + 1 ), accuracy, spread, recoil_index, &out.x, &out.y );
+                // Match the engine's 32-bit wrapping seed without signed overflow.
+                memory::call<void>(PATTERN (patterns::weapon_calculate_spread), static_cast< std::int16_t >( item_def_idx ), num_bullets, fire_mode, seed + std::uint32_t{ 1 }, accuracy, spread, recoil_index, &out.x, &out.y );
 
                 return out;
         }
@@ -1214,6 +1227,8 @@ namespace features::combat {
                         const auto test_angles = math::vector3{ static_cast< float >( i ) / 2.0f, aim_angle.y, 0.0f };
                         const auto seed = this->get_spread_seed( test_angles, tick );
                         const auto spread = this->calculate_spread( seed, this->m_ctx.inaccuracy, this->m_ctx.spread, this->m_ctx.recoil_index, this->m_ctx.item_def_idx, this->m_ctx.num_bullets );
+                        if ( !std::isfinite( spread.x ) || !std::isfinite( spread.y ) )
+                                continue;
 
                         auto adj_angle = aim_angle;
                         adj_angle.x += math::helpers::rad_to_deg( std::atan( std::sqrt( spread.x * spread.x + spread.y * spread.y ) ) );
