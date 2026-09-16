@@ -538,11 +538,6 @@ inline bool sidebar(const xui::rect& r) {
 
     dl.push_clip(preview.x, preview.y, preview.w, preview.h);
 
-    // Soft grounding ambient floor glow under boots
-    const auto team_ambient = (team == 3 ? xdraw::color{75, 155, 255} : xdraw::color{240, 180, 65});
-    dl.circle_filled(preview.center_x(), preview.bottom() - 32.0f, preview.w * 0.36f, team_ambient.alpha(16));
-    dl.circle_filled(preview.center_x(), preview.bottom() - 32.0f, preview.w * 0.20f, team_ambient.alpha(28));
-
     // Mouse drag rotation & wheel zoom
     const auto& input = xui::ctx().input;
     const bool is_hovered = hovered(preview);

@@ -1449,6 +1449,7 @@ namespace settings {
                         int seed{};
                         bool stattrak{};
                         int stattrak_count{};
+                        std::string name_tag{};
 
                         bool operator==(const applied_skin&) const = default;
                 };
@@ -1496,7 +1497,8 @@ namespace settings {
                                                 { "w", s.wear },
                                                 { "s", s.seed },
                                                 { "t", s.stattrak },
-                                                { "c", s.stattrak_count }
+                                                { "c", s.stattrak_count },
+                                                { "n", skin_options::normalize_name_tag(s.name_tag) }
                                         };
                                 }
 
@@ -1542,6 +1544,9 @@ namespace settings {
                                                 s.seed = bounded_integer(it.value(), "s", 0, 1000);
                                                 s.stattrak = it.value().value("t", false);
                                                 s.stattrak_count = bounded_integer(it.value(), "c", 0, std::numeric_limits<int>::max());
+                                                const auto name = it.value().find("n");
+                                                if (name != it.value().end() && name->is_string())
+                                                        s.name_tag = skin_options::normalize_name_tag(name->get<std::string>());
                                                 data.emplace(static_cast<std::int16_t>(def), s);
                                         }
                                         catch (...) {}
