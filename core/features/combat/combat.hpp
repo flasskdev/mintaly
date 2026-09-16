@@ -526,7 +526,7 @@ namespace features::combat {
                 int m_revolver_cock_ticks{};
                 std::atomic<penetration_crosshair_state> m_penetration_crosshair_state{ penetration_crosshair_state::unavailable };
 
-                std::vector<shared::lagcomp::record> m_extrapolated_records{};
+                std::deque<shared::lagcomp::record> m_extrapolated_records{};
 
                 struct debug_point
                 {

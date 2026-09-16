@@ -306,7 +306,6 @@ namespace features::combat {
         out.reserve(players.size());
 
         const_cast<rage*>(this)->m_extrapolated_records.clear();
-        const_cast<rage*>(this)->m_extrapolated_records.reserve(players.size());
 
         for (const auto& p : players)
         {
@@ -388,6 +387,18 @@ namespace features::combat {
 
             out.push_back(c);
         }
+
+        if (out.size() > 1)
+        {
+            const auto shoot_pos = g_shared.get_shoot_position();
+            std::sort(out.begin(), out.end(), [&](const candidate& a, const candidate& b)
+            {
+                const auto pos_a = (a.record_count > 0 && a.records[0]) ? a.records[0]->origin : math::vector3{};
+                const auto pos_b = (b.record_count > 0 && b.records[0]) ? b.records[0]->origin : math::vector3{};
+                return (pos_a - shoot_pos).length_sqr() < (pos_b - shoot_pos).length_sqr();
+            });
+        }
+
         return out;
     }
 
@@ -788,15 +799,30 @@ namespace features::combat {
 
                 auto hits = this->scan_player(eye, inaccuracy, ctx, cand, cand.records[ri], local);
                 auto has_direct_hit = false;
+                auto has_lethal = false;
                 for (auto& hit : hits)
                 {
                     has_direct_hit = has_direct_hit || !hit.penetrated;
+                    has_lethal = has_lethal || (hit.damage >= static_cast<float>(cand.health));
                     flat.push_back(std::move(hit));
                 }
 
-                if (has_direct_hit)
+                if (has_direct_hit || has_lethal)
                     break;
             }
+
+            // If we found a direct lethal hit on this candidate, don't waste CPU scanning distant players
+            auto has_direct_lethal = false;
+            for (const auto& hit : flat)
+            {
+                if (!hit.penetrated && hit.damage >= static_cast<float>(cand.health))
+                {
+                    has_direct_lethal = true;
+                    break;
+                }
+            }
+            if (has_direct_lethal)
+                break;
         }
         return flat;
     }
@@ -870,23 +896,22 @@ namespace features::combat {
                 scan_order[scan_count++] = idx;
         }
 
-        struct trace_point
+        struct candidate_point
         {
             math::vector3 position;
             int hitbox_index;
             int bone_index;
             systems::hitboxes::entry hitbox;
             bool is_center;
+            math::vector3 aim_angle;
+            float fov;
         };
 
-        std::vector<trace_point> points;
-        points.reserve(static_cast<std::size_t>(scan_count) * 12);
-        // Reuse capacity across hitboxes instead of allocating for every one.
-        std::vector<math::vector3> multipoints;
-        multipoints.reserve(4);
+        std::vector<candidate_point> centers;
+        centers.reserve(static_cast<std::size_t>(scan_count));
         std::vector<debug_point> debug_points;
         if (config.debug_multipoints.value)
-            debug_points.reserve(static_cast<std::size_t>(scan_count) * 5);
+            debug_points.reserve(static_cast<std::size_t>(scan_count) * 4);
 
         for (auto idx = 0; idx < scan_count; ++idx)
         {
@@ -912,88 +937,38 @@ namespace features::combat {
             const auto hitbox_center = (hb->mins + hb->maxs) * 0.5f;
             const auto center = bone.rotation.rotate_vector(hitbox_center) + bone.position;
 
-            trace_point cp{};
-            cp.position = center;
-            cp.hitbox_index = hitbox_index;
-            cp.bone_index = hb->bone;
-            cp.hitbox = *hb;
-            cp.is_center = true;
-            const auto hitbox_points_begin = points.size();
-            points.push_back(cp);
+            const auto aim = math::helpers::calculate_angle(eye, center);
+            const auto fov = math::helpers::angle_distance(ctx.view_angles, aim);
+            if (fov > config.max_fov)
+                continue;
 
+            centers.push_back({ center, hitbox_index, hb->bone, *hb, true, aim, fov });
             if (config.debug_multipoints.value)
                 debug_points.push_back({ center, hitbox_index, true });
-
-            // Generate multipoints
-            if (config.pointscale > 0.0f)
-            {
-                this->generate_multipoints(*hb, center, bone.rotation, config.pointscale, eye, inaccuracy, multipoints);
-                for (const auto& mp : multipoints)
-                {
-                    // Scan order contains each hitbox once; earlier hitboxes
-                    // cannot be duplicates under the existing hitbox-index test.
-                    const auto duplicate = std::any_of(points.begin() + hitbox_points_begin, points.end(), [&](const trace_point& point)
-                        {
-                            return point.hitbox_index == hitbox_index && (point.position - mp).length_sqr() < 0.01f;
-                        });
-
-                    if (duplicate)
-                        continue;
-
-                    trace_point tp{};
-                    tp.position = mp;
-                    tp.hitbox_index = hitbox_index;
-                    tp.bone_index = hb->bone;
-                    tp.hitbox = *hb;
-                    tp.is_center = false;
-                    points.push_back(tp);
-
-                    if (config.debug_multipoints.value)
-                        debug_points.push_back({ mp, hitbox_index, false });
-                }
-            }
         }
 
-        if (!debug_points.empty())
-        {
-            // Publish once per pose, without locking against Present per point.
-            std::lock_guard lock(m_debug_mtx);
-            m_debug_points.insert(m_debug_points.end(), debug_points.begin(), debug_points.end());
-        }
-
-        if (points.empty())
+        if (centers.empty())
             return {};
 
         diag::set_exception_phase("rage: scan_player / penetration");
         std::vector<scan_hit> results;
-        results.reserve(static_cast<std::size_t>(scan_count) * 2);
+        results.reserve(centers.size() * 2);
         std::array<bool, 19> center_sufficient{};
+        auto impassable_centers = 0;
+        auto found_direct_lethal = false;
 
-        for (const auto& tp : points)
+        // Phase 1: Test all hitbox centers first
+        for (const auto& cp : centers)
         {
-            // Skip non-center points if center is already sufficient (lethal)
-            if (!tp.is_center && tp.hitbox_index >= 0 && tp.hitbox_index < static_cast<int>(center_sufficient.size()) && center_sufficient[tp.hitbox_index])
-                continue;
-
-            const auto aim = math::helpers::calculate_angle(eye, tp.position);
-            const auto fov = math::helpers::angle_distance(ctx.view_angles, aim);
-
-            if (fov > config.max_fov)
-                continue;
-
             shared::penetration::result pen{};
-            if (!g_shared.pen().run(eye, tp.position, pen_ctx, local.pawn, local.team, pen))
+            if (!g_shared.pen().run(eye, cp.position, pen_ctx, local.pawn, local.team, pen) || pen.damage <= 0.0f)
+            {
+                ++impassable_centers;
                 continue;
+            }
 
             if (pen.damage < cand.min_damage)
                 continue;
-
-            // Headshot specific check
-            if (!tp.is_center && tp.hitbox_index == 0)
-            {
-                if (pen.hitgroup != systems::g_hitboxes.hitgroup_from_hitbox(tp.hitbox_index))
-                    continue;
-            }
 
             const systems::hitboxes::entry* actual_hitbox = nullptr;
             for (const auto& entry : hitbox_set)
@@ -1007,18 +982,19 @@ namespace features::combat {
             if (!actual_hitbox || actual_hitbox->bone < 0 || actual_hitbox->bone >= bone_count)
                 continue;
 
-            // A nearer limb can intercept a ray aimed at another hitbox. Use
-            // the contacted geometry for hitchance and do not suppress that
-            // intended hitbox's multipoints based on an unrelated center hit.
-            const auto actual_center = tp.is_center && pen.hitbox == tp.hitbox_index;
-            if (actual_center && tp.hitbox_index >= 0 && tp.hitbox_index < static_cast<int>(center_sufficient.size()))
-                center_sufficient[tp.hitbox_index] = !pen.penetrated || pen.damage >= static_cast<float>(cand.health);
+            const auto actual_center = (pen.hitbox == cp.hitbox_index);
+            const auto is_lethal = (pen.damage >= static_cast<float>(cand.health));
+            if (actual_center && cp.hitbox_index >= 0 && cp.hitbox_index < static_cast<int>(center_sufficient.size()))
+                center_sufficient[cp.hitbox_index] = !pen.penetrated || is_lethal;
+
+            if (!pen.penetrated && is_lethal)
+                found_direct_lethal = true;
 
             scan_hit h{};
-            h.position = tp.position;
-            h.aim_angle = aim;
+            h.position = cp.position;
+            h.aim_angle = cp.aim_angle;
             h.damage = pen.damage;
-            h.fov = fov;
+            h.fov = cp.fov;
             h.hitbox_index = actual_hitbox->index;
             h.hitgroup = pen.hitgroup;
             h.bone_index = actual_hitbox->bone;
@@ -1029,6 +1005,84 @@ namespace features::combat {
             h.health = cand.health;
             h.record = record;
             results.push_back(h);
+        }
+
+        // Phase 2: Test multipoints only if pointscale > 0, not already lethal direct, and target is not fully impassable
+        if (config.pointscale > 0.0f && !found_direct_lethal && impassable_centers < static_cast<int>(centers.size()))
+        {
+            std::vector<math::vector3> multipoints;
+            multipoints.reserve(4);
+
+            for (const auto& cp : centers)
+            {
+                // Only generate multipoints on high-value torso and head hitboxes (skip limbs to maintain 150+ FPS)
+                if (cp.hitbox_index != 0 && cp.hitbox_index != 2 && cp.hitbox_index != 3 && cp.hitbox_index != 4 && cp.hitbox_index != 6)
+                    continue;
+
+                if (cp.hitbox_index >= 0 && cp.hitbox_index < static_cast<int>(center_sufficient.size()) && center_sufficient[cp.hitbox_index])
+                    continue;
+
+                const auto& bone = skeleton[cp.bone_index];
+                this->generate_multipoints(cp.hitbox, cp.position, bone.rotation, config.pointscale, eye, inaccuracy, multipoints);
+
+                for (const auto& mp : multipoints)
+                {
+                    const auto aim = math::helpers::calculate_angle(eye, mp);
+                    const auto fov = math::helpers::angle_distance(ctx.view_angles, aim);
+                    if (fov > config.max_fov)
+                        continue;
+
+                    shared::penetration::result pen{};
+                    if (!g_shared.pen().run(eye, mp, pen_ctx, local.pawn, local.team, pen))
+                        continue;
+
+                    if (pen.damage < cand.min_damage)
+                        continue;
+
+                    if (cp.hitbox_index == 0 && pen.hitgroup != systems::g_hitboxes.hitgroup_from_hitbox(0))
+                        continue;
+
+                    const systems::hitboxes::entry* actual_hitbox = nullptr;
+                    for (const auto& entry : hitbox_set)
+                    {
+                        if (entry.index == pen.hitbox)
+                        {
+                            actual_hitbox = &entry;
+                            break;
+                        }
+                    }
+                    if (!actual_hitbox || actual_hitbox->bone < 0 || actual_hitbox->bone >= bone_count)
+                        continue;
+
+                    if (config.debug_multipoints.value)
+                        debug_points.push_back({ mp, cp.hitbox_index, false });
+
+                    scan_hit h{};
+                    h.position = mp;
+                    h.aim_angle = aim;
+                    h.damage = pen.damage;
+                    h.fov = fov;
+                    h.hitbox_index = actual_hitbox->index;
+                    h.hitgroup = pen.hitgroup;
+                    h.bone_index = actual_hitbox->bone;
+                    h.hitbox = *actual_hitbox;
+                    h.is_center = false;
+                    h.penetrated = pen.penetrated;
+                    h.pawn = cand.pawn;
+                    h.health = cand.health;
+                    h.record = record;
+                    results.push_back(h);
+
+                    if (pen.damage >= static_cast<float>(cand.health))
+                        break;
+                }
+            }
+        }
+
+        if (!debug_points.empty())
+        {
+            std::lock_guard lock(m_debug_mtx);
+            m_debug_points.insert(m_debug_points.end(), debug_points.begin(), debug_points.end());
         }
 
         return results;
@@ -1161,11 +1215,8 @@ namespace features::combat {
                         query.hitbox, query.bone, cache, range);
                 }
             };
-            // Small/zero-spread workloads stay serial to avoid dispatch overhead.
-            if (cache.count > 1 && queries.size() > 8)
-                threadpool::parallel_for(0, static_cast<int>(queries.size()), evaluate, 8);
-            else
-                evaluate(0, static_cast<int>(queries.size()));
+            // Hitchance evaluation runs serially on the cached seeds with early bailout (fast and thread-safe)
+            evaluate(0, static_cast<int>(queries.size()));
 
             // parallel_for joins before snapshots are destroyed or targets ranked.
             for (const auto& query : queries)
@@ -1795,78 +1846,45 @@ namespace features::combat {
         math::helpers::angle_vectors_left(ang, nullptr, &left, &up);
         const auto right = math::vector3{ -left.x, -left.y, -left.z };
 
-        // Trace from outside through center to find real capsule surface
-        const auto surface_point = [&](const math::vector3& direction) -> math::vector3
+        const auto scaled_offset = [&](const math::vector3& direction) -> math::vector3
+        {
+            if (hitbox.radius > 0.001f)
             {
-                const auto dir = direction.normalized();
-                if (hitbox.radius > 0.001f)
-                {
-                    const auto reach = (capsule_b - capsule_a).length() + hitbox.radius * 2.0f + 1.0f;
-                    const auto origin = center + dir * reach;
-                    const auto delta = dir * (reach * -2.0f);
-                    auto fraction{ 1.0f };
-                    if (g_shared.ray_vs_capsule(origin, delta, capsule_a, capsule_b, hitbox.radius, fraction))
-                        return origin + delta * fraction;
-                }
-                else
-                {
-                    // Box hitbox intersection
-                    auto inverse = bone_rot;
-                    inverse.x = -inverse.x;
-                    inverse.y = -inverse.y;
-                    inverse.z = -inverse.z;
-                    const auto local_dir = inverse.rotate_vector(dir);
-                    const auto extents = (hitbox.maxs - hitbox.mins) * 0.5f;
-                    auto distance = 8192.0f;
-                    if (std::fabs(local_dir.x) > 1.0e-6f) distance = std::min(distance, std::fabs(extents.x / local_dir.x));
-                    if (std::fabs(local_dir.y) > 1.0e-6f) distance = std::min(distance, std::fabs(extents.y / local_dir.y));
-                    if (std::fabs(local_dir.z) > 1.0e-6f) distance = std::min(distance, std::fabs(extents.z / local_dir.z));
-                    if (distance < 8192.0f)
-                        return center + dir * distance;
-                }
-                return center;
-            };
-
-        const auto scaled_surface = [&](const math::vector3& direction)
-            {
-                const auto surface = surface_point(direction);
-                return center + (surface - center) * scale;
-            };
+                return center + direction * (hitbox.radius * scale);
+            }
+            auto inverse = bone_rot;
+            inverse.x = -inverse.x;
+            inverse.y = -inverse.y;
+            inverse.z = -inverse.z;
+            const auto local_dir = inverse.rotate_vector(direction);
+            const auto extents = (hitbox.maxs - hitbox.mins) * 0.5f;
+            auto distance = 8192.0f;
+            if (std::fabs(local_dir.x) > 1.0e-6f) distance = std::min(distance, std::fabs(extents.x / local_dir.x));
+            if (std::fabs(local_dir.y) > 1.0e-6f) distance = std::min(distance, std::fabs(extents.y / local_dir.y));
+            if (std::fabs(local_dir.z) > 1.0e-6f) distance = std::min(distance, std::fabs(extents.z / local_dir.z));
+            if (distance < 8192.0f)
+                return center + direction * (distance * scale);
+            return center;
+        };
 
         switch (hitbox.index)
         {
         case 0: // Head
-            out.reserve(4);
-            out.push_back(scaled_surface(right));
-            out.push_back(scaled_surface(-right));
-            out.push_back(scaled_surface(up));
-            out.push_back(scaled_surface(-up));
+            out.reserve(2);
+            out.push_back(scaled_offset(up));
+            out.push_back(scaled_offset(right));
             break;
         case 2: case 3: // Stomach/Pelvis
             out.reserve(2);
-            out.push_back(scaled_surface(right));
-            out.push_back(scaled_surface(-right));
+            out.push_back(scaled_offset(right));
+            out.push_back(scaled_offset(-right));
             break;
         case 4: case 5: case 6: // Chest
-            out.reserve(3);
-            out.push_back(scaled_surface(right));
-            out.push_back(scaled_surface(-right));
-            if (hitbox.index == 6)
-                out.push_back(scaled_surface(up));
-            break;
-        case 7: case 8: case 9: case 10: case 11: case 12: // Legs/Feet
             out.reserve(2);
-            out.push_back(capsule_a);
-            out.push_back(capsule_b);
-            break;
-        case 13: case 14: case 15: case 16: case 17: case 18: // Arms
-            out.reserve(1);
-            out.push_back(capsule_b);
+            out.push_back(scaled_offset(right));
+            out.push_back(scaled_offset(-right));
             break;
         default:
-            out.reserve(2);
-            out.push_back(scaled_surface(right));
-            out.push_back(scaled_surface(-right));
             break;
         }
     }

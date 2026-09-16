@@ -1195,6 +1195,11 @@ namespace features::combat {
 
                 for ( auto i = 0; i < n; ++i )
                 {
+                        if ( i == 32 && hits == 0 )
+                                return 0.0f;
+                        if ( i == 64 && hits < 4 )
+                                return static_cast< float >( hits ) / static_cast< float >( n );
+
                         const auto& sp       = cache.values[ i ];
                         if ( !std::isfinite( sp.x ) || !std::isfinite( sp.y ) )
                                 continue;
@@ -1227,9 +1232,19 @@ namespace features::combat {
 
         math::vector3 shared::find_spread_correction( const math::vector3& aim_angle, int tick ) const
         {
-                for ( auto i = 0; i < 720; i++ )
+                if ( this->m_ctx.inaccuracy <= 0.0001f && this->m_ctx.spread <= 0.0001f )
+                        return aim_angle;
+
+                static int s_last_tick = -1;
+                static math::vector3 s_last_in{};
+                static math::vector3 s_last_out{};
+
+                if ( tick == s_last_tick && ( aim_angle - s_last_in ).length_sqr( ) < 0.0001f )
+                        return s_last_out;
+
+                for ( auto i = 0; i < 240; i++ )
                 {
-                        const auto test_angles = math::vector3{ static_cast< float >( i ) / 2.0f, aim_angle.y, 0.0f };
+                        const auto test_angles = math::vector3{ static_cast< float >( i ) * 1.5f, aim_angle.y, 0.0f };
                         const auto seed = this->get_spread_seed( test_angles, tick );
                         const auto spread = this->calculate_spread( seed, this->m_ctx.inaccuracy, this->m_ctx.spread, this->m_ctx.recoil_index, this->m_ctx.item_def_idx, this->m_ctx.num_bullets );
                         if ( !std::isfinite( spread.x ) || !std::isfinite( spread.y ) )
@@ -1241,10 +1256,16 @@ namespace features::combat {
 
                         if ( this->get_spread_seed( adj_angle, tick ) == seed )
                         {
+                                s_last_tick = tick;
+                                s_last_in = aim_angle;
+                                s_last_out = adj_angle;
                                 return adj_angle;
                         }
                 }
 
+                s_last_tick = tick;
+                s_last_in = aim_angle;
+                s_last_out = {};
                 return {};
         }
 
