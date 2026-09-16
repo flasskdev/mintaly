@@ -10,9 +10,7 @@ namespace systems {
 
 	bool events::initialize( )
 	{
-		// Resolve hot-path function addresses on the existing initialization
-		// thread, before listeners can receive the first shot/hurt event.
-		// This only resolves addresses; it does not call game/audio functions.
+		// Resolve hot-path addresses before listeners receive their first event.
 		const protection::addresses::address_t* const hot_patterns[] =
 		{
 			&patterns::game_event_get_controller,
@@ -50,42 +48,19 @@ namespace systems {
 			"event signature warmup: %zu/%zu resolved in %.2f ms",
 			resolved, sizeof( hot_patterns ) / sizeof( hot_patterns[ 0 ] ), warmup_ms );
 
-		if ( !register_listener( xs( "bullet_impact" ), [ ]( void* event ) { features::misc::g_impacts.on_bullet_impact( reinterpret_cast< std::uintptr_t >( event ) ); } ) )
+		const bool registered =
+			register_listener( xs( "bullet_impact" ), [ ]( void* event ) { features::misc::g_impacts.on_bullet_impact( reinterpret_cast<std::uintptr_t>( event ) ); } ) &&
+			register_listener( xs( "player_hurt" ), [ ]( void* event ) { features::misc::g_impacts.on_player_hurt( reinterpret_cast<std::uintptr_t>( event ) ); } ) &&
+			register_listener( xs( "round_start" ), [ ]( void* event ) { features::misc::g_other.on_round_start( ); } ) &&
+			register_listener( xs( "player_death" ), [ ]( void* event ) { features::misc::g_other.on_player_death( reinterpret_cast<std::uintptr_t>( event ) ); } ) &&
+			register_listener( xs( "vote_cast" ), [ ]( void* event ) { features::misc::g_vote_logs.on_vote_cast( reinterpret_cast<std::uintptr_t>( event ) ); } ) &&
+			register_listener( xs( "vote_failed" ), [ ]( void* event ) { features::misc::g_vote_logs.on_vote_failed_event( reinterpret_cast<std::uintptr_t>( event ) ); } ) &&
+			register_listener( xs( "round_mvp" ), [ ]( void* event ) { features::changer::g_music.on_round_mvp( event ); } );
+		if ( !registered )
 		{
-			return false;
+			shutdown( );
 		}
-
-		if ( !register_listener( xs( "player_hurt" ), [ ]( void* event ) { features::misc::g_impacts.on_player_hurt( reinterpret_cast< std::uintptr_t >( event ) ); } ) )
-		{
-			return false;
-		}
-
-		if ( !register_listener( xs( "round_start" ), [ ]( void* event ) { features::misc::g_other.on_round_start( ); } ) )
-		{
-			return false;
-		}
-
-		if ( !register_listener( xs( "player_death" ), [ ]( void* event ) { features::misc::g_other.on_player_death( reinterpret_cast< std::uintptr_t >( event ) ); } ) )
-		{
-			return false;
-		}
-
-		if ( !register_listener( xs( "vote_cast" ), [ ]( void* event ) { features::misc::g_vote_logs.on_vote_cast( reinterpret_cast< std::uintptr_t >( event ) ); } ) )
-		{
-			return false;
-		}
-
-		if ( !register_listener( xs( "vote_failed" ), [ ]( void* event ) { features::misc::g_vote_logs.on_vote_failed_event( reinterpret_cast< std::uintptr_t >( event ) ); } ) )
-		{
-			return false;
-		}
-
-		if ( !register_listener( xs( "round_mvp" ), [ ]( void* event ) { features::changer::g_music.on_round_mvp( event ); } ) )
-		{
-			return false;
-		}
-
-		return true;
+		return registered;
 	}
 
 	void events::shutdown( )
@@ -98,7 +73,6 @@ namespace systems {
 				entry->registered = false;
 			}
 		}
-
 		m_listeners.clear( );
 	}
 
@@ -111,17 +85,19 @@ namespace systems {
 
 		auto current_entry = std::make_unique<entry>( );
 		current_entry->handler = handler;
+		// Own the name: xs() may return storage in a temporary xor string.
 		current_entry->name = event_name;
 		current_entry->registered = false;
-
 		current_entry->vtable_data[ 0 ] = nullptr;
-		current_entry->vtable_data[ 1 ] = reinterpret_cast< void* >( &fire_event );
-		current_entry->vtable_data[ 2 ] = reinterpret_cast< void* >( &get_debug_id );
-
+		current_entry->vtable_data[ 1 ] = reinterpret_cast<void*>( &fire_event );
+		current_entry->vtable_data[ 2 ] = reinterpret_cast<void*>( &get_debug_id );
 		current_entry->listener.vtable = current_entry->vtable_data;
-		current_entry->listener.debug_id = static_cast< int >( m_listeners.size( ) + 1 );
+		current_entry->listener.debug_id = static_cast<int>( m_listeners.size( ) + 1 );
 
-		const auto success = memory::call_vfunc<bool>( addresses::globals::game_event_manager, 3, &current_entry->listener, event_name, false );
+		// Allocate vector storage before publishing the listener to the engine.
+		m_listeners.reserve( m_listeners.size( ) + 1 );
+		const auto success = memory::call_vfunc<bool>( addresses::globals::game_event_manager, 3,
+			&current_entry->listener, current_entry->name.c_str( ), false );
 		if ( !success )
 		{
 			return false;
@@ -129,7 +105,6 @@ namespace systems {
 
 		current_entry->registered = true;
 		m_listeners.push_back( std::move( current_entry ) );
-
 		return true;
 	}
 
@@ -139,10 +114,9 @@ namespace systems {
 		{
 			return;
 		}
-
 		for ( auto it = m_listeners.begin( ); it != m_listeners.end( ); ++it )
 		{
-			if ( std::strcmp( ( *it )->name, event_name ) == 0 && ( *it )->registered )
+			if ( ( *it )->name == event_name && ( *it )->registered )
 			{
 				memory::call_vfunc<void>( addresses::globals::game_event_manager, 5, &( *it )->listener );
 				( *it )->registered = false;
@@ -154,24 +128,26 @@ namespace systems {
 
 	void* __fastcall events::fire_event( void* self, void* event )
 	{
-		const auto current_listener = reinterpret_cast< listener* >( self );
-
+		if ( !self || !event )
+		{
+			return nullptr;
+		}
+		diag::exception_scope scope{ "game event callback" };
 		for ( const auto& entry : m_listeners )
 		{
-			if ( entry->listener.debug_id == current_listener->debug_id && entry->handler )
+			// Debug IDs can be reused after removal; listener addresses cannot.
+			if ( &entry->listener == self && entry->registered && entry->handler )
 			{
 				entry->handler( event );
 				break;
 			}
 		}
-
 		return nullptr;
 	}
 
 	int __fastcall events::get_debug_id( void* self )
 	{
-		const auto current_listener = reinterpret_cast< listener* >( self );
-		return current_listener->debug_id;
+		return self ? static_cast<listener*>( self )->debug_id : 0;
 	}
 
 	std::uintptr_t events::get_controller( void* event, const char* key_name )
@@ -181,97 +157,15 @@ namespace systems {
 			return 0;
 		}
 
-		auto ent_to_controller = []( std::uintptr_t ent ) -> std::uintptr_t
+		// The accessor already returns a controller. Reading pawn fields here
+		// is type confusion, not a valid way to identify an entity's class.
+		const auto key = cstypes::event_hash{ key_name };
+		const auto fn = PATTERN( patterns::game_event_get_controller );
+		if ( fn )
 		{
-			if ( !ent ) return 0;
-			// 1. If ent has m_hPawn, it is already a controller!
-			const auto pawn_handle = memory::read<std::uint32_t>( ent + SCHEMA( "CBasePlayerController", "m_hPawn"_hash ) );
-			if ( pawn_handle && pawn_handle != 0xFFFFFFFF )
-			{
-				return ent;
-			}
-			// 2. If ent has m_hController, it is a pawn: resolve its controller
-			const auto ctrl_handle = memory::read<std::uint32_t>( ent + SCHEMA( "C_BasePlayerPawn", "m_hController"_hash ) );
-			if ( ctrl_handle && ctrl_handle != 0xFFFFFFFF )
-			{
-				const auto ctrl = systems::g_entities.lookup( ctrl_handle );
-				if ( ctrl ) return ctrl;
-			}
-			return ent;
-		};
-
-		const auto vtable = *reinterpret_cast<void***>( event );
-
-		// 1. Direct virtual call to event vtable[16] (0x80 / 8 = GetPlayerController)
-		if ( vtable && vtable[ 16 ] )
-		{
-			using fn_t = std::uintptr_t( __fastcall* )( void*, const void* );
-			const auto fn = reinterpret_cast<fn_t>( vtable[ 16 ] );
-			const auto key = cstypes::event_hash{ key_name };
-			const auto ent = fn( event, &key );
-			if ( ent )
-			{
-				return ent_to_controller( ent );
-			}
+			return memory::call<std::uintptr_t>( fn, event, &key );
 		}
-
-		// 2. Pattern call (game_event_get_controller, vtable[16])
-		const auto pat_fn = PATTERN( patterns::game_event_get_controller );
-		if ( pat_fn )
-		{
-			const auto key = cstypes::event_hash{ key_name };
-			const auto ent = memory::call<std::uintptr_t>( pat_fn, event, &key );
-			if ( ent )
-			{
-				return ent_to_controller( ent );
-			}
-		}
-
-		// 3. Fallback: virtual call to event vtable[17] (GetPlayerPawn), then resolve controller
-		if ( vtable && vtable[ 17 ] )
-		{
-			using fn_t = std::uintptr_t( __fastcall* )( void*, const void* );
-			const auto fn = reinterpret_cast<fn_t>( vtable[ 17 ] );
-			const auto key = cstypes::event_hash{ key_name };
-			const auto ent = fn( event, &key );
-			if ( ent )
-			{
-				return ent_to_controller( ent );
-			}
-		}
-
-		// 4. Fallback: integer lookup (e.g. "userid", "attacker", "entityid", "id")
-		const auto pat_get_int = PATTERN( patterns::game_event_get_int );
-		if ( pat_get_int )
-		{
-			const auto id = memory::call<int>( pat_get_int, event, key_name, -1 );
-			if ( id >= 0 )
-			{
-				// Check as 0-based slot (0..64)
-				if ( id < 64 )
-				{
-					auto ctrl = systems::g_entities.get_by_index( id + 1 );
-					if ( ctrl )
-					{
-						return ent_to_controller( ctrl );
-					}
-					ctrl = systems::g_entities.get_by_index( id );
-					if ( ctrl )
-					{
-						return ent_to_controller( ctrl );
-					}
-				}
-
-				// Check as entity handle
-				const auto ent = systems::g_entities.lookup( static_cast<std::uint32_t>( id ) );
-				if ( ent )
-				{
-					return ent_to_controller( ent );
-				}
-			}
-		}
-
-		return 0;
+		return memory::call_vfunc<std::uintptr_t>( reinterpret_cast<std::uintptr_t>( event ), 16, &key );
 	}
 
 	std::uintptr_t events::get_pawn( void* event, const char* key_name )
@@ -281,60 +175,25 @@ namespace systems {
 			return 0;
 		}
 
-		auto ent_to_pawn = []( std::uintptr_t ent ) -> std::uintptr_t
+		const auto key = cstypes::event_hash{ key_name };
+		const auto fn = PATTERN( patterns::game_event_get_pawn );
+		const auto pawn = fn
+			? memory::call<std::uintptr_t>( fn, event, &key )
+			: memory::call_vfunc<std::uintptr_t>( reinterpret_cast<std::uintptr_t>( event ), 17, &key );
+		if ( pawn )
 		{
-			if ( !ent ) return 0;
-			// 1. If ent has m_hController, it's ALREADY a pawn!
-			const auto ctrl_handle = memory::read<std::uint32_t>( ent + SCHEMA( "C_BasePlayerPawn", "m_hController"_hash ) );
-			if ( ctrl_handle && ctrl_handle != 0xFFFFFFFF )
-			{
-				return ent;
-			}
-			// 2. If ent has m_hPawn, it's a controller; resolve the pawn!
-			const auto pawn_handle = memory::read<std::uint32_t>( ent + SCHEMA( "CBasePlayerController", "m_hPawn"_hash ) );
-			if ( pawn_handle && pawn_handle != 0xFFFFFFFF )
-			{
-				const auto pawn = systems::g_entities.lookup( pawn_handle );
-				if ( pawn ) return pawn;
-			}
-			return ent;
-		};
-
-		const auto vtable = *reinterpret_cast<void***>( event );
-
-		// 1. Direct virtual call to event vtable[17] (0x88 / 8 = GetPlayerPawn)
-		if ( vtable && vtable[ 17 ] )
-		{
-			using fn_t = std::uintptr_t( __fastcall* )( void*, const void* );
-			const auto fn = reinterpret_cast<fn_t>( vtable[ 17 ] );
-			const auto key = cstypes::event_hash{ key_name };
-			const auto ent = fn( event, &key );
-			if ( ent )
-			{
-				return ent_to_pawn( ent );
-			}
+			return pawn;
 		}
 
-		// 2. Direct pattern fallback for game_event_get_pawn
-		const auto pat_pawn = PATTERN( patterns::game_event_get_pawn );
-		if ( pat_pawn )
+		// A death event may arrive after m_hPawn switched to an observer pawn.
+		const auto controller = get_controller( event, key_name );
+		const auto offset = SCHEMA( "CCSPlayerController", "m_hPlayerPawn"_hash );
+		if ( !controller || !offset )
 		{
-			const auto key = cstypes::event_hash{ key_name };
-			const auto ent = memory::call<std::uintptr_t>( pat_pawn, event, &key );
-			if ( ent )
-			{
-				return ent_to_pawn( ent );
-			}
+			return 0;
 		}
-
-		// 3. Fallback: resolve via get_controller
-		const auto ctrl = get_controller( event, key_name );
-		if ( ctrl )
-		{
-			return ent_to_pawn( ctrl );
-		}
-
-		return 0;
+		const auto handle = memory::safe_read<std::uint32_t>( controller + offset ).value_or( 0 );
+		return g_entities.lookup( handle );
 	}
 
 } // namespace systems

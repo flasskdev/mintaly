@@ -64,7 +64,7 @@ namespace systems {
 			listener listener;
 			void* vtable_data[ 3 ];
 			handler_fn handler;
-			const char* name;
+			std::string name;
 			bool registered;
 		};
 

@@ -168,6 +168,7 @@ namespace hooks {
 
 	HRESULT __fastcall cheat::present( IDXGISwapChain* thisptr, UINT sync_interval, UINT flags )
 	{
+		diag::exception_scope scope{ "present" };
 		if ( lifecycle::is_unloading( ) )
 		{
 			return m_present.call<HRESULT>( thisptr, sync_interval, flags );
@@ -348,6 +349,7 @@ namespace hooks {
 
 	void __fastcall cheat::frame_stage_notify( std::uintptr_t thisptr, int stage )
 	{
+		diag::exception_scope scope{ "frame_stage_notify" };
 		if ( lifecycle::is_unloading( ) )
 		{
 			m_frame_stage_notify.call<void>( thisptr, stage );
@@ -418,7 +420,6 @@ namespace hooks {
 				features::world::g_weather.on_frame_stage_notify( );
 				features::world::g_smoke.on_frame_stage_notify( );
 				features::misc::g_other.on_frame_stage_notify( );
-				features::misc::g_impacts.on_frame_stage_notify( );
 			}
 		}
 
@@ -447,6 +448,12 @@ namespace hooks {
 		if ( is_level_shutting_down( ) )
 		{
 			return;
+		}
+
+		// Process impacts after event dispatch, even when no camera is available.
+		if ( stage == 7 )
+		{
+			features::misc::g_impacts.on_frame_stage_notify( );
 		}
 
 		// The current frame's world-to-projection matrix is published by the

@@ -110,7 +110,7 @@ namespace diag {
 
 	inline minidump_write_fn g_minidump_write{};
 	inline volatile LONG g_crash_claimed{};
-	inline volatile bool g_writing_minidump{};
+	inline std::atomic_bool g_writing_minidump{};
 
 	struct crash_report_request
 	{
@@ -766,6 +766,9 @@ namespace diag {
 			&g_crash_request.pointers,
 			g_crash_request.stage,
 			g_crash_request.fault_thread_id );
+		// Release even if the waiting thread has already timed out. Only the
+		// worker knows when the shared request is no longer in use.
+		InterlockedExchange( &g_crash_claimed, 0 );
 		return 0;
 	}
 
@@ -817,10 +820,7 @@ namespace diag {
 			CloseHandle( thread );
 			if ( wait_result == WAIT_OBJECT_0 )
 			{
-				// A first-chance exception can be handled by the game. Allow a
-				// later, fatal exception to replace its report once the worker exits.
-				InterlockedExchange( &g_crash_claimed, 0 );
-				return;
+	
 			}
 
 			// Keep the claim while a timed-out worker may still use the request.
