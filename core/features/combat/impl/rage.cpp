@@ -156,18 +156,21 @@ namespace features::combat {
         out.velocity = prestate.velocity;
         out.spread = g_shared.get_spread();
         out.predicted_inaccuracy = g_shared.get_inaccuracy(true);
+        auto recoil_index = ctx.recoil_index;
 
-        // Simulate to get accurate post-shot state
+        // Keep spread, inaccuracy and recoil from the same simulated weapon state.
         systems::g_prediction.simulate(cmd, local, [&]
             {
                 g_shared.sh().snapshot(local.pawn, ctx.weapon_services);
                 out.velocity = memory::read<math::vector3>(local.pawn + SCHEMA("C_BaseEntity", "m_vecAbsVelocity"_hash));
-                out.spread = g_shared.get_spread();
                 out.predicted_inaccuracy = g_shared.get_inaccuracy(true);
+                out.spread = g_shared.get_spread();
+                recoil_index = memory::read<float>(ctx.weapon + SCHEMA("C_CSWeaponBase", "m_flRecoilIndex"_hash));
             });
 
         ctx.spread = out.spread;
         ctx.inaccuracy = out.predicted_inaccuracy;
+        ctx.recoil_index = recoil_index;
         out.view_angles = systems::g_input.get_view_angles();
         out.on_ground = (prestate.flags & cstypes::entity_flags::on_ground) != 0;
         out.is_scoped = ctx.is_scoped;
@@ -405,16 +408,10 @@ namespace features::combat {
                 this->m_duckpeek_reduck = false;
         }
 
-        // No-spread mode: bypass hitchance calculation for instant shots
+        // No-spread uses the same predicted state as scanning. fire_gun validates
+        // the compensated trajectory instead of assuming compensation always hits.
         if (config.no_spread.value)
         {
-            shared_ctx.inaccuracy = g_shared.get_inaccuracy(false);
-            if (shared_ctx.item_def_idx == cstypes::item_definition_index::weapon_r8_revolver)
-            {
-                shared_ctx.spread = g_shared.get_spread();
-                shared_ctx.recoil_index = memory::read<float>(shared_ctx.weapon + SCHEMA("C_CSWeaponBase", "m_flRecoilIndex"_hash));
-            }
-
             auto all_hits = scan_from_eye_candidates({}, shared_ctx.inaccuracy);
             const auto best = all_hits.empty() ? target{} : this->select_best(ctx, all_hits, shared_ctx.inaccuracy);
 
@@ -1370,12 +1367,14 @@ namespace features::combat {
 
     void rage::fire_gun(systems::input::usercmd* cmd, const target& tgt, bool was_forced, const math::vector3& shoot_eye, const systems::local::snapshot& local)
     {
-        if (!tgt.hit.record || !tgt.hit.record->valid)
+        this->m_firing_this_tick = false;
+        if (!cmd || !tgt.hit.record || !tgt.hit.record->valid)
             return;
 
-        this->m_firing_this_tick = true;
         const auto base = cmd->csgo_user_cmd.mutable_base();
-        if (!base || !base->mutable_viewangles())
+        const auto history_size = cmd->csgo_user_cmd.input_history_size();
+        if (!base || !base->mutable_viewangles() || history_size <= 0 ||
+            !cmd->csgo_user_cmd.mutable_input_history(history_size - 1))
             return;
 
         const auto tick_base = memory::read<int>(local.controller + SCHEMA("CBasePlayerController", "m_nTickBase"_hash));
@@ -1398,18 +1397,54 @@ namespace features::combat {
             stamp_tick = tgt.hit.source_eye.player_tick + tgt.hit.source_eye.lerp_ticks_int + carry;
         }
 
+        if (!std::isfinite(aim_angle.x) || !std::isfinite(aim_angle.y) ||
+            !std::isfinite(aim_punch.x) || !std::isfinite(aim_punch.y))
+            return;
+
         if (config.no_spread.value)
         {
-            const auto corrected = g_shared.find_spread_correction(aim_angle, stamp_tick);
-            if ((corrected.x == 0.0f && corrected.y == 0.0f && corrected.z == 0.0f) ||
-                !std::isfinite(corrected.x) || !std::isfinite(corrected.y) || !std::isfinite(corrected.z))
-            {
-                this->m_firing_this_tick = false;
+            if (!std::isfinite(shared_ctx.inaccuracy) || shared_ctx.inaccuracy < 0.0f ||
+                !std::isfinite(shared_ctx.spread) || shared_ctx.spread < 0.0f ||
+                !std::isfinite(shared_ctx.recoil_index))
                 return;
-            }
+
+            // Zero angles can be a legitimate solution. Validate the resulting ray,
+            // including the zero-vector fallback returned by the bounded solver.
+            const auto corrected = shared_ctx.inaccuracy == 0.0f && shared_ctx.spread == 0.0f
+                ? aim_angle : g_shared.find_spread_correction(aim_angle, stamp_tick);
+            if (!std::isfinite(corrected.x) || !std::isfinite(corrected.y) || !std::isfinite(corrected.z))
+                return;
+
+            const auto seed = g_shared.get_spread_seed(corrected, stamp_tick);
+            shared::spread_cache shot_cache{};
+            shot_cache.count = 1;
+            shot_cache.inaccuracy = shared_ctx.inaccuracy;
+            shot_cache.spread = shared_ctx.spread;
+            shot_cache.values[0] = g_shared.calculate_spread(seed, shared_ctx.inaccuracy,
+                shared_ctx.spread, shared_ctx.recoil_index, shared_ctx.item_def_idx, shared_ctx.num_bullets);
+
+            if (tgt.hit.bone_index < 0 || tgt.hit.bone_index >= tgt.hit.record->bone_count ||
+                tgt.hit.bone_index >= 128 ||
+                g_shared.calculate_hitchance(shoot_eye, corrected, tgt.hit.hitbox,
+                    tgt.hit.record->bones[tgt.hit.bone_index], shot_cache) < 1.0f)
+                return;
+
+            math::vector3 forward{}, left{}, up{};
+            math::helpers::angle_vectors_left(corrected, &forward, &left, &up);
+            const auto& spread = shot_cache.values[0];
+            const auto direction = (forward + left * spread.x + up * spread.y).normalized();
+            const auto pen_ctx = g_shared.pen().prepare_target(tgt.hit.pawn, tgt.hit.record);
+            shared::penetration::result pen{};
+            if (!g_shared.pen().run(shoot_eye, shoot_eye + direction * shared_ctx.range,
+                    pen_ctx, local.pawn, local.team, pen) ||
+                pen.damage < this->get_min_damage(config, tgt.hit.health, config.min_damage_override.value) ||
+                pen.hitgroup != tgt.hit.hitgroup)
+                return;
+
             aim_angle = corrected;
         }
 
+        this->m_firing_this_tick = true;
         g_shared.last_shoot_tick() = tick_base;
 
         if (settings::g_misc.m_impacts.console_log.value)
@@ -1433,7 +1468,6 @@ namespace features::combat {
         features::esp::player::g_chams.os().push(tgt.hit.pawn);
 
         const auto record_time = cstypes::tick_fraction::from_value(tgt.hit.record->simulation_time / cstypes::tick_interval);
-        const auto history_size = cmd->csgo_user_cmd.input_history_size();
 
         for (auto i = 0; i < history_size; ++i)
         {
@@ -1445,8 +1479,7 @@ namespace features::combat {
             {
                 angles->set_x(aim_angle.x - aim_punch.x);
                 angles->set_y(aim_angle.y - aim_punch.y);
-                if (config.no_spread.value)
-                    angles->set_z(aim_angle.z);
+                angles->set_z(config.no_spread.value ? aim_angle.z : 0.0f);
             }
 
             entry->set_render_tick_count(record_time.tick + 1);
@@ -1506,7 +1539,8 @@ namespace features::combat {
                 math::helpers::angle_vectors_left({ angles->x(), angles->y(), angles->z() }, &forward);
         }
 
-        const auto carry_roll_in_command = config.no_spread.value && quick_revolver;
+        // The solver uses roll for every weapon, not only quick revolver shots.
+        const auto carry_roll_in_command = config.no_spread.value;
         const auto punched_aim = math::vector3{
             aim_angle.x - aim_punch.x,
             aim_angle.y - aim_punch.y,
@@ -1526,8 +1560,7 @@ namespace features::combat {
         {
             angles->set_x(command_aim.x);
             angles->set_y(command_aim.y);
-            if (carry_roll_in_command)
-                angles->set_z(command_aim.z);
+            angles->set_z(command_aim.z);
         }
 
         if (!config.silent.value)
