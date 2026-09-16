@@ -122,8 +122,8 @@ namespace features::changer {
 								if ( skin_it != active_skins.end( ) )
 								{
 									const auto skin = cosmetic_attributes::normalize( skin_it->second );
-									this->apply( active_weapon, iv, active_handle, active_handle, local_pawn, &skin, account_id );
-									this->m_applied_weapons[ active_handle ] = { active_weapon, skin };
+									if ( this->apply( active_weapon, iv, active_handle, active_handle, local_pawn, &skin, account_id ) )
+										this->m_applied_weapons[ active_handle ] = { active_weapon, skin };
 								}
 								else
 								{
@@ -252,6 +252,7 @@ namespace features::changer {
 	bool guns::apply( std::uintptr_t weapon, std::uintptr_t iv, std::uint32_t handle, std::uint32_t active_handle, std::uintptr_t pawn, const settings::changer::applied_skin* skin, std::uint32_t account_id )
 	{
 		this->m_pending_hud_iv = 0;
+		if ( !name_tag::apply( iv, skin->name_tag ) ) return false;
 
 		memory::write<std::uint64_t>( iv + SCHEMA( "C_EconItemView", "m_iItemID"_hash ), 0xf000000000000010ull );
 		memory::write<int>( iv + SCHEMA( "C_EconItemView", "m_iEntityQuality"_hash ), skin->stattrak ? 9 : 0 );

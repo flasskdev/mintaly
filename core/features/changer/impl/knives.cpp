@@ -156,6 +156,7 @@ namespace features::changer {
 						if ( this->m_overridden && current_subclass == target_token && current_pk == selected_skin->paint_kit_id
 							&& memory::read<int>(weapon + SCHEMA("C_EconEntity", "m_nFallbackSeed"_hash)) == selected_skin->seed
 							&& memory::read<float>(weapon + SCHEMA("C_EconEntity", "m_flFallbackWear"_hash)) == selected_skin->wear
+							&& name_tag::matches(iv, selected_skin->name_tag)
 							&& memory::read<int>(weapon + SCHEMA("C_EconEntity", "m_nFallbackStatTrak"_hash)) == (selected_skin->stattrak ? selected_skin->stattrak_count : -1) )
 						{
 							break;
@@ -312,6 +313,7 @@ namespace features::changer {
 		}
 
 		if (!cosmetic_attributes::capture(iv, this->m_original.attributes)) return;
+        this->m_original.custom_name = name_tag::capture(iv);
         this->m_original.item_id = memory::read<std::uint64_t>(iv + SCHEMA("C_EconItemView", "m_iItemID"_hash));
         this->m_original.quality = memory::read<int>(iv + SCHEMA("C_EconItemView", "m_iEntityQuality"_hash));
         this->m_original.disallow_soc = memory::read<bool>(iv + SCHEMA("C_EconItemView", "m_bDisallowSOC"_hash));
@@ -331,6 +333,7 @@ namespace features::changer {
 	{
 		this->m_pending_hud_iv = 0;
         if (!cosmetic_attributes::available()) return;
+        if (!name_tag::apply(iv, skin->name_tag)) return;
         const auto model_changed =
             memory::read<std::uint16_t>(iv + SCHEMA("C_EconItemView", "m_iItemDefinitionIndex"_hash)) != static_cast<std::uint16_t>(def->def_index)
             || memory::read<std::uint32_t>(weapon + SCHEMA("C_BaseEntity", "m_nSubclassID"_hash)) != detail::make_subclass_token(def->def_index);
@@ -369,6 +372,7 @@ namespace features::changer {
 
 		this->m_pending_hud_iv = 0;
         if (!cosmetic_attributes::restore(iv, this->m_original.attributes)) return;
+        if (this->m_original.custom_name && !name_tag::restore(iv, *this->m_original.custom_name)) return;
         memory::write<std::uint64_t>(iv + SCHEMA("C_EconItemView", "m_iItemID"_hash), this->m_original.item_id);
         memory::write<bool>(iv + SCHEMA("C_EconItemView", "m_bDisallowSOC"_hash), this->m_original.disallow_soc);
         memory::write<int>(iv + SCHEMA("C_EconItemView", "m_iEntityQuality"_hash), this->m_original.quality);

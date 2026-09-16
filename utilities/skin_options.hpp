@@ -5,8 +5,14 @@
 #include <cmath>
 #include <optional>
 #include <utility>
+#include <utilities/utf8.hpp>
 
 namespace skin_options {
+    inline std::string normalize_name_tag(std::string_view text)
+    {
+        return utf8::bounded(text, 20, 80);
+    }
+
     inline float clamp_wear(float value, float low = 0.0f, float high = 1.0f)
     {
         low = std::isfinite(low) ? std::clamp(low, 0.0f, 1.0f) : 0.0f;

@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <core/settings.hpp>
 #include "cosmetic_attributes.hpp"
+#include "name_tag.hpp"
 #include "skin_sync.hpp"
 #include <core/systems/systems.hpp>
 
@@ -315,6 +316,7 @@ namespace features::changer {
             int quality{};
             bool disallow_soc{};
             cosmetic_attributes::snapshot attributes{};
+            std::optional<name_tag::snapshot> custom_name{};
 			bool captured{};
 		};
 

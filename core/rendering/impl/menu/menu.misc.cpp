@@ -5,6 +5,7 @@
 #include <utilities/memory/memory.hpp>
 #include <utilities/logging/logging.hpp>
 #include <utilities/steam/steam.hpp>
+#include <utilities/nickname_animation.hpp>
 #include <limits>
 
 #include "../../rendering.hpp"
@@ -223,8 +224,8 @@ namespace rendering {
                                 xui::toggle( "Anim Nickname", m.m_name_changer.anim_nickname );
                                 if ( xui::begin_popup( "##restore_anim_name", 250.0f ) )
                                 {
-                                        static constexpr const char* const anim_names[ ]{ "marquee (scroll)", "typewriter", "dancing wave", "cyber glitch", "star pulse" };
-                                        xui::combo( "animation##anim_nick", m.m_name_changer.anim_type.value, anim_names, 5 );
+                                        xui::combo( "animation##anim_nick", m.m_name_changer.anim_type.value,
+                                                nickname_animation::names.data( ), static_cast<int>( nickname_animation::names.size( ) ) );
                                         xui::slider_float( "speed##anim_nick", m.m_name_changer.anim_speed, 0.05f, 1.50f, "%.2fs" );
                                         xui::end_popup( );
                                 }
