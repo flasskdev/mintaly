@@ -19,6 +19,7 @@
 
 #include "../../rendering.hpp"
 #include "../../theme.hpp"
+#include "skin_workspace.hpp"
 #include <charconv>
 #include <limits>
 
@@ -251,7 +252,7 @@ namespace rendering {
 		} ).detach( );
 	}
 
-		inline static auto& skin_map( ) { return settings::g_changer.skins.data; }
+		inline static auto& skin_map( ) { return settings::g_changer.skins.edit_team( skin_workspace::team ); }
 
 		enum class skins_page : int
 		{
@@ -287,7 +288,7 @@ namespace rendering {
 		constexpr auto k_card_w_ref{ 118.0f };
 		constexpr auto k_card_h_ref{ 100.0f };
 		constexpr auto k_card_gap{ 8.0f };
-		constexpr auto k_columns{ 5 };
+		constexpr auto k_columns{ 3 };
 		constexpr auto k_image_h_ratio{ 0.70f };
 		constexpr auto k_rarity_bar_h{ 2.0f };
 
@@ -544,8 +545,10 @@ namespace rendering {
 					const auto it = skin_map( ).find( this->m_def );
 					if ( it != skin_map( ).end( ) )
 					{
-						const auto v = std::stoi( this->m_buf );
-						it->second.seed = std::clamp( v, 0, 1000 );
+						int value{};
+						const auto result = std::from_chars(m_buf.data(), m_buf.data() + m_buf.size(), value);
+						if (result.ec == std::errc{} && result.ptr == m_buf.data() + m_buf.size())
+							it->second.seed = std::clamp(value, 0, 1000);
 					}
 				}
 
@@ -1044,10 +1047,14 @@ namespace rendering {
 
 			const auto image_h = std::floor( card.h * k_image_h_ratio );
 
-			const auto hovered = !xui::ctx( ).overlay_blocking( ) && input.in_rect( card );
+			const auto hovered = skin_workspace::hovered(card);
+			if (hovered) {
+				skin_workspace::hover.weapon = def->def_index;
+				if (input.mouse_clicked) skin_workspace::focused_weapon[skin_workspace::team == 3 ? 0 : 1] = def->def_index;
+			}
 			const auto hover_anim = xui::anim::lerp( xui::fnv1a( "wcard" ) + static_cast< std::uintptr_t >( def->def_index ), hovered ? 1.0f : 0.0f, 14.0f );
 
-			auto card_bg = tokens::col_card;
+			auto card_bg = tokens::col_elevated;
 			card_bg = xui::lerp( card_bg, xui::lighten( card_bg, 1.4f ), hover_anim * 0.5f );
 			card_bg.a = static_cast< std::uint8_t >( card_bg.a * fade_alpha );
 			dl.rect_filled( card.x, card.y, card.w, card.h, card_bg, xdraw::corner_radius{ tokens::btn_rounding } );
@@ -1230,10 +1237,11 @@ namespace rendering {
 			const auto& input = xui::ctx( ).input;
 
 			const auto image_h = std::floor( card.h * k_image_h_ratio );
-			const auto hovered = !xui::ctx( ).overlay_blocking( ) && input.in_rect( card );
+			const auto hovered = skin_workspace::hovered(card);
+			if (hovered) { skin_workspace::hover.custom = entry_idx; skin_workspace::hover.agent = 0; }
 			const auto hover_anim = xui::anim::lerp( xui::fnv1a( "catile" ) + static_cast< std::uintptr_t >( entry_idx ), hovered ? 1.0f : 0.0f, 14.0f );
 
-			auto card_bg = tokens::col_card;
+			auto card_bg = tokens::col_elevated;
 			card_bg = xui::lerp( card_bg, xui::lighten( card_bg, 1.4f ), hover_anim * 0.5f );
 			card_bg.a = static_cast< std::uint8_t >( card_bg.a * fade_alpha );
 			dl.rect_filled( card.x, card.y, card.w, card.h, card_bg, xdraw::corner_radius{ tokens::btn_rounding } );
@@ -1264,7 +1272,7 @@ namespace rendering {
 			// Delete button (top-right 'x')
 			constexpr auto del_btn_size{ 16.0f };
 			const auto del_rect = xui::rect{ card.right( ) - del_btn_size - 4.0f, card.y + 4.0f, del_btn_size, del_btn_size };
-			const auto del_hovered = !xui::ctx( ).overlay_blocking( ) && input.in_rect( del_rect );
+			const auto del_hovered = skin_workspace::hovered(del_rect);
 			if ( del_hovered )
 			{
 				auto del_col = xdraw::color{ 230, 90, 90, static_cast< std::uint8_t >( 255.0f * fade_alpha ) };
@@ -1301,11 +1309,7 @@ namespace rendering {
 				auto& ca = settings::g_changer.custom_agents;
 				if ( entry_idx >= 0 && entry_idx < static_cast< int >( ca.entries.size( ) ) )
 				{
-					ca.entries.erase( ca.entries.begin( ) + entry_idx );
-					if ( ca.selected_ct == entry_idx ) ca.selected_ct = -1;
-					else if ( ca.selected_ct > entry_idx ) ca.selected_ct--;
-					if ( ca.selected_t == entry_idx ) ca.selected_t = -1;
-					else if ( ca.selected_t > entry_idx ) ca.selected_t--;
+					skin_workspace::pending_delete_agent = entry_idx;
 				}
 				return;
 			}
@@ -1338,10 +1342,11 @@ namespace rendering {
 
 			const auto image_h = std::floor( card.h * k_image_h_ratio );
 
-			const auto hovered = !xui::ctx( ).overlay_blocking( ) && input.in_rect( card );
+			const auto hovered = skin_workspace::hovered(card);
+			if (hovered) { skin_workspace::hover.agent = def->def_index; skin_workspace::hover.custom = -1; }
 			const auto hover_anim = xui::anim::lerp( xui::fnv1a( "atile" ) + static_cast< std::uintptr_t >( def->def_index ), hovered ? 1.0f : 0.0f, 14.0f );
 
-			auto card_bg = tokens::col_card;
+			auto card_bg = tokens::col_elevated;
 			card_bg = xui::lerp( card_bg, xui::lighten( card_bg, 1.4f ), hover_anim * 0.5f );
 			card_bg.a = static_cast< std::uint8_t >( card_bg.a * fade_alpha );
 			dl.rect_filled( card.x, card.y, card.w, card.h, card_bg, xdraw::corner_radius{ tokens::btn_rounding } );
@@ -1444,11 +1449,12 @@ namespace rendering {
 
 			const auto image_h = std::floor( card.h * k_image_h_ratio );
 
-			const auto hovered = !xui::ctx( ).overlay_blocking( ) && input.in_rect( card );
+			const auto hovered = skin_workspace::hovered(card);
+			if (hovered) skin_workspace::hover.music = kit ? kit->id : 0;
 			const auto hover_id = xui::fnv1a( "mtile" ) + ( kit ? static_cast< std::uintptr_t >( kit->id ) : 0 );
 			const auto hover_anim = xui::anim::lerp( hover_id, hovered ? 1.0f : 0.0f, 14.0f );
 
-			auto card_bg = tokens::col_card;
+			auto card_bg = tokens::col_elevated;
 			card_bg = xui::lerp( card_bg, xui::lighten( card_bg, 1.4f ), hover_anim * 0.5f );
 			card_bg.a = static_cast< std::uint8_t >( card_bg.a * fade_alpha );
 			dl.rect_filled( card.x, card.y, card.w, card.h, card_bg, xdraw::corner_radius{ tokens::btn_rounding } );
@@ -1631,10 +1637,11 @@ namespace rendering {
 			const auto image_h = std::floor( card.h * k_image_h_ratio );
 
 			const auto is_equipped = ( pk->id == current_kit_id );
-			const auto hovered = !xui::ctx( ).overlay_blocking( ) && input.in_rect( card );
+			const auto hovered = skin_workspace::hovered(card);
+			if (hovered && weapon) { skin_workspace::hover.weapon = weapon->def_index; skin_workspace::hover.paint = pk->id; }
 			const auto hover_anim = xui::anim::lerp( xui::fnv1a( "scard" ) + static_cast< std::uintptr_t >( pk->id ), hovered ? 1.0f : 0.0f, 14.0f );
 
-			auto card_bg = tokens::col_card;
+			auto card_bg = tokens::col_elevated;
 			card_bg = xui::lerp( card_bg, xui::lighten( card_bg, 1.4f ), hover_anim * 0.5f );
 			card_bg.a = static_cast< std::uint8_t >( card_bg.a * fade_alpha );
 			dl.rect_filled( card.x, card.y, card.w, card.h, card_bg, xdraw::corner_radius{ tokens::btn_rounding } );
@@ -1765,8 +1772,35 @@ namespace rendering {
 
 	} // namespace detail
 
-	void menu::draw_skins( float group_w ) const
+	void menu::draw_skins( float group_w )
 	{
+		skin_workspace::hover = {};
+		skin_workspace::dialog_busy = detail::s_dialog_active.load();
+		skin_workspace::profiles.load();
+		skin_workspace::items.refresh();
+		const int previous_team = skin_workspace::team;
+		this->draw_skins_browser(group_w);
+		const int removed = std::exchange(skin_workspace::pending_delete_agent, -1);
+		auto& ca = settings::g_changer.custom_agents;
+		if (removed >= 0 && removed < static_cast<int>(ca.entries.size()))
+		{
+			ca.entries.erase(ca.entries.begin() + removed);
+			for (int* selected : {&ca.selected_ct, &ca.selected_t})
+				if (*selected == removed) *selected = -1; else if (*selected > removed) --*selected;
+			skin_workspace::hover = {};
+		}
+		if (skin_workspace::sidebar({m_body_x, m_body_y, skin_workspace::left_width(m_body_w), m_body_h}))
+			m_subtab = 4;
+		if (previous_team != skin_workspace::team)
+		{
+			xui::overlays::close_all();
+			detail::skins_ui = {};
+		}
+	}
+
+	void menu::draw_skins_browser( float group_w ) const
+	{
+		(void)group_w;
 		detail::process_pending_agents( );
 
 		static auto last_subtab{ -1 };
@@ -1787,10 +1821,16 @@ namespace rendering {
 
 		const auto wx = this->m_x;
 		const auto wy = this->m_y;
-		const auto content_x = wx + tokens::gap + tokens::sidebar_w + tokens::gap;
-		const auto body_y = wy + tokens::gap + tokens::subtab_bar_h + tokens::gap;
-		const auto content_w = this->m_w - tokens::gap * 2.0f - tokens::sidebar_w - tokens::gap;
-		const auto body_h = this->m_h - tokens::gap * 2.0f - tokens::subtab_bar_h - tokens::gap;
+		const auto left_w = skin_workspace::left_width(this->m_body_w);
+		const auto content_x = this->m_body_x + left_w + 12.0f;
+		const auto body_y = this->m_body_y;
+		const auto content_w = this->m_body_w - left_w - 12.0f;
+		const auto body_h = this->m_body_h;
+		if (this->m_subtab == 3)
+		{
+			detail::skins_ui.current = detail::skins_ui.target = detail::skins_page::browser;
+			detail::skins_ui.browsing_agent_team = skin_workspace::team;
+		}
 
 		const auto dt = xdraw::delta_time( );
 		const auto fade_target = ( detail::skins_ui.current == detail::skins_ui.target ) ? 1.0f : 0.0f;
@@ -1851,36 +1891,7 @@ namespace rendering {
 				const auto grid_top_y = bar_y + bar_h + 12.0f;
 				const auto base_x = win->bounds.x + s.window_pad_x + offset_x;
 
-				std::string search_lower = detail::skins_ui.search_buf;
-				for ( auto& c : search_lower )
-				{
-					c = static_cast< char >( std::tolower( c ) );
-				}
-
-				std::vector<const features::changer::econ_item_system::music_kit*> kits;
-				kits.reserve( econ.music_kits( ).size( ) );
-
-				for ( const auto& mk : econ.music_kits( ) )
-				{
-					if ( !search_lower.empty( ) )
-					{
-						std::string n = mk.localized_name;
-						for ( auto& c : n ) c = static_cast< char >( std::tolower( c ) );
-						std::string d = mk.localized_desc;
-						for ( auto& c : d ) c = static_cast< char >( std::tolower( c ) );
-						std::string raw_n = mk.name;
-						for ( auto& c : raw_n ) c = static_cast< char >( std::tolower( c ) );
-
-						if ( n.find( search_lower ) == std::string::npos &&
-							 d.find( search_lower ) == std::string::npos &&
-							 raw_n.find( search_lower ) == std::string::npos )
-						{
-							continue;
-						}
-					}
-
-					kits.push_back( &mk );
-				}
+				const auto& kits = skin_workspace::items.music(detail::skins_ui.search_buf);
 
 				const auto total_tiles = static_cast< int >( kits.size( ) ) + 1;
 				const auto rows = ( total_tiles + detail::k_columns - 1 ) / detail::k_columns;
@@ -1921,29 +1932,7 @@ namespace rendering {
 				return;
 			}
 
-			const auto& weapons = detail::select_weapons( this->m_subtab );
-
-			std::unordered_set<std::int16_t> defs_with_skins;
-			for ( const auto& skin : econ.skins( ) )
-			{
-				defs_with_skins.insert( skin.def_index );
-			}
-
-			std::vector<const features::changer::econ_item_system::item_def*> items;
-			items.reserve( weapons.size( ) );
-
-			for ( const auto* w : weapons )
-			{
-				if ( ( w->category == features::changer::econ_item_system::item_category::knife || w->category == features::changer::econ_item_system::item_category::glove ) && !defs_with_skins.contains( w->def_index ) )
-				{
-					continue;
-				}
-
-				if ( !w->image_inventory.empty( ) || defs_with_skins.contains( w->def_index ) )
-				{
-					items.push_back( w );
-				}
-			}
+			const auto& items = skin_workspace::items.weapons(this->m_subtab);
 
 			const auto rows = ( static_cast< int >( items.size( ) ) + detail::k_columns - 1 ) / detail::k_columns;
 			const auto total_h = rows * card_h + ( rows > 0 ? ( rows - 1 ) * detail::k_card_gap : 0.0f );
@@ -1995,7 +1984,7 @@ namespace rendering {
 
 			const auto back_w{ 60.0f };
 			const auto back_rect = xui::rect{ bar_x, bar_y, back_w, bar_h };
-			const auto back_hovered = !xui::ctx( ).overlay_blocking( ) && input.in_rect( back_rect );
+			const auto back_hovered = skin_workspace::hovered(back_rect);
 			const auto back_hover = xui::anim::lerp( xui::fnv1a( "skin_back" ), back_hovered ? 1.0f : 0.0f, 14.0f );
 
 			if ( back_hovered && input.mouse_clicked )
@@ -2022,8 +2011,9 @@ namespace rendering {
 			if ( detail::skins_ui.browsing_agent_team != 0 )
 			{
 				const auto add_btn_w{ 95.0f };
-				const auto add_btn_rect = xui::rect{ win->bounds.right( ) - s.window_pad_x - add_btn_w, bar_y, add_btn_w, bar_h };
-				const auto add_btn_hovered = !xui::ctx( ).overlay_blocking( ) && input.in_rect( add_btn_rect );
+				const auto add_btn_rect = xui::rect{ bar_x, grid_top_y, add_btn_w, bar_h };
+				grid_top_y += bar_h + 12.0f;
+				const auto add_btn_hovered = skin_workspace::hovered(add_btn_rect);
 				const auto add_btn_hover = xui::anim::lerp( xui::fnv1a( "add_custom_btn" ), add_btn_hovered ? 1.0f : 0.0f, 14.0f );
 
 				if ( add_btn_hovered && input.mouse_clicked )
@@ -2119,7 +2109,7 @@ namespace rendering {
 				const auto grid_h = rows * card_h + ( rows > 0 ? ( rows - 1 ) * detail::k_card_gap : 0.0f );
 
 				xui::layout::set_cursor( s.window_pad_x, s.window_pad_y );
-				xui::layout::item( inner_w, ( bar_h + 12.0f ) + grid_h );
+				xui::layout::item( inner_w, 2.0f * ( bar_h + 12.0f ) + grid_h );
 
 				const auto& sel = settings::g_changer.agents;
 				const auto current_agent = ( detail::skins_ui.browsing_agent_team == 3 ) ? sel.ct_def : sel.t_def;
@@ -2151,7 +2141,7 @@ namespace rendering {
 					}
 				}
 
-				win->content_h = ( s.window_pad_y + bar_h + 12.0f + grid_h ) - win->scroll_y;
+				win->content_h = grid_top_y - win->bounds.y + grid_h;
 				xui::end_child( );
 				return;
 			}
@@ -2173,47 +2163,8 @@ namespace rendering {
 			xui::layout::new_line( );
 			grid_top_y = win->bounds.y + xui::layout::get_cursor( ).second + 12.0f;
 
-			std::unordered_set<int> valid_kits;
-			for ( const auto& skin : econ.skins( ) )
-			{
-				if ( skin.def_index == detail::skins_ui.browsing_def )
-				{
-					valid_kits.insert( skin.paint_kit_id );
-				}
-			}
-
-			std::string search_lower = detail::skins_ui.search_buf;
-			for ( auto& c : search_lower )
-			{
-				c = static_cast< char >( std::tolower( c ) );
-			}
-
-			std::vector<const features::changer::econ_item_system::paint_kit*> kits;
-			kits.reserve( valid_kits.size( ) );
-
-			for ( const auto& pk : econ.paint_kits( ) )
-			{
-				if ( valid_kits.find( pk.id ) == valid_kits.end( ) )
-				{
-					continue;
-				}
-
-				if ( !search_lower.empty( ) )
-				{
-					std::string n = pk.localized_name;
-					for ( auto& c : n )
-					{
-						c = static_cast< char >( std::tolower( c ) );
-					}
-
-					if ( n.find( search_lower ) == std::string::npos )
-					{
-						continue;
-					}
-				}
-
-				kits.push_back( &pk );
-			}
+			const auto& kits = skin_workspace::items.paints(detail::skins_ui.browsing_def, detail::skins_ui.search_buf);
+			if (kits.empty()) xui::text("No matching skins", tokens::col_text_dim);
 
 			const auto rows = ( static_cast< int >( kits.size( ) ) + detail::k_columns - 1 ) / detail::k_columns;
 			const auto grid_h = rows * card_h + ( rows > 0 ? ( rows - 1 ) * detail::k_card_gap : 0.0f );

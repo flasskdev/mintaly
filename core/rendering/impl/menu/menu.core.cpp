@@ -1856,8 +1856,9 @@ namespace rendering {
             }
             xdraw::pop_font();
         }
-        dl.line(this->m_x + menu::k_sidebar_w + tokens::gap, this->m_y + 67.0f,
-            this->m_x + this->m_w - 1.0f, this->m_y + 67.0f, tokens::col_border);
+        if (tab_idx != static_cast<int>(tab::skins))
+            dl.line(this->m_x + menu::k_sidebar_w + tokens::gap, this->m_y + 67.0f,
+                this->m_x + this->m_w - 1.0f, this->m_y + 67.0f, tokens::col_border);
         // Utility: Search button on the right
         const auto inner_pad{ 4.0f };
         const auto subtab_h = tokens::subtab_bar_h - inner_pad * 2.0f;

@@ -64,7 +64,7 @@ namespace features::changer {
 				const settings::changer::applied_skin* selected_skin{ nullptr };
 				const econ_item_system::item_def* selected_glove_def{ nullptr };
 
-				for ( const auto& [def_index, skin] : settings::g_changer.skins.data )
+				for ( const auto& [def_index, skin] : settings::g_changer.skins.for_team( local_team ) )
 				{
 					const auto def = g_econ_item_system.find_def( def_index );
 					if ( !def || def->category != econ_item_system::item_category::glove )
