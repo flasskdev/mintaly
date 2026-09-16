@@ -1,5 +1,6 @@
 #include <pch/pch.hpp>
 #include <cstring>
+#include <exception>
 #include <new>
 #include <thread>
 #include <utilities/memory/memory.hpp>
@@ -233,8 +234,16 @@ namespace threadpool {
 			return;
 		}
 
+		if (!detail::g_pool.valid () || !detail::g_mem_alloc || !detail::std_function_job_vtable) {
+			body (begin, end);
+			return;
+		}
+
 		const int total {end - begin};
-		const int max_chunks {std::max (static_cast<int>(std::thread::hardware_concurrency ()), 1)};
+		// Keep at most three queued chunks plus the caller; do not flood the
+		// engine pool on machines with many logical CPUs.
+		const int max_chunks {static_cast<int>(std::clamp (std::thread::hardware_concurrency (), 1u, 4u))};
+		min_chunk_size = std::max (min_chunk_size, 1);
 
 		auto chunk_size {(total + max_chunks - 1) / max_chunks};
 		if (chunk_size < min_chunk_size) {
@@ -248,21 +257,37 @@ namespace threadpool {
 			return;
 		}
 
+		std::exception_ptr failure;
+		std::mutex failure_mutex;
+		const auto invoke = [&] (int cb, int ce) {
+			try {
+				body (cb, ce);
+			} catch (...) {
+				std::lock_guard lock (failure_mutex);
+				if (!failure) failure = std::current_exception ();
+			}
+		};
+
 		std::vector<job> jobs;
 		jobs.reserve (static_cast<std::size_t>(num_chunks) - 1);
+		{
+			// Also join on dispatch/allocation failure before references captured
+			// by already queued jobs can leave scope.
+			struct join_guard {
+				std::vector<job>& jobs;
+				~join_guard () { for (auto& j : jobs) j.wait (); }
+			} guard {jobs};
 
-		for (auto i = 0; i < num_chunks - 1; ++i) {
-			const auto cb {begin + i * chunk_size};
-			const auto ce {std::min (cb + chunk_size, end)};
+			for (auto i = 0; i < num_chunks - 1; ++i) {
+				const auto cb {begin + i * chunk_size};
+				const auto ce {std::min (cb + chunk_size, end)};
+				jobs.push_back (run ([&invoke, cb, ce] () { invoke (cb, ce); }, priority));
+				if (!jobs.back ()) invoke (cb, ce);
+			}
 
-			jobs.push_back (run ([&body, cb, ce] () { body (cb, ce); }, priority));
+			invoke (begin + (num_chunks - 1) * chunk_size, end);
 		}
-
-		body (begin + (num_chunks - 1) * chunk_size, end);
-
-		for (auto& j : jobs) {
-			j.wait ();
-		}
+		if (failure) std::rethrow_exception (failure);
 	}
 
 	void run_batch (std::span<std::function<void ()>> tasks, job_priority priority) {

@@ -1,4 +1,5 @@
 #include <pch/pch.hpp>
+#include <stdexcept>
 #include <utilities/memory/memory.hpp>
 #include <utilities/addresses/addresses.hpp>
 #include <utilities/diag.hpp>
@@ -14,7 +15,11 @@ namespace systems {
 		class state_guard
 		{
 		public:
-			state_guard( ) = default;
+			state_guard( )
+			{
+				this->m_entries.reserve( 160 );
+				this->m_data.reserve( 4096 );
+			}
 			~state_guard( ) { restore( ); }
 
 			state_guard( const state_guard& ) = delete;
@@ -24,34 +29,48 @@ namespace systems {
 			void save( std::uintptr_t address )
 			{
 				auto value = memory::read<T>( address );
-				this->m_entries.emplace_back( entry{ address, std::vector<std::uint8_t>( sizeof( T ) ) } );
-				std::memcpy( this->m_entries.back( ).data.data( ), &value, sizeof( T ) );
+				this->append( address, &value, sizeof( T ) );
 			}
 
 			void save_raw( std::uintptr_t address, std::size_t size )
 			{
-				this->m_entries.emplace_back( entry{ address, std::vector<std::uint8_t>( size ) } );
-				std::memcpy( this->m_entries.back( ).data.data( ), reinterpret_cast< void* >( address ), size );
+				this->append( address, reinterpret_cast< const void* >( address ), size );
 			}
 
 			void restore( )
 			{
 				for ( auto it = this->m_entries.rbegin( ); it != this->m_entries.rend( ); ++it )
 				{
-					std::memcpy( reinterpret_cast< void* >( it->address ), it->data.data( ), it->data.size( ) );
+					std::memcpy( reinterpret_cast< void* >( it->address ), this->m_data.data( ) + it->offset, it->size );
 				}
 
 				this->m_entries.clear( );
+				this->m_data.clear( );
 			}
 
 		private:
+			void append( std::uintptr_t address, const void* source, std::size_t size )
+			{
+				if ( size == 0 ) return;
+				const auto offset = this->m_data.size( );
+				if ( size > this->m_data.max_size( ) - offset )
+					throw std::length_error( "prediction snapshot is too large" );
+				this->m_data.resize( offset + size );
+				std::memcpy( this->m_data.data( ) + offset, source, size );
+				// Offsets remain valid if the byte buffer grows. Reverse restore
+				// order still handles overlapping saved ranges correctly.
+				this->m_entries.push_back( { address, offset, size } );
+			}
+
 			struct entry
 			{
 				std::uintptr_t address{};
-				std::vector<std::uint8_t> data{};
+				std::size_t offset{};
+				std::size_t size{};
 			};
 
 			std::vector<entry> m_entries;
+			std::vector<std::uint8_t> m_data;
 		};
 
 	} // namespace detail
