@@ -480,7 +480,6 @@ namespace features::combat {
             static_cast<float>(config.hitchance_override_value) / 100.0f :
             static_cast<float>(config.hitchance) / 100.0f;
 
-        const auto standing_inaccuracy = duckpeek_active ? this->get_standing_inaccuracy(local, ctx) : ctx.predicted_inaccuracy;
         const auto current_hc = best.valid ? best.hitchance : 0.0f;
         const auto accurate = best.valid && current_hc >= needed_hc;
         const auto max_acc = g_shared.is_max_accuracy(ctx.predicted_inaccuracy);
@@ -502,14 +501,15 @@ namespace features::combat {
         // Duckpeek logic: check if standing up reveals a better shot
         if (duckpeek_active && is_ducking && !this->m_duckpeek_reduck)
         {
+            const auto standing_inaccuracy = this->get_standing_inaccuracy(local, ctx);
             const auto stand_offset = math::vector3{ 0.0f, 0.0f, effective_stand_z };
             auto standing_hits = scan_from_eye_candidates(stand_offset, standing_inaccuracy);
             const auto standing_best = standing_hits.empty() ? target{} : this->select_best(ctx, standing_hits, standing_inaccuracy);
 
             if (standing_best.valid)
             {
-                const auto pred_standing_hc = this->evaluate_hitchance(standing_best.hit, ctx, standing_inaccuracy);
-                const auto pred_accurate = pred_standing_hc >= needed_hc;
+                // select_best used this same eye, pose and standing inaccuracy.
+                const auto pred_accurate = standing_best.hitchance >= needed_hc;
                 const auto pred_max_acc = g_shared.is_max_accuracy(standing_inaccuracy);
                 const auto pred_force = config.force_shot.value && pred_max_acc;
 
@@ -717,43 +717,29 @@ namespace features::combat {
     std::vector<rage::scan_hit> rage::scan_players(const math::vector3& eye, float inaccuracy, const aim_context& ctx, std::vector<candidate>& candidates, const systems::local::snapshot& local) const
     {
         diag::exception_scope scan_scope{ "rage: scan_players / dispatch" };
-        std::vector<std::vector<scan_hit>> per_candidate(candidates.size());
+        std::vector<scan_hit> flat;
+        flat.reserve(candidates.size() * 24);
 
-        // Diagnostic mode: keep engine calls on the calling thread.
-        // This bypasses the custom CStdFunctionJob ABI, not target scanning.
-        for (std::size_t ci = 0; ci < candidates.size(); ++ci)
+        // Keep engine calls on the calling thread, and retain candidate/record
+        // order without allocating a second result vector for every candidate.
+        for (auto& cand : candidates)
         {
-            auto& cand = candidates[ci];
-            auto& candidate_hits = per_candidate[ci];
-            candidate_hits.reserve(24);
-
             for (auto ri = 0; ri < cand.record_count; ++ri)
             {
                 if (!cand.records[ri] || !cand.records[ri]->valid)
                     continue;
 
                 auto hits = this->scan_player(eye, inaccuracy, ctx, cand, cand.records[ri], local);
-                const auto has_direct_hit = std::any_of(hits.begin(), hits.end(),
-                    [](const scan_hit& hit) { return !hit.penetrated; });
-
+                auto has_direct_hit = false;
                 for (auto& hit : hits)
-                    candidate_hits.push_back(std::move(hit));
+                {
+                    has_direct_hit = has_direct_hit || !hit.penetrated;
+                    flat.push_back(std::move(hit));
+                }
 
                 if (has_direct_hit)
                     break;
             }
-        }
-
-        std::vector<scan_hit> flat;
-        auto total_hits{ std::size_t{} };
-        for (const auto& hits : per_candidate)
-            total_hits += hits.size();
-
-        flat.reserve(total_hits);
-        for (auto& v : per_candidate)
-        {
-            for (auto& h : v)
-                flat.push_back(std::move(h));
         }
         return flat;
     }
@@ -982,6 +968,9 @@ namespace features::combat {
 
     rage::target rage::select_best(const aim_context& aim_ctx, const std::vector<scan_hit>& hits, float eval_inaccuracy) const
     {
+        if (hits.empty())
+            return {};
+
         auto hitgroup_priority = [](int hitbox_index) -> int
             {
                 if (hitbox_index == 0) return 4; // Head
@@ -1063,12 +1052,9 @@ namespace features::combat {
             static_cast<float>(config.hitchance_override_value) / 100.0f :
             static_cast<float>(config.hitchance) / 100.0f;
 
-        // Build the spread cache once for the entire evaluation loop.
-        // Previously calculate_hitchance() rebuilt it for every single hit,
-        // causing thousands of engine calls per tick with multipoints enabled.
-        const auto hc_cache = config.no_spread.value
-            ? shared::spread_cache{}
-            : g_shared.build_spread_cache( eval_inaccuracy, aim_ctx.spread );
+        // Build only when an eligible hit actually needs hitchance, then reuse
+        // every original sample for the rest of this evaluation.
+        shared::spread_cache hc_cache{};
 
         for (auto& group : groups)
         {
@@ -1080,6 +1066,9 @@ namespace features::combat {
                 const auto& h = hits[idx];
                 if (!h.record || !h.record->valid || h.bone_index < 0 || h.bone_index >= 28)
                     continue;
+
+                if (!config.no_spread.value && !hc_cache.initialized)
+                    hc_cache = g_shared.build_spread_cache(eval_inaccuracy, aim_ctx.spread);
 
                 const auto& bone = group.record->bones[h.bone_index];
                 const auto hc = config.no_spread.value ?
