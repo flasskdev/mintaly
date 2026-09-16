@@ -870,6 +870,9 @@ namespace features::combat {
         const auto& hitbox_set = pen_ctx.hitboxes;
         if (hitbox_set.count <= 0)
             return;
+        const auto hitboxes = ballistics::indexed_view<systems::hitboxes::entry, 20>{
+            std::span<const systems::hitboxes::entry>{hitbox_set.entries.data(),
+                static_cast<std::size_t>(hitbox_set.count)}};
 
         const auto bone_count = std::min(record->bone_count, static_cast<int>(std::size(record->bones)));
         const auto& skeleton = record->bones;
@@ -943,16 +946,7 @@ namespace features::combat {
         for (auto idx = 0; idx < scan_count; ++idx)
         {
             const auto hitbox_index = scan_order[idx];
-            const systems::hitboxes::entry* hb{ nullptr };
-
-            for (const auto& entry : hitbox_set)
-            {
-                if (entry.index == hitbox_index)
-                {
-                    hb = &entry;
-                    break;
-                }
-            }
+            const auto* hb = hitboxes.find(hitbox_index);
 
             if (!hb || hb->bone < 0 || hb->bone >= bone_count)
                 continue;
@@ -993,15 +987,7 @@ namespace features::combat {
             if (pen.damage < cand.min_damage)
                 continue;
 
-            const systems::hitboxes::entry* actual_hitbox = nullptr;
-            for (const auto& entry : hitbox_set)
-            {
-                if (entry.index == pen.hitbox)
-                {
-                    actual_hitbox = &entry;
-                    break;
-                }
-            }
+            const auto* actual_hitbox = hitboxes.find(pen.hitbox);
             if (!actual_hitbox || actual_hitbox->bone < 0 || actual_hitbox->bone >= bone_count)
                 continue;
 
@@ -1031,8 +1017,12 @@ namespace features::combat {
         // where multipoints are useful. Keep per-hitbox center pruning only.
         if (config.pointscale > 0.0f)
         {
-            std::vector<math::vector3> multipoints;
-            multipoints.reserve(4);
+            std::array<math::vector3, 3> multipoints{};
+            // Inaccuracy/spread are fixed for this eye pass. Evaluate tan once,
+            // not once per hitbox; nullopt preserves disabled dynamic pointscale.
+            const auto cone_tangent = config.dynamic_pointscale.value
+                ? std::optional<float>{std::tanf(std::max(inaccuracy + shared_ctx.spread, 0.0f))}
+                : std::nullopt;
 
             for (const auto& cp : centers)
             {
@@ -1044,9 +1034,10 @@ namespace features::combat {
                     continue;
 
                 const auto& bone = skeleton[cp.bone_index];
-                this->generate_multipoints(cp.hitbox, cp.position, bone.rotation, config.pointscale, eye, inaccuracy, multipoints);
+                const auto point_count = this->generate_multipoints(cp.hitbox, cp.position,
+                    bone.rotation, config.pointscale, eye, cone_tangent, multipoints);
 
-                for (const auto& mp : multipoints)
+                for (const auto& mp : std::span<const math::vector3>{multipoints.data(), point_count})
                 {
                     const auto aim = math::helpers::calculate_angle(eye, mp);
                     const auto fov = math::helpers::angle_distance(ctx.view_angles, aim);
@@ -1063,15 +1054,7 @@ namespace features::combat {
                     if (cp.hitbox_index == 0 && pen.hitgroup != systems::g_hitboxes.hitgroup_from_hitbox(0))
                         continue;
 
-                    const systems::hitboxes::entry* actual_hitbox = nullptr;
-                    for (const auto& entry : hitbox_set)
-                    {
-                        if (entry.index == pen.hitbox)
-                        {
-                            actual_hitbox = &entry;
-                            break;
-                        }
-                    }
+                    const auto* actual_hitbox = hitboxes.find(pen.hitbox);
                     if (!actual_hitbox || actual_hitbox->bone < 0 || actual_hitbox->bone >= bone_count)
                         continue;
 
@@ -1844,27 +1827,22 @@ namespace features::combat {
         }
     }
 
-    void rage::generate_multipoints(const systems::hitboxes::entry& hitbox, const math::vector3& center, const math::quaternion& bone_rot, float pointscale, const math::vector3& shoot_pos, float inaccuracy, std::vector<math::vector3>& out) const
+    std::size_t rage::generate_multipoints(const systems::hitboxes::entry& hitbox, const math::vector3& center, const math::quaternion& bone_rot, float pointscale, const math::vector3& shoot_pos, std::optional<float> cone_tangent, std::array<math::vector3, 3>& out) const
     {
-        out.clear();
+        if (hitbox.index != 0 && (hitbox.index < 2 || hitbox.index > 6))
+            return 0;
         auto scale = std::clamp(pointscale / 100.0f, 0.0f, 1.0f);
         if (scale <= 0.01f)
-            return;
+            return 0;
 
-        const auto hb_mid = (hitbox.mins + hitbox.maxs) * 0.5f;
-        const auto capsule_a = center + bone_rot.rotate_vector(hitbox.mins - hb_mid);
-        const auto capsule_b = center + bone_rot.rotate_vector(hitbox.maxs - hb_mid);
-
-        // Dynamic pointscale based on spread cone
-        const auto& config = settings::g_combat.m_ragebot.get_group(g_shared.ctx().weapon_type, g_shared.ctx().item_def_idx);
-        if (config.dynamic_pointscale.value && hitbox.radius > 0.001f)
+        // Dynamic pointscale based on the caller's unchanged spread cone.
+        if (cone_tangent && hitbox.radius > 0.001f)
         {
-            const auto cone = std::max(inaccuracy + g_shared.ctx().spread, 0.0f);
-            const auto cone_radius = std::tanf(cone) * (center - shoot_pos).length();
+            const auto cone_radius = *cone_tangent * (center - shoot_pos).length();
             const auto automatic_scale = std::clamp(0.9f - cone_radius / hitbox.radius, 0.0f, 1.0f);
             scale = std::min(scale, automatic_scale);
             if (scale <= 0.01f)
-                return;
+                return 0;
         }
 
         // Build view-relative frame
@@ -1873,19 +1851,20 @@ namespace features::combat {
         math::vector3 left{}, up{};
         math::helpers::angle_vectors_left(ang, nullptr, &left, &up);
         const auto right = math::vector3{ -left.x, -left.y, -left.z };
+        auto inverse = bone_rot;
+        inverse.x = -inverse.x;
+        inverse.y = -inverse.y;
+        inverse.z = -inverse.z;
+        const auto extents = (hitbox.maxs - hitbox.mins) * 0.5f;
+        const auto scaled_radius = hitbox.radius * scale;
 
         const auto scaled_offset = [&](const math::vector3& direction) -> math::vector3
         {
             if (hitbox.radius > 0.001f)
             {
-                return center + direction * (hitbox.radius * scale);
+                return center + direction * scaled_radius;
             }
-            auto inverse = bone_rot;
-            inverse.x = -inverse.x;
-            inverse.y = -inverse.y;
-            inverse.z = -inverse.z;
             const auto local_dir = inverse.rotate_vector(direction);
-            const auto extents = (hitbox.maxs - hitbox.mins) * 0.5f;
             auto distance = 8192.0f;
             if (std::fabs(local_dir.x) > 1.0e-6f) distance = std::min(distance, std::fabs(extents.x / local_dir.x));
             if (std::fabs(local_dir.y) > 1.0e-6f) distance = std::min(distance, std::fabs(extents.y / local_dir.y));
@@ -1895,27 +1874,18 @@ namespace features::combat {
             return center;
         };
 
-        switch (hitbox.index)
+        // Preserve point order and expose only initialized entries. Reusing the
+        // array after a head scan must not leak its third point into a torso scan.
+        if (hitbox.index == 0)
         {
-        case 0: // Head
-            out.reserve(3);
-            out.push_back(scaled_offset(up));
-            out.push_back(scaled_offset(right));
-            out.push_back(scaled_offset(-right));
-            break;
-        case 2: case 3: // Stomach/Pelvis
-            out.reserve(2);
-            out.push_back(scaled_offset(right));
-            out.push_back(scaled_offset(-right));
-            break;
-        case 4: case 5: case 6: // Chest
-            out.reserve(2);
-            out.push_back(scaled_offset(right));
-            out.push_back(scaled_offset(-right));
-            break;
-        default:
-            break;
+            out[0] = scaled_offset(up);
+            out[1] = scaled_offset(right);
+            out[2] = scaled_offset(-right);
+            return 3;
         }
+        out[0] = scaled_offset(right);
+        out[1] = scaled_offset(-right);
+        return 2;
     }
 
     bool rage::should_stop_movement(const aim_context& ctx) const
