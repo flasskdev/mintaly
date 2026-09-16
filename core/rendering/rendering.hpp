@@ -75,7 +75,8 @@ namespace rendering {
         void draw_visuals(float group_w) const;
         void draw_player(float group_w, int subtab) const;
         void draw_world(float group_w, int subtab) const;
-        void draw_skins(float group_w) const;
+        void draw_skins(float group_w);
+        void draw_skins_browser(float group_w) const;
         void draw_misc(float group_w) const;
         void draw_config(float group_w);
         bool m_open{ true };

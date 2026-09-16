@@ -1449,7 +1449,24 @@ namespace settings {
 
                 struct skin_map_field : config::custom_field
                 {
-                        std::unordered_map<std::int16_t, applied_skin> data{};
+                        using map_type = std::unordered_map<std::int16_t, applied_skin>;
+                        map_type data{}; // Legacy/global fallback, preserved for older configs.
+                        std::array<std::optional<map_type>, 2> teams{};
+
+                        const map_type& for_team(int team) const
+                        {
+                                if (team != 2 && team != 3) return data;
+                                const auto& selected = teams[team == 3 ? 0 : 1];
+                                return selected ? *selected : data;
+                        }
+
+                        map_type& edit_team(int team)
+                        {
+                                if (team != 2 && team != 3) return data;
+                                auto& selected = teams[team == 3 ? 0 : 1];
+                                if (!selected) selected = data;
+                                return *selected;
+                        }
 
                         static int bounded_integer(const nlohmann::json& object, const char* key, int fallback, int maximum)
                         {
@@ -1462,10 +1479,10 @@ namespace settings {
                                 return fallback;
                         }
 
-                        nlohmann::json serialize() const override
+                        static nlohmann::json encode_map(const map_type& values)
                         {
                                 auto j = nlohmann::json::object();
-                                for (const auto& [def, s] : data)
+                                for (const auto& [def, s] : values)
                                 {
                                         j[std::to_string(def)] = nlohmann::json
                                         {
@@ -1480,17 +1497,32 @@ namespace settings {
                                 return j;
                         }
 
+                        nlohmann::json serialize() const override
+                        {
+                                auto j = encode_map(data);
+                                if (teams[0]) j["_ct"] = encode_map(*teams[0]);
+                                if (teams[1]) j["_t"] = encode_map(*teams[1]);
+                                return j;
+                        }
+
                         void deserialize(const nlohmann::json& j) override
                         {
-                                data.clear();
+                                data = decode_map(j);
+                                teams = {};
+                                if (!j.is_object()) return;
+                                if (j.contains("_ct") && j["_ct"].is_object()) teams[0] = decode_map(j["_ct"]);
+                                if (j.contains("_t") && j["_t"].is_object()) teams[1] = decode_map(j["_t"]);
+                        }
 
-                                if (!j.is_object())
-                                {
-                                        return;
-                                }
+                        static map_type decode_map(const nlohmann::json& j)
+                        {
+                                map_type data;
+
+                                if (!j.is_object()) return data;
 
                                 for (auto it = j.begin(); it != j.end(); ++it)
                                 {
+                                        if (it.key() == "_ct" || it.key() == "_t") continue;
                                         try
                                         {
                                                 std::size_t parsed{};
@@ -1508,6 +1540,7 @@ namespace settings {
                                         }
                                         catch (...) {}
                                 }
+                                return data;
                         }
                 };
 

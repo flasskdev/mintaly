@@ -20,6 +20,8 @@ namespace features::changer {
 
 		const auto local_ctrl = local.controller;
 		const auto local_pawn = local.pawn;
+		const auto local_team = memory::read<int>( local_pawn + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) );
+		const auto& active_skins = settings::g_changer.skins.for_team( local_team );
 
 		if ( true )
 		{
@@ -71,8 +73,8 @@ namespace features::changer {
 							continue;
 						}
 
-						const auto skin_it = settings::g_changer.skins.data.find( current_def_index );
-						if ( skin_it == settings::g_changer.skins.data.end( ) )
+						const auto skin_it = active_skins.find( current_def_index );
+						if ( skin_it == active_skins.end( ) )
 						{
 							continue;
 						}
@@ -116,8 +118,8 @@ namespace features::changer {
 
 							if ( def && def->category == econ_item_system::item_category::gun )
 							{
-								const auto skin_it = settings::g_changer.skins.data.find( def_index );
-								if ( skin_it != settings::g_changer.skins.data.end( ) )
+								const auto skin_it = active_skins.find( def_index );
+								if ( skin_it != active_skins.end( ) )
 								{
 									const auto skin = cosmetic_attributes::normalize( skin_it->second );
 									this->apply( active_weapon, iv, active_handle, active_handle, local_pawn, &skin, account_id );

@@ -78,7 +78,9 @@ namespace features::changer {
 	void skin_sync::capture_local_snapshot(std::uint64_t steam_id)
 	{
 		remote_player_skin snapshot{};
-		snapshot.skins = settings::g_changer.skins.data;
+		const auto local_pawn = systems::g_local.get().pawn;
+		const auto team = local_pawn ? memory::safe_read<int>(local_pawn + SCHEMA("C_BaseEntity", "m_iTeamNum"_hash)).value_or(0) : 0;
+		snapshot.skins = settings::g_changer.skins.for_team(team);
 		snapshot.music_kit_id = settings::g_changer.music.id;
 		snapshot.last_updated = std::chrono::steady_clock::now();
 		const auto official_agent = [](std::int16_t id, int custom) -> std::int16_t {
