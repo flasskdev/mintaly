@@ -6,6 +6,7 @@
 #include <utilities/memory/memory.hpp>
 #include <protection/game_addresses.hpp>
 #include "threadpool.hpp"
+#include "partition.hpp"
 
 namespace threadpool {
 
@@ -239,20 +240,12 @@ namespace threadpool {
 			return;
 		}
 
-		const int total {end - begin};
-		// Keep at most three queued chunks plus the caller; do not flood the
-		// engine pool on machines with many logical CPUs.
-		const int max_chunks {static_cast<int>(std::clamp (std::thread::hardware_concurrency (), 1u, 4u))};
-		min_chunk_size = std::max (min_chunk_size, 1);
-
-		auto chunk_size {(total + max_chunks - 1) / max_chunks};
-		if (chunk_size < min_chunk_size) {
-			chunk_size = min_chunk_size;
-		}
-
-		const auto num_chunks {(total + chunk_size - 1) / chunk_size};
-
-		if (num_chunks <= 1) {
+		// Hardware capacity is process-wide; avoid querying it on every batch.
+		static const int max_chunks {static_cast<int>(std::clamp (
+			std::thread::hardware_concurrency (), 1u,
+			static_cast<unsigned>(detail::max_partitions)))};
+		const auto partition = detail::partition_range (begin, end, min_chunk_size, max_chunks);
+		if (partition.count <= 1) {
 			body (begin, end);
 			return;
 		}
@@ -268,24 +261,25 @@ namespace threadpool {
 			}
 		};
 
-		std::vector<job> jobs;
-		jobs.reserve (static_cast<std::size_t>(num_chunks) - 1);
+		// At most three jobs are queued. Keep handles on the stack rather than
+		// allocating a vector for each parallel call. Empty handles wait safely.
+		std::array<job, detail::max_partitions - 1> jobs{};
 		{
 			// Also join on dispatch/allocation failure before references captured
 			// by already queued jobs can leave scope.
 			struct join_guard {
-				std::vector<job>& jobs;
+				std::span<job> jobs;
 				~join_guard () { for (auto& j : jobs) j.wait (); }
-			} guard {jobs};
+			} guard {std::span<job>{jobs}};
 
-			for (auto i = 0; i < num_chunks - 1; ++i) {
-				const auto cb {begin + i * chunk_size};
-				const auto ce {std::min (cb + chunk_size, end)};
-				jobs.push_back (run ([&invoke, cb, ce] () { invoke (cb, ce); }, priority));
-				if (!jobs.back ()) invoke (cb, ce);
+			for (auto i = 0; i < partition.count - 1; ++i) {
+				const auto chunk = partition.chunks[i];
+				jobs[i] = run ([&invoke, chunk] () { invoke (chunk.begin, chunk.end); }, priority);
+				if (!jobs[i]) invoke (chunk.begin, chunk.end);
 			}
 
-			invoke (begin + (num_chunks - 1) * chunk_size, end);
+			const auto last = partition.chunks[partition.count - 1];
+			invoke (last.begin, last.end);
 		}
 		if (failure) std::rethrow_exception (failure);
 	}

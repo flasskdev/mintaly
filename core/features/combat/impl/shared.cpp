@@ -24,6 +24,28 @@ namespace features::combat {
                         std::uint8_t pad[ 3 ];
                 };
 
+                [[nodiscard]] std::optional<float> capture_record_cutoff( )
+                {
+                        const auto local_pawn = systems::g_local.get( ).pawn;
+                        const auto net_channel = memory::call<std::uintptr_t>(PATTERN (patterns::get_net_channel), 0, 0 );
+                        const auto global_vars = memory::read<std::uintptr_t>( addresses::globals::global_vars );
+                        if ( !local_pawn || !net_channel || !global_vars )
+                                return std::nullopt;
+                        const auto server_limit = CONVAR ("sv_maxunlag")->get<float>( );
+                        const auto player_limit = CONVAR ("sv_maxunlag_player")->get<float>( );
+                        const auto max_unlag = player_limit > 0.0f ? std::min( server_limit, player_limit ) : server_limit;
+                        const auto current_time = memory::read<float>( global_vars + 0x30 );
+                        const auto latency = memory::call_vfunc<float>( net_channel, 10, 0 );
+                        return ballistics::lagcomp_cutoff( max_unlag, current_time, latency );
+                }
+
+                [[nodiscard]] bool valid_record_at( const shared::lagcomp::record& record,
+                        const std::optional<float>& cutoff )
+                {
+                        return record.valid && cutoff && std::isfinite( record.simulation_time ) &&
+                                record.simulation_time >= *cutoff;
+                }
+
                 // Hitchance needs existence, not the nearest contact fraction.
                 // Prepare all ray-invariant terms once for a hitbox/eye pair.
                 // The exact root tests and tolerances match ray_vs_capsule.
@@ -552,41 +574,7 @@ namespace features::combat {
 
         bool shared::lagcomp::record::is_valid( ) const
         {
-                if ( !this->valid )
-                {
-                        return false;
-                }
-
-                const auto local_pawn = systems::g_local.get( ).pawn;
-                const auto net_channel = memory::call<std::uintptr_t>(PATTERN (patterns::get_net_channel), 0, 0 );
-                const auto global_vars = memory::read<std::uintptr_t>( addresses::globals::global_vars );
-
-                if ( !local_pawn || !net_channel || !global_vars )
-                {
-                        return false;
-                }
-
-                const auto max_unlag = [ ]
-                        {
-                                const auto server_limit = CONVAR ("sv_maxunlag")->get<float>( );
-                                const auto player_limit = CONVAR ("sv_maxunlag_player")->get<float>( );
-                                return player_limit > 0.0f ? std::min( server_limit, player_limit ) : server_limit;
-                        }( );
-
-                const auto current_time = memory::read<float>( global_vars + 0x30 );
-                const auto latency = memory::call_vfunc<float>( net_channel, 10, 0 );
-
-                if ( !std::isfinite( max_unlag ) || !std::isfinite( current_time ) ||
-                        !std::isfinite( latency ) )
-                {
-                        return false;
-                }
-
-                // This value is the effective ping for the selected flow in this build;
-                // combining both flows double-counts latency and can erase the window.
-                const auto budget = max_unlag - std::max( latency, 0.0f );
-
-                return budget > 0.0f && this->simulation_time >= current_time - budget;
+                return this->valid && detail::valid_record_at( *this, detail::capture_record_cutoff( ) );
         }
 
         void shared::lagcomp::record::apply( )
@@ -633,6 +621,9 @@ namespace features::combat {
                         return;
                 }
 
+                // Bone setup temporarily changes global time, then restores it.
+                // Use one consistent validation window for this whole update.
+                const auto cutoff = detail::capture_record_cutoff( );
                 std::unordered_set<std::uintptr_t> active{};
 
                 for ( const auto& p : systems::g_entities.get_by_type( systems::entities::type::player ) )
@@ -704,7 +695,7 @@ namespace features::combat {
                                 pending.push_back( { pawn, simulation_tick } );
                         }
 
-                        while ( !records.empty( ) && !records.back( ).is_valid( ) )
+                        while ( !records.empty( ) && !detail::valid_record_at( records.back( ), cutoff ) )
                         {
                                 records.pop_back( );
                         }
@@ -738,7 +729,7 @@ namespace features::combat {
                 {
                         for ( auto& rec : records )
                         {
-                                rec.was_valid = rec.is_valid( );
+                                rec.was_valid = detail::valid_record_at( rec, cutoff );
                         }
                 }
         }
@@ -753,9 +744,10 @@ namespace features::combat {
                         return nullptr;
                 }
 
+                const auto cutoff = detail::capture_record_cutoff( );
                 for ( auto rit = it->second.rbegin( ); rit != it->second.rend( ); ++rit )
                 {
-                        if ( rit->is_valid( ) )
+                        if ( detail::valid_record_at( *rit, cutoff ) )
                         {
                                 return &( *rit );
                         }
@@ -827,32 +819,22 @@ namespace features::combat {
                         return result;
                 }
 
+                const auto cutoff = detail::capture_record_cutoff( );
+                if ( !cutoff )
+                        return result;
                 result.reserve( it->second.size( ) );
-
+                const auto max_ticks = std::clamp( settings::g_combat.m_lagcomp.max_backtrack_ticks.value, 1, static_cast< int >( rage::k_max_lagcomp_records ) );
                 for ( auto& rec : it->second )
                 {
-                        if ( rec.is_valid( ) )
-                        {
-                                result.push_back( &rec );
-                        }
+                        if ( !detail::valid_record_at( rec, cutoff ) )
+                                continue;
+                        // Fold the backtrack filter into collection, without
+                        // assuming that all subsequent timestamps are ordered.
+                        if ( !result.empty( ) &&
+                                static_cast<std::int64_t>( result.front( )->tick ) - rec.tick > max_ticks )
+                                continue;
+                        result.push_back( &rec );
                 }
-
-                if ( result.empty( ) )
-                {
-                        return result;
-                }
-
-                const auto max_ticks = std::clamp( settings::g_combat.m_lagcomp.max_backtrack_ticks.value, 1, static_cast< int >( rage::k_max_lagcomp_records ) );
-                const auto newest_tick = result.front( )->tick;
-
-                result.erase(
-                        std::remove_if( result.begin( ), result.end( ), [ newest_tick, max_ticks ]( const record* rec )
-                                {
-                                        return ( newest_tick - rec->tick ) > max_ticks;
-                                } ),
-                        result.end( )
-                );
-
                 return result;
         }
 

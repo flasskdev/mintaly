@@ -1,6 +1,7 @@
 #pragma once
 
 #include <filesystem>
+#include <utilities/indexed_cache.hpp>
 #include <utilities/proto/proto.hpp>
 #include <core/settings.hpp>
 
@@ -210,7 +211,9 @@ namespace systems {
 	private:
 		[[nodiscard]] type classify_entity( std::uint32_t schema_hash ) const;
 
-		std::vector<cached> m_cached{};
+		// Snapshot rebuilding is guarded by m_cache_mtx; callers still receive
+		// independent vectors, never references into a concurrently mutated cache.
+		mutable utilities::indexed_cache<cached, 0x4000, 4> m_cached{};
 		mutable std::shared_mutex m_cache_mtx{};
 		std::array<std::uintptr_t, 32> m_cached_list_entries{};
 		std::uintptr_t m_cached_entity_list{};
