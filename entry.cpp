@@ -202,6 +202,9 @@ namespace {
 			info->ExceptionRecord->ExceptionAddress,
 			reinterpret_cast<void*>(accessed));
 		diag::step (buf);
+		// Engine code can fault while called by a feature and consume the
+		// exception before the unhandled filter sees it. Capture its context now.
+		diag::record_crash (info, diag::get_exception_phase ());
 
 		return EXCEPTION_CONTINUE_SEARCH;
 	}
@@ -561,7 +564,8 @@ extern "C" int __stdcall entry (HMODULE module_handle, DWORD reason, LPVOID rese
 		CloseHandle (thread);
 		return 1;
 	} else if (reason == DLL_PROCESS_DETACH) {
-#if defined( DEV )
+		// These handlers are installed in every build; never leave callbacks
+		// pointing into an unloaded release DLL.
 		if (g_vectored_exception_handler) {
 			RemoveVectoredExceptionHandler (g_vectored_exception_handler);
 			g_vectored_exception_handler = nullptr;
@@ -577,6 +581,7 @@ extern "C" int __stdcall entry (HMODULE module_handle, DWORD reason, LPVOID rese
 			SetUnhandledExceptionFilter (current_filter);
 		}
 
+#if defined( DEV )
 		g_terminate_process_hook.reset ();
 		g_minidump_hook.reset ();
 

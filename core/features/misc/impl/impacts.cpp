@@ -25,46 +25,16 @@ namespace features::misc {
 
 		inline bool is_local_player( std::uintptr_t ent, const systems::local::snapshot& local )
 		{
-			if ( !ent || !local.is_valid( ) ) return false;
-			if ( ent == local.controller || ent == local.pawn ) return true;
-
-			const auto ctrl_h = memory::read<std::uint32_t>( ent + SCHEMA( "C_BasePlayerPawn", "m_hController"_hash ) );
-			if ( ctrl_h && ctrl_h != 0xFFFFFFFF && systems::g_entities.lookup( ctrl_h ) == local.controller ) return true;
-
-			const auto pawn_h = memory::read<std::uint32_t>( ent + SCHEMA( "CBasePlayerController", "m_hPawn"_hash ) );
-			if ( pawn_h && pawn_h != 0xFFFFFFFF && systems::g_entities.lookup( pawn_h ) == local.pawn ) return true;
-
-			return false;
+			return ent && ( ent == local.controller || ent == local.pawn );
 		}
 
-		inline std::uintptr_t resolve_pawn( std::uintptr_t ent )
+		// Only pass a pawn here; never probe unrelated controller fields.
+		inline std::uintptr_t resolve_controller( std::uintptr_t pawn )
 		{
-			if ( !ent ) return 0;
-			const auto ctrl_h = memory::read<std::uint32_t>( ent + SCHEMA( "C_BasePlayerPawn", "m_hController"_hash ) );
-			if ( ctrl_h && ctrl_h != 0xFFFFFFFF ) return ent;
-
-			const auto pawn_h = memory::read<std::uint32_t>( ent + SCHEMA( "CBasePlayerController", "m_hPawn"_hash ) );
-			if ( pawn_h && pawn_h != 0xFFFFFFFF )
-			{
-				const auto pawn = systems::g_entities.lookup( pawn_h );
-				if ( pawn ) return pawn;
-			}
-			return ent;
-		}
-
-		inline std::uintptr_t resolve_controller( std::uintptr_t ent )
-		{
-			if ( !ent ) return 0;
-			const auto pawn_h = memory::read<std::uint32_t>( ent + SCHEMA( "CBasePlayerController", "m_hPawn"_hash ) );
-			if ( pawn_h && pawn_h != 0xFFFFFFFF ) return ent;
-
-			const auto ctrl_h = memory::read<std::uint32_t>( ent + SCHEMA( "C_BasePlayerPawn", "m_hController"_hash ) );
-			if ( ctrl_h && ctrl_h != 0xFFFFFFFF )
-			{
-				const auto ctrl = systems::g_entities.lookup( ctrl_h );
-				if ( ctrl ) return ctrl;
-			}
-			return ent;
+			const auto offset = SCHEMA( "C_BasePlayerPawn", "m_hController"_hash );
+			if ( !pawn || !offset ) return 0;
+			const auto handle = memory::safe_read<std::uint32_t>( pawn + offset ).value_or( 0 );
+			return systems::g_entities.lookup( handle );
 		}
 
 		inline std::string format_cs2_colors( std::string_view text )
@@ -196,6 +166,10 @@ namespace features::misc {
 
 	void impacts::on_frame_stage_notify( )
 	{
+		// Resolve shots and call the game HUD only on the game thread, after
+		// the engine has dispatched this frame's network events.
+		this->check_misses( );
+
 		// Frame-stage updates can overlap Present, which renders the same impact vectors.
 		std::unique_lock lock( this->m_mtx );
 
@@ -229,9 +203,11 @@ namespace features::misc {
 
 		rendering::widgets::reset_team_damage( );
 
-		std::thread( [ this ]( ) {
-			this->precache_death_effect( );
-		} ).detach( );
+		// Resources belong to the current level. Reload lazily from the next
+		// game event, never from a detached worker racing level shutdown.
+		this->m_death_effect_loaded = false;
+		this->m_bullet_impact_effect_loaded = false;
+		this->m_bullet_tracers_loaded = false;
 	}
 
 	void impacts::on_render( xdraw::draw_list& draw_list )
@@ -248,8 +224,6 @@ namespace features::misc {
 		}
 		const auto current_time = *time;
 
-		this->check_misses( );
-
 		this->render_hit_markers( draw_list, current_time );
 		this->render_logs( draw_list, current_time );
 	}
@@ -263,14 +237,18 @@ namespace features::misc {
 			return;
 		}
 
-		const auto position = memory::read<math::vector3>( msg + 0x18 );
+		if ( !msg ) return;
+		const auto position = memory::safe_read<math::vector3>( msg + 0x18 ).value_or( math::vector3{} );
 		if ( !std::isfinite( position.x ) || !std::isfinite( position.y ) || !std::isfinite( position.z ) || position.length_sqr( ) < 1.0f )
 		{
 			return;
 		}
 
-		const auto global_vars = memory::read<std::uintptr_t>( addresses::globals::global_vars );
-		const auto current_time = memory::read<float>( global_vars + 0x30 );
+		const auto global_vars = memory::safe_read<std::uintptr_t>( addresses::globals::global_vars ).value_or( 0 );
+		if ( !global_vars ) return;
+		const auto time = memory::safe_read<float>( global_vars + 0x30 );
+		if ( !time || !std::isfinite( *time ) ) return;
+		const auto current_time = *time;
 
 		std::unique_lock lock( this->m_mtx );
 
@@ -310,7 +288,9 @@ namespace features::misc {
 			// Report-hit contains the most accurate contact point, but it is not
 			// guaranteed to arrive before player_hurt. Use it when available and
 			// fall back to the confirmed shot impact or the victim's position.
-			const auto game_scene_node = memory::read<std::uintptr_t>( data.victim_pawn + SCHEMA( "C_BaseEntity", "m_pGameSceneNode"_hash ) );
+			const auto game_scene_node = data.victim_pawn
+				? memory::safe_read<std::uintptr_t>( data.victim_pawn + SCHEMA( "C_BaseEntity", "m_pGameSceneNode"_hash ) ).value_or( 0 )
+				: 0;
 			if ( game_scene_node )
 			{
 				const auto origin = memory::read<math::vector3>( game_scene_node + SCHEMA( "CGameSceneNode", "m_vecAbsOrigin"_hash ) );
@@ -377,7 +357,7 @@ namespace features::misc {
 			this->play_sound( cfg.hit_sound_type, cfg.hit_sound_volume, cfg.custom_hit_sound.value );
 		}
 
-		if ( is_kill && cfg.death_effect.value )
+		if ( is_kill && cfg.death_effect.value && data.victim_pawn )
 		{
 			this->play_death_effect( data.victim_pawn );
 		}
@@ -416,6 +396,7 @@ namespace features::misc {
 		const auto x = memory::call<float>(PATTERN (patterns::game_event_get_float), event, "x", 0.0f );
 		const auto y = memory::call<float>(PATTERN (patterns::game_event_get_float), event, "y", 0.0f );
 		const auto z = memory::call<float>(PATTERN (patterns::game_event_get_float), event, "z", 0.0f );
+		if ( !std::isfinite( x ) || !std::isfinite( y ) || !std::isfinite( z ) ) return;
 
 		{
 			std::unique_lock lock( this->m_mtx );
@@ -577,6 +558,7 @@ namespace features::misc {
 
 	void impacts::on_get_interpolated_shoot_position( std::uintptr_t weapon_services, float* out )
 	{
+		if ( !out ) return;
 		const auto local_pawn = systems::g_local.get( ).pawn;
 		if ( !local_pawn )
 		{
@@ -590,6 +572,7 @@ namespace features::misc {
 		}
 
 		const auto shoot_position = math::vector3{ out[ 0 ], out[ 1 ], out[ 2 ] };
+		if ( !std::isfinite( shoot_position.x ) || !std::isfinite( shoot_position.y ) || !std::isfinite( shoot_position.z ) ) return;
 
 		std::unique_lock lock( this->m_mtx );
 
@@ -606,8 +589,12 @@ namespace features::misc {
 
 	void impacts::on_boom( std::uintptr_t victim_pawn, int hitgroup, float damage, float hitchance, float inaccuracy, float spread, const math::vector3& aim_angle, const math::vector3& shoot_position, int tick, const std::array<systems::bones::data, 27>& skeleton, bool forced, std::uint32_t deferred_weapon, int command_tick )
 	{
-		const auto global_vars = memory::read<std::uintptr_t>( addresses::globals::global_vars );
-		const auto current_time = memory::read<float>( global_vars + 0x30 );
+		if ( !victim_pawn ) return;
+		const auto global_vars = memory::safe_read<std::uintptr_t>( addresses::globals::global_vars ).value_or( 0 );
+		if ( !global_vars ) return;
+		const auto time = memory::safe_read<float>( global_vars + 0x30 );
+		if ( !time || !std::isfinite( *time ) ) return;
+		const auto current_time = *time;
 
 		std::unique_lock lock( this->m_mtx );
 
@@ -832,11 +819,7 @@ namespace features::misc {
 			attacker = systems::events::get_pawn( reinterpret_cast< void* >( event ), "attacker" );
 		}
 
-		auto victim = systems::events::get_controller( reinterpret_cast< void* >( event ), "userid" );
-		if ( !victim )
-		{
-			victim = systems::events::get_pawn( reinterpret_cast< void* >( event ), "userid" );
-		}
+		const auto victim = systems::events::get_controller( reinterpret_cast< void* >( event ), "userid" );
 
 		const auto local = systems::g_local.get( );
 
@@ -845,11 +828,7 @@ namespace features::misc {
 			return {};
 		}
 
-		auto victim_pawn = systems::events::get_pawn( reinterpret_cast< void* >( event ), "userid" );
-		if ( !victim_pawn && victim )
-		{
-			victim_pawn = detail::resolve_pawn( victim );
-		}
+		const auto victim_pawn = systems::events::get_pawn( reinterpret_cast< void* >( event ), "userid" );
 
 		if ( !victim_pawn && !victim )
 		{
@@ -858,10 +837,10 @@ namespace features::misc {
 
 		if ( victim_pawn )
 		{
-			auto victim_team = memory::read<int>( victim_pawn + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) );
+			auto victim_team = memory::safe_read<std::uint8_t>( victim_pawn + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) ).value_or( 0 );
 			if ( victim_team == 0 && victim )
 			{
-				victim_team = memory::read<int>( victim + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) );
+				victim_team = memory::safe_read<std::uint8_t>( victim + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) ).value_or( 0 );
 			}
 			if ( victim_team != 0 && !local.is_this_other_team( victim_team ) )
 			{
@@ -872,7 +851,7 @@ namespace features::misc {
 			}
 		}
 
-		const auto victim_controller = detail::resolve_controller( victim ? victim : victim_pawn );
+		const auto victim_controller = victim ? victim : detail::resolve_controller( victim_pawn );
 
 		const auto damage = memory::call<int>( PATTERN (patterns::game_event_get_int), event, "dmg_health", false );
 		const auto hitgroup = memory::call<int>( PATTERN (patterns::game_event_get_int), event, "hitgroup", false );
@@ -900,7 +879,8 @@ namespace features::misc {
 			auto matched_shot = this->m_pending_shots.end( );
 			for ( auto it = this->m_pending_shots.begin( ); it != this->m_pending_shots.end( ); ++it )
 			{
-				if ( it->resolved )
+				const auto age = current_time - it->time;
+				if ( it->resolved || !std::isfinite( age ) || age < -0.05f || age > 1.2f )
 				{
 					continue;
 				}
@@ -910,16 +890,8 @@ namespace features::misc {
 				{
 					is_target = ( it->victim_controller == victim_controller );
 				}
-				if ( !is_target && it->victim_pawn && victim_pawn )
-				{
-					const auto shot_ctrl_h = memory::read<std::uint32_t>( it->victim_pawn + SCHEMA( "C_BasePlayerPawn", "m_hController"_hash ) );
-					const auto victim_ctrl_h = memory::read<std::uint32_t>( victim_pawn + SCHEMA( "C_BasePlayerPawn", "m_hController"_hash ) );
-					if ( shot_ctrl_h && shot_ctrl_h != 0xFFFFFFFF && shot_ctrl_h == victim_ctrl_h )
-					{
-						is_target = true;
-					}
-				}
-
+				// Compare captured identities only. The old shot's pawn may have
+				// been destroyed; reading its controller handle is a use-after-free.
 				if ( !is_target )
 				{
 					continue;
@@ -929,19 +901,7 @@ namespace features::misc {
 				break;
 			}
 
-			// Fallback: if handles recycled upon death, match the oldest pending shot from the last 0.8s
-			if ( matched_shot == this->m_pending_shots.end( ) )
-			{
-				for ( auto it = this->m_pending_shots.begin( ); it != this->m_pending_shots.end( ); ++it )
-				{
-					if ( !it->resolved && ( current_time - it->time ) <= 0.8f )
-					{
-						matched_shot = it;
-						break;
-					}
-				}
-			}
-
+			// An unrelated hurt event must not consume another target's shot.
 			if ( matched_shot != this->m_pending_shots.end( ) )
 			{
 				expected_hitgroup = matched_shot->hitgroup;
@@ -1005,17 +965,7 @@ namespace features::misc {
 			return "unknown";
 		}
 
-		// Handle case where pawn is passed instead of controller
-		const auto ctrl_h = memory::read<std::uint32_t>( controller + SCHEMA( "C_BasePlayerPawn", "m_hController"_hash ) );
-		if ( ctrl_h && ctrl_h != 0xFFFFFFFF )
-		{
-			const auto resolved = systems::g_entities.lookup( ctrl_h );
-			if ( resolved )
-			{
-				controller = resolved;
-			}
-		}
-
+		// Callers pass a controller; do not reinterpret its memory as a pawn.
 		const auto name_ptr = memory::read<std::uintptr_t>( controller + SCHEMA( "CCSPlayerController", "m_sSanitizedPlayerName"_hash ) );
 		if ( name_ptr )
 		{
@@ -1385,12 +1335,14 @@ namespace features::misc {
 
 	void impacts::check_misses( )
 	{
-		const auto global_vars = memory::read<std::uintptr_t>( addresses::globals::global_vars );
+		const auto global_vars = memory::safe_read<std::uintptr_t>( addresses::globals::global_vars ).value_or( 0 );
 		if ( !global_vars )
 		{
 			return;
 		}
-		const auto current_time = memory::read<float>( global_vars + 0x30 );
+		const auto time = memory::safe_read<float>( global_vars + 0x30 );
+		if ( !time || !std::isfinite( *time ) ) return;
+		const auto current_time = *time;
 
 		const auto& cfg = settings::g_misc.m_impacts;
 
@@ -1402,6 +1354,13 @@ namespace features::misc {
 			for ( auto it = this->m_pending_shots.begin( ); it != this->m_pending_shots.end( ); )
 			{
 				if ( it->resolved )
+				{
+					it = this->m_pending_shots.erase( it );
+					continue;
+				}
+
+				// A clock reset invalidates pending records; it is not a miss.
+				if ( !std::isfinite( it->time ) || current_time < it->time - 0.05f )
 				{
 					it = this->m_pending_shots.erase( it );
 					continue;
@@ -1453,7 +1412,8 @@ namespace features::misc {
 			const auto duration = cfg.hit_marker_duration.value;
 			const auto elapsed = time - it->time;
 
-			if ( elapsed > duration )
+			if ( !std::isfinite( elapsed ) || elapsed < 0.0f ||
+				!std::isfinite( duration ) || duration <= 0.0f || elapsed > duration )
 			{
 				it = this->m_hitmarkers.erase( it );
 				continue;
@@ -1756,6 +1716,7 @@ namespace features::misc {
 
 	void impacts::render_hit_effect( xdraw::draw_list& draw_list, float time )
 	{
+		std::unique_lock lock( this->m_mtx );
 		const auto& cfg = settings::g_misc.m_impacts;
 
 		if ( !cfg.hit_effect.value || this->m_hit_effect_time <= 0.0f )
@@ -1764,9 +1725,10 @@ namespace features::misc {
 		}
 
 		const auto elapsed = time - this->m_hit_effect_time;
-		const auto duration = cfg.hit_effect_duration;
+		const auto duration = cfg.hit_effect_duration.value;
 
-		if ( elapsed > duration )
+		if ( !std::isfinite( elapsed ) || elapsed < 0.0f ||
+			!std::isfinite( duration ) || duration <= 0.0f || elapsed > duration )
 		{
 			this->m_hit_effect_time = 0.0f;
 			return;
@@ -2336,6 +2298,7 @@ void play_engine_path( const char* sound_path, float volume )
 		const auto global_vars = memory::read<std::uintptr_t>( addresses::globals::global_vars );
 		const auto current_time = memory::read<float>( global_vars + 0x30 );
 
+		std::unique_lock lock( this->m_mtx );
 		this->m_hit_effect_time = current_time;
 	}
 
