@@ -201,6 +201,8 @@ namespace features::combat {
 
                         float inaccuracy{};
                         float spread{};
+                        // Captured by rage before speculative prediction is restored.
+                        math::vector3 aim_punch{};
                 };
 
                 void update( );
@@ -244,7 +246,15 @@ namespace features::combat {
                 [[nodiscard]] math::vector3 get_shoot_position( ) const;
                 [[nodiscard]] math::vector3 get_interpolated_shoot_position( std::uintptr_t local_pawn, bool newest = false ) const;
                 [[nodiscard]] int calculate_stop_ticks( const math::vector3& velocity, float max_speed, std::uintptr_t local_pawn ) const;
+                struct weapon_accuracy
+                {
+                        float inaccuracy{};
+                        float spread{};
+                        float recoil_index{};
+                };
+
                 [[nodiscard]] float get_spread( ) const;
+                [[nodiscard]] std::optional<weapon_accuracy> get_accuracy_state( bool update_accuracy_penalty ) const;
                 [[nodiscard]] float get_inaccuracy( bool update_accuracy_penalty ) const;
                 [[nodiscard]] float get_inaccuracy_at_velocity( std::uintptr_t local_pawn, const math::vector3& velocity ) const;
                 [[nodiscard]] float get_air_inaccuracy( float vertical_speed, float jump_initial, float jump_apex ) const;
