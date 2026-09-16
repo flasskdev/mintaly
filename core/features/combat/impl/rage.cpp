@@ -774,18 +774,15 @@ namespace features::combat {
         const auto& shared_ctx = g_shared.ctx();
         const auto& config = settings::g_combat.m_ragebot.get_group(shared_ctx.weapon_type, shared_ctx.item_def_idx);
 
-        diag::set_exception_phase("rage: scan_player / hitboxes");
-        const auto game_scene_node = memory::read<std::uintptr_t>(cand.pawn + SCHEMA("C_BaseEntity", "m_pGameSceneNode"_hash));
-        if (!game_scene_node)
-            return {};
-
-        const auto hitbox_set = systems::g_hitboxes.query(game_scene_node);
+        diag::set_exception_phase("rage: scan_player / prepare_target");
+        const auto pen_ctx = g_shared.pen().prepare_target(cand.pawn, record);
+        // Scan and penetration must use the same hitbox set and recorded pose.
+        const auto& hitbox_set = pen_ctx.hitboxes;
         if (hitbox_set.count <= 0)
             return {};
 
-        const auto skeleton = g_shared.lc().get_skeleton(*record);
-        diag::set_exception_phase("rage: scan_player / prepare_target");
-        const auto pen_ctx = g_shared.pen().prepare_target(cand.pawn, record);
+        const auto bone_count = std::min(record->bone_count, static_cast<int>(std::size(record->bones)));
+        const auto& skeleton = record->bones;
         diag::set_exception_phase("rage: scan_player / multipoints");
 
         const auto force_body = config.body_aim.value;
@@ -868,9 +865,7 @@ namespace features::combat {
                 }
             }
 
-            if (!hb || hb->bone < 0 ||
-                hb->bone >= static_cast<int>(skeleton.size()) ||
-                hb->bone >= record->bone_count)
+            if (!hb || hb->bone < 0 || hb->bone >= bone_count)
                 continue;
 
             const auto& bone = skeleton[hb->bone];
@@ -963,7 +958,23 @@ namespace features::combat {
                     continue;
             }
 
-            if (tp.is_center && tp.hitbox_index >= 0 && tp.hitbox_index < static_cast<int>(center_sufficient.size()))
+            const systems::hitboxes::entry* actual_hitbox = nullptr;
+            for (const auto& entry : hitbox_set)
+            {
+                if (entry.index == pen.hitbox)
+                {
+                    actual_hitbox = &entry;
+                    break;
+                }
+            }
+            if (!actual_hitbox || actual_hitbox->bone < 0 || actual_hitbox->bone >= bone_count)
+                continue;
+
+            // A nearer limb can intercept a ray aimed at another hitbox. Use
+            // the contacted geometry for hitchance and do not suppress that
+            // intended hitbox's multipoints based on an unrelated center hit.
+            const auto actual_center = tp.is_center && pen.hitbox == tp.hitbox_index;
+            if (actual_center && tp.hitbox_index >= 0 && tp.hitbox_index < static_cast<int>(center_sufficient.size()))
                 center_sufficient[tp.hitbox_index] = !pen.penetrated || pen.damage >= static_cast<float>(cand.health);
 
             scan_hit h{};
@@ -971,11 +982,11 @@ namespace features::combat {
             h.aim_angle = aim;
             h.damage = pen.damage;
             h.fov = fov;
-            h.hitbox_index = tp.hitbox_index;
+            h.hitbox_index = actual_hitbox->index;
             h.hitgroup = pen.hitgroup;
-            h.bone_index = tp.bone_index;
-            h.hitbox = tp.hitbox;
-            h.is_center = tp.is_center;
+            h.bone_index = actual_hitbox->bone;
+            h.hitbox = *actual_hitbox;
+            h.is_center = actual_center;
             h.penetrated = pen.penetrated;
             h.pawn = cand.pawn;
             h.health = cand.health;
@@ -1057,15 +1068,9 @@ namespace features::combat {
             group.hit_indices.resize(top_k_per_record);
         }
 
-        struct evaluated_hit
-        {
-            int hit_index;
-            float hitchance;
-            float score;
-        };
-
-        std::vector<evaluated_hit> evaluated;
-        evaluated.reserve(hits.size());
+        // Select as we evaluate, preserving traversal order and tie-breaking
+        // without an intermediate allocation or a second pass over the hits.
+        target best{};
 
         const auto& config = settings::g_combat.m_ragebot.get_group(g_shared.ctx().weapon_type, g_shared.ctx().item_def_idx);
         const auto needed_hc = config.hitchance_override.value ?
@@ -1084,7 +1089,9 @@ namespace features::combat {
             for (const auto idx : group.hit_indices)
             {
                 const auto& h = hits[idx];
-                if (!h.record || !h.record->valid || h.bone_index < 0 || h.bone_index >= 28)
+                if (!h.record || !h.record->valid || h.bone_index < 0 ||
+                    h.bone_index >= h.record->bone_count ||
+                    h.bone_index >= static_cast<int>(std::size(h.record->bones)))
                     continue;
 
                 if (!config.no_spread.value && !hc_cache.initialized)
@@ -1110,37 +1117,24 @@ namespace features::combat {
                 score += static_cast<float>(hitgroup_priority(h.hitbox_index)) * 2.0f;
                 score -= h.fov * 0.1f;
 
-                evaluated.push_back(evaluated_hit{ idx, hc, score });
-            }
-        }
+                auto is_better = !best.valid || score > best.score;
+                if (best.valid && std::fabsf(score - best.score) < 0.01f)
+                {
+                    if (h.record->tick != best.hit.record->tick)
+                        is_better = h.record->tick > best.hit.record->tick;
+                    else if (h.is_center != best.hit.is_center)
+                        is_better = h.is_center;
+                    else
+                        is_better = h.fov < best.hit.fov;
+                }
 
-        target best{};
-        for (const auto& e : evaluated)
-        {
-            if (e.hit_index < 0 || e.hit_index >= static_cast<int>(hits.size()))
-                continue;
-
-            const auto& h = hits[e.hit_index];
-            if (!h.record || !h.record->valid)
-                continue;
-
-            auto is_better = !best.valid || e.score > best.score;
-            if (best.valid && std::fabsf(e.score - best.score) < 0.01f)
-            {
-                if (h.record->tick != best.hit.record->tick)
-                    is_better = h.record->tick > best.hit.record->tick;
-                else if (h.is_center != best.hit.is_center)
-                    is_better = h.is_center;
-                else
-                    is_better = h.fov < best.hit.fov;
-            }
-
-            if (is_better)
-            {
-                best.hit = h;
-                best.hitchance = e.hitchance;
-                best.score = e.score;
-                best.valid = true;
+                if (is_better)
+                {
+                    best.hit = h;
+                    best.hitchance = hc;
+                    best.score = score;
+                    best.valid = true;
+                }
             }
         }
         return best;
@@ -1148,7 +1142,9 @@ namespace features::combat {
 
     float rage::evaluate_hitchance(const scan_hit& hit, const aim_context& ctx, float inaccuracy) const
     {
-        if (!hit.record || !hit.record->valid || hit.bone_index < 0 || hit.bone_index >= 28)
+        if (!hit.record || !hit.record->valid || hit.bone_index < 0 ||
+            hit.bone_index >= hit.record->bone_count ||
+            hit.bone_index >= static_cast<int>(std::size(hit.record->bones)))
             return 0.0f;
 
         return g_shared.calculate_hitchance(hit.source_eye.position, hit.aim_angle, hit.hitbox, hit.record->bones[hit.bone_index], inaccuracy, ctx.spread);
