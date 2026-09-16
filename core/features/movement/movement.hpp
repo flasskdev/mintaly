@@ -57,8 +57,7 @@ namespace features::movement {
 		[[nodiscard]] bool handled_this_tick( ) const { return this->m_handled_this_tick; }
 
 	private:
-		void quantized_path( systems::input::usercmd* cmd );
-		void antiaim_strafe_path( systems::input::usercmd* cmd );
+		void strafe_path( systems::input::usercmd* cmd );
 		[[nodiscard]] bool apply_yaw_subtick( proto::base_usercmd_pb* base, float when, float yaw_delta ) const;
 		void check_button( std::uintptr_t current_buttons, std::uintptr_t button );
 		[[nodiscard]] static math::vector2 movement_from_buttons( std::uintptr_t pressed );
