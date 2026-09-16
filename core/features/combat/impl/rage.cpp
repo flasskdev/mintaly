@@ -1,5 +1,7 @@
 #include <pch/pch.hpp>
 #include <cassert>
+#include <limits>
+#include <core/features/combat/ballistics.hpp>
 #include <utilities/threadpool/threadpool.hpp>
 #include <utilities/memory/memory.hpp>
 #include <utilities/addresses/addresses.hpp>
@@ -439,17 +441,15 @@ namespace features::combat {
                     const auto eye = eye_candidates.entries[i].position + eye_offset;
                     auto hits = this->scan_players(eye, inaccuracy, ctx, candidates, local);
 
-                    auto found_direct{ false };
                     for (auto& hit : hits)
                     {
                         auto source_eye = eye_candidates.entries[i];
                         source_eye.position = eye;
                         hit.source_eye = source_eye;
-                        found_direct = found_direct || !hit.penetrated;
                         hits_out.push_back(std::move(hit));
                     }
-                    if (found_direct)
-                        break;
+                    // A direct center ray says nothing about hitchance from the
+                    // other eye. Keep both candidates until probability ranking.
                 }
                 return hits_out;
             };
@@ -473,18 +473,43 @@ namespace features::combat {
         if (config.no_spread.value)
         {
             auto all_hits = scan_from_eye_candidates({}, shared_ctx.inaccuracy);
-            const auto best = all_hits.empty() ? target{} : this->select_best(ctx, all_hits, shared_ctx.inaccuracy);
+            auto best = all_hits.empty() ? target{} : this->select_best(ctx, all_hits, shared_ctx.inaccuracy);
+            const auto had_target = best.valid;
 
             if (best.valid && allow_fire)
             {
-                this->fire_gun(cmd, best, false, best.hit.source_eye.position, local);
-                if (duckpeek_active && this->m_firing_this_tick)
+                // A high-scoring point may have no seed-consistent solution for
+                // this command. Try alternatives rather than stall on it forever.
+                // Bound expensive solving/retracing even in a crowded scene.
+                constexpr auto max_shot_attempts = 8;
+                for (auto attempt = 0; attempt < max_shot_attempts && best.valid; ++attempt)
                 {
-                    this->m_duckpeek_reduck = true;
-                    this->m_duckpeek_reduck_ticks = 10;
-                    this->m_release_duck_for_shot = false;
+                    this->fire_gun(cmd, best, false, best.hit.source_eye.position, local);
+                    if (this->m_firing_this_tick)
+                    {
+                        if (duckpeek_active)
+                        {
+                            this->m_duckpeek_reduck = true;
+                            this->m_duckpeek_reduck_ticks = 10;
+                            this->m_release_duck_for_shot = false;
+                        }
+                        return true;
+                    }
+                    const auto rejected = best.hit;
+                    std::erase_if(all_hits, [&](const scan_hit& hit)
+                    {
+                        return hit.pawn == rejected.pawn && hit.record == rejected.record &&
+                            hit.position == rejected.position &&
+                            hit.source_eye.position == rejected.source_eye.position &&
+                            hit.source_eye.player_tick == rejected.source_eye.player_tick &&
+                            hit.source_eye.player_frac == rejected.source_eye.player_frac &&
+                            hit.source_eye.lerp_ticks_int == rejected.source_eye.lerp_ticks_int &&
+                            hit.source_eye.lerp_ticks_frac == rejected.source_eye.lerp_ticks_frac &&
+                            hit.source_eye.is_uninterpolated == rejected.source_eye.is_uninterpolated;
+                    });
+                    best = attempt + 1 < max_shot_attempts
+                        ? this->select_best(ctx, all_hits, shared_ctx.inaccuracy) : target{};
                 }
-                return best.valid;
             }
 
             // Duckpeek standing scan
@@ -509,7 +534,7 @@ namespace features::combat {
             {
                 this->m_release_duck_for_shot = false;
             }
-            return best.valid;
+            return had_target;
         }
 
         // Standard hitchance-based logic
@@ -798,31 +823,11 @@ namespace features::combat {
                     continue;
 
                 auto hits = this->scan_player(eye, inaccuracy, ctx, cand, cand.records[ri], local);
-                auto has_direct_hit = false;
-                auto has_lethal = false;
                 for (auto& hit : hits)
-                {
-                    has_direct_hit = has_direct_hit || !hit.penetrated;
-                    has_lethal = has_lethal || (hit.damage >= static_cast<float>(cand.health));
                     flat.push_back(std::move(hit));
-                }
-
-                if (has_direct_hit || has_lethal)
-                    break;
             }
-
-            // If we found a direct lethal hit on this candidate, don't waste CPU scanning distant players
-            auto has_direct_lethal = false;
-            for (const auto& hit : flat)
-            {
-                if (!hit.penetrated && hit.damage >= static_cast<float>(cand.health))
-                {
-                    has_direct_lethal = true;
-                    break;
-                }
-            }
-            if (has_direct_lethal)
-                break;
+            // Do not compare previous players' damage against this player's HP,
+            // or discard another pose before its hit probability is evaluated.
         }
         return flat;
     }
@@ -954,8 +959,6 @@ namespace features::combat {
         std::vector<scan_hit> results;
         results.reserve(centers.size() * 2);
         std::array<bool, 19> center_sufficient{};
-        auto impassable_centers = 0;
-        auto found_direct_lethal = false;
 
         // Phase 1: Test all hitbox centers first
         for (const auto& cp : centers)
@@ -963,7 +966,6 @@ namespace features::combat {
             shared::penetration::result pen{};
             if (!g_shared.pen().run(eye, cp.position, pen_ctx, local.pawn, local.team, pen) || pen.damage <= 0.0f)
             {
-                ++impassable_centers;
                 continue;
             }
 
@@ -987,9 +989,6 @@ namespace features::combat {
             if (actual_center && cp.hitbox_index >= 0 && cp.hitbox_index < static_cast<int>(center_sufficient.size()))
                 center_sufficient[cp.hitbox_index] = !pen.penetrated || is_lethal;
 
-            if (!pen.penetrated && is_lethal)
-                found_direct_lethal = true;
-
             scan_hit h{};
             h.position = cp.position;
             h.aim_angle = cp.aim_angle;
@@ -1007,16 +1006,17 @@ namespace features::combat {
             results.push_back(h);
         }
 
-        // Phase 2: Test multipoints only if pointscale > 0, not already lethal direct, and target is not fully impassable
-        if (config.pointscale > 0.0f && !found_direct_lethal && impassable_centers < static_cast<int>(centers.size()))
+        // Closed centers do not imply closed edges: narrow cover is precisely
+        // where multipoints are useful. Keep per-hitbox center pruning only.
+        if (config.pointscale > 0.0f)
         {
             std::vector<math::vector3> multipoints;
             multipoints.reserve(4);
 
             for (const auto& cp : centers)
             {
-                // Only generate multipoints on high-value torso and head hitboxes (skip limbs to maintain 150+ FPS)
-                if (cp.hitbox_index != 0 && cp.hitbox_index != 2 && cp.hitbox_index != 3 && cp.hitbox_index != 4 && cp.hitbox_index != 6)
+                // Bound edge traces to the selected head and torso hitboxes.
+                if (cp.hitbox_index != 0 && cp.hitbox_index != 2 && cp.hitbox_index != 3 && cp.hitbox_index != 4 && cp.hitbox_index != 5 && cp.hitbox_index != 6)
                     continue;
 
                 if (cp.hitbox_index >= 0 && cp.hitbox_index < static_cast<int>(center_sufficient.size()) && center_sufficient[cp.hitbox_index])
@@ -1134,30 +1134,8 @@ namespace features::combat {
             }
         }
 
-        constexpr auto top_k_per_record{ 8 };
-        auto cheap_score = [&](const scan_hit& h) -> float
-            {
-                const auto lethal_bonus = h.damage >= static_cast<float>(h.health) ? 100000.0f : 0.0f;
-                const auto direct_bonus = h.penetrated ? 0.0f : 5000.0f;
-                const auto center_bonus = h.is_center ? 2000.0f : 0.0f;
-                return lethal_bonus + direct_bonus + center_bonus + h.damage * 20.0f +
-                    static_cast<float>(hitgroup_priority(h.hitbox_index)) * 10.0f - h.fov;
-            };
-
-        for (auto& group : groups)
-        {
-            if (static_cast<int>(group.hit_indices.size()) <= top_k_per_record)
-                continue;
-
-            std::partial_sort
-            (
-                group.hit_indices.begin(),
-                group.hit_indices.begin() + top_k_per_record,
-                group.hit_indices.end(),
-                [&](int a, int b) { return cheap_score(hits[a]) > cheap_score(hits[b]); }
-            );
-            group.hit_indices.resize(top_k_per_record);
-        }
+        // Keep every valid hit; a damage-only top-eight shortlist can remove
+        // the sole point meeting hitchance. Prune by a score bound instead.
 
         // Select as we evaluate, preserving traversal order and tie-breaking
         // without an intermediate allocation or a second pass over the hits.
@@ -1167,6 +1145,19 @@ namespace features::combat {
         const auto needed_hc = config.hitchance_override.value ?
             static_cast<float>(config.hitchance_override_value) / 100.0f :
             static_cast<float>(config.hitchance) / 100.0f;
+
+        const auto score_for = [&](const scan_hit& hit, float hc)
+        {
+            return ballistics::target_score(hit.damage, hit.health, hc, needed_hc,
+                config.no_spread.value, hit.penetrated, hit.is_center,
+                hitgroup_priority(hit.hitbox_index), hit.fov);
+        };
+        const auto valid_hit = [](const scan_hit& hit)
+        {
+            return hit.health > 0 && std::isfinite(hit.damage) && hit.damage > 0.0f &&
+                std::isfinite(hit.fov) && ballistics::finite(hit.aim_angle) &&
+                ballistics::finite(hit.source_eye.position);
+        };
 
         struct hitchance_query
         {
@@ -1182,7 +1173,7 @@ namespace features::combat {
         if (!config.no_spread.value)
         {
             std::vector<hitchance_query> queries;
-            queries.reserve(groups.size() * top_k_per_record);
+            queries.reserve(hits.size());
             for (const auto& group : groups)
             {
                 if (!group.record || !group.record->valid)
@@ -1190,7 +1181,7 @@ namespace features::combat {
                 for (const auto idx : group.hit_indices)
                 {
                     const auto& h = hits[idx];
-                    if (!h.record || !h.record->valid || h.bone_index < 0 ||
+                    if (!valid_hit(h) || !h.record || !h.record->valid || h.bone_index < 0 ||
                         h.bone_index >= h.record->bone_count ||
                         h.bone_index >= static_cast<int>(std::size(h.record->bones)))
                         continue;
@@ -1206,27 +1197,24 @@ namespace features::combat {
             const auto cache = g_shared.build_spread_cache(eval_inaccuracy, aim_ctx.spread);
             const auto range = g_shared.ctx().range;
             hitchances.resize(hits.size());
-            const auto evaluate = [&](int begin, int end)
+            std::sort(queries.begin(), queries.end(), [&](const auto& a, const auto& b)
             {
-                for (auto i = begin; i < end; ++i)
-                {
-                    auto& query = queries[i];
-                    query.result = g_shared.calculate_hitchance(query.eye, query.angle,
-                        query.hitbox, query.bone, cache, range);
-                }
-            };
-            // Hitchance evaluation runs serially on the cached seeds with early bailout (fast and thread-safe)
-            evaluate(0, static_cast<int>(queries.size()));
-
-            // parallel_for joins before snapshots are destroyed or targets ranked.
-            for (const auto& query : queries)
+                const auto first = score_for(hits[a.hit_index], 1.0f);
+                const auto second = score_for(hits[b.hit_index], 1.0f);
+                return first != second ? first > second : a.hit_index < b.hit_index;
+            });
+            auto best_evaluated_score = -std::numeric_limits<float>::infinity();
+            for (auto& query : queries)
             {
-#ifndef NDEBUG
-                const auto reference = g_shared.calculate_hitchance(query.eye, query.angle,
+                const auto& hit = hits[query.hit_index];
+                // Preserve the final ranking's near-tie rule. No prefix-based
+                // hitchance estimate and no fixed shortlist can reject a winner.
+                if (score_for(hit, 1.0f) + 0.01f < best_evaluated_score)
+                    break;
+                query.result = g_shared.calculate_hitchance(query.eye, query.angle,
                     query.hitbox, query.bone, cache, range);
-                assert(query.result == reference);
-#endif
                 hitchances[query.hit_index] = query.result;
+                best_evaluated_score = std::max(best_evaluated_score, score_for(hit, query.result));
             }
         }
 
@@ -1238,27 +1226,13 @@ namespace features::combat {
             for (const auto idx : group.hit_indices)
             {
                 const auto& h = hits[idx];
-                if (!h.record || !h.record->valid || h.bone_index < 0 ||
+                if (!valid_hit(h) || !h.record || !h.record->valid || h.bone_index < 0 ||
                     h.bone_index >= h.record->bone_count ||
                     h.bone_index >= static_cast<int>(std::size(h.record->bones)))
                     continue;
 
                 const auto hc = config.no_spread.value ? 1.0f : hitchances[idx];
-
-                const auto hp = static_cast<float>(h.health);
-                const auto can_kill = h.damage >= hp;
-                const auto passes_hitchance = config.no_spread.value || hc >= needed_hc;
-
-                auto score = passes_hitchance ? 1000000.0f : 0.0f;
-                if (can_kill)
-                    score += 100000.0f + hc * 10000.0f;
-                else
-                    score += h.damage * hc * 100.0f + h.damage * 5.0f;
-
-                score += h.penetrated ? 0.0f : 250.0f;
-                score += h.is_center ? 50.0f : 0.0f;
-                score += static_cast<float>(hitgroup_priority(h.hitbox_index)) * 2.0f;
-                score -= h.fov * 0.1f;
+                const auto score = score_for(h, hc);
 
                 auto is_better = !best.valid || score > best.score;
                 if (best.valid && std::fabsf(score - best.score) < 0.01f)
@@ -1575,12 +1549,10 @@ namespace features::combat {
                 !std::isfinite(shared_ctx.recoil_index))
                 return;
 
-            // Zero angles can be a legitimate solution. Validate the resulting ray,
-            // including the zero-vector fallback returned by the bounded solver.
-            const auto corrected = shared_ctx.inaccuracy == 0.0f && shared_ctx.spread == 0.0f
-                ? aim_angle : g_shared.find_spread_correction(aim_angle, stamp_tick);
-            if (!std::isfinite(corrected.x) || !std::isfinite(corrected.y) || !std::isfinite(corrected.z))
+            const auto solution = g_shared.solve_spread_correction(aim_angle, stamp_tick);
+            if (!solution)
                 return;
+            const auto corrected = *solution;
 
             const auto seed = g_shared.get_spread_seed(corrected, stamp_tick);
             const auto spread = g_shared.calculate_spread(seed, shared_ctx.inaccuracy,
@@ -1870,9 +1842,10 @@ namespace features::combat {
         switch (hitbox.index)
         {
         case 0: // Head
-            out.reserve(2);
+            out.reserve(3);
             out.push_back(scaled_offset(up));
             out.push_back(scaled_offset(right));
+            out.push_back(scaled_offset(-right));
             break;
         case 2: case 3: // Stomach/Pelvis
             out.reserve(2);

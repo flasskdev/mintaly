@@ -1,5 +1,6 @@
 #include <pch/pch.hpp>
 #include <cassert>
+#include <core/features/combat/ballistics.hpp>
 #include <utilities/memory/memory.hpp>
 #include <utilities/addresses/addresses.hpp>
 #include <utilities/logging/logging.hpp>
@@ -137,9 +138,37 @@ namespace features::combat {
                 run_context ctx{};
                 ctx.target_pawn = target_pawn;
                 ctx.record = record;
-                if ( record && record->game_scene_node )
+                if ( !target_pawn || !record || !record->valid || record->pawn != target_pawn )
+                        return ctx;
+
+                if ( record->game_scene_node )
                 {
                         ctx.hitboxes = systems::g_hitboxes.query( record->game_scene_node );
+                        ctx.hitboxes.count = std::clamp( ctx.hitboxes.count, 0,
+                                static_cast<int>( ctx.hitboxes.entries.size( ) ) );
+                        const auto bone_count = std::min( record->bone_count,
+                                static_cast<int>( std::size( record->bones ) ) );
+                        for ( const auto& hitbox : ctx.hitboxes )
+                        {
+                                if ( hitbox.bone < 0 || hitbox.bone >= bone_count ||
+                                        !ballistics::finite( hitbox.mins ) || !ballistics::finite( hitbox.maxs ) ||
+                                        !std::isfinite( hitbox.radius ) )
+                                        continue;
+                                const auto& bone = record->bones[ hitbox.bone ];
+                                if ( !ballistics::finite( bone.position ) ||
+                                        !std::isfinite( bone.rotation.x ) || !std::isfinite( bone.rotation.y ) ||
+                                        !std::isfinite( bone.rotation.z ) || !std::isfinite( bone.rotation.w ) )
+                                        continue;
+                                auto& prepared = ctx.geometry[ ctx.geometry_count++ ];
+                                prepared.hitbox = hitbox;
+                                prepared.position = bone.position;
+                                prepared.capsule_start = bone.rotation.rotate_vector( hitbox.mins ) + bone.position;
+                                prepared.capsule_end = bone.rotation.rotate_vector( hitbox.maxs ) + bone.position;
+                                prepared.inverse_rotation = bone.rotation;
+                                prepared.inverse_rotation.x = -prepared.inverse_rotation.x;
+                                prepared.inverse_rotation.y = -prepared.inverse_rotation.y;
+                                prepared.inverse_rotation.z = -prepared.inverse_rotation.z;
+                        }
                 }
 
                 ctx.target_armor = memory::read<int>( target_pawn + SCHEMA( "C_CSPlayerPawn", "m_ArmorValue"_hash ) );
@@ -171,7 +200,10 @@ namespace features::combat {
         bool shared::penetration::run( const math::vector3& start, const math::vector3& end, const run_context& ctx, std::uintptr_t local_pawn, int local_team, result& out ) const
         {
                 out = {};
-                if ( !std::isfinite( this->m_weapon_data.damage ) || this->m_weapon_data.damage <= 0.0f ||
+                if ( !ctx.target_pawn || !ctx.record || !ctx.record->valid || ctx.geometry_count <= 0 ||
+                        !std::isfinite( this->m_weapon_data.penetration ) || this->m_weapon_data.penetration < 0.0f ||
+                        !std::isfinite( this->m_weapon_data.range_modifier ) || this->m_weapon_data.range_modifier <= 0.0f ||
+                        !std::isfinite( this->m_weapon_data.damage ) || this->m_weapon_data.damage <= 0.0f ||
                         !std::isfinite( this->m_weapon_data.range ) || this->m_weapon_data.range <= 0.0f ||
                         !std::isfinite( start.x ) || !std::isfinite( start.y ) || !std::isfinite( start.z ) ||
                         !std::isfinite( end.x ) || !std::isfinite( end.y ) || !std::isfinite( end.z ) )
@@ -196,15 +228,24 @@ namespace features::combat {
 
                 // Dynamic TLS for autowall state (manual-map compatible)
                 auto& tls_slot = g_shared.g_autowall_tls_slot;
-                tls_slot.ensure( );
-                autowall_state_t state{ true, ctx.record };
-                tls_slot.set( &state );
+                if ( tls_slot.ensure( ) == TLS_OUT_OF_INDEXES )
+                        return false;
+                {
+                        autowall_state_t state{ true, ctx.record };
+                        struct restore_tls
+                        {
+                                utilities::tls::slot<autowall_state_t>& slot;
+                                autowall_state_t* previous;
+                                ~restore_tls( ) { slot.set( previous ); }
+                        } restore{ tls_slot, tls_slot.get( ) };
+                        tls_slot.set( &state );
+                        if ( tls_slot.get( ) != &state )
+                                return false;
 
-                // The hitbox-transform hook supplies this thread's record directly.
-                // Do not swap the live entity pose: Present may read it concurrently.
-                systems::g_tracing.setup_trace( trace, start, trace_delta, filter, 4, true );
-
-                tls_slot.set( nullptr );
+                        // Restore a nested caller's pose even if tracing throws.
+                        // Never swap the live entity pose used by the render thread.
+                        systems::g_tracing.setup_trace( trace, start, trace_delta, filter, 4, true );
+                }
 
                 const auto num_hits = trace->num_hits;
                 const auto hit_array = reinterpret_cast< std::uintptr_t >( trace->hit_array_pointer );
@@ -225,63 +266,22 @@ namespace features::combat {
                 {
                 auto actual_hitbox{ -1 };
                 auto closest_hitbox_fraction{ 1.0f };
-                if ( ctx.record )
+                for ( auto i = 0; i < ctx.geometry_count; ++i )
                 {
-                        for ( const auto& hitbox : ctx.hitboxes )
+                        const auto& prepared = ctx.geometry[ i ];
+                        const auto& hitbox = prepared.hitbox;
+                        auto fraction{ 1.0f };
+                        const auto intersects = hitbox.radius > 0.001f
+                                ? g_shared.ray_vs_capsule( start, trace_delta, prepared.capsule_start,
+                                        prepared.capsule_end, hitbox.radius, fraction )
+                                : ballistics::segment_box(
+                                        prepared.inverse_rotation.rotate_vector( start - prepared.position ),
+                                        prepared.inverse_rotation.rotate_vector( trace_delta ),
+                                        hitbox.mins, hitbox.maxs, fraction );
+                        if ( intersects && fraction < closest_hitbox_fraction )
                         {
-                                if ( hitbox.bone < 0 || hitbox.bone >= ctx.record->bone_count )
-                                {
-                                        continue;
-                                }
-
-                                const auto& bone = ctx.record->bones[ hitbox.bone ];
-                                auto fraction{ 1.0f };
-                                auto intersects{ false };
-
-                                if ( hitbox.radius > 0.001f )
-                                {
-                                        const auto capsule_start = bone.rotation.rotate_vector( hitbox.mins ) + bone.position;
-                                        const auto capsule_end = bone.rotation.rotate_vector( hitbox.maxs ) + bone.position;
-                                        intersects = g_shared.ray_vs_capsule( start, trace_delta, capsule_start, capsule_end, hitbox.radius, fraction );
-                                }
-                                else
-                                {
-                                        auto inverse = bone.rotation;
-                                        inverse.x = -inverse.x;
-                                        inverse.y = -inverse.y;
-                                        inverse.z = -inverse.z;
-
-                                        const auto local_origin = inverse.rotate_vector( start - bone.position );
-                                        const auto local_delta = inverse.rotate_vector( trace_delta );
-                                        auto entry{ 0.0f };
-                                        auto exit{ 1.0f };
-
-                                        const auto intersect_axis = [ & ]( float origin, float delta, float minimum, float maximum )
-                                                {
-                                                        if ( std::fabsf( delta ) < 1.0e-8f )
-                                                        {
-                                                                return origin >= minimum && origin <= maximum;
-                                                        }
-
-                                                        auto first = ( minimum - origin ) / delta;
-                                                        auto second = ( maximum - origin ) / delta;
-                                                        if ( first > second ) std::swap( first, second );
-                                                        entry = std::max( entry, first );
-                                                        exit = std::min( exit, second );
-                                                        return entry <= exit;
-                                                };
-
-                                        intersects = intersect_axis( local_origin.x, local_delta.x, hitbox.mins.x, hitbox.maxs.x ) &&
-                                                intersect_axis( local_origin.y, local_delta.y, hitbox.mins.y, hitbox.maxs.y ) &&
-                                                intersect_axis( local_origin.z, local_delta.z, hitbox.mins.z, hitbox.maxs.z );
-                                        fraction = entry;
-                                }
-
-                                if ( intersects && fraction < closest_hitbox_fraction )
-                                {
-                                        closest_hitbox_fraction = fraction;
-                                        actual_hitbox = hitbox.index;
-                                }
+                                closest_hitbox_fraction = fraction;
+                                actual_hitbox = hitbox.index;
                         }
                 }
                 return actual_hitbox;
@@ -303,7 +303,7 @@ namespace features::combat {
                         {
                                 penetrated = true;
 
-                                if ( *reinterpret_cast< float* >( reinterpret_cast< std::uintptr_t >( hit ) + 4 ) == 1.0f )
+                                if ( !std::isfinite( hit->exit_fraction ) || hit->exit_fraction >= 1.0f )
                                 {
                                         break;
                                 }
@@ -352,13 +352,18 @@ namespace features::combat {
         {
                 out_damage = 0.0f;
 
-                if ( this->m_weapon_data.damage <= 0.0f || this->m_weapon_data.penetration <= 0.0f )
+                if ( !local.pawn || !ballistics::finite( start ) || !ballistics::finite( direction ) ||
+                        !std::isfinite( direction.length_sqr( ) ) || direction.length_sqr( ) <= 0.0f ||
+                        !std::isfinite( this->m_weapon_data.damage ) || this->m_weapon_data.damage <= 0.0f ||
+                        !std::isfinite( this->m_weapon_data.penetration ) || this->m_weapon_data.penetration <= 0.0f ||
+                        !std::isfinite( this->m_weapon_data.range ) || this->m_weapon_data.range <= 0.0f ||
+                        !std::isfinite( this->m_weapon_data.range_modifier ) || this->m_weapon_data.range_modifier <= 0.0f )
                 {
                         return false;
                 }
 
                 const auto local_team = memory::read<int>( local.pawn + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) );
-                const auto trace_delta = direction * this->m_weapon_data.range;
+                const auto trace_delta = direction.normalized( ) * this->m_weapon_data.range;
 
                 auto filter = systems::g_tracing.make_filter( local.pawn, 0x1c300b, 3, 15 );
                 systems::tracing::trace_data trace_storage{};
@@ -393,7 +398,7 @@ namespace features::combat {
                         {
                                 // Match run(): bit 0 marks a penetration record and an exit
                                 // fraction of 1 means the bullet did not make it through.
-                                if ( hit->exit_fraction == 1.0f )
+                                if ( !std::isfinite( hit->exit_fraction ) || hit->exit_fraction >= 1.0f )
                                 {
                                         break;
                                 }
@@ -1111,6 +1116,7 @@ namespace features::combat {
                 cache.initialized = true;
 
                 if ( samples <= 0 || !std::isfinite( inaccuracy ) || inaccuracy < 0.0f ||
+                        !std::isfinite( this->m_ctx.recoil_index ) ||
                         !std::isfinite( spread ) || spread < 0.0f )
                         return cache;
 
@@ -1146,11 +1152,17 @@ namespace features::combat {
         {
                 if ( cache.count <= 0 || cache.count > static_cast< int >( cache.values.size( ) ) ||
                         !std::isfinite( range ) || range <= 0.0f ||
-                        !std::isfinite( aim_angle.x ) || !std::isfinite( aim_angle.y ) || !std::isfinite( aim_angle.z ) )
+                        !ballistics::finite( shoot_position ) || !ballistics::finite( bone.position ) ||
+                        !ballistics::finite( hitbox.mins ) || !ballistics::finite( hitbox.maxs ) ||
+                        !std::isfinite( hitbox.radius ) || !std::isfinite( bone.rotation.x ) ||
+                        !std::isfinite( bone.rotation.y ) || !std::isfinite( bone.rotation.z ) ||
+                        !std::isfinite( bone.rotation.w ) || !ballistics::finite( aim_angle ) )
                         return 0.0f;
 
                 const auto capsule_start = bone.rotation.rotate_vector( hitbox.mins ) + bone.position;
                 const auto capsule_end   = bone.rotation.rotate_vector( hitbox.maxs ) + bone.position;
+                if ( !ballistics::finite( capsule_start ) || !ballistics::finite( capsule_end ) )
+                        return 0.0f;
                 const auto is_capsule    = hitbox.radius > 0.001f;
                 const auto capsule_query = is_capsule
                         ? std::optional<detail::capsule_hitchance_query>{ std::in_place,
@@ -1167,44 +1179,23 @@ namespace features::combat {
                 const auto ray_vs_box = [ & ]( const math::vector3& ray_direction ) -> bool
                 {
                         const auto direction = inverse_rotation.rotate_vector( ray_direction );
-                        auto entry{ 0.0f };
-                        auto exit{ 1.0f };
-
-                        const auto intersect_axis = [ & ]( float origin, float delta, float minimum, float maximum ) -> bool
-                        {
-                                if ( std::fabs( delta ) < 1.0e-8f )
-                                        return origin >= minimum && origin <= maximum;
-                                auto first  = ( minimum - origin ) / delta;
-                                auto second = ( maximum - origin ) / delta;
-                                if ( first > second ) std::swap( first, second );
-                                entry = std::max( entry, first );
-                                exit  = std::min( exit,  second );
-                                return entry <= exit;
-                        };
-
-                        return intersect_axis( box_ray_origin.x, direction.x, hitbox.mins.x, hitbox.maxs.x ) &&
-                               intersect_axis( box_ray_origin.y, direction.y, hitbox.mins.y, hitbox.maxs.y ) &&
-                               intersect_axis( box_ray_origin.z, direction.z, hitbox.mins.z, hitbox.maxs.z );
+                        auto fraction{ 1.0f };
+                        return ballistics::segment_box( box_ray_origin, direction,
+                                hitbox.mins, hitbox.maxs, fraction );
                 };
 
                 math::vector3 forward{}, left{}, up{};
                 math::helpers::angle_vectors_left( aim_angle, &forward, &left, &up );
 
-                auto hits{ 0 };
-                const auto n = cache.count;
-
-                for ( auto i = 0; i < n; ++i )
+                return ballistics::sample_ratio( cache.count, [ & ]( int i )
                 {
-                        if ( i == 32 && hits == 0 )
-                                return 0.0f;
-                        if ( i == 64 && hits < 4 )
-                                return static_cast< float >( hits ) / static_cast< float >( n );
-
                         const auto& sp       = cache.values[ i ];
                         if ( !std::isfinite( sp.x ) || !std::isfinite( sp.y ) )
-                                continue;
+                                return false;
                         const auto direction = forward + ( left * sp.x ) + ( up * sp.y );
                         const auto ray_end   = direction.normalized( ) * range;
+                        if ( !ballistics::finite( ray_end ) || ray_end.length_sqr( ) <= 0.0f )
+                                return false;
 
                         bool hit{ false };
                         if ( is_capsule )
@@ -1224,49 +1215,53 @@ namespace features::combat {
                                 hit = ray_vs_box( ray_end );
                         }
 
-                        if ( hit ) ++hits;
-                }
-
-                return static_cast< float >( hits ) / static_cast< float >( n );
+                        return hit;
+                } );
         }
 
         math::vector3 shared::find_spread_correction( const math::vector3& aim_angle, int tick ) const
         {
-                if ( this->m_ctx.inaccuracy <= 0.0001f && this->m_ctx.spread <= 0.0001f )
+                // Compatibility for existing callers; firing uses the explicit
+                // optional result and never treats failure as a zero-angle solution.
+                return this->solve_spread_correction( aim_angle, tick ).value_or( math::vector3{} );
+        }
+
+        std::optional<math::vector3> shared::solve_spread_correction( const math::vector3& aim_angle, int tick ) const
+        {
+                const auto inaccuracy = this->m_ctx.inaccuracy;
+                const auto spread_amount = this->m_ctx.spread;
+                const auto recoil = this->m_ctx.recoil_index;
+                const auto item = this->m_ctx.item_def_idx;
+                const auto bullets = this->m_ctx.num_bullets;
+                if ( !ballistics::finite( aim_angle ) || !std::isfinite( inaccuracy ) || inaccuracy < 0.0f ||
+                        !std::isfinite( spread_amount ) || spread_amount < 0.0f || !std::isfinite( recoil ) )
+                        return std::nullopt;
+                if ( inaccuracy == 0.0f && spread_amount == 0.0f )
                         return aim_angle;
 
-                static int s_last_tick = -1;
-                static math::vector3 s_last_in{};
-                static math::vector3 s_last_out{};
-
-                if ( tick == s_last_tick && ( aim_angle - s_last_in ).length_sqr( ) < 0.0001f )
-                        return s_last_out;
-
-                for ( auto i = 0; i < 240; i++ )
-                {
-                        const auto test_angles = math::vector3{ static_cast< float >( i ) * 1.5f, aim_angle.y, 0.0f };
-                        const auto seed = this->get_spread_seed( test_angles, tick );
-                        const auto spread = this->calculate_spread( seed, this->m_ctx.inaccuracy, this->m_ctx.spread, this->m_ctx.recoil_index, this->m_ctx.item_def_idx, this->m_ctx.num_bullets );
-                        if ( !std::isfinite( spread.x ) || !std::isfinite( spread.y ) )
-                                continue;
-
-                        auto adj_angle = aim_angle;
-                        adj_angle.x += math::helpers::rad_to_deg( std::atan( std::sqrt( spread.x * spread.x + spread.y * spread.y ) ) );
-                        adj_angle.z = -math::helpers::rad_to_deg( std::atan2( spread.x, spread.y ) );
-
-                        if ( this->get_spread_seed( adj_angle, tick ) == seed )
+                // No cross-command cache: prediction, recoil and fire mode may
+                // change within the same tick. The bounded fast path starts from
+                // the actual desired angle instead of an unrelated grid seed.
+                math::vector3 desired{};
+                math::helpers::angle_vectors_left( aim_angle, &desired );
+                return ballistics::solve_spread( aim_angle,
+                        [ & ]( const math::vector3& angle ) { return this->get_spread_seed( angle, tick ); },
+                        [ & ]( std::uint32_t seed ) -> std::optional<math::vector3>
                         {
-                                s_last_tick = tick;
-                                s_last_in = aim_angle;
-                                s_last_out = adj_angle;
-                                return adj_angle;
-                        }
-                }
-
-                s_last_tick = tick;
-                s_last_in = aim_angle;
-                s_last_out = {};
-                return {};
+                                const auto spread = this->calculate_spread( seed, inaccuracy,
+                                        spread_amount, recoil, item, bullets );
+                                if ( !std::isfinite( spread.x ) || !std::isfinite( spread.y ) )
+                                        return std::nullopt;
+                                auto corrected = aim_angle;
+                                corrected.x += math::helpers::rad_to_deg( std::atan( std::hypot( spread.x, spread.y ) ) );
+                                corrected.z = -math::helpers::rad_to_deg( std::atan2( spread.x, spread.y ) );
+                                math::vector3 forward{}, left{}, up{};
+                                math::helpers::angle_vectors_left( corrected, &forward, &left, &up );
+                                const auto direction = ( forward + left * spread.x + up * spread.y ).normalized( );
+                                if ( !ballistics::finite( direction ) || ( direction - desired ).length_sqr( ) > 1.0e-8f )
+                                        return std::nullopt;
+                                return corrected;
+                        } );
         }
 
         math::vector3 shared::get_eye_position( std::uintptr_t local_pawn ) const
@@ -1462,7 +1457,7 @@ namespace features::combat {
                         return std::nullopt;
                 }
 
-                std::vector<std::uint8_t> backup( accuracy_state_size );
+                std::array<std::uint8_t, 0x100> backup{};
                 std::memcpy( backup.data( ), reinterpret_cast< const void* >( this->m_ctx.weapon + accuracy_state_begin ), accuracy_state_size );
 
                 if ( update_accuracy_penalty )
