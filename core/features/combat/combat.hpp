@@ -439,6 +439,9 @@ namespace features::combat {
                         int armor{};
                         float min_damage{};
                         std::array<shared::lagcomp::record*, k_max_lagcomp_records> records{};
+                        // Lazy, command-local preparation shared by all eye/stop scans.
+                        // Kept off the stack; unused knife/taser candidates allocate nothing.
+                        std::vector<shared::penetration::run_context> prepared_records{};
                         int record_count{};
                         bool extrapolation_pending{};
                 };
@@ -496,8 +499,8 @@ namespace features::combat {
                 void run_knife( systems::input::usercmd* cmd, const aim_context& ctx, const systems::local::snapshot& local );
                 void auto_revolver( systems::input::usercmd* cmd, const aim_context& ctx, const systems::local::snapshot& local );
 
-                [[nodiscard]] std::vector<scan_hit> scan_players( const math::vector3& eye, float inaccuracy, const aim_context& ctx, std::vector<candidate>& candidates, const systems::local::snapshot& local ) const;
-                [[nodiscard]] std::vector<scan_hit> scan_player( const math::vector3& eye, float inaccuracy, const aim_context& ctx, candidate& cand, shared::lagcomp::record* record, const systems::local::snapshot& local ) const;
+                void scan_players( const math::vector3& eye, float inaccuracy, const aim_context& ctx, std::vector<candidate>& candidates, const systems::local::snapshot& local, std::vector<scan_hit>& results ) const;
+                void scan_player( const math::vector3& eye, float inaccuracy, const aim_context& ctx, const candidate& cand, const shared::penetration::run_context& pen_ctx, const systems::local::snapshot& local, std::vector<scan_hit>& results ) const;
                 [[nodiscard]] target select_best( const aim_context& aim_ctx, const std::vector<scan_hit>& hits, float eval_inaccuracy ) const;
                 [[nodiscard]] float evaluate_hitchance( const scan_hit& hit, const aim_context& ctx, float inaccuracy ) const;
                 [[nodiscard]] float get_standing_inaccuracy( const systems::local::snapshot& local, const aim_context& ctx ) const;

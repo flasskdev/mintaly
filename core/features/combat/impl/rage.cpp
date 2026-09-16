@@ -1,6 +1,7 @@
 #include <pch/pch.hpp>
 #include <cassert>
 #include <limits>
+#include <span>
 #include <core/features/combat/ballistics.hpp>
 #include <utilities/threadpool/threadpool.hpp>
 #include <utilities/memory/memory.hpp>
@@ -451,18 +452,19 @@ namespace features::combat {
         const auto scan_from_eye_candidates = [&](const math::vector3& eye_offset, float inaccuracy)
             {
                 std::vector<scan_hit> hits_out;
+                hits_out.reserve(candidates.size() * 24 * static_cast<std::size_t>(eye_candidates.count));
                 for (auto i = 0; i < eye_candidates.count; ++i)
                 {
                     const auto eye = eye_candidates.entries[i].position + eye_offset;
-                    auto hits = this->scan_players(eye, inaccuracy, ctx, candidates, local);
+                    const auto first_hit = hits_out.size();
+                    this->scan_players(eye, inaccuracy, ctx, candidates, local, hits_out);
 
-                    for (auto& hit : hits)
-                    {
-                        auto source_eye = eye_candidates.entries[i];
-                        source_eye.position = eye;
-                        hit.source_eye = source_eye;
-                        hits_out.push_back(std::move(hit));
-                    }
+                    auto source_eye = eye_candidates.entries[i];
+                    source_eye.position = eye;
+                    // Index after appending: vector growth cannot invalidate an
+                    // iterator/reference to the previous eye's results.
+                    for (auto h = first_hit; h < hits_out.size(); ++h)
+                        hits_out[h].source_eye = source_eye;
                     // A direct center ray says nothing about hitchance from the
                     // other eye. Keep both candidates until probability ranking.
                 }
@@ -805,16 +807,17 @@ namespace features::combat {
         ++this->m_revolver_cock_ticks;
     }
 
-    std::vector<rage::scan_hit> rage::scan_players(const math::vector3& eye, float inaccuracy, const aim_context& ctx, std::vector<candidate>& candidates, const systems::local::snapshot& local) const
+    void rage::scan_players(const math::vector3& eye, float inaccuracy, const aim_context& ctx, std::vector<candidate>& candidates, const systems::local::snapshot& local, std::vector<scan_hit>& results) const
     {
         diag::exception_scope scan_scope{ "rage: scan_players / dispatch" };
-        std::vector<scan_hit> flat;
-        flat.reserve(candidates.size() * 24);
 
-        // Keep engine calls on the calling thread, and retain candidate/record
-        // order without allocating a second result vector for every candidate.
+        // Append in the original eye/candidate/record/point order. Only immutable
+        // pose preparation is cached; each distinct eye still gets its own rays.
         for (auto& cand : candidates)
         {
+            if (cand.prepared_records.empty())
+                cand.prepared_records.reserve(static_cast<std::size_t>(cand.record_count) +
+                    (cand.extrapolation_pending ? 1u : 0u));
             for (auto ri = 0; ri <= cand.record_count; ++ri)
             {
                 if (ri == cand.record_count)
@@ -837,32 +840,36 @@ namespace features::combat {
                 if (!cand.records[ri] || !cand.records[ri]->valid)
                     continue;
 
-                auto hits = this->scan_player(eye, inaccuracy, ctx, cand, cand.records[ri], local);
-                for (auto& hit : hits)
-                    flat.push_back(std::move(hit));
+                if (cand.prepared_records.size() <= static_cast<std::size_t>(ri))
+                    cand.prepared_records.resize(static_cast<std::size_t>(ri) + 1);
+                auto& prepared = cand.prepared_records[ri];
+                if (prepared.record != cand.records[ri] || prepared.target_pawn != cand.pawn)
+                {
+                    diag::set_exception_phase("rage: scan_players / prepare_target");
+                    prepared = g_shared.pen().prepare_target(cand.pawn, cand.records[ri]);
+                }
+                this->scan_player(eye, inaccuracy, ctx, cand, prepared, local, results);
             }
             // Do not compare previous players' damage against this player's HP,
             // or discard another pose before its hit probability is evaluated.
         }
-        return flat;
     }
 
-    std::vector<rage::scan_hit> rage::scan_player(const math::vector3& eye, float inaccuracy, const aim_context& ctx, candidate& cand, shared::lagcomp::record* record, const systems::local::snapshot& local) const
+    void rage::scan_player(const math::vector3& eye, float inaccuracy, const aim_context& ctx, const candidate& cand, const shared::penetration::run_context& pen_ctx, const systems::local::snapshot& local, std::vector<scan_hit>& results) const
     {
         diag::exception_scope player_scope{ "rage: scan_player / validation" };
+        auto* record = pen_ctx.record;
         if (!cand.pawn || cand.record_count <= 0 || cand.health <= 0 ||
-            !record || !record->valid || record->bone_count <= 0)
-            return {};
+            pen_ctx.target_pawn != cand.pawn || !record || !record->valid || record->bone_count <= 0)
+            return;
 
         const auto& shared_ctx = g_shared.ctx();
         const auto& config = settings::g_combat.m_ragebot.get_group(shared_ctx.weapon_type, shared_ctx.item_def_idx);
 
-        diag::set_exception_phase("rage: scan_player / prepare_target");
-        const auto pen_ctx = g_shared.pen().prepare_target(cand.pawn, record);
-        // Scan and penetration must use the same hitbox set and recorded pose.
+        // Preparation belongs to this run_gun invocation, never another command.
         const auto& hitbox_set = pen_ctx.hitboxes;
         if (hitbox_set.count <= 0)
-            return {};
+            return;
 
         const auto bone_count = std::min(record->bone_count, static_cast<int>(std::size(record->bones)));
         const auto& skeleton = record->bones;
@@ -927,8 +934,8 @@ namespace features::combat {
             float fov;
         };
 
-        std::vector<candidate_point> centers;
-        centers.reserve(static_cast<std::size_t>(scan_count));
+        std::array<candidate_point, 19> center_storage{};
+        std::size_t center_count{};
         std::vector<debug_point> debug_points;
         if (config.debug_multipoints.value)
             debug_points.reserve(static_cast<std::size_t>(scan_count) * 4);
@@ -962,17 +969,16 @@ namespace features::combat {
             if (fov > config.max_fov)
                 continue;
 
-            centers.push_back({ center, hitbox_index, hb->bone, *hb, true, aim, fov });
+            center_storage[center_count++] = { center, hitbox_index, hb->bone, *hb, true, aim, fov };
             if (config.debug_multipoints.value)
                 debug_points.push_back({ center, hitbox_index, true });
         }
 
-        if (centers.empty())
-            return {};
+        if (center_count == 0)
+            return;
+        const auto centers = std::span<const candidate_point>{center_storage.data(), center_count};
 
         diag::set_exception_phase("rage: scan_player / penetration");
-        std::vector<scan_hit> results;
-        results.reserve(centers.size() * 2);
         std::array<bool, 19> center_sufficient{};
 
         // Phase 1: Test all hitbox centers first
@@ -1100,7 +1106,6 @@ namespace features::combat {
             m_debug_points.insert(m_debug_points.end(), debug_points.begin(), debug_points.end());
         }
 
-        return results;
     }
 
     rage::target rage::select_best(const aim_context& aim_ctx, const std::vector<scan_hit>& hits, float eval_inaccuracy) const
@@ -1212,14 +1217,12 @@ namespace features::combat {
                 ballistics::finite(hit.source_eye.position);
         };
 
+        // Sort compact keys, not copies of every hitbox, bone and angle.
+        // Evaluation is synchronous; snapshot the bone only for evaluated hits.
         struct hitchance_query
         {
             int hit_index{};
-            math::vector3 eye{};
-            math::vector3 angle{};
-            systems::hitboxes::entry hitbox{};
-            systems::bones::data bone{};
-            float result{};
+            float upper_score{};
         };
 
         std::vector<float> hitchances;
@@ -1238,23 +1241,20 @@ namespace features::combat {
                         h.bone_index >= h.record->bone_count ||
                         h.bone_index >= static_cast<int>(std::size(h.record->bones)))
                         continue;
-                    queries.push_back({ idx, h.source_eye.position, h.aim_angle,
-                        h.hitbox, h.record->bones[h.bone_index], 0.0f });
+                    queries.push_back({ idx, score_for(h, 1.0f) });
                 }
             }
             if (queries.empty())
                 return {};
 
-            // Engine spread generation runs once on the caller. Workers hold
-            // no record pointers and write only their own preallocated result.
+            // Engine spread generation still runs once on the caller.
             const auto cache = g_shared.build_spread_cache(eval_inaccuracy, aim_ctx.spread);
             const auto range = g_shared.ctx().range;
             hitchances.resize(hits.size());
-            std::sort(queries.begin(), queries.end(), [&](const auto& a, const auto& b)
+            std::sort(queries.begin(), queries.end(), [](const auto& a, const auto& b)
             {
-                const auto first = score_for(hits[a.hit_index], 1.0f);
-                const auto second = score_for(hits[b.hit_index], 1.0f);
-                return first != second ? first > second : a.hit_index < b.hit_index;
+                return a.upper_score != b.upper_score ? a.upper_score > b.upper_score
+                    : a.hit_index < b.hit_index;
             });
             auto best_evaluated_score = -std::numeric_limits<float>::infinity();
             for (auto& query : queries)
@@ -1262,12 +1262,13 @@ namespace features::combat {
                 const auto& hit = hits[query.hit_index];
                 // Preserve the final ranking's near-tie rule. No prefix-based
                 // hitchance estimate and no fixed shortlist can reject a winner.
-                if (score_for(hit, 1.0f) + 0.01f < best_evaluated_score)
+                if (query.upper_score + 0.01f < best_evaluated_score)
                     break;
-                query.result = g_shared.calculate_hitchance(query.eye, query.angle,
-                    query.hitbox, query.bone, cache, range);
-                hitchances[query.hit_index] = query.result;
-                best_evaluated_score = std::max(best_evaluated_score, score_for(hit, query.result));
+                const auto bone = hit.record->bones[hit.bone_index];
+                const auto result = g_shared.calculate_hitchance(hit.source_eye.position, hit.aim_angle,
+                    hit.hitbox, bone, cache, range);
+                hitchances[query.hit_index] = result;
+                best_evaluated_score = std::max(best_evaluated_score, score_for(hit, result));
             }
         }
 
