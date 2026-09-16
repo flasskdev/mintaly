@@ -122,6 +122,10 @@ namespace features::combat {
 
                 memory::call<void> (PATTERN (patterns::trace_bullet), trace, this->m_weapon_data.damage, this->m_weapon_data.penetration, this->m_weapon_data.range_modifier, 4, local_team, static_cast<std::uintptr_t>(0));
 
+                // Geometry is only needed after the penetration trace reaches this
+                // target. Blocked multipoints must not intersect every hitbox again.
+                const auto find_hitbox = [ & ]( ) -> int
+                {
                 auto actual_hitbox{ -1 };
                 auto closest_hitbox_fraction{ 1.0f };
                 if ( ctx.record )
@@ -183,6 +187,8 @@ namespace features::combat {
                                 }
                         }
                 }
+                return actual_hitbox;
+                };
 
                 auto penetrated{ false };
 
@@ -217,9 +223,13 @@ namespace features::combat {
                                 continue;
                         }
 
+                        const auto actual_hitbox = find_hitbox( );
                         if ( actual_hitbox < 0 )
                         {
-                                continue;
+                                // The same ray and pose cannot yield a different
+                                // geometric hitbox at a later trace contact.
+                                out = {};
+                                return false;
                         }
 
                         out.hitbox = actual_hitbox;
