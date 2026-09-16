@@ -4,88 +4,306 @@
 #include <core/features/features.hpp>
 #include <core/settings.hpp>
 #include <protection/game_addresses.hpp>
-#include "../air_acceleration.hpp"
 
 namespace features::movement {
     namespace {
         constexpr auto k_max_subticks{ 16 };
+        constexpr auto k_min_strafe_speed{ 5.0f }; // Снижен для раннего подхвата
+        constexpr auto k_ground_check_threshold{ 2.0f };
 
-        [[nodiscard]] float strafe_yaw(float vx, float vy, float target_yaw, float dt,
-            bool side_switch, float wishspeed, float air_accel, float friction, float cap)
+        [[nodiscard]] float get_max_subtick_when(proto::base_usercmd_pb* base)
         {
-            const auto speed = std::hypot(vx, vy);
-            if (speed < 0.001f)
+            auto max_when{ 0.0f };
+            for (auto i = 0; i < base->subtick_moves_size(); ++i)
+            {
+                if (const auto step = base->mutable_subtick_moves(i))
+                {
+                    max_when = std::fmaxf(max_when, step->when());
+                }
+            }
+            return max_when;
+        }
+
+        // Получение высоты земли через трейс (аналог bunnyhop)
+        [[nodiscard]] std::optional<float> get_ground_height(std::uintptr_t local_pawn,
+            const math::vector3& origin,
+            std::uintptr_t movement_services)
+        {
+            if (!local_pawn || !movement_services)
+                return std::nullopt;
+
+            const auto mins = memory::read<math::vector3>(local_pawn + SCHEMA("C_BaseModelEntity", "m_Collision"_hash) +
+                SCHEMA("CCollisionProperty", "m_vecMins"_hash));
+            const auto maxs = memory::read<math::vector3>(local_pawn + SCHEMA("C_BaseModelEntity", "m_Collision"_hash) +
+                SCHEMA("CCollisionProperty", "m_vecMaxs"_hash));
+
+            math::vector3 trace_start = origin;
+            math::vector3 trace_end = origin;
+            trace_end.z -= 100.0f;
+
+            const auto sv_standable_normal = CONVAR("sv_standable_normal")->get<float>();
+
+            std::uintptr_t trace_mask{ 0ull };
+            {
+                const auto pawn_ptr = memory::read<std::uintptr_t>(movement_services + 56);
+                trace_mask = memory::read<std::uintptr_t>(pawn_ptr + 0xd48);
+                if (!pawn_ptr || (memory::read<std::uint32_t>(pawn_ptr + 0x3f8) & 0x10))
+                {
+                    trace_mask |= 0x20;
+                }
+            }
+
+            const auto filter = systems::g_tracing.make_player_movement_filter(local_pawn, trace_mask, 11);
+            const auto result = systems::g_tracing.trace_player_bbox(trace_start, trace_end, { mins, maxs }, filter, movement_services);
+
+            if (result.fraction > 0.0f && result.fraction < 1.0f && result.normal.z >= sv_standable_normal)
+            {
+                const auto ground_z = trace_start.z - (trace_start.z - trace_end.z) * result.fraction;
+                return ground_z;
+            }
+
+            return std::nullopt;
+        }
+
+        // Улучшенная функция угла с поддержкой агрессивного разгона
+        [[nodiscard]] float ref_ideal_angle(float speed, float dt, float wishspeed, float air_accel, float air_max_wishspeed, bool aggressive_gain = false)
+        {
+            if (speed < 1.0f)
+                return 15.0f;
+
+            const auto accel_speed = wishspeed * air_accel * dt;
+            float cos_theta{};
+
+            if (aggressive_gain)
+            {
+                // Формула для максимального ускорения (over-accel)
+                // Позволяет набирать скорость быстрее ценой небольшой потери стабильности на высоких скоростях
+                if (accel_speed >= air_max_wishspeed)
+                {
+                    cos_theta = air_max_wishspeed / (2.5f * speed);
+                }
+                else
+                {
+                    cos_theta = (air_max_wishspeed - accel_speed * 0.7f) / speed;
+                }
+            }
+            else
+            {
+                // Стандартная безопасная формула
+                if (accel_speed >= air_max_wishspeed)
+                {
+                    cos_theta = air_max_wishspeed / (2.0f * speed);
+                }
+                else
+                {
+                    cos_theta = (air_max_wishspeed - accel_speed) / speed;
+                }
+            }
+
+            cos_theta = std::clamp(cos_theta, -1.0f, 1.0f);
+            return std::fmaxf(std::acosf(cos_theta) * (180.0f / std::numbers::pi_v<float>), 1.0f);
+        }
+
+        [[nodiscard]] float ref_air_strafer(float vel_x, float vel_y, float target_yaw, float dt, bool side_switch,
+            float wishspeed, float air_accel, float air_max_wishspeed)
+        {
+            const auto speed = std::sqrtf(vel_x * vel_x + vel_y * vel_y);
+
+            // Всегда используем агрессивный режим для быстрого набора максималки
+            const auto theta = ref_ideal_angle(speed, dt, wishspeed, air_accel, air_max_wishspeed, true);
+
+            if (speed < k_min_strafe_speed)
                 return target_yaw;
 
-            const auto theta = detail::ideal_air_angle(speed, dt, wishspeed, air_accel, friction, cap);
-            const auto velocity_yaw = std::atan2(vy, vx) * (180.0f / std::numbers::pi_v<float>);
-            const auto delta = math::helpers::normalize_yaw(target_yaw - velocity_yaw);
-            const auto positive = std::fabs(delta) > 2.0f ? delta > 0.0f : side_switch;
-            return math::helpers::normalize_yaw(velocity_yaw + (positive ? theta : -theta));
+            const auto vel_angle = std::atan2f(vel_y, vel_x) * (180.0f / std::numbers::pi_v<float>);
+            auto vel_delta = target_yaw - vel_angle;
+            math::helpers::normalize_angle(vel_delta);
+
+            if (std::fabsf(vel_delta) > 2.0f)
+            {
+                if (vel_delta > 0.0f)
+                {
+                    auto yaw = vel_angle + theta;
+                    math::helpers::normalize_angle(yaw);
+                    return yaw;
+                }
+                auto yaw = vel_angle - theta;
+                math::helpers::normalize_angle(yaw);
+                return yaw;
+            }
+
+            if (side_switch)
+            {
+                auto yaw = vel_angle + theta;
+                math::helpers::normalize_angle(yaw);
+                return yaw;
+            }
+
+            auto yaw = vel_angle - theta;
+            math::helpers::normalize_angle(yaw);
+            return yaw;
         }
-    }
+
+        void ref_air_accel_sim(float& vel_x, float& vel_y, float wishdir_yaw, float frame_time,
+            float friction, float wishspeed, float air_accel, float air_max_wishspeed)
+        {
+            const auto yaw_rad = wishdir_yaw * (std::numbers::pi_v<float> / 180.0f);
+            const auto wish_dir_x = std::cosf(yaw_rad);
+            const auto wish_dir_y = std::sinf(yaw_rad);
+
+            const auto capped = std::fminf(wishspeed, air_max_wishspeed);
+            const auto dot = vel_x * wish_dir_x + vel_y * wish_dir_y;
+            const auto add_speed = capped - dot;
+
+            if (add_speed <= 0.0f)
+                return;
+
+            // Увеличенный коэффициент (1.15f) компенсирует погрешности квантования 
+            // и позволяет стрейфу работать на опережение для быстрого разгона
+            const auto accel_speed = wishspeed * air_accel * friction * frame_time * 1.15f;
+            const auto step = std::fminf(accel_speed, add_speed);
+
+            vel_x += wish_dir_x * step;
+            vel_y += wish_dir_y * step;
+        }
+
+        [[nodiscard]] bool will_hit_ground_soon(std::uintptr_t local_pawn,
+            std::uintptr_t movement_services,
+            const systems::prediction::state& prestate,
+            float sim_vz)
+        {
+            if (!local_pawn || !movement_services)
+                return false;
+
+            const auto sv_gravity = CONVAR("sv_gravity")->get<float>();
+            const auto gravity_scale = memory::read<float>(local_pawn + SCHEMA("C_BaseEntity", "m_flGravityScale"_hash));
+
+            const auto ground_height = get_ground_height(local_pawn, prestate.networked_origin, movement_services);
+            if (!ground_height)
+                return false;
+
+            const auto mins = memory::read<math::vector3>(local_pawn + SCHEMA("C_BaseModelEntity", "m_Collision"_hash) +
+                SCHEMA("CCollisionProperty", "m_vecMins"_hash));
+
+            auto test_origin_z = prestate.networked_origin.z;
+            auto test_velocity_z = sim_vz;
+
+            // Проверяем на 4 тика вперед для надежности на неровных поверхностях
+            for (int i = 0; i < 4; ++i)
+            {
+                test_velocity_z -= gravity_scale * sv_gravity * cstypes::tick_interval;
+                test_origin_z += test_velocity_z * cstypes::tick_interval;
+
+                if (test_origin_z + mins.z <= *ground_height + k_ground_check_threshold)
+                    return true;
+            }
+
+            return false;
+        }
+
+        [[nodiscard]] float get_distance_to_ground(std::uintptr_t local_pawn,
+            const math::vector3& origin,
+            std::uintptr_t movement_services)
+        {
+            const auto ground_height = get_ground_height(local_pawn, origin, movement_services);
+            if (!ground_height)
+                return 999.0f;
+
+            const auto mins = memory::read<math::vector3>(local_pawn + SCHEMA("C_BaseModelEntity", "m_Collision"_hash) +
+                SCHEMA("CCollisionProperty", "m_vecMins"_hash));
+
+            return origin.z + mins.z - *ground_height;
+        }
+
+    } // namespace
 
     [[nodiscard]] bool test_strafer::is_active() const
     {
         if (!settings::g_movement.airstrafe.value && !settings::g_movement.m_test_strafer.enabled.value)
             return false;
-        const auto quantized = CONVAR("sv_quantize_movement_input");
-        return quantized ? quantized->get<bool>() : true;
+        const auto c = CONVAR("sv_quantize_movement_input");
+        return c ? c->get<bool>() : true;
     }
 
     math::vector2 test_strafer::movement_from_buttons(std::uintptr_t pressed)
     {
-        auto forward{ 0.0f };
-        auto side{ 0.0f };
-        if (pressed & cstypes::command_buttons::in_forward) forward = 1.0f;
-        else if (pressed & cstypes::command_buttons::in_back) forward = -1.0f;
-        if (pressed & cstypes::command_buttons::in_moveleft) side = -1.0f;
-        else if (pressed & cstypes::command_buttons::in_moveright) side = 1.0f;
-        return { forward, side };
+        auto forward_move{ 0.0f };
+        auto left_move{ 0.0f };
+
+        if (pressed & cstypes::command_buttons::in_forward)
+            forward_move = 1.0f;
+        else if (pressed & cstypes::command_buttons::in_back)
+            forward_move = -1.0f;
+
+        if (pressed & cstypes::command_buttons::in_moveleft)
+            left_move = -1.0f;
+        else if (pressed & cstypes::command_buttons::in_moveright)
+            left_move = 1.0f;
+
+        return { forward_move, left_move };
     }
 
     void test_strafer::on_create_move(systems::input::usercmd* cmd)
     {
         this->m_handled_this_tick = false;
-        if (!cmd || !this->is_active())
+
+        if (!this->is_active())
+            return;
+
+        if (features::movement::g_jumpbug.active_this_tick())
+            return;
+
+        const auto base = cmd->csgo_user_cmd.mutable_base();
+        if (!base)
+            return;
+
+        const auto local = systems::g_local.get();
+        if (!local.pawn)
+            return;
+
+        const auto move_type = memory::read<std::uint8_t>(local.pawn + SCHEMA("CBaseEntity", "m_nActualMoveType"_hash));
+        if (move_type == cstypes::move_type::ladder || move_type == cstypes::move_type::noclip)
+            return;
+
+        const auto& prestate = systems::g_prediction.pre();
+
+        if (prestate.flags & cstypes::entity_flags::on_ground)
+            return;
+
+        const auto movement_services = memory::read<std::uintptr_t>(local.pawn + SCHEMA("C_BasePlayerPawn", "m_pMovementServices"_hash));
+
+        // Защита от активации на микро-прыжках или при касании неровностей
+        if (prestate.networked_velocity.z > -10.0f && prestate.networked_velocity.z < 10.0f)
         {
-            this->m_last_buttons = 0;
-            this->m_last_pressed = 0;
-            this->m_substep_counter = 0;
+            const auto distance_to_ground = get_distance_to_ground(local.pawn, prestate.networked_origin, movement_services);
+            if (distance_to_ground < 15.0f)
+                return;
+        }
+
+        if (features::combat::g_rage.is_firing_this_tick())
+            return;
+
+        if (features::combat::g_misc.antiaim().has_modified_angles())
+        {
+            this->antiaim_strafe_path(cmd);
             return;
         }
 
-        const auto local = systems::g_local.get();
-        const auto& pre = systems::g_prediction.pre();
-        if (!local.is_alive || !local.pawn || !pre.movement_valid || pre.pawn != local.pawn)
-            return;
-
-        const auto move_type = memory::read<std::uint8_t>(local.pawn + SCHEMA("C_BaseEntity", "m_nActualMoveType"_hash));
-        if (move_type == cstypes::move_type::ladder || move_type == cstypes::move_type::noclip ||
-            (pre.flags & cstypes::entity_flags::on_ground))
-            return;
-
-        // Jumpbug runs after this feature and owns the final command. Its
-        // active_this_tick flag here still describes the previous command.
-        if (features::combat::g_rage.is_firing_this_tick() ||
-            (cmd->buttons.value & cstypes::command_buttons::in_attack))
-            return;
-
-        // Do not disable acceleration near an apex or several ticks before
-        // landing. Grounded flags, rather than a stationary vertical probe,
-        // decide whether this command is airborne.
-        this->strafe_path(cmd);
+        this->quantized_path(cmd);
     }
 
     bool test_strafer::apply_yaw_subtick(proto::base_usercmd_pb* base, float when, float yaw_delta) const
     {
-        yaw_delta = math::helpers::normalize_yaw(yaw_delta);
-        // Zero yaw needs no event, but it is not an allocation failure and must
-        // not terminate the remaining simulation intervals.
-        if (std::fabs(yaw_delta) <= 0.00001f)
-            return true;
+        math::helpers::normalize_angle(yaw_delta);
 
-        const auto step = systems::g_input.acquire_subtick_step(base->mutable_subtick_moves());
+        if (std::fabsf(yaw_delta) <= 0.01f)
+            return false;
+
+        const auto subtick_moves = base->mutable_subtick_moves();
+        if (!subtick_moves)
+            return false;
+
+        const auto step = systems::g_input.acquire_subtick_step(subtick_moves);
         if (!step)
             return false;
 
@@ -96,19 +314,115 @@ namespace features::movement {
         step->set_analog_left_delta(0.0f);
         step->set_yaw_delta(yaw_delta);
         step->set_pitch_delta(0.0f);
+
         return true;
     }
 
-    void test_strafer::strafe_path(systems::input::usercmd* cmd)
+    void test_strafer::quantized_path(systems::input::usercmd* cmd)
     {
-        const auto& antiaim = features::combat::g_misc.antiaim();
-        const auto aa_active = antiaim.has_modified_angles();
-        const auto original_buttons = aa_active ? antiaim.get_original_buttons() : cmd->buttons.value;
-        if (original_buttons & cstypes::command_buttons::in_sprint)
+        const auto current_buttons = cmd->buttons.value;
+
+        if (current_buttons & static_cast<std::uintptr_t>(cstypes::command_buttons::in_sprint))
             return;
 
         const auto base = cmd->csgo_user_cmd.mutable_base();
-        if (!base || systems::g_input.has_analog_subticks(base))
+        if (!base)
+            return;
+
+        this->check_button(current_buttons, cstypes::command_buttons::in_moveleft);
+        this->check_button(current_buttons, cstypes::command_buttons::in_moveright);
+        this->check_button(current_buttons, cstypes::command_buttons::in_forward);
+        this->check_button(current_buttons, cstypes::command_buttons::in_back);
+        this->m_last_buttons = current_buttons;
+
+        const auto& prestate = systems::g_prediction.pre();
+        const auto velocity = prestate.networked_velocity;
+        const auto speed_2d = velocity.length_2d();
+
+        const auto command_yaw = systems::g_input.get_view_angles().y;
+        const auto player_move = movement_from_buttons(this->m_last_pressed);
+
+        if (player_move.x == 0.0f && player_move.y == 0.0f)
+            return;
+
+        if (speed_2d < k_min_strafe_speed)
+            return;
+
+        const auto start_when = get_max_subtick_when(base);
+        if (start_when >= 0.99f)
+            return;
+
+        const auto sv_airaccelerate = CONVAR("sv_airaccelerate")->get<float>();
+        const auto sv_maxspeed = CONVAR("sv_maxspeed")->get<float>();
+        const auto sv_air_max_wishspeed = CONVAR("sv_air_max_wishspeed")->get<float>();
+        const auto surface_friction = prestate.surface_friction;
+
+        const auto base_yaw_offset = std::atan2f(-player_move.y, player_move.x) * (180.0f / std::numbers::pi_v<float>);
+        auto target_yaw = command_yaw + base_yaw_offset;
+        math::helpers::normalize_angle(target_yaw);
+
+        const auto sub_frame = cstypes::tick_interval / static_cast<float>(k_max_subticks);
+        const auto when_step = (1.0f - start_when) / static_cast<float>(k_max_subticks + 1);
+
+        auto acc_yaw = command_yaw;
+        auto sim_vx = velocity.x;
+        auto sim_vy = velocity.y;
+        auto sim_vz = velocity.z;
+        auto injected = 0;
+
+        const auto local = systems::g_local.get();
+        const auto movement_services = memory::read<std::uintptr_t>(local.pawn + SCHEMA("C_BasePlayerPawn", "m_pMovementServices"_hash));
+
+        for (auto i = 1; i <= k_max_subticks; ++i)
+        {
+            const auto entry_side = ((this->m_substep_counter + i) % 2) == 0;
+
+            // Прерываем разгон если скоро удар об землю (защита от стопов)
+            if (will_hit_ground_soon(local.pawn, movement_services, prestate, sim_vz))
+                break;
+
+            const auto wishdir_yaw = ref_air_strafer(sim_vx, sim_vy, target_yaw, sub_frame, entry_side,
+                sv_maxspeed, sv_airaccelerate, sv_air_max_wishspeed);
+
+            auto target_view_yaw = wishdir_yaw - base_yaw_offset;
+            math::helpers::normalize_angle(target_view_yaw);
+
+            auto yaw_delta = target_view_yaw - acc_yaw;
+            math::helpers::normalize_angle(yaw_delta);
+
+            const auto when_frac = start_when + static_cast<float>(i) * when_step;
+
+            if (!this->apply_yaw_subtick(base, when_frac, yaw_delta))
+                break;
+
+            acc_yaw = target_view_yaw;
+            ref_air_accel_sim(sim_vx, sim_vy, wishdir_yaw, sub_frame, surface_friction,
+                sv_maxspeed, sv_airaccelerate, sv_air_max_wishspeed);
+
+            // Симуляция гравитации для точного предсказания в цикле
+            const auto sv_gravity = CONVAR("sv_gravity")->get<float>();
+            const auto gravity_scale = memory::read<float>(local.pawn + SCHEMA("C_BaseEntity", "m_flGravityScale"_hash));
+            sim_vz -= gravity_scale * sv_gravity * sub_frame;
+
+            ++injected;
+        }
+
+        if (injected > 0)
+        {
+            this->m_handled_this_tick = true;
+            ++this->m_substep_counter;
+        }
+    }
+
+    void test_strafer::antiaim_strafe_path(systems::input::usercmd* cmd)
+    {
+        const auto original_buttons = features::combat::g_misc.antiaim().get_original_buttons();
+
+        if (original_buttons & static_cast<std::uintptr_t>(cstypes::command_buttons::in_sprint))
+            return;
+
+        const auto base = cmd->csgo_user_cmd.mutable_base();
+        if (!base)
             return;
 
         this->check_button(original_buttons, cstypes::command_buttons::in_moveleft);
@@ -116,120 +430,117 @@ namespace features::movement {
         this->check_button(original_buttons, cstypes::command_buttons::in_forward);
         this->check_button(original_buttons, cstypes::command_buttons::in_back);
         this->m_last_buttons = original_buttons;
-        const auto player_move = movement_from_buttons(this->m_last_pressed);
-        // Enabling anti-aim must not invent a forward key when WASD is released.
+
+        const auto& prestate = systems::g_prediction.pre();
+        const auto velocity = prestate.networked_velocity;
+        const auto speed_2d = velocity.length_2d();
+
+        const auto command_yaw = systems::g_input.get_view_angles().y;
+        auto player_move = movement_from_buttons(this->m_last_pressed);
+
         if (player_move.x == 0.0f && player_move.y == 0.0f)
+        {
+            player_move.x = 1.0f;
+        }
+
+        if (speed_2d < k_min_strafe_speed)
             return;
+
+        const auto start_when = get_max_subtick_when(base);
+        if (start_when >= 0.95f)
+            return;
+
+        const auto sv_airaccelerate = CONVAR("sv_airaccelerate")->get<float>();
+        const auto sv_maxspeed = CONVAR("sv_maxspeed")->get<float>();
+        const auto sv_air_max_wishspeed = CONVAR("sv_air_max_wishspeed")->get<float>();
+        const auto surface_friction = prestate.surface_friction;
+
+        const auto base_yaw_offset = std::atan2f(-player_move.y, player_move.x) * (180.0f / std::numbers::pi_v<float>);
+        auto target_yaw = command_yaw + base_yaw_offset;
+        math::helpers::normalize_angle(target_yaw);
+
+        const auto total_when = 0.99f - start_when;
+        const auto when_step = total_when / static_cast<float>(k_max_subticks + 1);
+        const auto sub_frame = (cstypes::tick_interval * total_when) / static_cast<float>(k_max_subticks);
+
+        const auto aa_yaw = base->viewangles() ? base->viewangles()->y() : features::combat::g_misc.antiaim().get_modified_angles().y;
+
+        auto acc_yaw = aa_yaw;
+        auto sim_vx = velocity.x;
+        auto sim_vy = velocity.y;
+        auto sim_vz = velocity.z;
+        auto injected = 0;
 
         const auto local = systems::g_local.get();
         const auto movement_services = memory::read<std::uintptr_t>(local.pawn + SCHEMA("C_BasePlayerPawn", "m_pMovementServices"_hash));
-        const auto accel_var = CONVAR("sv_airaccelerate");
-        const auto speed_var = CONVAR("sv_maxspeed");
-        const auto cap_var = CONVAR("sv_air_max_wishspeed");
-        if (!movement_services || !accel_var || !speed_var || !cap_var)
-            return;
 
-        const auto& pre = systems::g_prediction.pre();
-        const auto player_max = memory::read<float>(movement_services + SCHEMA("CPlayer_MovementServices", "m_flMaxspeed"_hash));
-        const auto server_max = speed_var->get<float>();
-        const auto air_accel = accel_var->get<float>();
-        const auto cap = cap_var->get<float>();
-        const auto friction = pre.surface_friction;
-        const auto command_yaw = systems::g_input.get_view_angles().y;
-        const auto base_yaw = base->viewangles() ? base->viewangles()->y() : command_yaw;
-        if (!std::isfinite(player_max) || player_max <= 0.0f ||
-            !std::isfinite(server_max) || server_max <= 0.0f ||
-            !std::isfinite(air_accel) || air_accel <= 0.0f ||
-            !std::isfinite(cap) || cap <= 0.0f || !std::isfinite(friction) || friction <= 0.0f ||
-            !std::isfinite(pre.networked_velocity.x) || !std::isfinite(pre.networked_velocity.y) ||
-            !std::isfinite(command_yaw) || !std::isfinite(base_yaw))
-            return;
-
-        const auto wishspeed = std::min(player_max, server_max);
-        const auto offset = std::atan2(-player_move.y, player_move.x) * (180.0f / std::numbers::pi_v<float>);
-        const auto target_yaw = math::helpers::normalize_yaw(command_yaw + offset);
-
-        // A late landing jump must not delay all steering until the end of the
-        // command. Use the available AIR interval starting at zero instead.
-        auto end_when = 1.0f;
-        for (auto i = 0; i < base->subtick_moves_size(); ++i)
+        for (auto i = 1; i <= k_max_subticks; ++i)
         {
-            const auto step = base->mutable_subtick_moves(i);
-            if (step && (step->button() & cstypes::command_buttons::in_jump) && step->pressed() &&
-                std::isfinite(step->when()) && step->when() > 0.0f)
-                end_when = std::min(end_when, step->when());
-        }
+            const auto entry_side = ((this->m_substep_counter + i) % 2) == 0;
 
-        const auto moves = base->mutable_subtick_moves();
-        if (!moves)
-            return;
-        const auto original_size = moves->m_current_size;
-        const auto interval = end_when / static_cast<float>(k_max_subticks);
-        const auto dt = interval * cstypes::tick_interval;
-        auto accumulated_yaw = base_yaw;
-        auto vx = pre.networked_velocity.x;
-        auto vy = pre.networked_velocity.y;
+            if (will_hit_ground_soon(local.pawn, movement_services, prestate, sim_vz))
+                break;
 
-        for (auto i = 0; i < k_max_subticks; ++i)
-        {
-            const auto side_switch = ((this->m_substep_counter + i) % 2) == 0;
-            const auto wish_yaw = strafe_yaw(vx, vy, target_yaw, dt, side_switch,
-                wishspeed, air_accel, friction, cap);
-            const auto view_yaw = math::helpers::normalize_yaw(wish_yaw - offset);
-            if (!this->apply_yaw_subtick(base, i * interval, view_yaw - accumulated_yaw))
+            const auto wishdir_yaw = ref_air_strafer(sim_vx, sim_vy, target_yaw, sub_frame, entry_side,
+                sv_maxspeed, sv_airaccelerate, sv_air_max_wishspeed);
+
+            auto target_view_yaw = wishdir_yaw - base_yaw_offset;
+            math::helpers::normalize_angle(target_view_yaw);
+
+            auto yaw_delta = target_view_yaw - acc_yaw;
+            math::helpers::normalize_angle(yaw_delta);
+
+            if (std::fabsf(yaw_delta) < 0.02f)
             {
-                // Do not leave half a strafe sequence with an unmodified base.
-                moves->m_current_size = original_size;
-                return;
+                yaw_delta = (yaw_delta >= 0.0f ? 0.02f : -0.02f);
             }
-            accumulated_yaw = view_yaw;
-            detail::simulate_air_acceleration(vx, vy, wish_yaw, dt, wishspeed, air_accel, friction, cap);
+
+            const auto when_frac = start_when + static_cast<float>(i) * when_step;
+
+            if (!this->apply_yaw_subtick(base, when_frac, yaw_delta))
+                break;
+
+            acc_yaw = target_view_yaw;
+            ref_air_accel_sim(sim_vx, sim_vy, wishdir_yaw, sub_frame, surface_friction,
+                sv_maxspeed, sv_airaccelerate, sv_air_max_wishspeed);
+
+            const auto sv_gravity = CONVAR("sv_gravity")->get<float>();
+            const auto gravity_scale = memory::read<float>(local.pawn + SCHEMA("C_BaseEntity", "m_flGravityScale"_hash));
+            sim_vz -= gravity_scale * sv_gravity * sub_frame;
+
+            ++injected;
         }
 
-        // Restore the original command heading only at the end, not at 0.995
-        // after a different anti-aim-only simulation window. At a known landing
-        // boundary restore the movement basis as well before ground movement.
-        const auto restore_when = end_when < 1.0f ? end_when : std::nextafter(1.0f, 0.0f);
-        if (!this->apply_yaw_subtick(base, restore_when, base_yaw - accumulated_yaw))
+        if (injected > 0)
         {
-            moves->m_current_size = original_size;
-            return;
-        }
-
-        const auto original_forward = base->forwardmove();
-        const auto original_left = base->leftmove();
-        if (end_when < 1.0f)
-        {
-            const auto restore = systems::g_input.acquire_subtick_step(moves);
-            const auto initial = restore ? systems::g_input.acquire_subtick_step(moves) : nullptr;
-            if (!restore || !initial)
+            auto restore_delta = aa_yaw - acc_yaw;
+            math::helpers::normalize_angle(restore_delta);
+            if (std::fabsf(restore_delta) > 0.01f)
             {
-                moves->m_current_size = original_size;
-                return;
+                this->apply_yaw_subtick(base, 0.995f, restore_delta);
             }
-            // input::apply skips its initial analog event when we supply one.
-            initial->set_when(0.0f);
-            initial->set_button(0);
-            initial->set_pressed(false);
-            initial->set_analog_forward_delta(player_move.x - pre.last_movement_impulses.x);
-            initial->set_analog_left_delta(-player_move.y - pre.last_movement_impulses.y);
-            restore->set_when(restore_when);
-            restore->set_button(0);
-            restore->set_pressed(false);
-            restore->set_analog_forward_delta(original_forward - player_move.x);
-            restore->set_analog_left_delta(original_left + player_move.y);
-        }
 
-        base->set_forwardmove(player_move.x);
-        base->set_leftmove(-player_move.y);
-        constexpr auto movement_mask = cstypes::command_buttons::in_forward | cstypes::command_buttons::in_back |
-            cstypes::command_buttons::in_moveleft | cstypes::command_buttons::in_moveright;
-        const auto before = cmd->buttons.value;
-        // Preserve changes made by combat/duckpeek after anti-aim captured WASD.
-        cmd->buttons.value = (before & ~movement_mask) | (this->m_last_pressed & movement_mask);
-        cmd->buttons.value_changed |= before ^ cmd->buttons.value;
-        this->m_handled_this_tick = true;
-        this->m_substep_counter ^= 1;
+            base->set_forwardmove(player_move.x);
+            base->set_leftmove(-player_move.y);
+
+            auto buttons = original_buttons;
+            buttons &= ~(static_cast<std::uintptr_t>(
+                cstypes::command_buttons::in_forward | cstypes::command_buttons::in_back |
+                cstypes::command_buttons::in_moveleft | cstypes::command_buttons::in_moveright
+            ));
+
+            if (player_move.x > 0.0f) buttons |= cstypes::command_buttons::in_forward;
+            else if (player_move.x < 0.0f) buttons |= cstypes::command_buttons::in_back;
+
+            if (player_move.y < 0.0f) buttons |= cstypes::command_buttons::in_moveleft;
+            else if (player_move.y > 0.0f) buttons |= cstypes::command_buttons::in_moveright;
+
+            cmd->buttons.value = buttons;
+            cmd->buttons.value_changed |= (original_buttons ^ buttons);
+
+            this->m_handled_this_tick = true;
+            ++this->m_substep_counter;
+        }
     }
 
     void test_strafer::check_button(std::uintptr_t current_buttons, std::uintptr_t button)
@@ -245,10 +556,15 @@ namespace features::movement {
             (button & forward && !(this->m_last_pressed & back)) ||
             (button & back && !(this->m_last_pressed & forward))))
         {
-            if (button & moveleft) this->m_last_pressed &= ~moveright;
-            else if (button & moveright) this->m_last_pressed &= ~moveleft;
-            else if (button & forward) this->m_last_pressed &= ~back;
-            else if (button & back) this->m_last_pressed &= ~forward;
+            if (button & moveleft)
+                this->m_last_pressed &= ~moveright;
+            else if (button & moveright)
+                this->m_last_pressed &= ~moveleft;
+            else if (button & forward)
+                this->m_last_pressed &= ~back;
+            else if (button & back)
+                this->m_last_pressed &= ~forward;
+
             this->m_last_pressed |= button;
         }
         else if (!(current_buttons & button))
