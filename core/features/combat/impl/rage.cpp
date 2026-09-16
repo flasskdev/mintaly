@@ -870,33 +870,130 @@ namespace features::combat {
                 scan_order[scan_count++] = idx;
         }
 
-        std::vector<scan_hit> results;
-        results.reserve(static_cast<std::size_t>(scan_count) * 2);
+        struct trace_point
+        {
+            math::vector3 position;
+            int hitbox_index;
+            int bone_index;
+            systems::hitboxes::entry hitbox;
+            bool is_center;
+        };
+
+        std::vector<trace_point> points;
+        points.reserve(static_cast<std::size_t>(scan_count) * 12);
+        // Reuse capacity across hitboxes instead of allocating for every one.
         std::vector<math::vector3> multipoints;
+        multipoints.reserve(4);
         std::vector<debug_point> debug_points;
-        const auto debug = config.debug_multipoints.value;
-        if (debug)
+        if (config.debug_multipoints.value)
             debug_points.reserve(static_cast<std::size_t>(scan_count) * 5);
 
-        // Each selected hitbox is visited once. Trace its center first, then
-        // generate only the multipoints the previous center-sufficiency rule
-        // would actually trace. Keep engine calls serial and in the same order.
-        const auto scan_point = [&](const math::vector3& position, int hitbox_index, bool is_center) -> bool
+        for (auto idx = 0; idx < scan_count; ++idx)
         {
-            diag::set_exception_phase("rage: scan_player / penetration");
-            const auto aim = math::helpers::calculate_angle(eye, position);
+            const auto hitbox_index = scan_order[idx];
+            const systems::hitboxes::entry* hb{ nullptr };
+
+            for (const auto& entry : hitbox_set)
+            {
+                if (entry.index == hitbox_index)
+                {
+                    hb = &entry;
+                    break;
+                }
+            }
+
+            if (!hb || hb->bone < 0 || hb->bone >= bone_count)
+                continue;
+
+            const auto& bone = skeleton[hb->bone];
+            if (bone.position.length_sqr() < 1.0f)
+                continue;
+
+            const auto hitbox_center = (hb->mins + hb->maxs) * 0.5f;
+            const auto center = bone.rotation.rotate_vector(hitbox_center) + bone.position;
+
+            trace_point cp{};
+            cp.position = center;
+            cp.hitbox_index = hitbox_index;
+            cp.bone_index = hb->bone;
+            cp.hitbox = *hb;
+            cp.is_center = true;
+            const auto hitbox_points_begin = points.size();
+            points.push_back(cp);
+
+            if (config.debug_multipoints.value)
+                debug_points.push_back({ center, hitbox_index, true });
+
+            // Generate multipoints
+            if (config.pointscale > 0.0f)
+            {
+                this->generate_multipoints(*hb, center, bone.rotation, config.pointscale, eye, inaccuracy, multipoints);
+                for (const auto& mp : multipoints)
+                {
+                    // Scan order contains each hitbox once; earlier hitboxes
+                    // cannot be duplicates under the existing hitbox-index test.
+                    const auto duplicate = std::any_of(points.begin() + hitbox_points_begin, points.end(), [&](const trace_point& point)
+                        {
+                            return point.hitbox_index == hitbox_index && (point.position - mp).length_sqr() < 0.01f;
+                        });
+
+                    if (duplicate)
+                        continue;
+
+                    trace_point tp{};
+                    tp.position = mp;
+                    tp.hitbox_index = hitbox_index;
+                    tp.bone_index = hb->bone;
+                    tp.hitbox = *hb;
+                    tp.is_center = false;
+                    points.push_back(tp);
+
+                    if (config.debug_multipoints.value)
+                        debug_points.push_back({ mp, hitbox_index, false });
+                }
+            }
+        }
+
+        if (!debug_points.empty())
+        {
+            // Publish once per pose, without locking against Present per point.
+            std::lock_guard lock(m_debug_mtx);
+            m_debug_points.insert(m_debug_points.end(), debug_points.begin(), debug_points.end());
+        }
+
+        if (points.empty())
+            return {};
+
+        diag::set_exception_phase("rage: scan_player / penetration");
+        std::vector<scan_hit> results;
+        results.reserve(static_cast<std::size_t>(scan_count) * 2);
+        std::array<bool, 19> center_sufficient{};
+
+        for (const auto& tp : points)
+        {
+            // Skip non-center points if center is already sufficient (lethal)
+            if (!tp.is_center && tp.hitbox_index >= 0 && tp.hitbox_index < static_cast<int>(center_sufficient.size()) && center_sufficient[tp.hitbox_index])
+                continue;
+
+            const auto aim = math::helpers::calculate_angle(eye, tp.position);
             const auto fov = math::helpers::angle_distance(ctx.view_angles, aim);
+
             if (fov > config.max_fov)
-                return false;
+                continue;
 
             shared::penetration::result pen{};
-            if (!g_shared.pen().run(eye, position, pen_ctx, local.pawn, local.team, pen) ||
-                pen.damage < cand.min_damage)
-                return false;
+            if (!g_shared.pen().run(eye, tp.position, pen_ctx, local.pawn, local.team, pen))
+                continue;
 
-            if (!is_center && hitbox_index == 0 &&
-                pen.hitgroup != systems::g_hitboxes.hitgroup_from_hitbox(hitbox_index))
-                return false;
+            if (pen.damage < cand.min_damage)
+                continue;
+
+            // Headshot specific check
+            if (!tp.is_center && tp.hitbox_index == 0)
+            {
+                if (pen.hitgroup != systems::g_hitboxes.hitgroup_from_hitbox(tp.hitbox_index))
+                    continue;
+            }
 
             const systems::hitboxes::entry* actual_hitbox = nullptr;
             for (const auto& entry : hitbox_set)
@@ -908,13 +1005,17 @@ namespace features::combat {
                 }
             }
             if (!actual_hitbox || actual_hitbox->bone < 0 || actual_hitbox->bone >= bone_count)
-                return false;
+                continue;
 
-            // An intercepted center must not suppress points on the intended
-            // hitbox. Preserve the original direct/lethal test exactly.
-            const auto actual_center = is_center && pen.hitbox == hitbox_index;
+            // A nearer limb can intercept a ray aimed at another hitbox. Use
+            // the contacted geometry for hitchance and do not suppress that
+            // intended hitbox's multipoints based on an unrelated center hit.
+            const auto actual_center = tp.is_center && pen.hitbox == tp.hitbox_index;
+            if (actual_center && tp.hitbox_index >= 0 && tp.hitbox_index < static_cast<int>(center_sufficient.size()))
+                center_sufficient[tp.hitbox_index] = !pen.penetrated || pen.damage >= static_cast<float>(cand.health);
+
             scan_hit h{};
-            h.position = position;
+            h.position = tp.position;
             h.aim_angle = aim;
             h.damage = pen.damage;
             h.fov = fov;
@@ -928,66 +1029,8 @@ namespace features::combat {
             h.health = cand.health;
             h.record = record;
             results.push_back(h);
-            return actual_center && (!pen.penetrated || pen.damage >= static_cast<float>(cand.health));
-        };
-
-        for (auto idx = 0; idx < scan_count; ++idx)
-        {
-            const auto hitbox_index = scan_order[idx];
-            const systems::hitboxes::entry* hb = nullptr;
-            for (const auto& entry : hitbox_set)
-            {
-                if (entry.index == hitbox_index)
-                {
-                    hb = &entry;
-                    break;
-                }
-            }
-            if (!hb || hb->bone < 0 || hb->bone >= bone_count)
-                continue;
-
-            const auto& bone = skeleton[hb->bone];
-            if (bone.position.length_sqr() < 1.0f)
-                continue;
-
-            const auto hitbox_center = (hb->mins + hb->maxs) * 0.5f;
-            const auto center = bone.rotation.rotate_vector(hitbox_center) + bone.position;
-            if (debug)
-                debug_points.push_back({ center, hitbox_index, true });
-            const auto sufficient = scan_point(center, hitbox_index, true);
-
-            // Debug visualization still includes skipped points, as before.
-            if (!(config.pointscale > 0.0f) || (sufficient && !debug))
-                continue;
-
-            diag::set_exception_phase("rage: scan_player / multipoints");
-            this->generate_multipoints(*hb, center, bone.rotation, config.pointscale, eye, inaccuracy, multipoints);
-
-            // Compact accepted positions in place. Only accepted points take
-            // part in duplicate detection, preserving its non-transitive epsilon
-            // semantics without a trace-point staging buffer or fixed-size cap.
-            std::size_t accepted = 0;
-            for (std::size_t i = 0; i < multipoints.size(); ++i)
-            {
-                const auto mp = multipoints[i];
-                const auto duplicate = (center - mp).length_sqr() < 0.01f ||
-                    std::any_of(multipoints.begin(), multipoints.begin() + accepted,
-                        [&](const math::vector3& point) { return (point - mp).length_sqr() < 0.01f; });
-                if (duplicate)
-                    continue;
-                multipoints[accepted++] = mp;
-                if (debug)
-                    debug_points.push_back({ mp, hitbox_index, false });
-                if (!sufficient)
-                    scan_point(mp, hitbox_index, false);
-            }
         }
 
-        if (!debug_points.empty())
-        {
-            std::lock_guard lock(m_debug_mtx);
-            m_debug_points.insert(m_debug_points.end(), debug_points.begin(), debug_points.end());
-        }
         return results;
     }
 
