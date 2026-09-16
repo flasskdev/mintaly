@@ -1233,7 +1233,8 @@ namespace features::combat {
                 const auto recoil = this->m_ctx.recoil_index;
                 const auto item = this->m_ctx.item_def_idx;
                 const auto bullets = this->m_ctx.num_bullets;
-                if ( !ballistics::finite( aim_angle ) || !std::isfinite( inaccuracy ) || inaccuracy < 0.0f ||
+                const auto punch = this->m_ctx.aim_punch;
+                if ( !ballistics::finite( punch ) || !ballistics::finite( aim_angle ) || !std::isfinite( inaccuracy ) || inaccuracy < 0.0f ||
                         !std::isfinite( spread_amount ) || spread_amount < 0.0f || !std::isfinite( recoil ) )
                         return std::nullopt;
                 if ( inaccuracy == 0.0f && spread_amount == 0.0f )
@@ -1245,7 +1246,12 @@ namespace features::combat {
                 math::vector3 desired{};
                 math::helpers::angle_vectors_left( aim_angle, &desired );
                 return ballistics::solve_spread( aim_angle,
-                        [ & ]( const math::vector3& angle ) { return this->get_spread_seed( angle, tick ); },
+                        [ & ]( const math::vector3& angle )
+                        {
+                                // The seed hashes the command view, not the
+                                // ballistic direction after recoil is applied.
+                                return this->get_spread_seed( ballistics::command_angles( angle, punch ), tick );
+                        },
                         [ & ]( std::uint32_t seed ) -> std::optional<math::vector3>
                         {
                                 const auto spread = this->calculate_spread( seed, inaccuracy,

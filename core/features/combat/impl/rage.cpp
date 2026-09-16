@@ -66,6 +66,21 @@ namespace features::combat {
         if (!is_knife && !is_taser && (ctx.weapon_type < cstypes::weapon_type::pistol || ctx.weapon_type > cstypes::weapon_type::lmg))
             return;
 
+        // Prediction snapshots and accuracy updates are expensive. Disabled
+        // features and unavailable shots must not enter speculative simulation.
+        if ((is_knife && !settings::g_combat.m_knifebot.enabled) ||
+            (is_taser && !settings::g_combat.m_zeusbot.enabled) ||
+            (!is_knife && !is_taser && !settings::g_combat.m_ragebot.enabled))
+        {
+            this->m_revolver_cock_ticks = 0;
+            return;
+        }
+        if (!g_shared.can_shoot(cmd, local.controller))
+        {
+            this->m_revolver_cock_ticks = 0;
+            return;
+        }
+
         auto aim_ctx = this->build_context(cmd, local);
         if (!ctx.valid)
             return;
@@ -1102,6 +1117,44 @@ namespace features::combat {
                 return 0;
             };
 
+        // No probability queries or record grouping are needed for nospread.
+        // This path is also used by every alternative-shot retry.
+        const auto& fast_config = settings::g_combat.m_ragebot.get_group(g_shared.ctx().weapon_type, g_shared.ctx().item_def_idx);
+        if (fast_config.no_spread.value)
+        {
+            target best{};
+            for (const auto& hit : hits)
+            {
+                if (!hit.record || !hit.record->valid || hit.bone_index < 0 ||
+                    hit.bone_index >= hit.record->bone_count ||
+                    hit.bone_index >= static_cast<int>(std::size(hit.record->bones)) ||
+                    hit.health <= 0 || !std::isfinite(hit.damage) || hit.damage <= 0.0f ||
+                    !std::isfinite(hit.fov) || !ballistics::finite(hit.aim_angle) ||
+                    !ballistics::finite(hit.source_eye.position))
+                    continue;
+                const auto score = ballistics::target_score(hit.damage, hit.health, 1.0f, 0.0f,
+                    true, hit.penetrated, hit.is_center, hitgroup_priority(hit.hitbox_index), hit.fov);
+                auto better = !best.valid || score > best.score;
+                if (best.valid && std::fabsf(score - best.score) < 0.01f)
+                {
+                    if (hit.record->tick != best.hit.record->tick)
+                        better = hit.record->tick > best.hit.record->tick;
+                    else if (hit.is_center != best.hit.is_center)
+                        better = hit.is_center;
+                    else
+                        better = hit.fov < best.hit.fov;
+                }
+                if (better)
+                {
+                    best.hit = hit;
+                    best.hitchance = 1.0f;
+                    best.score = score;
+                    best.valid = true;
+                }
+            }
+            return best;
+        }
+
         struct record_group
         {
             shared::lagcomp::record* record;
@@ -1521,7 +1574,7 @@ namespace features::combat {
         const auto tick_base = memory::read<int>(local.controller + SCHEMA("CBasePlayerController", "m_nTickBase"_hash));
         const auto& shared_ctx = g_shared.ctx();
         const auto& config = settings::g_combat.m_ragebot.get_group(shared_ctx.weapon_type, shared_ctx.item_def_idx);
-        const auto aim_punch = config.no_spread.value ? shared_ctx.aim_punch : g_shared.get_aim_punch(local.pawn);
+        const auto aim_punch = shared_ctx.aim_punch;
 
         auto aim_angle = config.no_spread.value ?
             math::helpers::calculate_angle(shoot_eye, tgt.hit.position) :
@@ -1554,7 +1607,8 @@ namespace features::combat {
                 return;
             const auto corrected = *solution;
 
-            const auto seed = g_shared.get_spread_seed(corrected, stamp_tick);
+            const auto shot_command = ballistics::command_angles(corrected, aim_punch);
+            const auto seed = g_shared.get_spread_seed(shot_command, stamp_tick);
             const auto spread = g_shared.calculate_spread(seed, shared_ctx.inaccuracy,
                 shared_ctx.spread, shared_ctx.recoil_index, shared_ctx.item_def_idx, shared_ctx.num_bullets);
             if (!std::isfinite(spread.x) || !std::isfinite(spread.y) ||
@@ -1576,6 +1630,12 @@ namespace features::combat {
 
             aim_angle = corrected;
         }
+
+        auto shot_command = ballistics::command_angles(aim_angle, aim_punch);
+        if (!config.no_spread.value)
+            shot_command.z = 0.0f;
+        if (!ballistics::finite(shot_command))
+            return;
 
         this->m_firing_this_tick = true;
         g_shared.last_shoot_tick() = tick_base;
@@ -1617,9 +1677,9 @@ namespace features::combat {
 
             if (const auto angles = entry->mutable_view_angles())
             {
-                angles->set_x(aim_angle.x - aim_punch.x);
-                angles->set_y(aim_angle.y - aim_punch.y);
-                angles->set_z(config.no_spread.value ? aim_angle.z : 0.0f);
+                angles->set_x(shot_command.x);
+                angles->set_y(shot_command.y);
+                angles->set_z(shot_command.z);
             }
 
             entry->set_render_tick_count(record_time.tick + 1);
@@ -1679,18 +1739,13 @@ namespace features::combat {
                 math::helpers::angle_vectors_left({ angles->x(), angles->y(), angles->z() }, &forward);
         }
 
-        // The solver uses roll for every weapon, not only quick revolver shots.
-        const auto carry_roll_in_command = config.no_spread.value;
-        const auto punched_aim = math::vector3{
-            aim_angle.x - aim_punch.x,
-            aim_angle.y - aim_punch.y,
-            carry_roll_in_command ? aim_angle.z : 0.0f
-        };
+        const auto punched_aim = shot_command;
 
         const auto facing_away = forward.dot((tgt.hit.record->origin - systems::g_prediction.pre().networked_origin).normalized()) < 0.707107f;
         auto command_aim = punched_aim;
 
-        if (facing_away && settings::g_combat.m_antiaim.hide_shots.value)
+        // Do not replace a seed-validated command with unrelated hide-shot angles.
+        if (!config.no_spread.value && facing_away && settings::g_combat.m_antiaim.hide_shots.value)
         {
             command_aim.x = 179.9f;
             command_aim.y = std::remainderf(punched_aim.y + 180.0f, 360.0f);
