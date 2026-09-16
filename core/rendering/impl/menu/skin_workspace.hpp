@@ -29,6 +29,7 @@ inline hover_state hover;
 
 struct preview_viewport {
     std::unique_ptr<nemesis::preview3d::renderer> renderer{};
+    ID3D11Device* current_device = nullptr;
     nemesis::preview3d::camera camera{ 0.15f, 0.08f, 2.5f };
     bool dragging = false;
     float drag_start_x = 0.0f;
@@ -461,18 +462,73 @@ inline bool sidebar(const xui::rect& r) {
         if (profiles.ready()) profiles.save(); else profiles.load(true);
     }
 
-    // 2. Bottom Section of main panel: CT/T Loadouts with icons
-    constexpr float btn_h = 34.0f;
-    constexpr float btn_gap = 6.0f;
-    const float loadout_top = main.bottom() - 14.0f - (btn_h * 2.0f + btn_gap);
+    // 2. Bottom Section of main panel: CT/T Loadouts in a single row with animated width & transitions
+    constexpr float btn_h = 32.0f;
+    const float loadout_top = main.bottom() - 12.0f - btn_h;
+    const float row_w = r.w - 28.0f;
+    constexpr float gap = 8.0f;
+    constexpr float compact_w = 42.0f;
+    const float expanded_w = (row_w - gap) - compact_w;
 
-    for (const int side : {3, 2}) {
-        const float by = loadout_top + (side == 3 ? 0.0f : (btn_h + btn_gap));
-        const xui::rect row{r.x + 14.0f, by, r.w - 28.0f, btn_h};
-        if (button(row, side == 3 ? "       CT Loadout" : "       T Loadout", team == side)) {
-            team = side;
-        }
-        team_icon(row.x + 22.0f, row.center_y(), side);
+    struct loadout_anim_t {
+        float ct_weight = 1.0f;
+    };
+    static loadout_anim_t s_anim{};
+
+    const float target_weight = (team == 3 ? 1.0f : 0.0f);
+    const float dt = xdraw::delta_time();
+    s_anim.ct_weight += (target_weight - s_anim.ct_weight) * (1.0f - std::exp(-dt * 18.0f));
+    s_anim.ct_weight = std::clamp(s_anim.ct_weight, 0.0f, 1.0f);
+
+    const float ct_factor = s_anim.ct_weight;
+    const float t_factor = 1.0f - ct_factor;
+
+    const float ct_w = std::lerp(compact_w, expanded_w, ct_factor);
+    const float t_w = (row_w - gap) - ct_w;
+
+    const xui::rect ct_btn{r.x + 14.0f, loadout_top, ct_w, btn_h};
+    const xui::rect t_btn{ct_btn.right() + gap, loadout_top, t_w, btn_h};
+
+    // CT Button (Icon + text when active, compact icon-only when inactive)
+    const bool ct_hover = hovered(ct_btn);
+    if (ct_hover && xui::ctx().input.mouse_clicked) {
+        team = 3;
+    }
+    const auto ct_accent = xdraw::color{75, 155, 255};
+    const auto ct_bg = (team == 3) ? tokens::col_elevated : (ct_hover ? tokens::col_card : tokens::col_dark);
+    const auto ct_border = (team == 3) ? ct_accent.alpha(static_cast<uint8_t>(180 * ct_factor)) : (ct_hover ? tokens::col_border.alpha(160) : tokens::col_border);
+    dl.rect_filled(ct_btn.x, ct_btn.y, ct_btn.w, ct_btn.h, ct_bg, xdraw::corner_radius{6.0f});
+    dl.rect(ct_btn.x, ct_btn.y, ct_btn.w, ct_btn.h, ct_border, xdraw::corner_radius{6.0f});
+
+    const float ct_icon_x = std::lerp(ct_btn.center_x(), ct_btn.x + 18.0f, ct_factor);
+    team_icon(ct_icon_x, ct_btn.center_y(), 3);
+
+    if (ct_factor > 0.15f) {
+        dl.push_clip(ct_btn.x, ct_btn.y, ct_btn.w, ct_btn.h);
+        const uint8_t alpha = static_cast<uint8_t>(std::clamp((ct_factor - 0.15f) / 0.85f, 0.0f, 1.0f) * 255.0f);
+        dl.text(ct_btn.x + 36.0f, ct_btn.center_y() - 7.0f, "CT Loadout", (team == 3 ? tokens::col_text : tokens::col_text_dim).alpha(alpha));
+        dl.pop_clip();
+    }
+
+    // T Button (Icon + text when active, compact icon-only when inactive)
+    const bool t_hover = hovered(t_btn);
+    if (t_hover && xui::ctx().input.mouse_clicked) {
+        team = 2;
+    }
+    const auto t_accent = xdraw::color{240, 180, 65};
+    const auto t_bg = (team == 2) ? tokens::col_elevated : (t_hover ? tokens::col_card : tokens::col_dark);
+    const auto t_border = (team == 2) ? t_accent.alpha(static_cast<uint8_t>(180 * t_factor)) : (t_hover ? tokens::col_border.alpha(160) : tokens::col_border);
+    dl.rect_filled(t_btn.x, t_btn.y, t_btn.w, t_btn.h, t_bg, xdraw::corner_radius{6.0f});
+    dl.rect(t_btn.x, t_btn.y, t_btn.w, t_btn.h, t_border, xdraw::corner_radius{6.0f});
+
+    const float t_icon_x = std::lerp(t_btn.center_x(), t_btn.x + 18.0f, t_factor);
+    team_icon(t_icon_x, t_btn.center_y(), 2);
+
+    if (t_factor > 0.15f) {
+        dl.push_clip(t_btn.x, t_btn.y, t_btn.w, t_btn.h);
+        const uint8_t alpha = static_cast<uint8_t>(std::clamp((t_factor - 0.15f) / 0.85f, 0.0f, 1.0f) * 255.0f);
+        dl.text(t_btn.x + 36.0f, t_btn.center_y() - 7.0f, "T Loadout", (team == 2 ? tokens::col_text : tokens::col_text_dim).alpha(alpha));
+        dl.pop_clip();
     }
 
     // 3. Middle Section: Interactive 3D Agent Preview (standing in buy-menu stance holding weapon)
@@ -562,48 +618,26 @@ inline bool sidebar(const xui::rect& r) {
         }
     }
 
-    // Initialize D3D11 renderer & upload 3D agent mesh
-    auto* dev = xdraw::device();
-    if (dev) {
-        if (!g_viewport.renderer || !g_viewport.renderer->is_valid()) {
-            g_viewport.renderer = std::make_unique<nemesis::preview3d::renderer>(dev);
-        }
-
-        if (g_viewport.renderer && g_viewport.renderer->is_valid()) {
-            const bool needs_rebuild = (team != g_viewport.last_team ||
-                                        resolved_agent_id != g_viewport.last_agent ||
-                                        weapon_id != g_viewport.last_weapon ||
-                                        resolved_paint != g_viewport.last_paint ||
-                                        glove_id != g_viewport.last_glove);
-
-            if (needs_rebuild) {
-                g_viewport.last_team = team;
-                g_viewport.last_agent = resolved_agent_id;
-                g_viewport.last_weapon = weapon_id;
-                g_viewport.last_paint = resolved_paint;
-                g_viewport.last_glove = glove_id;
-
-                const std::string wep_name = weapon ? weapon->name : "weapon_ak47";
-                const auto agent_mesh = nemesis::preview3d::generate_agent_with_weapon(
-                    team, resolved_agent_id, weapon_id, resolved_paint, glove_id, wep_name, skin_name
-                );
-                g_viewport.renderer->upload(agent_mesh);
-            }
-
-            // Render 3D agent viewport with transparent background
-            const UINT target_w = std::clamp(static_cast<UINT>(preview.w * 1.5f), UINT{128}, UINT{1024});
-            const UINT target_h = std::clamp(static_cast<UINT>(preview.h * 1.5f), UINT{128}, UINT{1024});
-            auto* srv = g_viewport.renderer->render(cam_render, target_w, target_h);
-            if (srv) {
-                dl.image(preview.x, preview.y, preview.w, preview.h, srv);
-            }
+    // Render real agent directly from the game (live CS2 preview player texture or official game artwork)
+    auto* live_srv = systems::g_model_preview.get_preview_srv();
+    if (live_srv) {
+        // Draw the real in-game 3D agent model captured live from CS2 engine
+        dl.image(preview.x, preview.y, preview.w, preview.h, live_srv);
+    } else if (agent) {
+        // Render the official high-resolution game agent model artwork from CS2 econ system
+        const auto* img = econ.get_skin_image(agent->image_inventory);
+        if (img) {
+            const xui::rect agent_rect{preview.x + 8.0f, preview.y + 16.0f, preview.w - 16.0f, preview.h - 48.0f};
+            image(agent_rect, img);
         }
     }
 
-    // 3D Interactive Badge (Top Right)
-    const xui::rect badge_3d{preview.right() - 36.0f, preview.y + 6.0f, 30.0f, 18.0f};
+    // Status Badge (Top Right)
+    const bool is_live = (live_srv != nullptr);
+    const float badge_w = is_live ? 36.0f : 46.0f;
+    const xui::rect badge_3d{preview.right() - badge_w - 6.0f, preview.y + 6.0f, badge_w, 18.0f};
     dl.rect_filled(badge_3d.x, badge_3d.y, badge_3d.w, badge_3d.h, tokens::col_elevated.alpha(160), xdraw::corner_radius{4.0f});
-    dl.text(badge_3d.x + 7.0f, badge_3d.y + 2.0f, "3D", tokens::col_accent);
+    dl.text(badge_3d.x + 6.0f, badge_3d.y + 2.0f, is_live ? "LIVE" : "AGENT", tokens::col_accent);
 
     // Agent Name / Custom .VMDL Badge (Top Left)
     if (custom >= 0 && custom < static_cast<int>(ca.entries.size())) {
@@ -617,7 +651,7 @@ inline bool sidebar(const xui::rect& r) {
         dl.text(preview.x + 8.0f, preview.y + 6.0f, theme::fit_text(agent->localized_name, preview.w - 50.0f), tokens::col_text_dim);
     }
 
-    // Bottom item banner: rarity dot + weapon & skin title
+    // Bottom item banner: rarity dot + weapon & skin title + weapon icon
     if (weapon) {
         const auto* kit = econ.find_paint_kit(resolved_paint);
         const auto rarity = kit ? econ.combined_rarity(weapon_id, resolved_paint) : weapon->rarity;
@@ -626,7 +660,13 @@ inline bool sidebar(const xui::rect& r) {
         dl.circle_filled(preview.x + 10.0f, preview.bottom() - 14.0f, 3.5f, rarity_col);
 
         const std::string title = kit ? (weapon->localized_name + " | " + kit->localized_name) : weapon->localized_name;
-        dl.text(preview.x + 20.0f, preview.bottom() - 21.0f, theme::fit_text(title, preview.w - 28.0f), tokens::col_text);
+        dl.text(preview.x + 20.0f, preview.bottom() - 21.0f, theme::fit_text(title, preview.w - 82.0f), tokens::col_text);
+
+        const auto* wep_img = econ.get_skin_image(weapon->image_inventory);
+        if (wep_img) {
+            const xui::rect wep_r{preview.right() - 56.0f, preview.bottom() - 28.0f, 48.0f, 22.0f};
+            image(wep_r, wep_img);
+        }
     }
 
     dl.pop_clip();

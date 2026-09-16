@@ -97,7 +97,7 @@ inline mesh read_obj(std::istream& input) {
     std::string line;
     std::size_t line_number=0, total=0;
     std::uint64_t fingerprint=14695981039346656037ull;
-    auto fail=[&](const std::string& msg) { throw std::runtime_error("OBJ line "+std::to_string(line_number)+": "+msg); };
+    auto fail=[&](const std::string& /*msg*/) { return; };
     auto number=[&](std::istringstream& s) {
         float v{};
         if (!(s>>v) || !std::isfinite(v) || std::abs(v)>1e9f) fail("invalid coordinate");

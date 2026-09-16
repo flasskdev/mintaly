@@ -29,46 +29,31 @@ namespace systems
         if ( owner_hash != "C_CSGO_PreviewPlayer"_hash )
             return false;
 
-        const std::uintptr_t mesh_instance = memory::read<std::uintptr_t>(
-            owner_entity + SCHEMA( "C_BaseEntity", "m_pMeshInstance"_hash )
-        );
+        // Allow capturing any game preview agent (CT, T, custom agents, inspect models)
 
-        if ( mesh_instance )
+        const auto* data = reinterpret_cast<const c_generate_primitives_data*>( scene_object );
+        if ( data && reinterpret_cast<std::uintptr_t>( data ) > 0x10000 )
         {
-            const std::uintptr_t mesh_cache = memory::read<std::uintptr_t>( mesh_instance + 0x8 );
-            if ( mesh_cache && mesh_cache < 0x7FFFFFFFFFFF )
+            const auto* scene_layer = data->m_scene_layer;
+            if ( scene_layer && reinterpret_cast<std::uintptr_t>( scene_layer ) > 0x10000 )
             {
-                const std::uintptr_t model_imp = memory::read<std::uintptr_t>( mesh_cache );
-                if ( model_imp && model_imp < 0x7FFFFFFFFFFF )
+                const auto* tex_handle = scene_layer->m_texture_handle;
+                if ( tex_handle && reinterpret_cast<std::uintptr_t>( tex_handle ) > 0x10000 )
                 {
-                    const char* model_path = memory::read<const char*>( model_imp + 0x8 );
-                    if ( model_path )
+                    if ( tex_handle->m_texture && reinterpret_cast<std::uintptr_t>( tex_handle->m_texture ) > 0x10000 )
                     {
-                        if ( fnv1a::runtime_hash( model_path ) != fnv1a::runtime_hash( "characters/models/ctm_st6/ctm_st6_variante.vmdl" ) )
-                            return false;
+                        m_current_texture = tex_handle->m_texture;
+
+                        static bool first_log = true;
+                        if ( first_log )
+                        {
+                            logging::console::print( "[model_preview] captured preview texture!" );
+                            first_log = false;
+                        }
                     }
                 }
             }
         }
-
-        /*if ( auto* data = reinterpret_cast< c_generate_primitives_data* >( scene_object ) )
-        {
-            if ( auto* scene_layer = data->m_scene_layer )
-            {
-                if ( scene_layer->m_texture_handle &&
-                    scene_layer->m_texture_handle->m_texture )
-                {
-                    m_current_texture = scene_layer->m_texture_handle->m_texture;
-
-                    static bool first_log = true;
-                    if ( first_log )
-                    {
-                        logging::console::print( "[model_preview] captured preview texture!" );
-                        first_log = false;
-                    }
-                }
-            }
-        }*/
 
         return false;
     }

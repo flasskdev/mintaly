@@ -659,6 +659,11 @@ namespace systems {
 
 		void* get_current_texture( ) const { return m_current_texture; }
 		bool has_texture( ) const { return m_current_texture != nullptr; }
+		ID3D11ShaderResourceView* get_preview_srv( ) const {
+			if ( !m_current_texture ) return nullptr;
+			const auto* tex = reinterpret_cast<const c_texture_dx11*>( m_current_texture );
+			return tex ? tex->m_texture_SRV0 : nullptr;
+		}
 
 		void reset( ) { m_current_texture = nullptr; }
 
