@@ -1500,9 +1500,10 @@ namespace rendering {
                 dl.line(cx, cy - 8, cx, cy - 3, icon_color);
                 dl.line(cx, cy + 3, cx, cy + 8, icon_color);
                 break;
-            case 1:
-                dl.circle(cx, cy, 7.0f, icon_color, 1.2f);
-                dl.circle(cx, cy, 2.2f, icon_color, 1.2f);
+            case 1: // Legitbot (Computer Mouse)
+                dl.rect(cx - 5.0f, cy - 7.5f, 10.0f, 15.0f, icon_color, xdraw::corner_radius{ 5.0f }, 1.2f);
+                dl.line(cx, cy - 7.5f, cx, cy - 4.8f, icon_color, 1.1f);
+                dl.rect_filled(cx - 0.75f, cy - 4.5f, 1.5f, 3.2f, icon_color, xdraw::corner_radius{ 0.75f });
                 break;
             case 2: {
                 const std::array<float, 12> points{ { cx + 2, cy - 8, cx - 6, cy + 1, cx, cy + 1, cx - 2, cy + 8, cx + 7, cy - 2, cx + 1, cy - 2 } };
@@ -1515,13 +1516,24 @@ namespace rendering {
                 dl.circle(cx, cy, 2.2f, icon_color, 1.2f);
                 break;
             }
-            case 4: // Skins
-                dl.line(cx, cy - 7, cx + 7, cy, icon_color, 1.2f);
-                dl.line(cx + 7, cy, cx, cy + 7, icon_color, 1.2f);
-                dl.line(cx, cy + 7, cx - 7, cy, icon_color, 1.2f);
-                dl.line(cx - 7, cy, cx, cy - 7, icon_color, 1.2f);
-                dl.circle_filled(cx, cy, 2.0f, icon_color);
+            case 4: { // Skins (Weapon)
+                const std::array<float, 20> points{ {
+                    cx - 6.5f, cy - 4.5f,
+                    cx + 7.0f, cy - 4.5f,
+                    cx + 7.0f, cy - 1.2f,
+                    cx + 1.5f, cy - 1.2f,
+                    cx + 1.5f, cy + 2.2f,
+                    cx - 1.8f, cy + 2.2f,
+                    cx - 3.2f, cy + 6.8f,
+                    cx - 6.2f, cy + 6.0f,
+                    cx - 4.8f, cy + 0.5f,
+                    cx - 6.5f, cy - 1.5f
+                } };
+                dl.polyline(points, icon_color, true, 1.2f);
+                dl.line(cx - 0.2f, cy - 0.2f, cx - 1.0f, cy + 1.2f, icon_color, 1.0f);
+                dl.line(cx - 4.0f, cy - 1.2f, cx - 1.5f, cy - 1.2f, icon_color, 1.0f);
                 break;
+            }
             case 5: // Misc
                 dl.rect(cx - 6, cy - 6, 12, 12, icon_color, xdraw::corner_radius{ 1.0f });
                 dl.line(cx - 6, cy - 2, cx + 6, cy - 2, icon_color);

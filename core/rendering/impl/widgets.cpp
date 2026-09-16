@@ -955,7 +955,7 @@ namespace rendering {
 		constexpr auto header_h{ 28.0f };
 		constexpr auto header_gap{ 10.0f };
 		constexpr auto row_h{ 26.0f };
-		constexpr auto row_gap{ 4.0f };
+		constexpr auto row_gap{ 6.0f };
 		const auto card_r = xdraw::corner_radius{ 6.0f };
 		const auto [header_tw, header_th] = xdraw::measure_text( "Keybinds" );
 
@@ -1148,24 +1148,50 @@ namespace rendering {
 				draw_watermark_shadow( left_x, left_y, left_w, row_h );
 				draw_list.rect_filled_blurred( left_x, left_y, left_w, row_h, card_r, xdraw::color{ 255, 255, 255, master_u8 } );
 				draw_list.rect_filled( left_x, left_y, left_w, row_h, tokens::col_card.alpha( static_cast< std::uint8_t >( 130.0f * master_alpha ) ), card_r );
+
 				draw_list.rect( left_x, left_y, left_w, row_h, tokens::col_border.alpha( static_cast< std::uint8_t >( 110.0f * master_alpha ) ), card_r, 1.0f );
 
-				// Vertical accent status bar on left
-				const float bar_h = 14.0f;
-				const float bar_y = left_y + ( row_h - bar_h ) * 0.5f;
-				const float bar_x = left_x + 4.0f;
+				// Small rounded border on left that follows the card's rounded corner
+				const auto r = card_r.tl;
+				const auto cx_tl = left_x + r;
+				const auto cy_tl = left_y + r;
+				const auto cx_bl = left_x + r;
+				const auto cy_bl = left_y + row_h - r;
+				constexpr auto half_pi = std::numbers::pi_v<float> * 0.5f;
+
+				std::array<float, 28> border_pts{};
+				constexpr int segs = 6;
+				const float step = half_pi / static_cast< float >( segs );
+
+				// Top-left arc (from top to left)
+				for ( int s_idx = 0; s_idx <= segs; ++s_idx )
+				{
+					const float a = 1.5f * std::numbers::pi_v<float> - static_cast< float >( s_idx ) * step;
+					border_pts[ s_idx * 2 ] = cx_tl + r * std::cos( a );
+					border_pts[ s_idx * 2 + 1 ] = cy_tl + r * std::sin( a );
+				}
+
+				// Bottom-left arc (from left to bottom)
+				for ( int s_idx = 0; s_idx <= segs; ++s_idx )
+				{
+					const float a = std::numbers::pi_v<float> - static_cast< float >( s_idx ) * step;
+					border_pts[ ( segs + 1 + s_idx ) * 2 ] = cx_bl + r * std::cos( a );
+					border_pts[ ( segs + 1 + s_idx ) * 2 + 1 ] = cy_bl + r * std::sin( a );
+				}
+
 				if ( e.mode == xui::bind_mode::hold_off )
 				{
-					draw_list.rect_filled( bar_x, bar_y, 2.5f, bar_h, tokens::col_text_dim.alpha( static_cast< std::uint8_t >( 110.0f * master_alpha ) ), xdraw::corner_radius{ 1.25f } );
+					draw_list.polyline( border_pts, tokens::col_text_dim.alpha( static_cast< std::uint8_t >( 120.0f * master_alpha ) ), false, 1.4f );
 				}
 				else
 				{
-					draw_list.rect_filled( bar_x - 0.5f, bar_y - 0.5f, 3.5f, bar_h + 1.0f, s.accent.alpha( static_cast< std::uint8_t >( 45.0f * master_alpha ) ), xdraw::corner_radius{ 1.75f } );
-					draw_list.rect_filled( bar_x, bar_y, 2.5f, bar_h, s.accent.alpha( static_cast< std::uint8_t >( 240.0f * master_alpha ) ), xdraw::corner_radius{ 1.25f } );
+					draw_list.polyline( border_pts, s.accent.alpha( static_cast< std::uint8_t >( 45.0f * master_alpha ) ), false, 3.0f );
+					draw_list.polyline( border_pts, s.accent.alpha( static_cast< std::uint8_t >( 245.0f * master_alpha ) ), false, 1.6f );
 				}
 
 				// Name text
-				draw_list.text( bar_x + 2.5f + 7.0f, left_y + ( row_h - nh ) * 0.5f - 0.5f, e.name, tokens::col_text.alpha( static_cast< std::uint8_t >( 240.0f * master_alpha ) ) );
+				const float name_x = left_x + 11.0f;
+				draw_list.text( name_x, left_y + ( row_h - nh ) * 0.5f - 0.5f, e.name, tokens::col_text.alpha( static_cast< std::uint8_t >( 240.0f * master_alpha ) ) );
 
 				// 2. Element 2 (Right: Mode / State)
 				draw_watermark_shadow( mode_x, mode_y, mode_w, row_h );
@@ -1457,9 +1483,9 @@ namespace rendering {
 		const auto master_u8 = static_cast< std::uint8_t >( 255.0f * master_alpha );
 
 		constexpr auto header_h{ 28.0f };
-		constexpr auto header_gap{ 6.0f };
+		constexpr auto header_gap{ 10.0f };
 		constexpr auto row_h{ 26.0f };
-		constexpr auto row_gap{ 8.0f };
+		constexpr auto row_gap{ 10.0f };
 		const auto card_r = xdraw::corner_radius{ 6.0f };
 		const auto [header_tw, header_th] = xdraw::measure_text( "Spectators" );
 
