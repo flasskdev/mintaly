@@ -77,6 +77,14 @@ namespace features::combat::ballistics {
         return score;
     }
 
+    // Seed generation and command serialization must see exactly the same
+    // recoil-compensated angles. Keep roll: the inverse-spread solver uses it.
+    template <typename Angle>
+    [[nodiscard]] Angle command_angles(const Angle& ballistic, const Angle& punch)
+    {
+        return Angle{ballistic.x - punch.x, ballistic.y - punch.y, ballistic.z};
+    }
+
     // Engine-independent control flow: callbacks supply the real seed hash
     // and inverse-spread calculation. No RNG approximation or heap allocation.
     template <typename Angle, typename Seed, typename Correct>
@@ -88,15 +96,28 @@ namespace features::combat::ballistics {
 
         constexpr auto iteration_limit = 12;
         constexpr auto grid_samples = 240;
-        std::array<std::uint32_t, iteration_limit> visited{};
-        auto visited_count = 0;
+        // At most 252 insertions into 512 slots. Exact keys (including zero
+        // and UINT32_MAX), no allocation and no false-positive rejection.
+        std::array<std::uint32_t, 512> visited{};
+        std::array<bool, 512> occupied{};
+        const auto first_visit = [&](std::uint32_t value)
+        {
+            auto slot = static_cast<std::size_t>((value * 2654435761u) & 511u);
+            while (occupied[slot])
+            {
+                if (visited[slot] == value)
+                    return false;
+                slot = (slot + 1) & 511u;
+            }
+            occupied[slot] = true;
+            visited[slot] = value;
+            return true;
+        };
         auto seed = seed_for(aim);
         for (auto i = 0; i < iteration_limit; ++i)
         {
-            if (std::find(visited.begin(), visited.begin() + visited_count, seed) !=
-                visited.begin() + visited_count)
+            if (!first_visit(seed))
                 break;
-            visited[visited_count++] = seed;
             const auto angle = correct(seed);
             if (!angle || !finite(*angle))
                 break;
@@ -111,8 +132,7 @@ namespace features::combat::ballistics {
         for (auto i = 0; i < grid_samples; ++i)
         {
             seed = seed_for(Angle{static_cast<float>(i) * 1.5f, aim.y, 0.0f});
-            if (std::find(visited.begin(), visited.begin() + visited_count, seed) !=
-                visited.begin() + visited_count)
+            if (!first_visit(seed))
                 continue;
             const auto angle = correct(seed);
             if (angle && finite(*angle) && seed_for(*angle) == seed)

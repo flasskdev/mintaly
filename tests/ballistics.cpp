@@ -70,6 +70,33 @@ namespace {
         }
     }
 
+    void command_seed()
+    {
+        const vector ballistic{20, 30, 45};
+        const vector punch{5, 2, 0};
+        const auto command = command_angles(ballistic, punch);
+        assert(command.x == 15 && command.y == 28 && command.z == 45);
+
+        // The fixed point exists only in command space, after removing punch.
+        // Hashing the ballistic pitch instead would reject this solution.
+        const auto hash_command = [](const vector& angle)
+        {
+            return angle.x == 15.0f ? std::uint32_t{7} : std::uint32_t{9};
+        };
+        int calls = 0;
+        const auto result = solve_spread(ballistic,
+            [&](const vector& angle) { return hash_command(command_angles(angle, punch)); },
+            [&](std::uint32_t seed) -> std::optional<vector>
+            {
+                ++calls;
+                return seed == 7 ? std::optional<vector>{ballistic} : std::nullopt;
+            });
+        assert(result && calls == 1);
+        assert(hash_command(command_angles(*result, punch)) == 7);
+        const auto zero_punch = command_angles(ballistic, vector{});
+        assert(zero_punch.x == ballistic.x && zero_punch.y == ballistic.y && zero_punch.z == ballistic.z);
+    }
+
     void solver()
     {
         const auto seed_for = [](const vector& angle) { return static_cast<std::uint32_t>(angle.x); };
@@ -112,6 +139,23 @@ namespace {
         result = solve_spread(vector{}, seed_for,
             [&](std::uint32_t) -> std::optional<vector> { ++calls; return std::nullopt; });
         assert(!result && calls <= 241);
+
+        // Quantized grid seeds must not repeat expensive inverse calculations.
+        for (const auto repeated : {std::uint32_t{0}, std::numeric_limits<std::uint32_t>::max()})
+        {
+            calls = 0;
+            result = solve_spread(vector{},
+                [=](const vector&) { return repeated; },
+                [&](std::uint32_t) -> std::optional<vector> { ++calls; return std::nullopt; });
+            assert(!result && calls == 1);
+        }
+        // Deliberately collide all keys in the fixed-size table; none may be lost.
+        calls = 0;
+        result = solve_spread(vector{},
+            [](const vector& angle) { return static_cast<std::uint32_t>(angle.x) * 512u; },
+            [&](std::uint32_t) -> std::optional<vector> { ++calls; return std::nullopt; });
+        assert(!result && calls == 240);
+
         const auto nan = std::numeric_limits<float>::quiet_NaN();
         calls = 0;
         result = solve_spread(vector{nan, 0, 0}, seed_for,
@@ -128,5 +172,6 @@ int main()
     geometry();
     probabilities();
     score_bounds();
+    command_seed();
     solver();
 }
