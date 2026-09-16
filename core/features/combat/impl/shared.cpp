@@ -1271,17 +1271,23 @@ namespace features::combat {
 
         float shared::get_inaccuracy( bool update_accuracy_penalty ) const
         {
+                const auto state = this->get_accuracy_state( update_accuracy_penalty );
+                return state ? state->inaccuracy : 0.0f;
+        }
+
+        std::optional<shared::weapon_accuracy> shared::get_accuracy_state( bool update_accuracy_penalty ) const
+        {
                 const auto accuracy_state_begin = SCHEMA( "C_CSWeaponBase", "m_flTurningInaccuracyDelta"_hash );
                 const auto accuracy_state_end = SCHEMA( "C_CSWeaponBase", "m_flRecoilIndex"_hash );
                 if ( !this->m_ctx.weapon || accuracy_state_begin <= 0 || accuracy_state_end < accuracy_state_begin )
                 {
-                        return 0.0f;
+                        return std::nullopt;
                 }
 
                 const auto accuracy_state_size = static_cast< std::size_t >( accuracy_state_end - accuracy_state_begin ) + sizeof( float );
                 if ( accuracy_state_size > 0x100 )
                 {
-                        return 0.0f;
+                        return std::nullopt;
                 }
 
                 std::vector<std::uint8_t> backup( accuracy_state_size );
@@ -1308,6 +1314,14 @@ namespace features::combat {
                         get_inaccuracy, this->m_ctx.weapon,
                         static_cast<float*>( nullptr ), static_cast<float*>( nullptr ) );
 
+                // Sample all spread inputs before restoring the accuracy update.
+                // Reading recoil/spread afterwards mixes two different weapon states.
+                const weapon_accuracy state{
+                        inaccuracy,
+                        this->get_spread( ),
+                        memory::read<float>( this->m_ctx.weapon + accuracy_state_end )
+                };
+
                 if ( ask_as_secondary )
                 {
                         memory::write( this->m_ctx.weapon + mode_offset, previous_mode );
@@ -1315,7 +1329,12 @@ namespace features::combat {
 
                 std::memcpy( reinterpret_cast< void* >( this->m_ctx.weapon + accuracy_state_begin ), backup.data( ), accuracy_state_size );
 
-                return inaccuracy;
+                if ( !std::isfinite( state.inaccuracy ) || state.inaccuracy < 0.0f ||
+                        !std::isfinite( state.spread ) || state.spread < 0.0f ||
+                        !std::isfinite( state.recoil_index ) )
+                        return std::nullopt;
+
+                return state;
         }
 
         float shared::get_inaccuracy_at_velocity( std::uintptr_t local_pawn, const math::vector3& velocity ) const

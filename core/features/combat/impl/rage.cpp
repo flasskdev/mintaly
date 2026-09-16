@@ -63,6 +63,8 @@ namespace features::combat {
             return;
 
         auto aim_ctx = this->build_context(cmd, local);
+        if (!ctx.valid)
+            return;
 
         if (is_knife)
         {
@@ -154,23 +156,34 @@ namespace features::combat {
 
         aim_context out{};
         out.velocity = prestate.velocity;
-        out.spread = g_shared.get_spread();
-        out.predicted_inaccuracy = g_shared.get_inaccuracy(true);
-        auto recoil_index = ctx.recoil_index;
+        auto accuracy = g_shared.get_accuracy_state(true);
+        auto aim_punch = g_shared.get_aim_punch(local.pawn);
+        // Refresh the fallback as well: a failed prediction must not reuse old eyes.
+        g_shared.sh().snapshot(local.pawn, ctx.weapon_services);
 
-        // Keep spread, inaccuracy and recoil from the same simulated weapon state.
         systems::g_prediction.simulate(cmd, local, [&]
             {
                 g_shared.sh().snapshot(local.pawn, ctx.weapon_services);
                 out.velocity = memory::read<math::vector3>(local.pawn + SCHEMA("C_BaseEntity", "m_vecAbsVelocity"_hash));
-                out.predicted_inaccuracy = g_shared.get_inaccuracy(true);
-                out.spread = g_shared.get_spread();
-                recoil_index = memory::read<float>(ctx.weapon + SCHEMA("C_CSWeaponBase", "m_flRecoilIndex"_hash));
+                accuracy = g_shared.get_accuracy_state(true);
+                // Preserve recoil decay at the simulated time before state_guard
+                // restores the pawn. fire_gun must not read the older punch again.
+                aim_punch = g_shared.get_aim_punch(local.pawn);
             });
 
-        ctx.spread = out.spread;
-        ctx.inaccuracy = out.predicted_inaccuracy;
-        ctx.recoil_index = recoil_index;
+        if (!accuracy || !std::isfinite(aim_punch.x) || !std::isfinite(aim_punch.y) ||
+            !std::isfinite(aim_punch.z))
+        {
+            ctx.valid = false;
+            return out;
+        }
+
+        out.spread = accuracy->spread;
+        out.predicted_inaccuracy = accuracy->inaccuracy;
+        ctx.spread = accuracy->spread;
+        ctx.inaccuracy = accuracy->inaccuracy;
+        ctx.recoil_index = accuracy->recoil_index;
+        ctx.aim_punch = aim_punch;
         out.view_angles = systems::g_input.get_view_angles();
         out.on_ground = (prestate.flags & cstypes::entity_flags::on_ground) != 0;
         out.is_scoped = ctx.is_scoped;
@@ -1380,7 +1393,7 @@ namespace features::combat {
         const auto tick_base = memory::read<int>(local.controller + SCHEMA("CBasePlayerController", "m_nTickBase"_hash));
         const auto& shared_ctx = g_shared.ctx();
         const auto& config = settings::g_combat.m_ragebot.get_group(shared_ctx.weapon_type, shared_ctx.item_def_idx);
-        const auto aim_punch = g_shared.get_aim_punch(local.pawn);
+        const auto aim_punch = config.no_spread.value ? shared_ctx.aim_punch : g_shared.get_aim_punch(local.pawn);
 
         auto aim_angle = config.no_spread.value ?
             math::helpers::calculate_angle(shoot_eye, tgt.hit.position) :
@@ -1416,22 +1429,16 @@ namespace features::combat {
                 return;
 
             const auto seed = g_shared.get_spread_seed(corrected, stamp_tick);
-            shared::spread_cache shot_cache{};
-            shot_cache.count = 1;
-            shot_cache.inaccuracy = shared_ctx.inaccuracy;
-            shot_cache.spread = shared_ctx.spread;
-            shot_cache.values[0] = g_shared.calculate_spread(seed, shared_ctx.inaccuracy,
+            const auto spread = g_shared.calculate_spread(seed, shared_ctx.inaccuracy,
                 shared_ctx.spread, shared_ctx.recoil_index, shared_ctx.item_def_idx, shared_ctx.num_bullets);
-
-            if (tgt.hit.bone_index < 0 || tgt.hit.bone_index >= tgt.hit.record->bone_count ||
-                tgt.hit.bone_index >= 128 ||
-                g_shared.calculate_hitchance(shoot_eye, corrected, tgt.hit.hitbox,
-                    tgt.hit.record->bones[tgt.hit.bone_index], shot_cache) < 1.0f)
+            if (!std::isfinite(spread.x) || !std::isfinite(spread.y) ||
+                !std::isfinite(shared_ctx.range) || shared_ctx.range <= 0.0f)
                 return;
 
+            // Validate this seed's actual trajectory, not a hitchance threshold.
+            // penetration::run already checks the target's recorded hitboxes.
             math::vector3 forward{}, left{}, up{};
             math::helpers::angle_vectors_left(corrected, &forward, &left, &up);
-            const auto& spread = shot_cache.values[0];
             const auto direction = (forward + left * spread.x + up * spread.y).normalized();
             const auto pen_ctx = g_shared.pen().prepare_target(tgt.hit.pawn, tgt.hit.record);
             shared::penetration::result pen{};
@@ -1462,6 +1469,13 @@ namespace features::combat {
                 was_forced ? xs(", forced") : "",
                 is_extrap ? xs(", extrap") : ""
             );
+            if (config.no_spread.value)
+            {
+                logging::console::print(
+                    xs("[rage:nospread] weapon {} tick {}+{:.4f} inacc {:.6f} spread {:.6f} recoil {:.3f} punch ({:.4f}, {:.4f})"),
+                    shared_ctx.item_def_idx, stamp_tick, stamp_frac, shared_ctx.inaccuracy,
+                    shared_ctx.spread, shared_ctx.recoil_index, aim_punch.x, aim_punch.y);
+            }
         }
 
         features::misc::g_impacts.on_boom(tgt.hit.pawn, tgt.hit.hitgroup, tgt.hit.damage, tgt.hitchance, shared_ctx.inaccuracy, shared_ctx.spread, aim_angle, shoot_eye, tgt.hit.record->tick, g_shared.lc().get_skeleton(*tgt.hit.record), was_forced);
