@@ -1,5 +1,6 @@
 #include <pch/pch.hpp>
 #include <cassert>
+#include <limits>
 #include <core/features/combat/ballistics.hpp>
 #include <utilities/threadpool/threadpool.hpp>
 #include <utilities/memory/memory.hpp>
@@ -472,18 +473,43 @@ namespace features::combat {
         if (config.no_spread.value)
         {
             auto all_hits = scan_from_eye_candidates({}, shared_ctx.inaccuracy);
-            const auto best = all_hits.empty() ? target{} : this->select_best(ctx, all_hits, shared_ctx.inaccuracy);
+            auto best = all_hits.empty() ? target{} : this->select_best(ctx, all_hits, shared_ctx.inaccuracy);
+            const auto had_target = best.valid;
 
             if (best.valid && allow_fire)
             {
-                this->fire_gun(cmd, best, false, best.hit.source_eye.position, local);
-                if (duckpeek_active && this->m_firing_this_tick)
+                // A high-scoring point may have no seed-consistent solution for
+                // this command. Try alternatives rather than stall on it forever.
+                // Bound expensive solving/retracing even in a crowded scene.
+                constexpr auto max_shot_attempts = 8;
+                for (auto attempt = 0; attempt < max_shot_attempts && best.valid; ++attempt)
                 {
-                    this->m_duckpeek_reduck = true;
-                    this->m_duckpeek_reduck_ticks = 10;
-                    this->m_release_duck_for_shot = false;
+                    this->fire_gun(cmd, best, false, best.hit.source_eye.position, local);
+                    if (this->m_firing_this_tick)
+                    {
+                        if (duckpeek_active)
+                        {
+                            this->m_duckpeek_reduck = true;
+                            this->m_duckpeek_reduck_ticks = 10;
+                            this->m_release_duck_for_shot = false;
+                        }
+                        return true;
+                    }
+                    const auto rejected = best.hit;
+                    std::erase_if(all_hits, [&](const scan_hit& hit)
+                    {
+                        return hit.pawn == rejected.pawn && hit.record == rejected.record &&
+                            hit.position == rejected.position &&
+                            hit.source_eye.position == rejected.source_eye.position &&
+                            hit.source_eye.player_tick == rejected.source_eye.player_tick &&
+                            hit.source_eye.player_frac == rejected.source_eye.player_frac &&
+                            hit.source_eye.lerp_ticks_int == rejected.source_eye.lerp_ticks_int &&
+                            hit.source_eye.lerp_ticks_frac == rejected.source_eye.lerp_ticks_frac &&
+                            hit.source_eye.is_uninterpolated == rejected.source_eye.is_uninterpolated;
+                    });
+                    best = attempt + 1 < max_shot_attempts
+                        ? this->select_best(ctx, all_hits, shared_ctx.inaccuracy) : target{};
                 }
-                return best.valid;
             }
 
             // Duckpeek standing scan
@@ -508,7 +534,7 @@ namespace features::combat {
             {
                 this->m_release_duck_for_shot = false;
             }
-            return best.valid;
+            return had_target;
         }
 
         // Standard hitchance-based logic

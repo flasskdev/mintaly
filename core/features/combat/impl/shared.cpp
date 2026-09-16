@@ -1116,6 +1116,7 @@ namespace features::combat {
                 cache.initialized = true;
 
                 if ( samples <= 0 || !std::isfinite( inaccuracy ) || inaccuracy < 0.0f ||
+                        !std::isfinite( this->m_ctx.recoil_index ) ||
                         !std::isfinite( spread ) || spread < 0.0f )
                         return cache;
 
@@ -1151,11 +1152,17 @@ namespace features::combat {
         {
                 if ( cache.count <= 0 || cache.count > static_cast< int >( cache.values.size( ) ) ||
                         !std::isfinite( range ) || range <= 0.0f ||
-                        !std::isfinite( aim_angle.x ) || !std::isfinite( aim_angle.y ) || !std::isfinite( aim_angle.z ) )
+                        !ballistics::finite( shoot_position ) || !ballistics::finite( bone.position ) ||
+                        !ballistics::finite( hitbox.mins ) || !ballistics::finite( hitbox.maxs ) ||
+                        !std::isfinite( hitbox.radius ) || !std::isfinite( bone.rotation.x ) ||
+                        !std::isfinite( bone.rotation.y ) || !std::isfinite( bone.rotation.z ) ||
+                        !std::isfinite( bone.rotation.w ) || !ballistics::finite( aim_angle ) )
                         return 0.0f;
 
                 const auto capsule_start = bone.rotation.rotate_vector( hitbox.mins ) + bone.position;
                 const auto capsule_end   = bone.rotation.rotate_vector( hitbox.maxs ) + bone.position;
+                if ( !ballistics::finite( capsule_start ) || !ballistics::finite( capsule_end ) )
+                        return 0.0f;
                 const auto is_capsule    = hitbox.radius > 0.001f;
                 const auto capsule_query = is_capsule
                         ? std::optional<detail::capsule_hitchance_query>{ std::in_place,
@@ -1187,6 +1194,8 @@ namespace features::combat {
                                 return false;
                         const auto direction = forward + ( left * sp.x ) + ( up * sp.y );
                         const auto ray_end   = direction.normalized( ) * range;
+                        if ( !ballistics::finite( ray_end ) || ray_end.length_sqr( ) <= 0.0f )
+                                return false;
 
                         bool hit{ false };
                         if ( is_capsule )
