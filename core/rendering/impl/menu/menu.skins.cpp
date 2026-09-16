@@ -317,6 +317,8 @@ namespace rendering {
 			if ( p == skins_page::browser )
 			{
 				skins_ui.browsing_def = def;
+				if ( def != 0 )
+					skin_workspace::focused_weapon[skin_workspace::team == 3 ? 0 : 1] = def;
 			}
 			else
 			{
@@ -1050,6 +1052,8 @@ namespace rendering {
 			const auto hovered = skin_workspace::hovered(card);
 			if (hovered) {
 				skin_workspace::hover.weapon = def->def_index;
+				if (is_skinned && pk) skin_workspace::hover.paint = pk->id;
+				else skin_workspace::hover.paint = 0;
 				if (input.mouse_clicked) skin_workspace::focused_weapon[skin_workspace::team == 3 ? 0 : 1] = def->def_index;
 			}
 			const auto hover_anim = xui::anim::lerp( xui::fnv1a( "wcard" ) + static_cast< std::uintptr_t >( def->def_index ), hovered ? 1.0f : 0.0f, 14.0f );
@@ -1132,10 +1136,10 @@ namespace rendering {
 			{
 				auto bar = rarity_col;
 				bar.a = static_cast< std::uint8_t >( bar.a * fade_alpha );
-				dl.rect_filled( card.x + 6.0f, card.y + image_h, card.w - 12.0f, k_rarity_bar_h, bar );
+				dl.rect_filled( card.x, card.bottom( ) - 3.0f, card.w, 3.0f, bar, xdraw::corner_radius::bottom( tokens::btn_rounding ) );
 			}
 
-			const auto name_y = card.y + image_h + k_rarity_bar_h + 4.0f;
+			const auto name_y = card.y + image_h + 4.0f;
 
 			if ( pk )
 			{
@@ -1156,7 +1160,7 @@ namespace rendering {
 				dl.text( std::floor( card.x + ( card.w - nw2 ) * 0.5f ), std::floor( name_y ), ntrunc, ncol );
 			}
 
-			if ( is_skinned && !pk )
+			if ( is_skinned )
 			{
 				constexpr auto badge{ 14.0f };
 				const auto bx = card.right( ) - badge - 4.0f;
@@ -1329,8 +1333,6 @@ namespace rendering {
 					sel_idx = entry_idx;
 					target = 0; // custom agent overrides official agent
 				}
-
-				request_page( skins_page::grid );
 			}
 		}
 
@@ -1436,8 +1438,6 @@ namespace rendering {
 					else
 						ca.selected_t = -1;
 				}
-
-				request_page( skins_page::grid );
 			}
 		}
 
@@ -1512,13 +1512,13 @@ namespace rendering {
 			const auto r_idx = kit ? std::clamp( static_cast< int >( kit->rarity ), 0, 7 ) : 1;
 			auto rcol = k_rarity_colors[ r_idx ];
 			rcol.a = static_cast< std::uint8_t >( rcol.a * fade_alpha );
-			dl.rect_filled( card.x, card.bottom( ) - k_rarity_bar_h, card.w, k_rarity_bar_h, rcol, xdraw::corner_radius::bottom( tokens::btn_rounding ) );
+			dl.rect_filled( card.x, card.bottom( ) - 3.0f, card.w, 3.0f, rcol, xdraw::corner_radius::bottom( tokens::btn_rounding ) );
 
 			const auto name_y = card.y + image_h + 4.0f;
 			auto ncol = xui::lerp( tokens::col_text_dim, tokens::col_text, hover_anim );
 			ncol.a = static_cast< std::uint8_t >( ncol.a * fade_alpha );
 
-			const auto title = kit ? kit->localized_name : "Default";
+			const auto title = kit ? kit->localized_name : "Standard";
 			const auto ntrunc = xui::truncate( title, card.w - 12.0f );
 			const auto [ nw, nh ] = xdraw::measure_text( ntrunc );
 			dl.text( std::floor( card.x + ( card.w - nw ) * 0.5f ), std::floor( name_y ), ntrunc, ncol );
@@ -1594,7 +1594,8 @@ namespace rendering {
 			const auto tier = skin_options::wear_tier( skin.wear );
 			xui::push_id( static_cast<std::uintptr_t>( weapon->def_index ) );
 			xui::section_header( "SKIN OPTIONS" );
-			xui::text( rendering::theme::fit_text( std::format( "{} | {}", weapon->localized_name, pk ? pk->localized_name : "Default" ), xui::layout::item_width( ) ), tokens::col_text );
+			const auto full_title = pk ? std::format( "{} | {}", weapon->localized_name, pk->localized_name ) : weapon->localized_name;
+			xui::text( rendering::theme::fit_text( full_title, xui::layout::item_width( ) ), tokens::col_text );
 
 			const auto width = ( xui::layout::item_width( ) - xui::ctx( ).style.item_spacing_x * 4.0f ) / 5.0f;
 			for ( int index = 0; index < 5; ++index )
@@ -1682,7 +1683,7 @@ namespace rendering {
 
 			auto bar = rarity_col;
 			bar.a = static_cast< std::uint8_t >( bar.a * fade_alpha );
-			dl.rect_filled( card.x + 6.0f, card.y + image_h, card.w - 12.0f, k_rarity_bar_h, bar );
+			dl.rect_filled( card.x, card.bottom( ) - 3.0f, card.w, 3.0f, bar, xdraw::corner_radius::bottom( tokens::btn_rounding ) );
 
 			auto name_col = xui::lerp( tokens::col_text_dim, tokens::col_text, hover_anim );
 			name_col.a = static_cast< std::uint8_t >( name_col.a * fade_alpha );
@@ -1795,6 +1796,11 @@ namespace rendering {
 		{
 			xui::overlays::close_all();
 			detail::skins_ui = {};
+			if (this->m_subtab == 3)
+			{
+				detail::skins_ui.current = detail::skins_ui.target = detail::skins_page::browser;
+				detail::skins_ui.browsing_agent_team = skin_workspace::team;
+			}
 		}
 	}
 
@@ -1807,10 +1813,10 @@ namespace rendering {
 		if ( this->m_subtab != last_subtab )
 		{
 			last_subtab = this->m_subtab;
-			detail::skins_ui.current = detail::skins_page::grid;
-			detail::skins_ui.target = detail::skins_page::grid;
+			detail::skins_ui.current = (this->m_subtab == 3) ? detail::skins_page::browser : detail::skins_page::grid;
+			detail::skins_ui.target = detail::skins_ui.current;
 			detail::skins_ui.fade = 1.0f;
-			detail::skins_ui.browsing_agent_team = 0;
+			detail::skins_ui.browsing_agent_team = (this->m_subtab == 3) ? skin_workspace::team : 0;
 			detail::skins_ui.search_buf.clear( );
 		}
 
@@ -1822,11 +1828,12 @@ namespace rendering {
 		const auto wx = this->m_x;
 		const auto wy = this->m_y;
 		const auto left_w = skin_workspace::left_width(this->m_body_w);
-		const auto content_x = this->m_body_x + left_w + 12.0f;
+		constexpr float k_panel_gap = 14.0f;
+		const auto content_x = this->m_body_x + left_w + k_panel_gap;
 		const auto body_y = this->m_body_y;
-		const auto content_w = this->m_body_w - left_w - 12.0f;
+		const auto content_w = this->m_body_w - left_w - k_panel_gap;
 		const auto body_h = this->m_body_h;
-		if (this->m_subtab == 3)
+		if (this->m_subtab == 3 && detail::skins_ui.browsing_agent_team == 0)
 		{
 			detail::skins_ui.current = detail::skins_ui.target = detail::skins_page::browser;
 			detail::skins_ui.browsing_agent_team = skin_workspace::team;
@@ -1989,7 +1996,14 @@ namespace rendering {
 
 			if ( back_hovered && input.mouse_clicked )
 			{
-				detail::request_page( detail::skins_page::grid );
+				if ( this->m_subtab == 3 )
+				{
+					const_cast<menu*>(this)->m_subtab = 0;
+				}
+				else
+				{
+					detail::request_page( detail::skins_page::grid );
+				}
 				detail::skins_ui.search_buf.clear( );
 			}
 
@@ -2056,53 +2070,7 @@ namespace rendering {
 					custom_items.push_back( { i, &e } );
 				}
 
-				std::vector<const features::changer::econ_item_system::item_def*> agent_items;
-				for ( const auto* a : econ.agents( ) )
-				{
-					const auto agent_team = a->team( );
-					if ( agent_team != 0 && agent_team != detail::skins_ui.browsing_agent_team )
-					{
-						continue;
-					}
-
-					if ( !search_lower.empty( ) )
-					{
-						std::string n = a->localized_name;
-						for ( auto& c : n )
-						{
-							c = static_cast< char >( std::tolower( c ) );
-						}
-
-						if ( n.find( search_lower ) == std::string::npos )
-						{
-							continue;
-						}
-					}
-
-					agent_items.push_back( a );
-				}
-
-				// Log only when the team, search, or counts change.
-				static bool diagnostic_initialized = false;
-				static int diagnostic_team = 0;
-				static std::size_t diagnostic_total = 0;
-				static std::size_t diagnostic_visible = 0;
-				static std::string diagnostic_search;
-				if (!diagnostic_initialized || diagnostic_team != detail::skins_ui.browsing_agent_team ||
-					diagnostic_total != econ.agents().size() || diagnostic_visible != agent_items.size() ||
-					diagnostic_search != detail::skins_ui.search_buf)
-				{
-					diagnostic_initialized = true;
-					diagnostic_team = detail::skins_ui.browsing_agent_team;
-					diagnostic_total = econ.agents().size();
-					diagnostic_visible = agent_items.size();
-					diagnostic_search = detail::skins_ui.search_buf;
-					char checkpoint[512]{};
-					std::snprintf(checkpoint, sizeof(checkpoint),
-						"ui: team=%d; schema_agents=%zu; visible_agents=%zu; search_bytes=%zu",
-						diagnostic_team, diagnostic_total, diagnostic_visible, diagnostic_search.size());
-					diag::write( diag::level::info, checkpoint );
-				}
+				const auto& agent_items = skin_workspace::items.agents( detail::skins_ui.browsing_agent_team, detail::skins_ui.search_buf );
 
 				const auto total_count = static_cast< int >( custom_items.size( ) + agent_items.size( ) );
 				const auto rows = ( total_count + detail::k_columns - 1 ) / detail::k_columns;

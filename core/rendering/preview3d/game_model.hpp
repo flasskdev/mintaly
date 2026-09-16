@@ -35,7 +35,7 @@ namespace nemesis::preview3d {
             add_triangle(a, c, d);
         }
 
-        void add_box(vec3 center, vec3 half_size, vec3 normal_hint = {0,0,0}) {
+        void add_box(vec3 center, vec3 half_size, vec4 col = {1,1,1,1}, vec3 normal_hint = {0,0,0}) {
             const float x0 = center.x - half_size.x, x1 = center.x + half_size.x;
             const float y0 = center.y - half_size.y, y1 = center.y + half_size.y;
             const float z0 = center.z - half_size.z, z1 = center.z + half_size.z;
@@ -43,54 +43,54 @@ namespace nemesis::preview3d {
             // +Z front
             vec3 nz{0, 0, 1};
             add_quad(
-                vertex{{x0, y0, z1}, nz, {0, 0}},
-                vertex{{x1, y0, z1}, nz, {1, 0}},
-                vertex{{x1, y1, z1}, nz, {1, 1}},
-                vertex{{x0, y1, z1}, nz, {0, 1}}
+                vertex{{x0, y0, z1}, nz, {0, 0}, col},
+                vertex{{x1, y0, z1}, nz, {1, 0}, col},
+                vertex{{x1, y1, z1}, nz, {1, 1}, col},
+                vertex{{x0, y1, z1}, nz, {0, 1}, col}
             );
             // -Z back
             vec3 n_z{0, 0, -1};
             add_quad(
-                vertex{{x1, y0, z0}, n_z, {0, 0}},
-                vertex{{x0, y0, z0}, n_z, {1, 0}},
-                vertex{{x0, y1, z0}, n_z, {1, 1}},
-                vertex{{x1, y1, z0}, n_z, {0, 1}}
+                vertex{{x1, y0, z0}, n_z, {0, 0}, col},
+                vertex{{x0, y0, z0}, n_z, {1, 0}, col},
+                vertex{{x0, y1, z0}, n_z, {1, 1}, col},
+                vertex{{x1, y1, z0}, n_z, {0, 1}, col}
             );
             // +X right
             vec3 nx{1, 0, 0};
             add_quad(
-                vertex{{x1, y0, z1}, nx, {0, 0}},
-                vertex{{x1, y0, z0}, nx, {1, 0}},
-                vertex{{x1, y1, z0}, nx, {1, 1}},
-                vertex{{x1, y1, z1}, nx, {0, 1}}
+                vertex{{x1, y0, z1}, nx, {0, 0}, col},
+                vertex{{x1, y0, z0}, nx, {1, 0}, col},
+                vertex{{x1, y1, z0}, nx, {1, 1}, col},
+                vertex{{x1, y1, z1}, nx, {0, 1}, col}
             );
             // -X left
             vec3 n_x{-1, 0, 0};
             add_quad(
-                vertex{{x0, y0, z0}, n_x, {0, 0}},
-                vertex{{x0, y0, z1}, n_x, {1, 0}},
-                vertex{{x0, y1, z1}, n_x, {1, 1}},
-                vertex{{x0, y1, z0}, n_x, {0, 1}}
+                vertex{{x0, y0, z0}, n_x, {0, 0}, col},
+                vertex{{x0, y0, z1}, n_x, {1, 0}, col},
+                vertex{{x0, y1, z1}, n_x, {1, 1}, col},
+                vertex{{x0, y1, z0}, n_x, {0, 1}, col}
             );
             // +Y top
             vec3 ny{0, 1, 0};
             add_quad(
-                vertex{{x0, y1, z1}, ny, {0, 0}},
-                vertex{{x1, y1, z1}, ny, {1, 0}},
-                vertex{{x1, y1, z0}, ny, {1, 1}},
-                vertex{{x0, y1, z0}, ny, {0, 1}}
+                vertex{{x0, y1, z1}, ny, {0, 0}, col},
+                vertex{{x1, y1, z1}, ny, {1, 0}, col},
+                vertex{{x1, y1, z0}, ny, {1, 1}, col},
+                vertex{{x0, y1, z0}, ny, {0, 1}, col}
             );
             // -Y bottom
             vec3 n_y{0, -1, 0};
             add_quad(
-                vertex{{x0, y0, z0}, n_y, {0, 0}},
-                vertex{{x1, y0, z0}, n_y, {1, 0}},
-                vertex{{x1, y0, z1}, n_y, {1, 1}},
-                vertex{{x0, y0, z1}, n_y, {0, 1}}
+                vertex{{x0, y0, z0}, n_y, {0, 0}, col},
+                vertex{{x1, y0, z0}, n_y, {1, 0}, col},
+                vertex{{x1, y0, z1}, n_y, {1, 1}, col},
+                vertex{{x0, y0, z1}, n_y, {0, 1}, col}
             );
         }
 
-        void add_tapered_box(vec3 center, vec3 half_bottom, vec3 half_top, float height) {
+        void add_tapered_box(vec3 center, vec3 half_bottom, vec3 half_top, float height, vec4 col = {1,1,1,1}) {
             const float y0 = center.y - height * 0.5f;
             const float y1 = center.y + height * 0.5f;
 
@@ -107,17 +107,17 @@ namespace nemesis::preview3d {
             };
 
             // Bottom
-            add_quad(vertex{c[0], {0,-1,0}, {0,0}}, vertex{c[1], {0,-1,0}, {1,0}}, vertex{c[2], {0,-1,0}, {1,1}}, vertex{c[3], {0,-1,0}, {0,1}});
+            add_quad(vertex{c[0], {0,-1,0}, {0,0}, col}, vertex{c[1], {0,-1,0}, {1,0}, col}, vertex{c[2], {0,-1,0}, {1,1}, col}, vertex{c[3], {0,-1,0}, {0,1}, col});
             // Top
-            add_quad(vertex{c[7], {0,1,0}, {0,0}}, vertex{c[6], {0,1,0}, {1,0}}, vertex{c[5], {0,1,0}, {1,1}}, vertex{c[4], {0,1,0}, {0,1}});
+            add_quad(vertex{c[7], {0,1,0}, {0,0}, col}, vertex{c[6], {0,1,0}, {1,0}, col}, vertex{c[5], {0,1,0}, {1,1}, col}, vertex{c[4], {0,1,0}, {0,1}, col});
             // Sides
-            add_quad(vertex{c[3], {0,0,1}, {0,0}}, vertex{c[2], {0,0,1}, {1,0}}, vertex{c[6], {0,0,1}, {1,1}}, vertex{c[7], {0,0,1}, {0,1}});
-            add_quad(vertex{c[1], {0,0,-1}, {0,0}}, vertex{c[0], {0,0,-1}, {1,0}}, vertex{c[4], {0,0,-1}, {1,1}}, vertex{c[5], {0,0,-1}, {0,1}});
-            add_quad(vertex{c[2], {1,0,0}, {0,0}}, vertex{c[1], {1,0,0}, {1,0}}, vertex{c[5], {1,0,0}, {1,1}}, vertex{c[6], {1,0,0}, {0,1}});
-            add_quad(vertex{c[0], {-1,0,0}, {0,0}}, vertex{c[3], {-1,0,0}, {1,0}}, vertex{c[7], {-1,0,0}, {1,1}}, vertex{c[4], {-1,0,0}, {0,1}});
+            add_quad(vertex{c[3], {0,0,1}, {0,0}, col}, vertex{c[2], {0,0,1}, {1,0}, col}, vertex{c[6], {0,0,1}, {1,1}, col}, vertex{c[7], {0,0,1}, {0,1}, col});
+            add_quad(vertex{c[1], {0,0,-1}, {0,0}, col}, vertex{c[0], {0,0,-1}, {1,0}, col}, vertex{c[4], {0,0,-1}, {1,1}, col}, vertex{c[5], {0,0,-1}, {0,1}, col});
+            add_quad(vertex{c[2], {1,0,0}, {0,0}, col}, vertex{c[1], {1,0,0}, {1,0}, col}, vertex{c[5], {1,0,0}, {1,1}, col}, vertex{c[6], {1,0,0}, {0,1}, col});
+            add_quad(vertex{c[0], {-1,0,0}, {0,0}, col}, vertex{c[3], {-1,0,0}, {1,0}, col}, vertex{c[7], {-1,0,0}, {1,1}, col}, vertex{c[4], {-1,0,0}, {0,1}, col});
         }
 
-        void add_cylinder(vec3 start, vec3 end, float radius, int segments = 12) {
+        void add_cylinder(vec3 start, vec3 end, float radius, int segments = 12, vec4 col = {1,1,1,1}) {
             vec3 dir = end - start;
             float h = length(dir);
             if (h < 1e-6f) return;
@@ -140,19 +140,54 @@ namespace nemesis::preview3d {
 
                 // Side
                 add_quad(
-                    vertex{p0, radial0, {static_cast<float>(i)/segments, 0}},
-                    vertex{p1, radial1, {static_cast<float>(i+1)/segments, 0}},
-                    vertex{p2, radial1, {static_cast<float>(i+1)/segments, 1}},
-                    vertex{p3, radial0, {static_cast<float>(i)/segments, 1}}
+                    vertex{p0, radial0, {static_cast<float>(i)/segments, 0}, col},
+                    vertex{p1, radial1, {static_cast<float>(i+1)/segments, 0}, col},
+                    vertex{p2, radial1, {static_cast<float>(i+1)/segments, 1}, col},
+                    vertex{p3, radial0, {static_cast<float>(i)/segments, 1}, col}
                 );
 
                 // Caps
-                add_triangle(vertex{start, axis * -1.0f, {0.5f, 0.5f}}, vertex{p1, axis * -1.0f, {0, 0}}, vertex{p0, axis * -1.0f, {1, 0}});
-                add_triangle(vertex{end, axis, {0.5f, 0.5f}}, vertex{p3, axis, {0, 0}}, vertex{p2, axis, {1, 0}});
+                add_triangle(vertex{start, axis * -1.0f, {0.5f, 0.5f}, col}, vertex{p1, axis * -1.0f, {0, 0}, col}, vertex{p0, axis * -1.0f, {1, 0}, col});
+                add_triangle(vertex{end, axis, {0.5f, 0.5f}, col}, vertex{p3, axis, {0, 0}, col}, vertex{p2, axis, {1, 0}, col});
             }
         }
 
-        void add_curved_blade(vec3 start, vec3 end, float width, float thickness, float curvature, int segments = 8) {
+        void add_sphere(vec3 center, float radius, int rings = 8, int sectors = 12, vec4 col = {1,1,1,1}) {
+            for (int r = 0; r < rings; ++r) {
+                float phi0 = 3.14159265f * static_cast<float>(r) / rings;
+                float phi1 = 3.14159265f * static_cast<float>(r + 1) / rings;
+                float y0 = center.y + radius * std::cos(phi0);
+                float y1 = center.y + radius * std::cos(phi1);
+                float r0 = radius * std::sin(phi0);
+                float r1 = radius * std::sin(phi1);
+
+                for (int s = 0; s < sectors; ++s) {
+                    float theta0 = 2.0f * 3.14159265f * static_cast<float>(s) / sectors;
+                    float theta1 = 2.0f * 3.14159265f * static_cast<float>(s + 1) / sectors;
+
+                    vec3 p00{center.x + r0 * std::sin(theta0), y0, center.z + r0 * std::cos(theta0)};
+                    vec3 p01{center.x + r0 * std::sin(theta1), y0, center.z + r0 * std::cos(theta1)};
+                    vec3 p10{center.x + r1 * std::sin(theta0), y1, center.z + r1 * std::cos(theta0)};
+                    vec3 p11{center.x + r1 * std::sin(theta1), y1, center.z + r1 * std::cos(theta1)};
+
+                    vec3 n00 = unit(p00 - center);
+                    vec3 n01 = unit(p01 - center);
+                    vec3 n10 = unit(p10 - center);
+                    vec3 n11 = unit(p11 - center);
+
+                    if (r == 0) {
+                        add_triangle(vertex{p00, n00, {0,0}, col}, vertex{p10, n10, {0,1}, col}, vertex{p11, n11, {1,1}, col});
+                    } else if (r == rings - 1) {
+                        add_triangle(vertex{p00, n00, {0,0}, col}, vertex{p10, n10, {0,1}, col}, vertex{p01, n01, {1,0}, col});
+                    } else {
+                        add_quad(vertex{p00, n00, {0,0}, col}, vertex{p10, n10, {0,1}, col},
+                                 vertex{p11, n11, {1,1}, col}, vertex{p01, n01, {1,0}, col});
+                    }
+                }
+            }
+        }
+
+        void add_curved_blade(vec3 start, vec3 end, float width, float thickness, float curvature, int segments = 8, vec4 col = {1,1,1,1}) {
             vec3 dir = end - start;
             float len = length(dir);
             if (len < 1e-6f) return;
@@ -180,16 +215,35 @@ namespace nemesis::preview3d {
                 vec3 m_s1 = spine[i+1] - side * (thickness * 0.5f);
 
                 // +Side
-                add_triangle(vertex{p_s0, side, {0,0}}, vertex{p_e0, side, {1,0}}, vertex{p_e1, side, {1,1}});
-                add_triangle(vertex{p_s0, side, {0,0}}, vertex{p_e1, side, {1,1}}, vertex{p_s1, side, {0,1}});
+                add_triangle(vertex{p_s0, side, {0,0}, col}, vertex{p_e0, side, {1,0}, col}, vertex{p_e1, side, {1,1}, col});
+                add_triangle(vertex{p_s0, side, {0,0}, col}, vertex{p_e1, side, {1,1}, col}, vertex{p_s1, side, {0,1}, col});
 
                 // -Side
-                add_triangle(vertex{m_s0, side * -1.0f, {0,0}}, vertex{m_s1, side * -1.0f, {0,1}}, vertex{p_e1, side * -1.0f, {1,1}});
-                add_triangle(vertex{m_s0, side * -1.0f, {0,0}}, vertex{p_e1, side * -1.0f, {1,1}}, vertex{p_e0, side * -1.0f, {1,0}});
+                add_triangle(vertex{m_s0, side * -1.0f, {0,0}, col}, vertex{m_s1, side * -1.0f, {0,1}, col}, vertex{p_e1, side * -1.0f, {1,1}, col});
+                add_triangle(vertex{m_s0, side * -1.0f, {0,0}, col}, vertex{p_e1, side * -1.0f, {1,1}, col}, vertex{p_e0, side * -1.0f, {1,0}, col});
 
                 // Spine back
-                add_quad(vertex{p_s0, edge_dir * -1.0f, {0,0}}, vertex{p_s1, edge_dir * -1.0f, {1,0}},
-                         vertex{m_s1, edge_dir * -1.0f, {1,1}}, vertex{m_s0, edge_dir * -1.0f, {0,1}});
+                add_quad(vertex{p_s0, edge_dir * -1.0f, {0,0}, col}, vertex{p_s1, edge_dir * -1.0f, {1,0}, col},
+                         vertex{m_s1, edge_dir * -1.0f, {1,1}, col}, vertex{m_s0, edge_dir * -1.0f, {0,1}, col});
+            }
+        }
+
+        void append_transformed(const mesh& m, vec3 translation, vec3 rotation_euler, float scale, vec4 col_override = {0,0,0,0}) {
+            for (std::size_t i = 0; i + 2 < m.vertices.size(); i += 3) {
+                vertex v[3] = { m.vertices[i], m.vertices[i+1], m.vertices[i+2] };
+                for (int k = 0; k < 3; ++k) {
+                    vec3 p = v[k].position * scale;
+                    vec3 n = v[k].normal;
+                    if (rotation_euler.x != 0.0f) { p = rotate_x(p, rotation_euler.x); n = rotate_x(n, rotation_euler.x); }
+                    if (rotation_euler.y != 0.0f) { p = rotate_y(p, rotation_euler.y); n = rotate_y(n, rotation_euler.y); }
+                    if (rotation_euler.z != 0.0f) { p = rotate_z(p, rotation_euler.z); n = rotate_z(n, rotation_euler.z); }
+                    v[k].position = p + translation;
+                    v[k].normal = unit(n);
+                    if (col_override.w > 0.0f) {
+                        v[k].color = col_override;
+                    }
+                }
+                add_triangle(v[0], v[1], v[2]);
             }
         }
     };
@@ -454,6 +508,271 @@ namespace nemesis::preview3d {
         mesh result;
         result.vertices = std::move(mb.vertices);
         finalize_mesh(result, def_index);
+        return result;
+    }
+
+    inline vec4 get_skin_theme_color(int paint_kit_id, std::string_view name) {
+        std::string lower(name);
+        std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c){ return static_cast<char>(::tolower(c)); });
+
+        if (lower.find("asiimov") != std::string::npos) return {0.96f, 0.46f, 0.10f, 1.0f}; // Orange
+        if (lower.find("redline") != std::string::npos || lower.find("cyrex") != std::string::npos || lower.find("howl") != std::string::npos) return {0.92f, 0.12f, 0.15f, 1.0f}; // Crimson
+        if (lower.find("fade") != std::string::npos || lower.find("case hardened") != std::string::npos) return {0.72f, 0.28f, 0.88f, 1.0f}; // Purple fade
+        if (lower.find("dragon lore") != std::string::npos || lower.find("gold") != std::string::npos || lower.find("lore") != std::string::npos) return {0.94f, 0.78f, 0.24f, 1.0f}; // Gold
+        if (lower.find("hyper beast") != std::string::npos || lower.find("neon") != std::string::npos || lower.find("fever dream") != std::string::npos) return {0.88f, 0.18f, 0.78f, 1.0f}; // Neon
+        if (lower.find("printstream") != std::string::npos || lower.find("whiteout") != std::string::npos || lower.find("mecha") != std::string::npos) return {0.92f, 0.94f, 0.96f, 1.0f}; // Pearlescent White
+        if (lower.find("vulcan") != std::string::npos || lower.find("blue phosphor") != std::string::npos || lower.find("frontside misty") != std::string::npos) return {0.18f, 0.65f, 0.98f, 1.0f}; // Electric Blue
+        if (lower.find("emerald") != std::string::npos || lower.find("green") != std::string::npos) return {0.12f, 0.85f, 0.38f, 1.0f}; // Emerald
+        if (lower.find("doppler") != std::string::npos || lower.find("sapphire") != std::string::npos) return {0.20f, 0.35f, 0.95f, 1.0f}; // Sapphire
+
+        if (paint_kit_id > 0) {
+            float hue = std::fmod(static_cast<float>(paint_kit_id * 137.5f), 360.0f);
+            float h = hue / 60.0f;
+            int i = static_cast<int>(h) % 6;
+            float f = h - std::floor(h);
+            float q = 1.0f - f;
+            float r = 0.5f, g = 0.5f, b = 0.5f;
+            switch (i) {
+                case 0: r = 1.0f; g = f; b = 0.2f; break;
+                case 1: r = q; g = 1.0f; b = 0.2f; break;
+                case 2: r = 0.2f; g = 1.0f; b = f; break;
+                case 3: r = 0.2f; g = q; b = 1.0f; break;
+                case 4: r = f; g = 0.2f; b = 1.0f; break;
+                case 5: r = 1.0f; g = 0.2f; b = q; break;
+            }
+            return {r, g, b, 1.0f};
+        }
+        return {0.35f, 0.38f, 0.42f, 1.0f}; // Gunmetal steel
+    }
+
+    struct agent_palette {
+        vec4 uniform_base;
+        vec4 uniform_accent;
+        vec4 vest;
+        vec4 vest_webbing;
+        vec4 helmet;
+        vec4 visor_goggles;
+        vec4 skin_tone;
+        vec4 balaclava;
+        vec4 boots;
+        vec4 knee_pads;
+        vec4 belt_gear;
+        vec4 gloves_primary;
+        vec4 gloves_secondary;
+    };
+
+    inline agent_palette get_agent_palette(int team, int agent_def_index, int glove_def_index) {
+        agent_palette p;
+        if (team == 3) {
+            // CT Counter-Terrorist (Tactical SWAT / Navy / SAS)
+            p.uniform_base       = {0.14f, 0.17f, 0.24f, 1.0f};
+            p.uniform_accent     = {0.11f, 0.13f, 0.18f, 1.0f};
+            p.vest               = {0.10f, 0.11f, 0.15f, 1.0f};
+            p.vest_webbing       = {0.18f, 0.21f, 0.25f, 1.0f};
+            p.helmet             = {0.17f, 0.20f, 0.19f, 1.0f};
+            p.visor_goggles      = {0.18f, 0.45f, 0.72f, 0.95f};
+            p.skin_tone          = {0.84f, 0.67f, 0.55f, 1.0f};
+            p.balaclava          = {0.08f, 0.09f, 0.11f, 1.0f};
+            p.boots              = {0.08f, 0.08f, 0.09f, 1.0f};
+            p.knee_pads          = {0.14f, 0.15f, 0.17f, 1.0f};
+            p.belt_gear          = {0.09f, 0.10f, 0.12f, 1.0f};
+            p.gloves_primary     = {0.14f, 0.15f, 0.17f, 1.0f};
+            p.gloves_secondary   = {0.26f, 0.28f, 0.32f, 1.0f};
+        } else {
+            // T Terrorist (Tactical Khaki / Tan / Guerilla / Professional)
+            p.uniform_base       = {0.32f, 0.28f, 0.22f, 1.0f};
+            p.uniform_accent     = {0.38f, 0.34f, 0.26f, 1.0f};
+            p.vest               = {0.20f, 0.18f, 0.14f, 1.0f};
+            p.vest_webbing       = {0.26f, 0.16f, 0.10f, 1.0f};
+            p.helmet             = {0.55f, 0.14f, 0.14f, 1.0f}; // Beret red
+            p.visor_goggles      = {0.85f, 0.70f, 0.15f, 1.0f}; // Aviator gold
+            p.skin_tone          = {0.82f, 0.64f, 0.52f, 1.0f};
+            p.balaclava          = {0.14f, 0.14f, 0.15f, 1.0f};
+            p.boots              = {0.22f, 0.19f, 0.15f, 1.0f};
+            p.knee_pads          = {0.18f, 0.16f, 0.13f, 1.0f};
+            p.belt_gear          = {0.14f, 0.12f, 0.10f, 1.0f};
+            p.gloves_primary     = {0.22f, 0.14f, 0.09f, 1.0f};
+            p.gloves_secondary   = {0.85f, 0.75f, 0.25f, 1.0f}; // Gold watch
+        }
+
+        // Custom glove coloring if equipped
+        if (glove_def_index >= 5027 && glove_def_index <= 5035) {
+            if (glove_def_index == 5030) {
+                // Sport Gloves (Vice style neon cyan + pink)
+                p.gloves_primary = {0.12f, 0.78f, 0.92f, 1.0f};
+                p.gloves_secondary = {0.94f, 0.15f, 0.65f, 1.0f};
+            } else if (glove_def_index == 5034) {
+                // Specialist Gloves (Crimson Web)
+                p.gloves_primary = {0.72f, 0.10f, 0.14f, 1.0f};
+                p.gloves_secondary = {0.10f, 0.10f, 0.10f, 1.0f};
+            } else if (glove_def_index == 5033) {
+                // Moto Gloves (Spearmint)
+                p.gloves_primary = {0.85f, 0.92f, 0.88f, 1.0f};
+                p.gloves_secondary = {0.15f, 0.65f, 0.50f, 1.0f};
+            } else if (glove_def_index == 5031) {
+                // Driver Gloves (King Snake / Imperial Plaid)
+                p.gloves_primary = {0.88f, 0.88f, 0.86f, 1.0f};
+                p.gloves_secondary = {0.18f, 0.18f, 0.18f, 1.0f};
+            } else if (glove_def_index == 5032) {
+                // Hand Wraps (Cobalt Skulls)
+                p.gloves_primary = {0.20f, 0.40f, 0.75f, 1.0f};
+                p.gloves_secondary = {0.15f, 0.25f, 0.50f, 1.0f};
+            } else {
+                // Bloodhound / Hydra
+                p.gloves_primary = {0.12f, 0.12f, 0.14f, 1.0f};
+                p.gloves_secondary = {0.85f, 0.72f, 0.22f, 1.0f};
+            }
+        }
+        return p;
+    }
+
+    inline void build_agent_body(mesh_builder& mb, const agent_palette& pal, int team) {
+        // 1. BOOTS & FEET (firm tactical stance on floor Y = -0.92)
+        const vec4 dark_sole{0.06f, 0.06f, 0.07f, 1.0f};
+        const vec3 l_boot_center{-0.19f, -0.90f, 0.06f};
+        const vec3 r_boot_center{+0.19f, -0.90f, -0.04f};
+
+        // Soles
+        mb.add_box(l_boot_center, {0.065f, 0.020f, 0.13f}, dark_sole);
+        mb.add_box(r_boot_center, {0.065f, 0.020f, 0.13f}, dark_sole);
+
+        // Boots leather uppers
+        mb.add_tapered_box({l_boot_center.x, -0.82f, l_boot_center.z}, {0.060f, 0.10f}, {0.052f, 0.07f}, 0.14f, pal.boots);
+        mb.add_tapered_box({r_boot_center.x, -0.82f, r_boot_center.z}, {0.060f, 0.10f}, {0.052f, 0.07f}, 0.14f, pal.boots);
+
+        // 2. SHINS / LOWER LEGS
+        mb.add_cylinder({l_boot_center.x, -0.75f, l_boot_center.z}, {-0.17f, -0.44f, 0.04f}, 0.068f, 10, pal.uniform_base);
+        mb.add_cylinder({r_boot_center.x, -0.75f, r_boot_center.z}, {+0.17f, -0.44f, -0.02f}, 0.068f, 10, pal.uniform_base);
+
+        // Hard-shell Tactical Knee Pads on both knees
+        mb.add_box({-0.17f, -0.44f, 0.10f}, {0.055f, 0.060f, 0.025f}, pal.knee_pads);
+        mb.add_box({+0.17f, -0.44f, 0.04f}, {0.055f, 0.060f, 0.025f}, pal.knee_pads);
+        mb.add_box({-0.17f, -0.44f, 0.02f}, {0.068f, 0.015f, 0.068f}, pal.belt_gear); // strap
+        mb.add_box({+0.17f, -0.44f, -0.04f}, {0.068f, 0.015f, 0.068f}, pal.belt_gear); // strap
+
+        // 3. THIGHS & UPPER LEGS
+        mb.add_cylinder({-0.17f, -0.44f, 0.04f}, {-0.12f, -0.12f, 0.01f}, 0.082f, 10, pal.uniform_base);
+        mb.add_cylinder({+0.17f, -0.44f, -0.02f}, {+0.12f, -0.12f, 0.01f}, 0.082f, 10, pal.uniform_base);
+
+        // Tactical Drop-Leg Holster on right thigh
+        mb.add_box({+0.21f, -0.26f, -0.01f}, {0.032f, 0.075f, 0.045f}, pal.belt_gear);
+        mb.add_box({+0.21f, -0.18f, 0.01f}, {0.022f, 0.035f, 0.022f}, {0.14f, 0.14f, 0.15f, 1.0f}); // Sidearm grip
+        mb.add_box({+0.16f, -0.22f, -0.02f}, {0.082f, 0.014f, 0.082f}, pal.belt_gear); // holster thigh strap
+
+        // Cargo utility pocket on left thigh
+        mb.add_box({-0.21f, -0.28f, 0.03f}, {0.028f, 0.060f, 0.050f}, pal.uniform_accent);
+
+        // 4. PELVIS & DUTY BELT
+        mb.add_tapered_box({0.0f, -0.10f, 0.0f}, {0.18f, 0.11f}, {0.16f, 0.11f}, 0.10f, pal.uniform_base);
+        mb.add_box({0.0f, -0.06f, 0.0f}, {0.185f, 0.030f, 0.125f}, pal.belt_gear); // Duty belt
+        mb.add_box({0.0f, -0.06f, 0.128f}, {0.032f, 0.024f, 0.008f}, {0.78f, 0.78f, 0.80f, 1.0f}); // Belt buckle
+
+        // 5. TORSO & HEAVY PLATE CARRIER VEST
+        mb.add_tapered_box({0.0f, 0.14f, 0.0f}, {0.16f, 0.11f}, {0.20f, 0.12f}, 0.38f, pal.uniform_base); // Shirt
+        mb.add_box({0.0f, 0.14f, 0.045f}, {0.16f, 0.165f, 0.090f}, pal.vest); // Front body armor plate
+        mb.add_box({0.0f, 0.06f, 0.0f}, {0.185f, 0.090f, 0.120f}, pal.vest); // Cummerbund
+
+        // Padded shoulder straps
+        mb.add_box({-0.12f, 0.31f, 0.01f}, {0.042f, 0.055f, 0.105f}, pal.vest_webbing);
+        mb.add_box({+0.12f, 0.31f, 0.01f}, {0.042f, 0.055f, 0.105f}, pal.vest_webbing);
+
+        // Triple rifle mag pouches across stomach
+        mb.add_box({-0.09f, 0.04f, 0.145f}, {0.032f, 0.060f, 0.022f}, pal.vest_webbing);
+        mb.add_box({ 0.00f, 0.04f, 0.148f}, {0.032f, 0.060f, 0.022f}, pal.vest_webbing);
+        mb.add_box({+0.09f, 0.04f, 0.145f}, {0.032f, 0.060f, 0.022f}, pal.vest_webbing);
+
+        // Chest identification patch
+        mb.add_box({0.0f, 0.23f, 0.138f}, {0.060f, 0.032f, 0.005f}, team == 3 ? vec4{0.18f, 0.42f, 0.75f, 1.0f} : vec4{0.75f, 0.20f, 0.14f, 1.0f});
+
+        // Tactical radio & whip antenna on left shoulder
+        mb.add_box({-0.135f, 0.26f, 0.115f}, {0.022f, 0.050f, 0.028f}, {0.10f, 0.10f, 0.11f, 1.0f});
+        mb.add_cylinder({-0.135f, 0.31f, 0.115f}, {-0.135f, 0.50f, 0.095f}, 0.0035f, 6, {0.14f, 0.14f, 0.14f, 1.0f});
+
+        // 6. NECK & HEAD
+        mb.add_cylinder({0.0f, 0.31f, 0.01f}, {0.0f, 0.42f, 0.01f}, 0.062f, 10, pal.balaclava);
+        mb.add_sphere({0.0f, 0.52f, 0.01f}, 0.098f, 8, 12, pal.skin_tone);
+        mb.add_cylinder({0.0f, 0.42f, 0.015f}, {0.0f, 0.51f, 0.015f}, 0.090f, 10, pal.balaclava); // Balaclava face mask
+
+        if (team == 3) {
+            // CT FAST High-Cut Ballistic Helmet
+            mb.add_sphere({0.0f, 0.55f, 0.00f}, 0.112f, 8, 12, pal.helmet);
+            mb.add_box({0.0f, 0.56f, 0.110f}, {0.022f, 0.028f, 0.014f}, {0.08f, 0.08f, 0.09f, 1.0f}); // NVG Shroud
+            mb.add_box({-0.110f, 0.53f, 0.0f}, {0.009f, 0.018f, 0.050f}, {0.08f, 0.08f, 0.09f, 1.0f}); // ARC Rail L
+            mb.add_box({+0.110f, 0.53f, 0.0f}, {0.009f, 0.018f, 0.050f}, {0.08f, 0.08f, 0.09f, 1.0f}); // ARC Rail R
+            // Comms headset & boom mic
+            mb.add_box({-0.112f, 0.50f, 0.01f}, {0.018f, 0.042f, 0.032f}, pal.helmet);
+            mb.add_box({+0.112f, 0.50f, 0.01f}, {0.018f, 0.042f, 0.032f}, pal.helmet);
+            mb.add_cylinder({-0.115f, 0.48f, 0.02f}, {-0.035f, 0.46f, 0.09f}, 0.004f, 6, {0.12f, 0.12f, 0.12f, 1.0f}); // Mic
+            // Tinted Ballistic Goggles
+            mb.add_box({0.0f, 0.53f, 0.095f}, {0.080f, 0.028f, 0.018f}, {0.10f, 0.10f, 0.11f, 1.0f});
+            mb.add_box({0.0f, 0.53f, 0.106f}, {0.072f, 0.020f, 0.005f}, pal.visor_goggles);
+        } else {
+            // T Beret / Cap / Aviator shades
+            mb.add_sphere({0.0f, 0.56f, -0.01f}, 0.108f, 8, 12, pal.helmet);
+            mb.add_box({-0.05f, 0.58f, 0.092f}, {0.014f, 0.018f, 0.007f}, {0.88f, 0.76f, 0.22f, 1.0f}); // Badge
+            // Aviator Sunglasses
+            mb.add_box({-0.035f, 0.52f, 0.098f}, {0.024f, 0.020f, 0.005f}, {0.10f, 0.10f, 0.12f, 1.0f});
+            mb.add_box({+0.035f, 0.52f, 0.098f}, {0.024f, 0.020f, 0.005f}, {0.10f, 0.10f, 0.12f, 1.0f});
+            mb.add_box({0.0f, 0.53f, 0.100f}, {0.012f, 0.004f, 0.003f}, pal.visor_goggles);
+        }
+
+        // 7. ARMS & TACTICAL GLOVES (Buy-Menu Low-Ready Stance)
+        // Right Arm (Trigger hand)
+        mb.add_cylinder({+0.21f, 0.31f, 0.0f}, {+0.19f, 0.11f, 0.10f}, 0.062f, 10, pal.uniform_accent);
+        mb.add_box({+0.19f, 0.11f, 0.09f}, {0.038f, 0.042f, 0.028f}, pal.knee_pads); // Elbow pad R
+        mb.add_cylinder({+0.19f, 0.11f, 0.10f}, {+0.12f, 0.04f, 0.25f}, 0.056f, 10, pal.uniform_accent);
+
+        // Right Glove & Hand holding weapon grip
+        mb.add_box({+0.10f, 0.03f, 0.28f}, {0.032f, 0.032f, 0.038f}, pal.gloves_primary);
+        mb.add_box({+0.11f, 0.042f, 0.28f}, {0.030f, 0.014f, 0.032f}, pal.gloves_secondary); // Knuckle plate
+        mb.add_box({+0.08f, 0.015f, 0.30f}, {0.022f, 0.028f, 0.028f}, pal.gloves_primary); // Wrapped fingers
+
+        // Left Arm (Support hand)
+        mb.add_cylinder({-0.21f, 0.31f, 0.0f}, {-0.17f, 0.10f, 0.12f}, 0.062f, 10, pal.uniform_accent);
+        mb.add_box({-0.17f, 0.10f, 0.11f}, {0.038f, 0.042f, 0.028f}, pal.knee_pads); // Elbow pad L
+        mb.add_cylinder({-0.17f, 0.10f, 0.12f}, {-0.02f, 0.03f, 0.37f}, 0.056f, 10, pal.uniform_accent);
+
+        // Left Glove & Hand cupping forend
+        mb.add_box({-0.02f, 0.03f, 0.39f}, {0.032f, 0.032f, 0.038f}, pal.gloves_primary);
+        mb.add_box({-0.02f, 0.016f, 0.39f}, {0.030f, 0.014f, 0.032f}, pal.gloves_secondary); // Knuckle plate
+        mb.add_box({-0.01f, 0.042f, 0.40f}, {0.028f, 0.022f, 0.032f}, pal.gloves_primary); // Support fingers
+    }
+
+    inline mesh generate_agent_with_weapon(int team, int agent_def_index, int weapon_def_index, int paint_kit_id, int glove_def_index, std::string_view weapon_name, std::string_view skin_name) {
+        mesh_builder mb;
+        const auto pal = get_agent_palette(team, agent_def_index, glove_def_index);
+
+        // 1. Build complete 3D agent character
+        build_agent_body(mb, pal, team);
+
+        // 2. Build 3D weapon and attach in hands
+        if (weapon_def_index > 0) {
+            mesh wep_mesh = generate_weapon_mesh(weapon_def_index, weapon_name);
+            const vec4 skin_col = get_skin_theme_color(paint_kit_id, skin_name);
+
+            // Determine placement based on weapon type
+            bool is_knife = (weapon_def_index >= 500 && weapon_def_index <= 526) || weapon_def_index == 41 || weapon_def_index == 42 || weapon_def_index == 59;
+            bool is_pistol = (weapon_def_index == 1 || weapon_def_index == 2 || weapon_def_index == 3 || weapon_def_index == 4 ||
+                              weapon_def_index == 30 || weapon_def_index == 32 || weapon_def_index == 36 || weapon_def_index == 61 || weapon_def_index == 63 || weapon_def_index == 64);
+            bool is_glove = (weapon_def_index >= 5027 && weapon_def_index <= 5035);
+
+            if (!is_glove) {
+                if (is_knife) {
+                    // Knife held in right hand pointing forward
+                    mb.append_transformed(wep_mesh, {+0.10f, 0.04f, 0.32f}, {-0.15f, 0.20f, 0.10f}, 0.30f, skin_col);
+                } else if (is_pistol) {
+                    // Pistol held in hands pointing forward
+                    mb.append_transformed(wep_mesh, {+0.05f, 0.03f, 0.33f}, {-0.08f, -0.15f, 0.04f}, 0.28f, skin_col);
+                } else {
+                    // Primary rifle / SMG / sniper in low-ready buy-menu stance
+                    mb.append_transformed(wep_mesh, {+0.04f, 0.04f, 0.33f}, {-0.10f, -0.22f, 0.06f}, 0.38f, skin_col);
+                }
+            }
+        }
+
+        mesh result;
+        result.vertices = std::move(mb.vertices);
+        finalize_mesh(result, agent_def_index * 10000 + weapon_def_index * 100 + paint_kit_id);
         return result;
     }
 

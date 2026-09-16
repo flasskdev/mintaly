@@ -151,6 +151,55 @@ namespace features::changer {
 		return true;
 	}
 
+	bool econ_item_system::poll_schema( )
+	{
+		const auto system = memory::call<std::uintptr_t>( addresses::globals::item_system );
+		const auto schema = system
+			? memory::safe_read<std::uintptr_t>( system + 0x8 ).value_or( 0 )
+			: 0;
+
+		if ( !schema )
+		{
+			return false;
+		}
+
+		const auto item_count = memory::safe_read<int>( schema + 0x128 ).value_or( 0 );
+		const auto item_array = memory::safe_read<std::uintptr_t>( schema + 0x130 ).value_or( 0 );
+		if ( !item_array || item_count <= 0 || item_count > 10000 )
+		{
+			return false;
+		}
+
+		if ( item_count > static_cast<int>( this->m_item_defs.size( ) ) ||
+			 ( ( this->m_gloves.empty( ) || this->m_agents.empty( ) ) && item_count > 284 ) )
+		{
+			if ( !this->parse_item_defs( schema ) )
+			{
+				return false;
+			}
+
+			const auto paint_count = memory::safe_read<int>( schema + 0x2F0 ).value_or( 0 );
+			if ( paint_count > static_cast<int>( this->m_paint_kits.size( ) ) )
+			{
+				this->parse_paint_kits( schema );
+			}
+
+			this->build_indices( );
+			this->resolve_localized_names( );
+			this->build_skin_index( );
+
+			char checkpoint[ 256 ]{};
+			std::snprintf( checkpoint, sizeof( checkpoint ),
+				"econ: poll_schema updated; defs=%zu; guns=%zu; knives=%zu; gloves=%zu; agents=%zu; skins=%zu",
+				this->m_item_defs.size( ), this->m_guns.size( ), this->m_knives.size( ),
+				this->m_gloves.size( ), this->m_agents.size( ), this->m_skins.size( ) );
+			write_agent_diagnostic( checkpoint );
+			return true;
+		}
+
+		return false;
+	}
+
 	const econ_item_system::item_def* econ_item_system::find_def( std::int16_t def_index ) const
 	{
 		const auto it = this->m_def_index_map.find( def_index );
@@ -286,6 +335,7 @@ namespace features::changer {
 			return false;
 		}
 
+		this->m_item_defs.clear( );
 		this->m_item_defs.reserve( count );
 
 		for ( auto i = 0; i < count; i++ )
@@ -382,6 +432,8 @@ namespace features::changer {
 			return false;
 		}
 
+		this->m_paint_kits.clear( );
+		this->m_paint_kit_map.clear( );
 		this->m_paint_kits.reserve( count );
 
 		for ( auto i = 0; i < count; i++ )
@@ -650,6 +702,14 @@ static constexpr fallback_music_kit k_fallback_kits[] = {
 
 	void econ_item_system::build_indices( )
 	{
+		this->m_def_index_map.clear( );
+		this->m_knives.clear( );
+		this->m_gloves.clear( );
+		this->m_agents.clear( );
+		this->m_guns.clear( );
+		this->m_paint_kit_map.clear( );
+		this->m_music_kit_map.clear( );
+
 		for ( auto i = 0ull; i < this->m_item_defs.size( ); i++ )
 		{
 			const auto& def = this->m_item_defs[ i ];
@@ -856,6 +916,8 @@ static constexpr fallback_music_kit k_fallback_kits[] = {
 
 	void econ_item_system::build_skin_index( )
 	{
+		this->m_skins.clear( );
+
 		std::unordered_map<std::string, int> pk_by_name;
 		pk_by_name.reserve( this->m_paint_kits.size( ) );
 

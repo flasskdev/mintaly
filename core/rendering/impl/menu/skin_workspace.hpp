@@ -4,10 +4,15 @@
 #include <core/features/changer/changer.hpp>
 #include <core/hooks/hooks.hpp>
 #include "../../theme.hpp"
+#include <core/rendering/preview3d/renderer.hpp>
+#include <core/rendering/preview3d/game_model.hpp>
 #include <filesystem>
 #include <fstream>
 #include <cctype>
 #include <stdexcept>
+#include <array>
+#include <optional>
+#include <memory>
 
 namespace rendering::skin_workspace {
 using econ_type = features::changer::econ_item_system;
@@ -21,39 +26,79 @@ struct hover_state {
     int custom = -2;
 };
 inline hover_state hover;
+
+struct preview_viewport {
+    std::unique_ptr<nemesis::preview3d::renderer> renderer{};
+    nemesis::preview3d::camera camera{ 0.15f, 0.08f, 2.5f };
+    bool dragging = false;
+    float drag_start_x = 0.0f;
+    float drag_start_y = 0.0f;
+    float initial_yaw = 0.15f;
+    float initial_pitch = 0.08f;
+
+    int last_team = -1;
+    int last_agent = -1;
+    int last_weapon = -1;
+    int last_paint = -1;
+    int last_glove = -1;
+
+    void reset_camera() {
+        camera.yaw = 0.15f;
+        camera.pitch = 0.08f;
+        camera.distance = 2.5f;
+    }
+};
+inline preview_viewport g_viewport{};
 inline bool hovered(const xui::rect& r) {
     const auto* win = xui::layout::current_window();
     const auto& c = xui::ctx();
     return !c.overlay_blocking() && c.input.in_rect(r) && (!win || c.input.in_rect(win->bounds));
 }
-inline float left_width(float width) { return std::clamp(width * 0.34f, 200.0f, 280.0f); }
+
+// Wider left panel: ~360px on default 820px body
+inline float left_width(float width) { return std::clamp(width * 0.44f, 330.0f, 390.0f); }
+
 inline std::string lower(std::string value) {
     for (auto& c : value) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
     return value;
 }
 
-// Index immutable schema data once; filtered lists are rebuilt only for a new query.
+inline constexpr std::array<xdraw::color, 8> rarity_colors{{
+    { 235, 235, 235, 255 },
+    { 138, 173, 233, 255 },
+    {  77, 116, 196, 255 },
+    { 138,  86, 207, 255 },
+    { 211,  44, 230, 255 },
+    { 235,  75,  75, 255 },
+    { 228, 174,  57, 255 },
+    { 255, 215,   0, 255 }
+}};
+
+// Index immutable schema data once; filtered lists are rebuilt only when query or parameters change.
 class catalog {
-    std::array<std::uintptr_t, 8> stamp_{};
+    std::array<std::uintptr_t, 10> stamp_{};
     std::array<std::vector<const econ_type::item_def*>, 3> weapons_;
     std::unordered_map<std::int16_t, std::vector<const econ_type::paint_kit*>> paints_;
-    std::unordered_map<int, std::string> paint_names_, music_names_;
-    std::string paint_query_, music_query_;
+    std::string paint_query_, music_query_, agent_query_;
     int paint_def_ = -1;
+    int agent_team_ = -1;
     bool music_valid_ = false;
     std::vector<const econ_type::paint_kit*> filtered_paints_;
     std::vector<const econ_type::music_kit*> filtered_music_;
+    std::vector<const econ_type::item_def*> filtered_agents_;
 public:
     void refresh() {
-        const auto& e = features::changer::g_econ_item_system;
-        const std::array<std::uintptr_t, 8> stamp{
+        auto& e = features::changer::g_econ_item_system;
+        e.poll_schema();
+        const std::array<std::uintptr_t, 10> stamp{
             reinterpret_cast<std::uintptr_t>(e.skins().data()), e.skins().size(),
             reinterpret_cast<std::uintptr_t>(e.item_defs().data()), e.item_defs().size(),
             reinterpret_cast<std::uintptr_t>(e.paint_kits().data()), e.paint_kits().size(),
-            reinterpret_cast<std::uintptr_t>(e.music_kits().data()), e.music_kits().size()};
+            reinterpret_cast<std::uintptr_t>(e.agents().data()), e.agents().size(),
+            reinterpret_cast<std::uintptr_t>(e.gloves().data()), e.gloves().size()};
         if (stamp == stamp_) return;
         stamp_ = stamp;
-        paints_.clear(); paint_names_.clear(); music_names_.clear();
+        paints_.clear();
         for (auto& list : weapons_) list.clear();
         std::unordered_map<std::int16_t, std::unordered_set<int>> seen;
         for (const auto& s : e.skins()) {
@@ -65,24 +110,47 @@ public:
                 return a->localized_name == b->localized_name ? a->id < b->id : a->localized_name < b->localized_name;
             });
         }
-        for (const auto& p : e.paint_kits()) paint_names_[p.id] = lower(p.localized_name);
-        for (const auto& m : e.music_kits()) music_names_[m.id] = lower(m.localized_name + " " + m.localized_desc + " " + m.name);
         const std::array<const std::vector<const econ_type::item_def*>*, 3> sources{&e.guns(), &e.knives(), &e.gloves()};
-        for (std::size_t i = 0; i < sources.size(); ++i)
-            for (const auto* w : *sources[i])
-                if ((i == 0 || paints_.contains(w->def_index)) && (!w->image_inventory.empty() || paints_.contains(w->def_index)))
+        for (std::size_t i = 0; i < sources.size(); ++i) {
+            for (const auto* w : *sources[i]) {
+                if (i == 2) {
+                    // Gloves: always list all available glove types
                     weapons_[i].push_back(w);
-        paint_def_ = -1; music_valid_ = false;
-        filtered_paints_.clear(); filtered_music_.clear();
+                } else if ((i == 0 || paints_.contains(w->def_index)) && (!w->image_inventory.empty() || paints_.contains(w->def_index))) {
+                    weapons_[i].push_back(w);
+                }
+            }
+        }
+        paint_def_ = -1; agent_team_ = -1; music_valid_ = false;
+        filtered_paints_.clear(); filtered_music_.clear(); filtered_agents_.clear();
     }
     const auto& weapons(int category) const { return weapons_[std::clamp(category, 0, 2)]; }
     const auto& paints(int def, const std::string& query) {
         if (paint_def_ != def || paint_query_ != query) {
             paint_def_ = def; paint_query_ = query; filtered_paints_.clear();
             const auto q = lower(query);
-            if (const auto it = paints_.find(static_cast<std::int16_t>(def)); it != paints_.end())
-                for (const auto* p : it->second)
-                    if (q.empty() || paint_names_.at(p->id).find(q) != std::string::npos) filtered_paints_.push_back(p);
+            auto& econ = features::changer::g_econ_item_system;
+            const auto* d = econ.find_def(static_cast<std::int16_t>(def));
+
+            if (const auto it = paints_.find(static_cast<std::int16_t>(def)); it != paints_.end() && !it->second.empty()) {
+                for (const auto* p : it->second) {
+                    if (q.empty() || lower(p->localized_name + " " + p->name).find(q) != std::string::npos)
+                        filtered_paints_.push_back(p);
+                }
+            } else if (d && d->category == econ_type::item_category::glove) {
+                // Fallback for gloves if VPK index didn't map specific def to paint kits:
+                // Include all paint kits that belong to gloves (finishes)
+                for (const auto& pk : econ.paint_kits()) {
+                    if (pk.id >= 10000 || pk.name.find("glove") != std::string::npos ||
+                        pk.name.find("slick") != std::string::npos || pk.name.find("sporty") != std::string::npos ||
+                        pk.name.find("specialist") != std::string::npos || pk.name.find("motorcycle") != std::string::npos ||
+                        pk.name.find("handwrap") != std::string::npos || pk.name.find("bloodhound") != std::string::npos ||
+                        pk.name.find("hydra") != std::string::npos || pk.name.find("brokenfang") != std::string::npos) {
+                        if (q.empty() || lower(pk.localized_name + " " + pk.name).find(q) != std::string::npos)
+                            filtered_paints_.push_back(&pk);
+                    }
+                }
+            }
         }
         return filtered_paints_;
     }
@@ -91,9 +159,23 @@ public:
             music_valid_ = true; music_query_ = query; filtered_music_.clear();
             const auto q = lower(query);
             for (const auto& m : features::changer::g_econ_item_system.music_kits())
-                if (q.empty() || music_names_.at(m.id).find(q) != std::string::npos) filtered_music_.push_back(&m);
+                if (q.empty() || lower(m.localized_name + " " + m.localized_desc + " " + m.name).find(q) != std::string::npos)
+                    filtered_music_.push_back(&m);
         }
         return filtered_music_;
+    }
+    const auto& agents(int team_filter, const std::string& query) {
+        if (agent_team_ != team_filter || agent_query_ != query) {
+            agent_team_ = team_filter; agent_query_ = query; filtered_agents_.clear();
+            const auto q = lower(query);
+            for (const auto* a : features::changer::g_econ_item_system.agents()) {
+                const auto at = a->team();
+                if (at != 0 && team_filter != 0 && at != team_filter) continue;
+                if (q.empty() || lower(a->localized_name + " " + a->name).find(q) != std::string::npos)
+                    filtered_agents_.push_back(a);
+            }
+        }
+        return filtered_agents_;
     }
 };
 inline catalog items;
@@ -126,7 +208,6 @@ struct cosmetics {
         return c;
     }
     void apply() const {
-        // Only cosmetic values are touched; never construct/register a second changer.
         auto& c = settings::g_changer;
         c.skins = skins; c.agents = agents; c.custom_agents = custom; c.music = music;
         features::changer::g_guns.reset(); features::changer::g_knives.reset();
@@ -136,7 +217,9 @@ struct cosmetics {
         hover = {}; focused_weapon = {};
     }
 };
+
 struct profile { std::string name; cosmetics values; };
+
 class profile_store {
     bool initialized_ = false, writable_ = false;
     std::filesystem::path path_;
@@ -193,16 +276,16 @@ public:
                 }
             }
             entries = std::move(next); selected = -1; writable_ = true;
-            status = "Save stores both loadouts";
+            status = "Ready";
         } catch (const std::exception& e) {
-            writable_ = false; status = e.what(); // Never overwrite unreadable/corrupt data.
+            writable_ = false; status = e.what();
         }
     }
     void create() {
         if (entries.size() >= 5 || !writable_) return;
         int suffix = 1;
         std::string name;
-        do { name = "Loadout " + std::to_string(suffix++); }
+        do { name = "Config " + std::to_string(suffix++); }
         while (std::any_of(entries.begin(), entries.end(), [&](const profile& p) { return p.name == name; }));
         auto next = entries;
         next.push_back({name, cosmetics::capture()});
@@ -215,7 +298,7 @@ public:
     }
     void select(int index) {
         if (dialog_busy || index < 0 || index >= static_cast<int>(entries.size())) return;
-        entries[index].values.apply(); selected = index; status = "Loaded cosmetic profile";
+        entries[index].values.apply(); selected = index; status = "Loaded";
     }
     void remove(int index) {
         if (index < 0 || index >= static_cast<int>(entries.size())) return;
@@ -227,15 +310,17 @@ public:
     }
 };
 inline profile_store profiles;
+
 inline constexpr std::uintptr_t profile_popup_id = 0x534b494e43464735ull;
+
 class profile_popup final : public xui::overlay {
     int delete_row_ = -1;
     xui::rect bounds() const {
         const auto [sw, sh] = xdraw::viewport_size();
         const float w = std::min(280.0f, static_cast<float>(sw));
-        const float h = 74.0f + 34.0f * static_cast<float>(profiles.entries.size());
+        const float h = 50.0f + 36.0f * static_cast<float>(profiles.entries.size() + 1);
         return {std::clamp(m_anchor.x, 0.0f, std::max(0.0f, sw - w)),
-                std::clamp(m_anchor.bottom() + 6, 0.0f, std::max(0.0f, sh - h)), w, h};
+                std::clamp(m_anchor.bottom() + 6.0f, 0.0f, std::max(0.0f, sh - h)), w, h};
     }
 public:
     explicit profile_popup(const xui::rect& anchor) : overlay(profile_popup_id, anchor) {}
@@ -247,56 +332,84 @@ public:
         if ((input.mouse_clicked || input.rmb_clicked) && !input.in_rect(r)) { m_closed = true; return true; }
         if (!input.in_rect(r)) return false;
         for (int i = 0; i < static_cast<int>(profiles.entries.size()); ++i) {
-            const xui::rect row{r.x + 6, r.y + 6 + i * 34.0f, r.w - 12, 32};
+            const xui::rect row{r.x + 6.0f, r.y + 6.0f + i * 36.0f, r.w - 12.0f, 32.0f};
             if (!input.in_rect(row)) continue;
             if (input.rmb_clicked) delete_row_ = delete_row_ == i ? -1 : i;
             if (input.mouse_clicked) {
-                if (delete_row_ == i && input.mouse_x >= row.right() - 70) {
+                if (delete_row_ == i && input.mouse_x >= row.right() - 72.0f) {
                     profiles.remove(i); delete_row_ = -1;
                 } else if (!dialog_busy) { profiles.select(i); m_closed = true; }
                 return true;
             }
         }
-        const xui::rect create{r.x + 6, r.y + 6 + profiles.entries.size() * 34.0f, r.w - 12, 32};
-        if (input.mouse_clicked && input.in_rect(create) && profiles.entries.size() < 5) { profiles.create(); m_closed = true; }
+        const xui::rect create{r.x + 6.0f, r.y + 6.0f + profiles.entries.size() * 36.0f, r.w - 12.0f, 32.0f};
+        if (input.mouse_clicked && input.in_rect(create) && profiles.entries.size() < 5) {
+            profiles.create(); m_closed = true;
+        }
         return true;
     }
     void render(const xui::style& style, const xui::input_state& input) override {
         if (m_closing || m_closed) { m_closed = true; return; }
         const auto r = bounds();
         auto& dl = xdraw::get(xdraw::layer::top);
-        dl.rect_filled(r.x, r.y, r.w, r.h, style.popup_bg, xdraw::corner_radius{8});
-        dl.rect(r.x, r.y, r.w, r.h, style.popup_border, xdraw::corner_radius{8});
+        dl.rect_filled(r.x, r.y, r.w, r.h, style.popup_bg, xdraw::corner_radius{8.0f});
+        dl.rect(r.x, r.y, r.w, r.h, style.popup_border, xdraw::corner_radius{8.0f});
+
         for (int i = 0; i < static_cast<int>(profiles.entries.size()); ++i) {
-            const xui::rect row{r.x + 6, r.y + 6 + i * 34.0f, r.w - 12, 32};
-            dl.rect_filled(row.x, row.y, row.w, row.h, i == profiles.selected ? tokens::col_accent.alpha(35) : (input.in_rect(row) ? tokens::col_elevated : tokens::col_card), xdraw::corner_radius{5});
-            dl.text(row.x + 10, row.y + 8, theme::fit_text(profiles.entries[i].name, row.w - (delete_row_ == i ? 88 : 20)), style.text);
+            const xui::rect row{r.x + 6.0f, r.y + 6.0f + i * 36.0f, r.w - 12.0f, 32.0f};
+            const bool is_sel = (i == profiles.selected);
+            const bool row_hover = input.in_rect(row);
+            dl.rect_filled(row.x, row.y, row.w, row.h,
+                is_sel ? tokens::col_accent.alpha(45) : (row_hover ? tokens::col_elevated : tokens::col_card),
+                xdraw::corner_radius{5.0f});
+            if (is_sel) {
+                dl.rect(row.x, row.y, row.w, row.h, tokens::col_accent.alpha(110), xdraw::corner_radius{5.0f});
+            }
+            dl.text(row.x + 10.0f, row.y + 8.0f, theme::fit_text(profiles.entries[i].name, row.w - (delete_row_ == i ? 88.0f : 20.0f)), style.text);
+
             if (delete_row_ == i) {
-                const xui::rect del{row.right() - 70, row.y, 70, row.h};
+                const xui::rect del{row.right() - 70.0f, row.y + 2.0f, 68.0f, row.h - 4.0f};
                 const bool hot = input.in_rect(del);
-                dl.rect_filled(del.x, del.y, del.w, del.h, hot ? xdraw::color{210, 55, 70} : tokens::col_elevated, xdraw::corner_radius{5});
-                dl.text(del.x + 12, del.y + 8, "Delete", hot ? xdraw::color{255, 255, 255} : style.text_dim);
+                dl.rect_filled(del.x, del.y, del.w, del.h,
+                    hot ? xdraw::color{235, 60, 75} : xdraw::color{180, 45, 55, 160},
+                    xdraw::corner_radius{4.0f});
+                const auto [dw, dh] = xdraw::measure_text("Delete");
+                dl.text(del.x + (del.w - dw) * 0.5f, del.y + (del.h - dh) * 0.5f, "Delete",
+                    hot ? xdraw::color{255, 255, 255} : xdraw::color{250, 210, 215});
             }
         }
-        const float y = r.y + 6 + profiles.entries.size() * 34.0f;
-        dl.text(r.x + 16, y + 8, profiles.entries.size() < 5 ? "+ Create config" : "5 / 5 configs", tokens::col_accent);
-        dl.text(r.x + 16, r.bottom() - 24, "Save edits before switching", style.text_dim);
+
+        const float y = r.y + 6.0f + profiles.entries.size() * 36.0f;
+        const xui::rect create{r.x + 6.0f, y, r.w - 12.0f, 32.0f};
+        const bool can_create = profiles.entries.size() < 5;
+        const bool create_hover = input.in_rect(create) && can_create;
+        if (create_hover) {
+            dl.rect_filled(create.x, create.y, create.w, create.h, tokens::col_elevated, xdraw::corner_radius{5.0f});
+        }
+        dl.text(create.x + 10.0f, create.y + 8.0f, can_create ? "+ Create config" : "5 / 5 configs",
+            can_create ? tokens::col_accent : tokens::col_text_dim);
     }
 };
+
 inline void panel(const xui::rect& r) {
     auto& dl = xui::draw::current();
-    dl.rect_filled(r.x, r.y, r.w, r.h, tokens::col_card, xdraw::corner_radius{12});
-    dl.rect(r.x, r.y, r.w, r.h, tokens::col_border.alpha(140), xdraw::corner_radius{12});
+    dl.rect_filled(r.x, r.y, r.w, r.h, tokens::col_card, xdraw::corner_radius{12.0f});
+    dl.rect(r.x, r.y, r.w, r.h, tokens::col_border.alpha(140), xdraw::corner_radius{12.0f});
 }
+
 inline bool button(const xui::rect& r, const char* label, bool selected = false, bool enabled = true) {
     auto& dl = xui::draw::current();
     const bool hot = enabled && hovered(r);
     const auto fade = xui::anim::lerp(xui::fnv1a(label), hot || selected ? 1.0f : 0.0f, 14.0f);
-    dl.rect_filled(r.x, r.y, r.w, r.h, xui::lerp(tokens::col_elevated, tokens::col_accent.alpha(65), fade), xdraw::corner_radius{7});
+    dl.rect_filled(r.x, r.y, r.w, r.h, xui::lerp(tokens::col_elevated, tokens::col_accent.alpha(65), fade), xdraw::corner_radius{7.0f});
+    if (selected) {
+        dl.rect(r.x, r.y, r.w, r.h, tokens::col_accent, xdraw::corner_radius{7.0f}, 1.0f);
+    }
     const auto [w, h] = xdraw::measure_text(label);
-    dl.text(r.x + (r.w - w) * 0.5f, r.y + (r.h - h) * 0.5f, label, enabled ? tokens::col_text : tokens::col_text_dim.alpha(90));
+    dl.text(r.x + (r.w - w) * 0.5f, r.y + (r.h - h) * 0.5f, label, enabled ? (selected ? tokens::col_accent : tokens::col_text) : tokens::col_text_dim.alpha(90));
     return hot && xui::ctx().input.mouse_clicked;
 }
+
 inline bool image(const xui::rect& r, const econ_type::skin_image* img) {
     if (!img || !img->srv || img->width <= 0 || img->height <= 0 || r.w <= 0 || r.h <= 0) return false;
     const float scale = std::min(r.w / img->width, r.h / img->height);
@@ -304,84 +417,241 @@ inline bool image(const xui::rect& r, const econ_type::skin_image* img) {
     xui::draw::current().image(r.x + (r.w - w) * 0.5f, r.y + (r.h - h) * 0.5f, w, h, img->srv.Get(), {255, 255, 255});
     return true;
 }
+
 inline void team_icon(float x, float y, int side) {
     auto& dl = xui::draw::current();
-    const auto color = side == 3 ? xdraw::color{100, 175, 255} : xdraw::color{235, 190, 90};
     if (side == 3) {
-        const std::array<float, 10> shield{x - 7, y - 8, x + 7, y - 8, x + 6, y + 3, x, y + 9, x - 6, y + 3};
-        dl.polyline(shield, color, true, 1.6f);
+        const auto col = xdraw::color{100, 175, 255};
+        const std::array<float, 10> shield{
+            x - 7.0f, y - 8.0f,
+            x + 7.0f, y - 8.0f,
+            x + 6.0f, y + 3.0f,
+            x,        y + 9.0f,
+            x - 6.0f, y + 3.0f
+        };
+        dl.polyline(shield, col, true, 1.8f);
+        dl.circle_filled(x, y - 1.0f, 2.0f, col);
     } else {
-        dl.circle(x, y, 9, color, 1.3f);
-        dl.line(x - 4, y - 5, x + 4, y + 5, color, 1.8f);
-        dl.line(x + 4, y - 5, x - 4, y + 5, color, 1.8f);
+        const auto col = xdraw::color{240, 190, 75};
+        dl.line(x - 6.0f, y - 6.0f, x + 6.0f, y + 6.0f, col, 2.0f);
+        dl.line(x + 6.0f, y - 6.0f, x - 6.0f, y + 6.0f, col, 2.0f);
+        dl.circle(x, y, 7.5f, col.alpha(160), 1.2f);
     }
 }
-// Inventory-art fallback, not a native 3D agent preview.
+
+// Live operative + weapon buy-menu preview and cosmetic sidebar controls
 inline bool sidebar(const xui::rect& r) {
     auto& dl = xui::draw::current();
     auto& econ = features::changer::g_econ_item_system;
-    const xui::rect main{r.x, r.y, r.w, r.h - 88};
+
+    const xui::rect main{r.x, r.y, r.w, r.h - 88.0f};
     panel(main);
-    dl.text(r.x + 14, r.y + 14, "COSMETIC CONFIG", tokens::col_text_dim);
-    const xui::rect selector{r.x + 14, r.y + 36, r.w - 96, 32};
-    const auto label = profiles.selected >= 0 ? profiles.entries[profiles.selected].name : "Choose config";
-    if (button(selector, theme::fit_text(label, selector.w - 18).c_str(), false, profiles.ready() && !dialog_busy))
+
+    // 1. Top Section: Cosmetic Config dropdown & save button
+    dl.text(r.x + 14.0f, r.y + 13.0f, "COSMETIC CONFIG", tokens::col_text_dim);
+    const xui::rect selector{r.x + 14.0f, r.y + 32.0f, r.w - 86.0f, 32.0f};
+    const auto label = (profiles.selected >= 0 && profiles.selected < static_cast<int>(profiles.entries.size())) ? profiles.entries[profiles.selected].name : "Choose config";
+    if (button(selector, theme::fit_text(label, selector.w - 18.0f).c_str(), false, profiles.ready() && !dialog_busy)) {
         xui::overlays::add(std::make_unique<profile_popup>(selector));
+    }
     xui::overlays::touch(profile_popup_id);
-    if (button({selector.right() + 6, selector.y, 62, 32}, profiles.ready() ? "Save" : "Retry", false,
+
+    if (button({selector.right() + 6.0f, selector.y, 52.0f, 32.0f}, profiles.ready() ? "Save" : "Retry", false,
         !dialog_busy && (!profiles.ready() || profiles.selected >= 0))) {
         if (profiles.ready()) profiles.save(); else profiles.load(true);
     }
-    dl.text(r.x + 14, r.y + 77, theme::fit_text(profiles.status, r.w - 28), tokens::col_text_dim);
-    const xui::rect preview{r.x + 14, r.y + 102, r.w - 28, std::max(40.0f, main.h - 212)};
+
+    // 2. Bottom Section of main panel: CT/T Loadouts with icons
+    constexpr float btn_h = 34.0f;
+    constexpr float btn_gap = 6.0f;
+    const float loadout_top = main.bottom() - 14.0f - (btn_h * 2.0f + btn_gap);
+
+    for (const int side : {3, 2}) {
+        const float by = loadout_top + (side == 3 ? 0.0f : (btn_h + btn_gap));
+        const xui::rect row{r.x + 14.0f, by, r.w - 28.0f, btn_h};
+        if (button(row, side == 3 ? "       CT Loadout" : "       T Loadout", team == side)) {
+            team = side;
+        }
+        team_icon(row.x + 22.0f, row.center_y(), side);
+    }
+
+    // 3. Middle Section: Interactive 3D Agent Preview (standing in buy-menu stance holding weapon)
+    const float prev_y = selector.bottom() + 10.0f;
+    const float prev_h = std::max(80.0f, loadout_top - 10.0f - prev_y);
+    const xui::rect preview{r.x + 14.0f, prev_y, r.w - 28.0f, prev_h};
+
     dl.push_clip(preview.x, preview.y, preview.w, preview.h);
-    dl.rect_filled(preview.x, preview.y, preview.w, preview.h, tokens::col_dark, xdraw::corner_radius{9});
-    dl.text(preview.x + 10, preview.y + 10, "Inventory preview (2D)", tokens::col_text_dim);
+
+    // Soft grounding ambient floor glow under boots
+    const auto team_ambient = (team == 3 ? xdraw::color{75, 155, 255} : xdraw::color{240, 180, 65});
+    dl.circle_filled(preview.center_x(), preview.bottom() - 32.0f, preview.w * 0.36f, team_ambient.alpha(16));
+    dl.circle_filled(preview.center_x(), preview.bottom() - 32.0f, preview.w * 0.20f, team_ambient.alpha(28));
+
+    // Mouse drag rotation & wheel zoom
+    const auto& input = xui::ctx().input;
+    const bool is_hovered = hovered(preview);
+
+    if (is_hovered && input.mouse_clicked) {
+        g_viewport.dragging = true;
+        g_viewport.drag_start_x = input.mouse_x;
+        g_viewport.drag_start_y = input.mouse_y;
+        g_viewport.initial_yaw = g_viewport.camera.yaw;
+        g_viewport.initial_pitch = g_viewport.camera.pitch;
+    }
+    if (g_viewport.dragging) {
+        if (!input.mouse_down) {
+            g_viewport.dragging = false;
+        } else {
+            const float dx = input.mouse_x - g_viewport.drag_start_x;
+            const float dy = input.mouse_y - g_viewport.drag_start_y;
+            g_viewport.camera.yaw = g_viewport.initial_yaw + dx * 0.014f;
+            g_viewport.camera.pitch = std::clamp(g_viewport.initial_pitch - dy * 0.012f, -0.65f, 0.65f);
+        }
+    }
+    if (is_hovered && input.scroll_delta != 0.0f) {
+        g_viewport.camera.distance = std::clamp(g_viewport.camera.distance - input.scroll_delta * 0.20f, 1.6f, 4.0f);
+    }
+    if (is_hovered && input.rmb_clicked) {
+        g_viewport.reset_camera();
+    }
+
+    // Subtle breathing / idle sway when not dragging
+    auto cam_render = g_viewport.camera;
+    if (!g_viewport.dragging) {
+        static float anim_time = 0.0f;
+        anim_time += xdraw::delta_time();
+        cam_render.yaw += std::sin(anim_time * 0.75f) * 0.025f;
+    }
+
+    // Resolve active / hovered agent
     const auto& ca = settings::g_changer.custom_agents;
     const int custom = hover.custom != -2 ? hover.custom : (team == 3 ? ca.selected_ct : ca.selected_t);
-    const auto agent_id = hover.agent.value_or(team == 3 ? settings::g_changer.agents.ct_def : settings::g_changer.agents.t_def);
+    auto agent_id = hover.agent.value_or(team == 3 ? settings::g_changer.agents.ct_def : settings::g_changer.agents.t_def);
     const auto* agent = econ.find_def(agent_id);
-    const float agent_h = std::max(20.0f, (preview.h - 42) * 0.58f);
-    std::string agent_name;
-    if (custom >= 0 && custom < static_cast<int>(ca.entries.size())) {
-        agent_name = ca.entries[custom].name;
-        dl.text(preview.x + 10, preview.y + 46, "Custom model selected", tokens::col_accent);
-        dl.text(preview.x + 10, preview.y + 65, "3D preview unavailable", tokens::col_text_dim);
-    } else {
-        if (agent) agent_name = agent->localized_name;
-        else agent_name = team == 3 ? "Default CT" : "Default T";
-        if (!agent || !image({preview.x + 8, preview.y + 30, preview.w - 16, agent_h}, econ.get_skin_image(agent->image_inventory)))
-            dl.text(preview.x + 10, preview.y + 50, "Agent artwork unavailable", tokens::col_text_dim);
+
+    if (!agent && custom < 0) {
+        for (const auto* a : econ.agents()) {
+            if (a->team() == team) { agent = a; break; }
+        }
+        if (!agent && !econ.agents().empty()) agent = econ.agents().front();
     }
-    dl.text(preview.x + 10, preview.y + 32 + agent_h, theme::fit_text(agent_name, preview.w - 20), tokens::col_text);
-    const auto weapon_id = hover.weapon.value_or(focused_weapon[team == 3 ? 0 : 1]);
+    const int resolved_agent_id = agent ? agent->def_index : (team == 3 ? 50001 : 50002);
+
+    // Resolve active / hovered weapon & skin
+    const auto fallback_wep = (team == 3 ? 60 : 7);
+    const auto weapon_id = hover.weapon.value_or(focused_weapon[team == 3 ? 0 : 1] != 0 ? focused_weapon[team == 3 ? 0 : 1] : fallback_wep);
     const auto* weapon = econ.find_def(weapon_id);
     const auto& skins = settings::g_changer.skins.for_team(team);
+
+    int resolved_paint = 0;
+    std::string skin_name{};
     if (weapon) {
         const auto it = skins.find(weapon_id);
-        const int paint = hover.paint.value_or(it != skins.end() ? it->second.paint_kit_id : 0);
-        const auto* art = paint ? econ.get_skin_image(weapon_id, paint) : econ.get_skin_image(weapon->image_inventory);
-        image({preview.x + 8, preview.y + 55 + agent_h, preview.w - 16, std::max(12.0f, preview.h - agent_h - 85)}, art);
-        const auto* kit = econ.find_paint_kit(paint);
-        dl.text(preview.x + 10, preview.bottom() - 22, theme::fit_text(kit ? kit->localized_name : weapon->localized_name, preview.w - 20), tokens::col_text);
-    } else dl.text(preview.x + 10, preview.bottom() - 24, "Hover an item to preview", tokens::col_text_dim);
+        resolved_paint = hover.paint.value_or(it != skins.end() ? it->second.paint_kit_id : 0);
+        const auto* kit = econ.find_paint_kit(resolved_paint);
+        if (kit) skin_name = kit->localized_name;
+    }
+
+    // Resolve equipped gloves
+    int glove_id = 0;
+    for (const auto& [def_index, skin] : skins) {
+        const auto* def = econ.find_def(def_index);
+        if (def && def->category == econ_type::item_category::glove) {
+            glove_id = def_index;
+            break;
+        }
+    }
+
+    // Initialize D3D11 renderer & upload 3D agent mesh
+    auto* dev = xdraw::device();
+    if (dev) {
+        if (!g_viewport.renderer || !g_viewport.renderer->is_valid()) {
+            g_viewport.renderer = std::make_unique<nemesis::preview3d::renderer>(dev);
+        }
+
+        if (g_viewport.renderer && g_viewport.renderer->is_valid()) {
+            const bool needs_rebuild = (team != g_viewport.last_team ||
+                                        resolved_agent_id != g_viewport.last_agent ||
+                                        weapon_id != g_viewport.last_weapon ||
+                                        resolved_paint != g_viewport.last_paint ||
+                                        glove_id != g_viewport.last_glove);
+
+            if (needs_rebuild) {
+                g_viewport.last_team = team;
+                g_viewport.last_agent = resolved_agent_id;
+                g_viewport.last_weapon = weapon_id;
+                g_viewport.last_paint = resolved_paint;
+                g_viewport.last_glove = glove_id;
+
+                const std::string wep_name = weapon ? weapon->name : "weapon_ak47";
+                const auto agent_mesh = nemesis::preview3d::generate_agent_with_weapon(
+                    team, resolved_agent_id, weapon_id, resolved_paint, glove_id, wep_name, skin_name
+                );
+                g_viewport.renderer->upload(agent_mesh);
+            }
+
+            // Render 3D agent viewport with transparent background
+            const UINT target_w = std::clamp(static_cast<UINT>(preview.w * 1.5f), UINT{128}, UINT{1024});
+            const UINT target_h = std::clamp(static_cast<UINT>(preview.h * 1.5f), UINT{128}, UINT{1024});
+            auto* srv = g_viewport.renderer->render(cam_render, target_w, target_h);
+            if (srv) {
+                dl.image(preview.x, preview.y, preview.w, preview.h, srv);
+            }
+        }
+    }
+
+    // 3D Interactive Badge (Top Right)
+    const xui::rect badge_3d{preview.right() - 36.0f, preview.y + 6.0f, 30.0f, 18.0f};
+    dl.rect_filled(badge_3d.x, badge_3d.y, badge_3d.w, badge_3d.h, tokens::col_elevated.alpha(160), xdraw::corner_radius{4.0f});
+    dl.text(badge_3d.x + 7.0f, badge_3d.y + 2.0f, "3D", tokens::col_accent);
+
+    // Agent Name / Custom .VMDL Badge (Top Left)
+    if (custom >= 0 && custom < static_cast<int>(ca.entries.size())) {
+        const auto& ce = ca.entries[custom];
+        const xui::rect badge{preview.x + 8.0f, preview.y + 6.0f, preview.w - 52.0f, 24.0f};
+        dl.rect_filled(badge.x, badge.y, badge.w, badge.h, tokens::col_elevated, xdraw::corner_radius{5.0f});
+        dl.rect(badge.x, badge.y, badge.w, badge.h, tokens::col_accent.alpha(90), xdraw::corner_radius{5.0f});
+        dl.text(badge.x + 8.0f, badge.y + 5.0f, ".VMDL", tokens::col_accent);
+        dl.text(badge.x + 50.0f, badge.y + 5.0f, theme::fit_text(ce.name, badge.w - 58.0f), tokens::col_text);
+    } else if (agent) {
+        dl.text(preview.x + 8.0f, preview.y + 6.0f, theme::fit_text(agent->localized_name, preview.w - 50.0f), tokens::col_text_dim);
+    }
+
+    // Bottom item banner: rarity dot + weapon & skin title
+    if (weapon) {
+        const auto* kit = econ.find_paint_kit(resolved_paint);
+        const auto rarity = kit ? econ.combined_rarity(weapon_id, resolved_paint) : weapon->rarity;
+        const auto rarity_col = rarity_colors[std::clamp(rarity, 0, 7)];
+
+        dl.circle_filled(preview.x + 10.0f, preview.bottom() - 14.0f, 3.5f, rarity_col);
+
+        const std::string title = kit ? (weapon->localized_name + " | " + kit->localized_name) : weapon->localized_name;
+        dl.text(preview.x + 20.0f, preview.bottom() - 21.0f, theme::fit_text(title, preview.w - 28.0f), tokens::col_text);
+    }
+
     dl.pop_clip();
-    for (const int side : {3, 2}) {
-        const xui::rect row{r.x + 14, main.bottom() - (side == 3 ? 94.0f : 48.0f), r.w - 28, 36};
-        if (button(row, side == 3 ? "CT Loadout" : "T Loadout", team == side)) team = side;
-        team_icon(row.x + 18, row.center_y(), side);
-    }
-    const xui::rect music{r.x, main.bottom() + 12, r.w, 76};
+
+    // 4. Mini Music Kit Panel (separated by 12px gap below main panel)
+    const xui::rect music{r.x, main.bottom() + 12.0f, r.w, 76.0f};
     panel(music);
+
     const auto* kit = econ.find_music_kit(hover.music.value_or(settings::g_changer.music.id));
-    const xui::rect cover{music.x + 12, music.y + 12, 52, 52};
-    dl.rect_filled(cover.x, cover.y, cover.w, cover.h, tokens::col_elevated, xdraw::corner_radius{6});
+    const xui::rect cover{music.x + 12.0f, music.y + 12.0f, 52.0f, 52.0f};
+    dl.rect_filled(cover.x, cover.y, cover.w, cover.h, tokens::col_elevated, xdraw::corner_radius{6.0f});
+
     if (!kit || !image(cover, econ.get_skin_image(kit->image_inventory))) {
-        dl.circle(cover.center_x(), cover.center_y(), 14, tokens::col_accent, 1.5f);
-        dl.circle_filled(cover.center_x(), cover.center_y(), 3, tokens::col_accent);
+        dl.circle(cover.center_x(), cover.center_y(), 14.0f, tokens::col_accent, 1.5f);
+        dl.circle_filled(cover.center_x(), cover.center_y(), 3.0f, tokens::col_accent);
     }
-    dl.text(music.x + 76, music.y + 16, "MUSIC KIT", tokens::col_text_dim);
-    dl.text(music.x + 76, music.y + 37, theme::fit_text(kit ? kit->localized_name : "Default", music.w - 88), tokens::col_text);
+
+    dl.text(music.x + 76.0f, music.y + 15.0f, "MUSIC KIT", tokens::col_text_dim);
+    const auto music_name = kit ? kit->localized_name : "Standard";
+    dl.text(music.x + 76.0f, music.y + 34.0f, theme::fit_text(music_name, music.w - 88.0f), tokens::col_text);
+    if (kit && !kit->localized_desc.empty()) {
+        dl.text(music.x + 76.0f, music.y + 51.0f, theme::fit_text(kit->localized_desc, music.w - 88.0f), tokens::col_text_dim);
+    }
+
     return hovered(music) && xui::ctx().input.mouse_clicked;
 }
+
 } // namespace rendering::skin_workspace

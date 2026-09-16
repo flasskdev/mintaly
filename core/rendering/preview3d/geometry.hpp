@@ -15,6 +15,7 @@
 namespace nemesis::preview3d {
 struct vec2 { float x{}, y{}; };
 struct vec3 { float x{}, y{}, z{}; };
+struct vec4 { float x{1.0f}, y{1.0f}, z{1.0f}, w{1.0f}; };
 inline vec3 operator+(vec3 a, vec3 b) { return {a.x+b.x,a.y+b.y,a.z+b.z}; }
 inline vec3 operator-(vec3 a, vec3 b) { return {a.x-b.x,a.y-b.y,a.z-b.z}; }
 inline vec3 operator*(vec3 a, float s) { return {a.x*s,a.y*s,a.z*s}; }
@@ -24,8 +25,11 @@ inline vec3 cross(vec3 a, vec3 b) { return {a.y*b.z-a.z*b.y,a.z*b.x-a.x*b.z,a.x*
 inline float length(vec3 v) { return std::sqrt(dot(v,v)); }
 inline vec3 unit(vec3 v) { const float n=length(v); return n>1e-12f ? v/n : vec3{0,1,0}; }
 inline bool finite(vec3 v) { return std::isfinite(v.x)&&std::isfinite(v.y)&&std::isfinite(v.z); }
-struct vertex { vec3 position; vec3 normal; vec2 uv; };
-static_assert(sizeof(vertex)==32);
+inline vec3 rotate_x(vec3 v, float a) { float c = std::cos(a), s = std::sin(a); return { v.x, v.y * c - v.z * s, v.y * s + v.z * c }; }
+inline vec3 rotate_y(vec3 v, float a) { float c = std::cos(a), s = std::sin(a); return { v.x * c + v.z * s, v.y, -v.x * s + v.z * c }; }
+inline vec3 rotate_z(vec3 v, float a) { float c = std::cos(a), s = std::sin(a); return { v.x * c - v.y * s, v.x * s + v.y * c, v.z }; }
+struct vertex { vec3 position; vec3 normal; vec2 uv; vec4 color{1.0f, 1.0f, 1.0f, 1.0f}; };
+static_assert(sizeof(vertex)==48);
 struct mesh {
     std::vector<vertex> vertices;
     vec3 center{};

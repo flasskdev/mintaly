@@ -137,6 +137,8 @@ namespace features::changer {
 
 		[[nodiscard]] int combined_rarity( std::int16_t def_index, int paint_kit_id ) const;
 
+		bool poll_schema( );
+
 		void flush_skin_images( );
 
 	private:
