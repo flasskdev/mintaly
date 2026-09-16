@@ -786,11 +786,11 @@ namespace features::esp::player {
 		const auto show_icon = cfg.display == settings::esp::player::overlay::weapon::display_type::icon || cfg.display == settings::esp::player::overlay::weapon::display_type::text_and_icon;
 		const auto show_text = cfg.display == settings::esp::player::overlay::weapon::display_type::text || cfg.display == settings::esp::player::overlay::weapon::display_type::text_and_icon;
 		auto total_height{ 0.0f };
+		const auto weapon_name = ( info.weapon.name == "knife_ct" || info.weapon.name == "knife_t" ) ? std::string{ "knife" } : info.weapon.name;
 
 		if ( show_icon )
 		{
-			const auto icon_name = ( info.weapon.name == "knife_ct" || info.weapon.name == "knife_t" ) ? std::string{ "knife" } : info.weapon.name;
-			const auto ico = systems::g_icons.get( icon_name, 0.35f );
+			const auto ico = systems::g_icons.get( weapon_name, 0.35f );
 
 			if ( ico && ico->texture )
 			{
@@ -814,11 +814,11 @@ namespace features::esp::player {
 		{
 			xdraw::push_font( rendering::g_fonts.smallest_pixel7[ rendering::fonts::size::normal ] );
 
-			const auto [text_w, text_h] = xdraw::measure_text( info.weapon.name );
+			const auto [text_w, text_h] = xdraw::measure_text( weapon_name );
 			const auto text_x = std::floorf( bounds.min.x + ( bounds.width( ) * 0.5f ) - ( text_w * 0.5f ) );
 			const auto text_y = std::floorf( bounds.max.y + 2.0f + offsets.bottom + total_height );
 
-			draw_list.text( text_x, text_y, info.weapon.name, cfg.text_color, xdraw::text_style::outlined );
+			draw_list.text( text_x, text_y, weapon_name, cfg.text_color, xdraw::text_style::outlined );
 			xdraw::pop_font( );
 
 			total_height += text_h + 2.0f;
