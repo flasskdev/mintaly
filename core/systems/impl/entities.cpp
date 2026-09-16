@@ -47,7 +47,6 @@ namespace systems {
 		{
 			return;
 		}
-		lock.unlock( );
 
 		if ( hashed == "C_SmokeGrenadeProjectile"_hash && settings::g_misc.m_smoke_and_fire_color.custom_smoke.value )
 		{
