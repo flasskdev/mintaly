@@ -147,14 +147,17 @@ namespace features::esp::player {
 			if ( info.valid( ) && std::isfinite( info.distance ) )
 				render_players.push_back( std::move( info ) );
 		}
-		// Sort a single pawn snapshot, not live controller scene nodes inside
-		// the comparator (which repeats memory reads and can change mid-sort).
-		std::sort( render_players.begin( ), render_players.end( ), []( const auto& a, const auto& b ) {
-			return a.distance > b.distance;
+		// Sort compact indices instead of repeatedly moving strings and entire
+		// bone arrays. No live memory reads occur inside the comparator.
+		std::vector<std::size_t> render_order( render_players.size( ) );
+		std::iota( render_order.begin( ), render_order.end( ), std::size_t{} );
+		std::sort( render_order.begin( ), render_order.end( ), [&]( auto a, auto b ) {
+			return render_players[a].distance > render_players[b].distance;
 		} );
 
-		for ( const auto& info : render_players )
+		for ( const auto index : render_order )
 		{
+			const auto& info = render_players[index];
 			const auto& cfg = settings::g_esp.m_player.m_overlay[ info.is_other_team ? 0 : 1 ];
 			if ( !cfg.enabled.value )
 			{
@@ -1027,26 +1030,6 @@ namespace features::esp::player {
 		// m_bDormant is ambiguous across the current schema scopes and can
 		// resolve to unrelated data. Keep the last known transform, as chams do.
 
-		const auto name_ptr = cfg.m_name.enabled.value ? memory::read<std::uintptr_t>( info.controller + SCHEMA( "CCSPlayerController", "m_sSanitizedPlayerName"_hash ) ) : 0;
-		if ( name_ptr )
-		{
-			info.name = memory::read_string( name_ptr, 128 );
-			std::ranges::transform( info.name, info.name.begin( ), [ ]( unsigned char c ) { return std::tolower( c ); } );
-		}
-
-		const auto money_services = needs_flag( flag::money ) ? memory::read<std::uintptr_t>( info.controller + SCHEMA( "CCSPlayerController", "m_pInGameMoneyServices"_hash ) ) : 0;
-		if ( money_services )
-		{
-			info.money = memory::read<int>( money_services + SCHEMA( "CCSPlayerController_InGameMoneyServices", "m_iAccount"_hash ) );
-		}
-
-		const auto item_services = ( needs_flag( flag::armor ) || needs_flag( flag::kit ) ) ? memory::read<std::uintptr_t>( info.pawn + SCHEMA( "C_BasePlayerPawn", "m_pItemServices"_hash ) ) : 0;
-		if ( item_services )
-		{
-			info.has_helmet = memory::read<bool>( item_services + SCHEMA( "CCSPlayer_ItemServices", "m_bHasHelmet"_hash ) );
-			info.has_defuser = memory::read<bool>( item_services + SCHEMA( "CCSPlayer_ItemServices", "m_bHasDefuser"_hash ) );
-		}
-
 		info.origin = memory::read<math::vector3>( game_scene_node + SCHEMA( "CGameSceneNode", "m_vecAbsOrigin"_hash ) );
 		info.distance = systems::g_view.origin( ).distance( info.origin ) * 0.01905f;
 		if ( needs_flag( flag::ping ) ) info.ping = memory::read<int>( info.controller + SCHEMA( "CCSPlayerController", "m_iPing"_hash ) );
@@ -1070,6 +1053,25 @@ namespace features::esp::player {
 			!( cfg.sound_reveal.value && this->recently_sounded( info.controller, pawn_handle, local, cfg.sound_duration.value ) ) )
 		{
 			return {};
+		}
+
+		// Hidden, non-audible players have already returned. Do not allocate
+		// names or resolve optional service pointers for rejected overlays.
+		const auto name_ptr = cfg.m_name.enabled.value ? memory::read<std::uintptr_t>( info.controller + SCHEMA( "CCSPlayerController", "m_sSanitizedPlayerName"_hash ) ) : 0;
+		if ( name_ptr )
+		{
+			info.name = memory::read_string( name_ptr, 128 );
+			std::ranges::transform( info.name, info.name.begin( ), [ ]( unsigned char c ) { return std::tolower( c ); } );
+		}
+
+		const auto money_services = needs_flag( flag::money ) ? memory::read<std::uintptr_t>( info.controller + SCHEMA( "CCSPlayerController", "m_pInGameMoneyServices"_hash ) ) : 0;
+		if ( money_services )
+			info.money = memory::read<int>( money_services + SCHEMA( "CCSPlayerController_InGameMoneyServices", "m_iAccount"_hash ) );
+		const auto item_services = ( needs_flag( flag::armor ) || needs_flag( flag::kit ) ) ? memory::read<std::uintptr_t>( info.pawn + SCHEMA( "C_BasePlayerPawn", "m_pItemServices"_hash ) ) : 0;
+		if ( item_services )
+		{
+			info.has_helmet = memory::read<bool>( item_services + SCHEMA( "CCSPlayer_ItemServices", "m_bHasHelmet"_hash ) );
+			info.has_defuser = memory::read<bool>( item_services + SCHEMA( "CCSPlayer_ItemServices", "m_bHasDefuser"_hash ) );
 		}
 
 		const bool needs_weapon = cfg.m_weapon.enabled.value || cfg.m_ammo_bar.enabled.value || needs_flag( flag::c4 );

@@ -43,15 +43,11 @@ namespace systems {
 
 		std::unique_lock lock( this->m_cache_mtx );
 
-		for ( const auto& c : this->m_cached )
+		if ( !this->m_cached.insert( entry ) )
 		{
-			if ( c.index == index )
-			{
-				return;
-			}
+			return;
 		}
-
-		this->m_cached.emplace_back( entry );
+		lock.unlock( );
 
 		if ( hashed == "C_SmokeGrenadeProjectile"_hash && settings::g_misc.m_smoke_and_fire_color.custom_smoke.value )
 		{
@@ -96,18 +92,11 @@ namespace systems {
 
 		std::unique_lock lock( this->m_cache_mtx );
 
-		for ( auto it = this->m_cached.begin( ); it != this->m_cached.end( ); ++it )
+		const auto entry = this->m_cached.find( static_cast<std::size_t>( index ) );
+		// A delayed removal for a reused index must not erase its new occupant.
+		if ( entry && entry->ptr == entity )
 		{
-			if ( it->index == index )
-			{
-				if ( it != this->m_cached.end( ) - 1 )
-				{
-					*it = this->m_cached.back( );
-				}
-
-				this->m_cached.pop_back( );
-				return;
-			}
+			this->m_cached.erase( static_cast<std::size_t>( index ) );
 		}
 	}
 
@@ -143,7 +132,7 @@ namespace systems {
 	{
 		std::shared_lock lock( this->m_cache_mtx );
 
-		for ( const auto& c : this->m_cached )
+		for ( const auto& c : this->m_cached.entries( ) )
 		{
 			if ( c.ptr == entity_ptr )
 			{
@@ -266,20 +255,16 @@ namespace systems {
 
 	std::vector<entities::cached> entities::get_by_type( type type ) const
 	{
-		std::shared_lock lock( this->m_cache_mtx );
-
-		std::vector<cached> result{};
-		result.reserve( this->m_cached.size( ) );
-
-		for ( const auto& c : this->m_cached )
+		const auto type_index = static_cast<std::size_t>( type );
 		{
-			if ( c.type == type )
-			{
-				result.emplace_back( c );
-			}
+			std::shared_lock lock( this->m_cache_mtx );
+			if ( const auto ready = this->m_cached.snapshot_if_ready( type_index ) )
+				return *ready;
 		}
-
-		return result;
+		// Recheck after acquiring the exclusive lock: another reader may have
+		// rebuilt the snapshot, or an entity callback may have invalidated it.
+		std::unique_lock lock( this->m_cache_mtx );
+		return this->m_cached.snapshot( type_index );
 	}
 
 	bool entities::is_empty( ) const

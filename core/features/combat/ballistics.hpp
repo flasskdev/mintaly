@@ -125,6 +125,20 @@ namespace features::combat::ballistics {
         return Angle{ballistic.x - punch.x, ballistic.y - punch.y, ballistic.z};
     }
 
+    // One timing snapshot can validate an entire record collection. Preserve
+    // the existing latency budget and inclusive lower time boundary.
+    [[nodiscard]] inline std::optional<float> lagcomp_cutoff(float max_unlag,
+        float current_time, float latency)
+    {
+        if (!std::isfinite(max_unlag) || !std::isfinite(current_time) || !std::isfinite(latency))
+            return std::nullopt;
+        const auto budget = max_unlag - std::max(latency, 0.0f);
+        const auto cutoff = current_time - budget;
+        if (budget <= 0.0f || !std::isfinite(cutoff))
+            return std::nullopt;
+        return cutoff;
+    }
+
     struct shot_stamp
     {
         int tick{};

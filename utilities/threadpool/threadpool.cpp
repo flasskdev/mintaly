@@ -6,6 +6,7 @@
 #include <utilities/memory/memory.hpp>
 #include <protection/game_addresses.hpp>
 #include "threadpool.hpp"
+#include "partition.hpp"
 
 namespace threadpool {
 
@@ -239,20 +240,8 @@ namespace threadpool {
 			return;
 		}
 
-		const int total {end - begin};
-		// Keep at most three queued chunks plus the caller; do not flood the
-		// engine pool on machines with many logical CPUs.
-		const int max_chunks {static_cast<int>(std::clamp (std::thread::hardware_concurrency (), 1u, 4u))};
-		min_chunk_size = std::max (min_chunk_size, 1);
-
-		auto chunk_size {(total + max_chunks - 1) / max_chunks};
-		if (chunk_size < min_chunk_size) {
-			chunk_size = min_chunk_size;
-		}
-
-		const auto num_chunks {(total + chunk_size - 1) / chunk_size};
-
-		if (num_chunks <= 1) {
+		// Hardware capacity is process-wide; avoid querying it on every batch.
+		static const int max_chunks {static_cast<int>(std::clamp (std::thread::
 			body (begin, end);
 			return;
 		}
