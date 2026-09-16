@@ -6,6 +6,87 @@
 
 namespace features::esp::player {
 
+	void overlay::reset_sounds( )
+	{
+		std::lock_guard lock( this->m_sound_mutex );
+		this->m_sounds.clear( );
+		this->m_sound_listener = 0;
+		this->m_sound_listener_controller = 0;
+	}
+
+	void overlay::on_sound_event( void* event )
+	{
+		if ( !event ) return;
+		std::lock_guard lock( this->m_sound_mutex );
+		const auto local = systems::g_local.get( );
+		if ( !local.view_pawn( ) || !local.view_controller( ) ) return;
+		if ( this->m_sound_listener != local.view_pawn( ) ||
+			this->m_sound_listener_controller != local.view_controller( ) )
+		{
+			this->m_sounds.clear( );
+			this->m_sound_listener = local.view_pawn( );
+			this->m_sound_listener_controller = local.view_controller( );
+		}
+
+		const auto controller = systems::events::get_controller( event, "userid" );
+		if ( !controller || controller == local.view_controller( ) ) return;
+		const auto pawn_offset = SCHEMA( "CBasePlayerController", "m_hPawn"_hash );
+		const auto scene_offset = SCHEMA( "C_BaseEntity", "m_pGameSceneNode"_hash );
+		const auto origin_offset = SCHEMA( "CGameSceneNode", "m_vecAbsOrigin"_hash );
+		const auto team_offset = SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash );
+		if ( !pawn_offset || !scene_offset || !origin_offset || !team_offset ) return;
+		const auto handle = memory::safe_read<std::uint32_t>( controller + pawn_offset ).value_or( 0 );
+		if ( !handle || handle == 0xffffffff ) return;
+		const auto pawn = systems::events::get_pawn( event, "userid" );
+		if ( !pawn || pawn == local.view_pawn( ) || systems::g_entities.lookup( handle ) != pawn ) return;
+		const auto team = memory::safe_read<std::uint8_t>( pawn + team_offset );
+		if ( !team ) return;
+		const auto& cfg = settings::g_esp.m_player.m_overlay[ local.is_this_other_team( *team ) ? 0 : 1 ];
+		if ( !cfg.enabled.value || !cfg.only_visible.value || !cfg.sound_reveal.value ) return;
+		const auto distance = cfg.sound_distance.value;
+		if ( !std::isfinite( distance ) || distance <= 0.0f ) return;
+
+		const auto source_scene = memory::safe_read<std::uintptr_t>( pawn + scene_offset ).value_or( 0 );
+		const auto listener_scene = memory::safe_read<std::uintptr_t>( local.view_pawn( ) + scene_offset ).value_or( 0 );
+		if ( !source_scene || !listener_scene ) return;
+		const auto source = memory::safe_read<math::vector3>( source_scene + origin_offset );
+		const auto listener = memory::safe_read<math::vector3>( listener_scene + origin_offset );
+		if ( !source || !listener ) return;
+		const auto meters = source->distance( *listener ) * 0.01905f;
+		// Event delivery is not proof of audibility. This is a configurable
+		// proximity approximation, not the sound mixer's occlusion/volume test.
+		if ( !std::isfinite( meters ) || meters > std::clamp( distance, 1.0f, 100.0f ) ) return;
+
+		const auto now = std::chrono::steady_clock::now( );
+		std::erase_if( this->m_sounds, [now]( const auto& entry ) {
+			return now - entry.second.time > std::chrono::seconds( 5 );
+		} );
+		if ( this->m_sounds.size( ) >= 128 && !this->m_sounds.contains( controller ) ) return;
+		this->m_sounds[ controller ] = { handle, now };
+	}
+
+	bool overlay::recently_sounded( std::uintptr_t controller, std::uint32_t pawn_handle,
+		const systems::local::snapshot& local, float duration )
+	{
+		if ( !std::isfinite( duration ) || duration <= 0.0f ) return false;
+		std::lock_guard lock( this->m_sound_mutex );
+		if ( this->m_sound_listener != local.view_pawn( ) ||
+			this->m_sound_listener_controller != local.view_controller( ) )
+		{
+			this->m_sounds.clear( );
+			return false;
+		}
+		const auto it = this->m_sounds.find( controller );
+		if ( it == this->m_sounds.end( ) ) return false;
+		const auto age = std::chrono::duration<float>( std::chrono::steady_clock::now( ) - it->second.time ).count( );
+		if ( it->second.pawn_handle != pawn_handle || age < 0.0f || age > std::clamp( duration, 0.1f, 5.0f ) )
+		{
+			this->m_sounds.erase( it );
+			return false;
+		}
+		return true;
+	}
+
 	void overlay::on_render( xdraw::draw_list& draw_list )
 	{
 		if ( !settings::g_esp.m_player.m_overlay[ 0 ].enabled.value && !settings::g_esp.m_player.m_overlay[ 1 ].enabled.value )
@@ -16,6 +97,7 @@ namespace features::esp::player {
 		const auto local = systems::g_local.get( );
 		if ( !local.is_valid( ) || !systems::g_entities.exists( local.view_controller( ) ) )
 		{
+			this->reset_sounds( );
 			return;
 		}
 
@@ -929,7 +1011,7 @@ namespace features::esp::player {
 			return info;
 		}
 
-		info.team = memory::read<int>( info.pawn + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) );
+		info.team = memory::safe_read<std::uint8_t>( info.pawn + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) ).value_or( 0 );
 		info.is_other_team = local.is_this_other_team( info.team );
 		const auto& cfg = settings::g_esp.m_player.m_overlay[ info.is_other_team ? 0 : 1 ];
 		if ( !cfg.enabled.value ) return {};
@@ -976,11 +1058,19 @@ namespace features::esp::player {
 		const auto needs_visibility = []( const auto& element ) {
 			return element.enabled.value && element.visible_color.value.val != element.occluded_color.value.val;
 		};
-		const bool trace_visibility = needs_visibility( cfg.m_box ) || needs_visibility( cfg.m_skeleton ) || needs_visibility( cfg.m_oof_arrow );
+		const bool trace_visibility = cfg.only_visible.value || needs_visibility( cfg.m_box ) || needs_visibility( cfg.m_skeleton ) || needs_visibility( cfg.m_oof_arrow );
 		if ( trace_visibility || cfg.m_skeleton.enabled.value || cfg.m_oof_arrow.enabled.value )
 			info.bones = systems::g_bones.get_skeleton( info.pawn );
 		if ( trace_visibility )
 			info.is_visible = systems::g_tracing.is_visible( systems::g_view.origin( ), info.bones[ cstypes::bone_ids::head ].position, info.pawn, local.view_pawn( ) );
+
+		// Sound only admits the overlay. It must not change trace visibility,
+		// visible/occluded colors, chams, or any combat visibility checks.
+		if ( cfg.only_visible.value && !info.is_visible &&
+			!( cfg.sound_reveal.value && this->recently_sounded( info.controller, pawn_handle, local, cfg.sound_duration.value ) ) )
+		{
+			return {};
+		}
 
 		const bool needs_weapon = cfg.m_weapon.enabled.value || cfg.m_ammo_bar.enabled.value || needs_flag( flag::c4 );
 		const auto weapon_services = needs_weapon ? memory::read<std::uintptr_t>( info.pawn + SCHEMA( "C_BasePlayerPawn", "m_pWeaponServices"_hash ) ) : 0;

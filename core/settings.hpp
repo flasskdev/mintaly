@@ -678,6 +678,9 @@ namespace settings {
                         {
                                 xui::setting enabled{ true,{}, "esp overlay", "esp" };
                                 xui::setting only_visible{ false,{}, "only visible", "esp" };
+                                xui::setting sound_reveal{ true,{}, "include sounds", "esp" };
+                                config::val<float> sound_duration{ 1.0f };
+                                config::val<float> sound_distance{ 35.0f };
 
                                 struct box
                                 {
@@ -930,6 +933,9 @@ namespace settings {
                                 explicit overlay(const std::string& prefix, bool enabled_default = true)
                                         : enabled{ enabled_default,{}, "esp overlay", prefix }
                                         , only_visible{ false,{}, "only visible", prefix }
+                                        , sound_reveal{ true,{}, "include sounds", prefix }
+                                        , sound_duration{ 1.0f, prefix, "sound duration" }
+                                        , sound_distance{ 35.0f, prefix, "sound distance" }
                                         , m_box{ prefix }
                                         , m_skeleton{ prefix }
                                         , m_health_bar{ prefix }

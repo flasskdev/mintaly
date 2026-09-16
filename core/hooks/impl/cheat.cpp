@@ -1333,6 +1333,7 @@ namespace hooks {
 		// Motion-blur state is render-thread owned; its next Present resets it
 		// after observing the invalid local snapshot.
 		features::misc::g_impacts.on_level_change( );
+		features::esp::player::g_overlay.reset_sounds( );
 		features::misc::g_scoreboard_weapons.on_level_change( );
 		features::world::g_scene.reset_skybox_state( );
 
