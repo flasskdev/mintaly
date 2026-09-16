@@ -570,9 +570,20 @@ namespace features::combat {
 
                         auto& records = this->m_records[ pawn ];
                         const auto simulation_time = memory::read<float>( pawn + SCHEMA( "C_BaseEntity", "m_flSimulationTime"_hash ) );
-                        const auto simulation_tick = cstypes::time_to_ticks( simulation_time );
+                        if ( !std::isfinite( simulation_time ) || simulation_time < 0.0f )
+                        {
+                                records.clear( );
+                                continue;
+                        }
 
-                        if ( records.empty( ) || simulation_tick > records.front( ).tick )
+                        // Respawns and time resets must not leave future poses in history.
+                        if ( !records.empty( ) && simulation_time < records.front( ).simulation_time )
+                        {
+                                records.clear( );
+                        }
+
+                        const auto simulation_tick = cstypes::time_to_ticks( simulation_time );
+                        if ( records.empty( ) || simulation_time > records.front( ).simulation_time )
                         {
                                 pending.push_back( { pawn, simulation_tick } );
                         }
@@ -594,6 +605,15 @@ namespace features::combat {
 
                         if ( rec.setup( p.pawn ) )
                         {
+                                rec.velocity = memory::read<math::vector3>( p.pawn + SCHEMA( "C_BaseEntity", "m_vecVelocity"_hash ) );
+                                rec.flags = memory::read<std::uint32_t>( p.pawn + SCHEMA( "C_BaseEntity", "m_fFlags"_hash ) );
+                                const auto collision = memory::read<std::uintptr_t>( p.pawn + SCHEMA( "C_BaseEntity", "m_pCollision"_hash ) );
+                                if ( collision )
+                                {
+                                        rec.obb_mins = memory::read<math::vector3>( collision + SCHEMA( "CCollisionProperty", "m_vecMins"_hash ) );
+                                        rec.obb_maxs = memory::read<math::vector3>( collision + SCHEMA( "CCollisionProperty", "m_vecMaxs"_hash ) );
+                                }
+
                                 this->m_records[ p.pawn ].emplace_front( std::move( rec ) );
                         }
                 }

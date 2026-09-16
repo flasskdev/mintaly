@@ -23,6 +23,12 @@ namespace features::combat {
 
                                 math::vector3 origin{};
                                 math::vector3 rotation{};
+                                // Captured alongside the pose by lagcomp::run, never read
+                                // from the live pawn while extrapolating an older record.
+                                math::vector3 velocity{};
+                                math::vector3 obb_mins{};
+                                math::vector3 obb_maxs{};
+                                std::uint32_t flags{};
 
                                 float simulation_time{};
                                 int tick{};
@@ -72,7 +78,7 @@ namespace features::combat {
                         }
 
                 private:
-                        void predict_movement( extrapolation_data& data, std::uintptr_t skip_entity ) const;
+                        [[nodiscard]] bool predict_movement( extrapolation_data& data, std::uintptr_t skip_entity ) const;
 
                         std::unordered_map<std::uintptr_t, std::deque<record>> m_records{};
                         mutable std::shared_mutex m_records_mtx{};
