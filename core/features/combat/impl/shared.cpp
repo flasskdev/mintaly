@@ -1227,11 +1227,24 @@ namespace features::combat {
 
         math::vector3 shared::find_spread_correction( const math::vector3& aim_angle, int tick ) const
         {
+                // Snapshot invariant inputs and resolve dispatch once per solve,
+                // not up to 720 times. Preserve every seed, iteration, arithmetic
+                // operation and the first matching solution; no approximate math.
+                const auto seed_fn = PATTERN( patterns::get_tick_view_angles );
+                const auto spread_fn = PATTERN( patterns::weapon_calculate_spread );
+                const auto inaccuracy = this->m_ctx.inaccuracy;
+                const auto weapon_spread = this->m_ctx.spread;
+                const auto recoil = this->m_ctx.recoil_index;
+                const auto item = static_cast< std::int16_t >( this->m_ctx.item_def_idx );
+                const auto bullets = this->m_ctx.num_bullets;
+                const auto fire_mode = this->quick_revolver_active( ) ? 1 : 0;
                 for ( auto i = 0; i < 720; i++ )
                 {
                         const auto test_angles = math::vector3{ static_cast< float >( i ) / 2.0f, aim_angle.y, 0.0f };
-                        const auto seed = this->get_spread_seed( test_angles, tick );
-                        const auto spread = this->calculate_spread( seed, this->m_ctx.inaccuracy, this->m_ctx.spread, this->m_ctx.recoil_index, this->m_ctx.item_def_idx, this->m_ctx.num_bullets );
+                        const auto seed = memory::call<std::uint32_t>( seed_fn, nullptr, &test_angles, tick );
+                        math::vector2 spread{};
+                        memory::call<void>( spread_fn, item, bullets, fire_mode,
+                                seed + std::uint32_t{ 1 }, inaccuracy, weapon_spread, recoil, &spread.x, &spread.y );
                         if ( !std::isfinite( spread.x ) || !std::isfinite( spread.y ) )
                                 continue;
 
@@ -1239,7 +1252,7 @@ namespace features::combat {
                         adj_angle.x += math::helpers::rad_to_deg( std::atan( std::sqrt( spread.x * spread.x + spread.y * spread.y ) ) );
                         adj_angle.z = -math::helpers::rad_to_deg( std::atan2( spread.x, spread.y ) );
 
-                        if ( this->get_spread_seed( adj_angle, tick ) == seed )
+                        if ( memory::call<std::uint32_t>( seed_fn, nullptr, static_cast<const math::vector3*>( &adj_angle ), tick ) == seed )
                         {
                                 return adj_angle;
                         }
