@@ -5,8 +5,47 @@
 #include <cmath>
 #include <cstdint>
 #include <optional>
+#include <span>
+#include <cstddef>
 
 namespace features::combat::ballistics {
+
+    // Non-owning lookup for a small stable hitbox set. Dense IDs use the table;
+    // unusual/negative IDs retain the original first-match linear semantics.
+    // The source entries must remain alive and unchanged for this view's lifetime.
+    template <typename Entry, std::size_t Capacity>
+    class indexed_view
+    {
+    public:
+        explicit indexed_view(std::span<const Entry> entries) : m_entries(entries)
+        {
+            m_indices.fill(entries.size());
+            for (std::size_t i = 0; i < entries.size(); ++i)
+            {
+                const auto id = entries[i].index;
+                if (id >= 0 && static_cast<std::size_t>(id) < Capacity &&
+                    m_indices[id] == entries.size())
+                    m_indices[id] = i;
+            }
+        }
+
+        [[nodiscard]] const Entry* find(int id) const
+        {
+            if (id >= 0 && static_cast<std::size_t>(id) < Capacity)
+            {
+                const auto index = m_indices[id];
+                return index < m_entries.size() ? &m_entries[index] : nullptr;
+            }
+            for (const auto& entry : m_entries)
+                if (entry.index == id)
+                    return &entry;
+            return nullptr;
+        }
+
+    private:
+        std::span<const Entry> m_entries;
+        std::array<std::size_t, Capacity> m_indices{};
+    };
 
     template <typename Vector>
     [[nodiscard]] bool finite(const Vector& value)

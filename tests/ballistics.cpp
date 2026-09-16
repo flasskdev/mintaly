@@ -6,6 +6,36 @@ namespace {
     struct vector { float x{}, y{}, z{}; };
     using namespace features::combat::ballistics;
 
+    void hitbox_lookup()
+    {
+        struct entry { int index; };
+        const std::array<entry, 8> entries{{{4}, {0}, {19}, {4}, {27}, {-2}, {27}, {2}}};
+        const indexed_view<entry, 20> lookup{std::span<const entry>{entries}};
+        // Compare exact addresses: duplicate IDs must retain the FIRST match.
+        for (int id = -5; id <= 40; ++id)
+        {
+            const entry* expected = nullptr;
+            for (const auto& value : entries)
+            {
+                if (value.index == id)
+                {
+                    expected = &value;
+                    break;
+                }
+            }
+            assert(lookup.find(id) == expected);
+        }
+        const indexed_view<entry, 20> empty{std::span<const entry>{}};
+        assert(!empty.find(0) && !empty.find(19) && !empty.find(-1) && !empty.find(20));
+        const indexed_view<entry, 0> fallback{std::span<const entry>{entries}};
+        assert(fallback.find(4) == &entries[0]);
+        assert(fallback.find(27) == &entries[4]);
+        assert(!lookup.find(std::numeric_limits<int>::min()));
+        assert(!lookup.find(std::numeric_limits<int>::max()));
+        const auto copy = lookup;
+        assert(copy.find(19) == &entries[2]);
+    }
+
     void geometry()
     {
         const vector low{-1, -1, -1}, high{1, 1, 1};
@@ -169,6 +199,7 @@ namespace {
 
 int main()
 {
+    hitbox_lookup();
     geometry();
     probabilities();
     score_bounds();

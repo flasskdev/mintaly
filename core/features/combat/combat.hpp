@@ -513,7 +513,7 @@ namespace features::combat {
                 void fire_gun( systems::input::usercmd* cmd, const target& tgt, bool was_forced, const math::vector3& shoot_eye, const systems::local::snapshot& local );
                 void fire_melee( systems::input::usercmd* cmd, const target& tgt, const systems::local::snapshot& local );
 
-                void generate_multipoints( const systems::hitboxes::entry& hitbox, const math::vector3& center, const math::quaternion& bone_rot, float pointscale, const math::vector3& shoot_pos, float inaccuracy, std::vector<math::vector3>& out ) const;
+                [[nodiscard]] std::size_t generate_multipoints( const systems::hitboxes::entry& hitbox, const math::vector3& center, const math::quaternion& bone_rot, float pointscale, const math::vector3& shoot_pos, std::optional<float> cone_tangent, std::array<math::vector3, 3>& out ) const;
                 [[nodiscard]] bool should_stop_movement( const aim_context& ctx ) const;
                 [[nodiscard]] float get_min_damage( const settings::combat::ragebot::weapon_group& config, int target_health, bool override_active ) const;
                 [[nodiscard]] float get_knife_damage( float raw, int armor, float armor_ratio ) const;
