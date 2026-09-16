@@ -841,6 +841,12 @@ namespace features::combat {
 
         std::vector<trace_point> points;
         points.reserve(static_cast<std::size_t>(scan_count) * 12);
+        // Reuse capacity across hitboxes instead of allocating for every one.
+        std::vector<math::vector3> multipoints;
+        multipoints.reserve(4);
+        std::vector<debug_point> debug_points;
+        if (config.debug_multipoints.value)
+            debug_points.reserve(static_cast<std::size_t>(scan_count) * 5);
 
         for (auto idx = 0; idx < scan_count; ++idx)
         {
@@ -874,21 +880,21 @@ namespace features::combat {
             cp.bone_index = hb->bone;
             cp.hitbox = *hb;
             cp.is_center = true;
+            const auto hitbox_points_begin = points.size();
             points.push_back(cp);
 
             if (config.debug_multipoints.value)
-            {
-                std::lock_guard lock(m_debug_mtx);
-                m_debug_points.push_back({ center, hitbox_index, true });
-            }
+                debug_points.push_back({ center, hitbox_index, true });
 
             // Generate multipoints
             if (config.pointscale > 0.0f)
             {
-                const auto mps = this->generate_multipoints(*hb, center, bone.rotation, config.pointscale, eye, inaccuracy);
-                for (const auto& mp : mps)
+                this->generate_multipoints(*hb, center, bone.rotation, config.pointscale, eye, inaccuracy, multipoints);
+                for (const auto& mp : multipoints)
                 {
-                    const auto duplicate = std::any_of(points.begin(), points.end(), [&](const trace_point& point)
+                    // Scan order contains each hitbox once; earlier hitboxes
+                    // cannot be duplicates under the existing hitbox-index test.
+                    const auto duplicate = std::any_of(points.begin() + hitbox_points_begin, points.end(), [&](const trace_point& point)
                         {
                             return point.hitbox_index == hitbox_index && (point.position - mp).length_sqr() < 0.01f;
                         });
@@ -905,12 +911,16 @@ namespace features::combat {
                     points.push_back(tp);
 
                     if (config.debug_multipoints.value)
-                    {
-                        std::lock_guard lock(m_debug_mtx);
-                        m_debug_points.push_back({ mp, hitbox_index, false });
-                    }
+                        debug_points.push_back({ mp, hitbox_index, false });
                 }
             }
+        }
+
+        if (!debug_points.empty())
+        {
+            // Publish once per pose, without locking against Present per point.
+            std::lock_guard lock(m_debug_mtx);
+            m_debug_points.insert(m_debug_points.end(), debug_points.begin(), debug_points.end());
         }
 
         if (points.empty())
@@ -1658,12 +1668,12 @@ namespace features::combat {
         }
     }
 
-    std::vector<math::vector3> rage::generate_multipoints(const systems::hitboxes::entry& hitbox, const math::vector3& center, const math::quaternion& bone_rot, float pointscale, const math::vector3& shoot_pos, float inaccuracy) const
+    void rage::generate_multipoints(const systems::hitboxes::entry& hitbox, const math::vector3& center, const math::quaternion& bone_rot, float pointscale, const math::vector3& shoot_pos, float inaccuracy, std::vector<math::vector3>& out) const
     {
-        std::vector<math::vector3> out;
+        out.clear();
         auto scale = std::clamp(pointscale / 100.0f, 0.0f, 1.0f);
         if (scale <= 0.01f)
-            return out;
+            return;
 
         const auto hb_mid = (hitbox.mins + hitbox.maxs) * 0.5f;
         const auto capsule_a = center + bone_rot.rotate_vector(hitbox.mins - hb_mid);
@@ -1678,7 +1688,7 @@ namespace features::combat {
             const auto automatic_scale = std::clamp(0.9f - cone_radius / hitbox.radius, 0.0f, 1.0f);
             scale = std::min(scale, automatic_scale);
             if (scale <= 0.01f)
-                return out;
+                return;
         }
 
         // Build view-relative frame
@@ -1762,7 +1772,6 @@ namespace features::combat {
             out.push_back(scaled_surface(-right));
             break;
         }
-        return out;
     }
 
     bool rage::should_stop_movement(const aim_context& ctx) const
