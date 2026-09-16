@@ -239,14 +239,16 @@ namespace features::combat {
 		data.flags = latest.flags;
 		data.sim_time = latest.simulation_time;
 
+		const auto turn_cos = std::cosf( direction_change );
+		const auto turn_sin = std::sinf( direction_change );
 		for ( auto i = 0; i < delta_ticks; ++i )
 		{
 			// Rotate the current (possibly collision-clipped) velocity, not the
 			// original heading that would push the player back into a wall.
 			const auto x = data.velocity.x;
 			const auto y = data.velocity.y;
-			data.velocity.x = x * std::cosf( direction_change ) - y * std::sinf( direction_change );
-			data.velocity.y = x * std::sinf( direction_change ) + y * std::cosf( direction_change );
+			data.velocity.x = x * turn_cos - y * turn_sin;
+			data.velocity.y = x * turn_sin + y * turn_cos;
 			if ( !this->predict_movement( data, pawn ) ||
 				( ( data.flags ^ latest.flags ) & cstypes::entity_flags::on_ground ) != 0 )
 			{

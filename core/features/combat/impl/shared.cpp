@@ -1139,8 +1139,13 @@ namespace features::combat {
 
         float shared::calculate_hitchance( const math::vector3& shoot_position, const math::vector3& aim_angle, const systems::hitboxes::entry& hitbox, const systems::bones::data& bone, const spread_cache& cache ) const
         {
+                return this->calculate_hitchance( shoot_position, aim_angle, hitbox, bone, cache, this->m_ctx.range );
+        }
+
+        float shared::calculate_hitchance( const math::vector3& shoot_position, const math::vector3& aim_angle, const systems::hitboxes::entry& hitbox, const systems::bones::data& bone, const spread_cache& cache, float range ) const
+        {
                 if ( cache.count <= 0 || cache.count > static_cast< int >( cache.values.size( ) ) ||
-                        !std::isfinite( this->m_ctx.range ) || this->m_ctx.range <= 0.0f ||
+                        !std::isfinite( range ) || range <= 0.0f ||
                         !std::isfinite( aim_angle.x ) || !std::isfinite( aim_angle.y ) || !std::isfinite( aim_angle.z ) )
                         return 0.0f;
 
@@ -1194,7 +1199,7 @@ namespace features::combat {
                         if ( !std::isfinite( sp.x ) || !std::isfinite( sp.y ) )
                                 continue;
                         const auto direction = forward + ( left * sp.x ) + ( up * sp.y );
-                        const auto ray_end   = direction.normalized( ) * this->m_ctx.range;
+                        const auto ray_end   = direction.normalized( ) * range;
 
                         bool hit{ false };
                         if ( is_capsule )

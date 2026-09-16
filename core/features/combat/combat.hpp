@@ -247,6 +247,8 @@ namespace features::combat {
                 [[nodiscard]] float calculate_hitchance( const math::vector3& shoot_position, const math::vector3& aim_angle, const systems::hitboxes::entry& hitbox, const systems::bones::data& bone, float inaccuracy, float spread, int samples = 128 ) const;
                 // Fast overload: uses a pre-built cache (no engine calls inside).
                 [[nodiscard]] float calculate_hitchance( const math::vector3& shoot_position, const math::vector3& aim_angle, const systems::hitboxes::entry& hitbox, const systems::bones::data& bone, const spread_cache& cache ) const;
+                // Worker overload: consumes snapshots only; never reads the live context.
+                [[nodiscard]] float calculate_hitchance( const math::vector3& shoot_position, const math::vector3& aim_angle, const systems::hitboxes::entry& hitbox, const systems::bones::data& bone, const spread_cache& cache, float range ) const;
                 [[nodiscard]] math::vector3 find_spread_correction( const math::vector3& aim_angle, int tick ) const;
                 [[nodiscard]] math::vector3 get_eye_position( std::uintptr_t local_pawn ) const;
                 [[nodiscard]] math::vector3 get_shoot_position( ) const;

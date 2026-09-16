@@ -1,4 +1,6 @@
 #include <pch/pch.hpp>
+#include <cassert>
+#include <utilities/threadpool/threadpool.hpp>
 #include <utilities/memory/memory.hpp>
 #include <utilities/addresses/addresses.hpp>
 #include <utilities/logging/logging.hpp>
@@ -198,10 +200,10 @@ namespace features::combat {
         const auto& shared_ctx = g_shared.ctx();
         const auto& prestate = systems::g_prediction.pre();
         const auto speed = prestate.networked_velocity.length_2d();
+        const auto threshold = ctx.is_scoped ? std::min(ctx.accurate_threshold, 1.0f) : ctx.accurate_threshold;
 
-        // Check if we actually need to stop
-        const auto will_stop = ctx.on_ground && (speed > ctx.accurate_threshold || (ctx.is_scoped && speed > 1.0f));
-        if (!will_stop)
+        if (!prestate.movement_valid || prestate.pawn != local.pawn || !ctx.on_ground ||
+            !std::isfinite(speed) || !std::isfinite(threshold) || threshold < 0.0f || speed <= threshold)
             return std::nullopt;
 
         auto sim_vel = prestate.networked_velocity;
@@ -214,11 +216,21 @@ namespace features::combat {
         const auto movement_services = memory::read<std::uintptr_t>(local.pawn + SCHEMA("C_BasePlayerPawn", "m_pMovementServices"_hash));
         const auto max_move_speed = movement_services ? memory::read<float>(movement_services + SCHEMA("CPlayer_MovementServices", "m_flMaxspeed"_hash)) : 250.0f;
 
-        // Simulate friction decay
+        if (!std::isfinite(sv_friction) || sv_friction < 0.0f ||
+            !std::isfinite(sv_stopspeed) || sv_stopspeed < 0.0f ||
+            !std::isfinite(sv_accelerate) || sv_accelerate < 0.0f ||
+            !std::isfinite(surface_friction) || surface_friction < 0.0f ||
+            !std::isfinite(shared_ctx.weapon_max_speed) || shared_ctx.weapon_max_speed <= 0.0f ||
+            !std::isfinite(max_move_speed) || max_move_speed <= 0.0f)
+            return std::nullopt;
+
+        math::vector3 displacement{};
+        // Integrate displacement and accuracy to the same stopping tick. The
+        // old average-velocity estimate mixed two different stop horizons.
         for (auto i = 0; i < 15; ++i)
         {
             const auto sim_speed = sim_vel.length_2d();
-            if (sim_speed < 1.0f)
+            if (sim_speed <= threshold)
                 break;
 
             const auto control = std::fmaxf(sim_speed, sv_stopspeed);
@@ -240,23 +252,48 @@ namespace features::combat {
             const auto accel_speed = std::fminf(accel * shared_ctx.weapon_max_speed * surface_friction * cstypes::tick_interval, new_speed);
             new_speed = std::fmaxf(new_speed - accel_speed, 0.0f);
 
-            if (new_speed > 0.0f)
-                sim_vel *= (new_speed / sim_speed);
-            else
-            {
-                sim_vel = {};
-                break;
-            }
+            sim_vel *= (new_speed / sim_speed);
+            displacement += sim_vel * cstypes::tick_interval;
         }
 
-        const auto avg_vel = (prestate.networked_velocity + sim_vel) * 0.5f;
-        const auto stop_ticks = g_shared.calculate_stop_ticks(prestate.networked_velocity, shared_ctx.weapon_max_speed, local.pawn);
-        const auto stop_time = static_cast<float>(stop_ticks) * cstypes::tick_interval;
+        if (sim_vel.length_2d() > threshold)
+            return std::nullopt;
 
+        const auto finite = [](const math::vector3& v)
+        {
+            return std::isfinite(v.x) && std::isfinite(v.y) && std::isfinite(v.z);
+        };
+        if (!finite(displacement) || !finite(current_eye) || !finite(prestate.origin) ||
+            !finite(prestate.collision_mins) || !finite(prestate.collision_maxs) ||
+            prestate.collision_maxs.x <= prestate.collision_mins.x ||
+            prestate.collision_maxs.y <= prestate.collision_mins.y ||
+            prestate.collision_maxs.z <= prestate.collision_mins.z)
+            return std::nullopt;
+
+        if (displacement.length_sqr() > 0.0f)
+        {
+            // Counter-strafe displacement is collinear, so one swept hull
+            // checks the entire path without tracing every simulated tick.
+            const auto origin = prestate.origin + displacement;
+            const auto path = systems::g_tracing.trace_hull(prestate.origin, origin,
+                prestate.collision_mins, prestate.collision_maxs, local.pawn, 0x1c3003, 4);
+            if (path.all_solid || path.fraction != 1.0f || !finite(path.end_pos))
+                return std::nullopt;
+            const auto ground = systems::g_tracing.trace_hull(origin, origin - math::vector3{0.0f, 0.0f, 2.0f},
+                prestate.collision_mins, prestate.collision_maxs, local.pawn, 0x1c3003, 4);
+            if (ground.all_solid || !std::isfinite(ground.fraction) ||
+                ground.fraction < 0.0f || ground.fraction >= 1.0f ||
+                !finite(ground.normal) || ground.normal.z <= 0.7f)
+                return std::nullopt;
+        }
+
+        const auto inaccuracy = g_shared.get_inaccuracy_at_velocity(local.pawn, sim_vel);
+        if (!std::isfinite(inaccuracy) || inaccuracy < 0.0f)
+            return std::nullopt;
         return stop_prediction
         {
-            .eye = { current_eye.x + avg_vel.x * stop_time, current_eye.y + avg_vel.y * stop_time, current_eye.z },
-            .inaccuracy = g_shared.get_inaccuracy_at_velocity(local.pawn, sim_vel)
+            .eye = current_eye + displacement,
+            .inaccuracy = inaccuracy
         };
     }
 
@@ -1077,9 +1114,70 @@ namespace features::combat {
             static_cast<float>(config.hitchance_override_value) / 100.0f :
             static_cast<float>(config.hitchance) / 100.0f;
 
-        // Build only when an eligible hit actually needs hitchance, then reuse
-        // every original sample for the rest of this evaluation.
-        shared::spread_cache hc_cache{};
+        struct hitchance_query
+        {
+            int hit_index{};
+            math::vector3 eye{};
+            math::vector3 angle{};
+            systems::hitboxes::entry hitbox{};
+            systems::bones::data bone{};
+            float result{};
+        };
+
+        std::vector<float> hitchances;
+        if (!config.no_spread.value)
+        {
+            std::vector<hitchance_query> queries;
+            queries.reserve(groups.size() * top_k_per_record);
+            for (const auto& group : groups)
+            {
+                if (!group.record || !group.record->valid)
+                    continue;
+                for (const auto idx : group.hit_indices)
+                {
+                    const auto& h = hits[idx];
+                    if (!h.record || !h.record->valid || h.bone_index < 0 ||
+                        h.bone_index >= h.record->bone_count ||
+                        h.bone_index >= static_cast<int>(std::size(h.record->bones)))
+                        continue;
+                    queries.push_back({ idx, h.source_eye.position, h.aim_angle,
+                        h.hitbox, h.record->bones[h.bone_index], 0.0f });
+                }
+            }
+            if (queries.empty())
+                return {};
+
+            // Engine spread generation runs once on the caller. Workers hold
+            // no record pointers and write only their own preallocated result.
+            const auto cache = g_shared.build_spread_cache(eval_inaccuracy, aim_ctx.spread);
+            const auto range = g_shared.ctx().range;
+            hitchances.resize(hits.size());
+            const auto evaluate = [&](int begin, int end)
+            {
+                for (auto i = begin; i < end; ++i)
+                {
+                    auto& query = queries[i];
+                    query.result = g_shared.calculate_hitchance(query.eye, query.angle,
+                        query.hitbox, query.bone, cache, range);
+                }
+            };
+            // Small/zero-spread workloads stay serial to avoid dispatch overhead.
+            if (cache.count > 1 && queries.size() > 8)
+                threadpool::parallel_for(0, static_cast<int>(queries.size()), evaluate, 8);
+            else
+                evaluate(0, static_cast<int>(queries.size()));
+
+            // parallel_for joins before snapshots are destroyed or targets ranked.
+            for (const auto& query : queries)
+            {
+#ifndef NDEBUG
+                const auto reference = g_shared.calculate_hitchance(query.eye, query.angle,
+                    query.hitbox, query.bone, cache, range);
+                assert(query.result == reference);
+#endif
+                hitchances[query.hit_index] = query.result;
+            }
+        }
 
         for (auto& group : groups)
         {
@@ -1094,13 +1192,7 @@ namespace features::combat {
                     h.bone_index >= static_cast<int>(std::size(h.record->bones)))
                     continue;
 
-                if (!config.no_spread.value && !hc_cache.initialized)
-                    hc_cache = g_shared.build_spread_cache(eval_inaccuracy, aim_ctx.spread);
-
-                const auto& bone = group.record->bones[h.bone_index];
-                const auto hc = config.no_spread.value ?
-                    1.0f :
-                    g_shared.calculate_hitchance(h.source_eye.position, h.aim_angle, h.hitbox, bone, hc_cache);
+                const auto hc = config.no_spread.value ? 1.0f : hitchances[idx];
 
                 const auto hp = static_cast<float>(h.health);
                 const auto can_kill = h.damage >= hp;
