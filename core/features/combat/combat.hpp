@@ -425,6 +425,7 @@ namespace features::combat {
                         float min_damage{};
                         std::array<shared::lagcomp::record*, k_max_lagcomp_records> records{};
                         int record_count{};
+                        bool extrapolation_pending{};
                 };
 
                 struct scan_hit

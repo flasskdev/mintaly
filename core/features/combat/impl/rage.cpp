@@ -296,12 +296,17 @@ namespace features::combat {
                 continue;
 
             auto records = g_shared.lc().get_valid_records(pawn);
-            // Extrapolation needs a valid source pose, so calling it only when
-            // records is empty made the old fallback effectively unreachable.
-            // Keep predictions out of melee scans and preserve both real poses.
+            if (records.empty())
+                continue;
+
+            const auto gun = shared_ctx.weapon_type >= cstypes::weapon_type::pistol &&
+                shared_ctx.weapon_type <= cstypes::weapon_type::lmg;
+            // Real direct hits already terminate the record scan. Avoid running
+            // speculative movement physics for a pose that will never be read.
+            // Distance-limited callers still need prediction before culling.
+            const auto defer_extrapolation = gun && !(max_distance_sq > 0.0f);
             shared::lagcomp::record* predicted_record{};
-            if (shared_ctx.weapon_type >= cstypes::weapon_type::pistol &&
-                shared_ctx.weapon_type <= cstypes::weapon_type::lmg)
+            if (gun && !defer_extrapolation)
             {
                 auto extrap = g_shared.lc().extrapolate(pawn);
                 if (extrap)
@@ -310,9 +315,6 @@ namespace features::combat {
                     predicted_record = &const_cast<rage*>(this)->m_extrapolated_records.back();
                 }
             }
-
-            if (records.empty())
-                continue;
 
             // Distance cull includes the optional prediction and every real pose.
             if (max_distance_sq > 0.0f)
@@ -328,6 +330,7 @@ namespace features::combat {
             }
 
             candidate c{};
+            c.extrapolation_pending = defer_extrapolation;
             c.pawn = pawn;
             c.health = health;
             c.armor = memory::read<int>(pawn + SCHEMA("C_CSPlayerPawn", "m_ArmorValue"_hash));
@@ -724,8 +727,25 @@ namespace features::combat {
         // order without allocating a second result vector for every candidate.
         for (auto& cand : candidates)
         {
-            for (auto ri = 0; ri < cand.record_count; ++ri)
+            for (auto ri = 0; ri <= cand.record_count; ++ri)
             {
+                if (ri == cand.record_count)
+                {
+                    if (!cand.extrapolation_pending ||
+                        cand.record_count >= static_cast<int>(cand.records.size()))
+                        break;
+                    cand.extrapolation_pending = false;
+                    auto extrap = g_shared.lc().extrapolate(cand.pawn);
+                    if (!extrap)
+                        break;
+
+                    // gather_candidates reserves one slot per player. At most
+                    // one pose is appended per candidate, keeping pointers stable.
+                    auto& predicted = const_cast<rage*>(this)->m_extrapolated_records;
+                    predicted.push_back(std::move(*extrap));
+                    cand.records[cand.record_count++] = &predicted.back();
+                }
+
                 if (!cand.records[ri] || !cand.records[ri]->valid)
                     continue;
 
