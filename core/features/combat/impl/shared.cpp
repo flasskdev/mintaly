@@ -1,4 +1,5 @@
 #include <pch/pch.hpp>
+#include <cassert>
 #include <utilities/memory/memory.hpp>
 #include <utilities/addresses/addresses.hpp>
 #include <utilities/logging/logging.hpp>
@@ -20,6 +21,94 @@ namespace features::combat {
                         std::uint16_t exit_contact_ix;
                         std::uint8_t can_penetrate;
                         std::uint8_t pad[ 3 ];
+                };
+
+                // Hitchance needs existence, not the nearest contact fraction.
+                // Prepare all ray-invariant terms once for a hitbox/eye pair.
+                // The exact root tests and tolerances match ray_vs_capsule.
+                struct capsule_hitchance_query
+                {
+                        math::vector3 origin;
+                        math::vector3 caps[ 2 ];
+                        math::vector3 ab;
+                        math::vector3 co[ 2 ];
+                        math::vector3 oc_perp{};
+                        float ab_sq;
+                        float n{};
+                        float cylinder_c{};
+                        float sphere_c[ 2 ];
+
+                        capsule_hitchance_query( const math::vector3& ray_origin,
+                                const math::vector3& a, const math::vector3& b, float radius )
+                                : origin( ray_origin ), caps{ a, b }, ab( b - a ),
+                                  co{ ray_origin - a, ray_origin - b }, ab_sq( ab.dot( ab ) )
+                        {
+                                const auto radius_sq = radius * radius;
+                                if ( ab_sq > 1e-8f )
+                                {
+                                        n = ab.dot( co[ 0 ] ) / ab_sq;
+                                        oc_perp = co[ 0 ] - ab * n;
+                                        cylinder_c = oc_perp.dot( oc_perp ) - radius_sq;
+                                }
+                                for ( auto i = 0; i < 2; ++i )
+                                        sphere_c[ i ] = co[ i ].dot( co[ i ] ) - radius_sq;
+                        }
+
+                        [[nodiscard]] bool intersects( const math::vector3& ray_dir ) const
+                        {
+                                const auto dir_sq = ray_dir.dot( ray_dir );
+                                if ( dir_sq < 1e-8f )
+                                        return false;
+
+                                if ( ab_sq > 1e-8f )
+                                {
+                                        const auto m = ab.dot( ray_dir ) / ab_sq;
+                                        const auto d_perp = ray_dir - ab * m;
+                                        const auto a = d_perp.dot( d_perp );
+                                        const auto half_b = d_perp.dot( oc_perp );
+                                        if ( a > 1e-8f )
+                                        {
+                                                const auto disc = half_b * half_b - a * cylinder_c;
+                                                if ( disc >= 0.0f )
+                                                {
+                                                        const auto sqrt_disc = std::sqrt( disc );
+                                                        for ( auto r = 0; r < 2; ++r )
+                                                        {
+                                                                const auto t = ( -half_b + ( r == 0 ? -sqrt_disc : sqrt_disc ) ) / a;
+                                                                if ( t < 0.0f || t >= 1.0f )
+                                                                        continue;
+                                                                const auto s = m * t + n;
+                                                                if ( s >= 0.0f && s <= 1.0f )
+                                                                        return true;
+                                                        }
+                                                }
+                                        }
+                                }
+
+                                for ( auto i = 0; i < 2; ++i )
+                                {
+                                        const auto half_b = co[ i ].dot( ray_dir );
+                                        const auto disc = half_b * half_b - dir_sq * sphere_c[ i ];
+                                        if ( disc < 0.0f )
+                                                continue;
+                                        const auto sqrt_disc = std::sqrt( disc );
+                                        for ( auto r = 0; r < 2; ++r )
+                                        {
+                                                const auto t = ( -half_b + ( r == 0 ? -sqrt_disc : sqrt_disc ) ) / dir_sq;
+                                                if ( t < 0.0f || t >= 1.0f )
+                                                        continue;
+                                                if ( ab_sq > 1e-8f )
+                                                {
+                                                        const auto hit_point = origin + ray_dir * t - caps[ i ];
+                                                        const auto sign = i == 0 ? -1.0f : 1.0f;
+                                                        if ( sign * ab.dot( hit_point ) < 0.0f )
+                                                                continue;
+                                                }
+                                                return true;
+                                        }
+                                }
+                                return false;
+                        }
                 };
 
         } // namespace detail
@@ -1045,12 +1134,17 @@ namespace features::combat {
                 const auto capsule_start = bone.rotation.rotate_vector( hitbox.mins ) + bone.position;
                 const auto capsule_end   = bone.rotation.rotate_vector( hitbox.maxs ) + bone.position;
                 const auto is_capsule    = hitbox.radius > 0.001f;
+                const auto capsule_query = is_capsule
+                        ? std::optional<detail::capsule_hitchance_query>{ std::in_place,
+                                shoot_position, capsule_start, capsule_end, hitbox.radius }
+                        : std::nullopt;
 
                 auto inverse_rotation = bone.rotation;
                 inverse_rotation.x = -inverse_rotation.x;
                 inverse_rotation.y = -inverse_rotation.y;
                 inverse_rotation.z = -inverse_rotation.z;
-                const auto box_ray_origin = inverse_rotation.rotate_vector( shoot_position - bone.position );
+                const auto box_ray_origin = is_capsule ? math::vector3{}
+                        : inverse_rotation.rotate_vector( shoot_position - bone.position );
 
                 const auto ray_vs_box = [ & ]( const math::vector3& ray_direction ) -> bool
                 {
@@ -1092,8 +1186,15 @@ namespace features::combat {
                         bool hit{ false };
                         if ( is_capsule )
                         {
+                                hit = capsule_query->intersects( ray_end );
+#ifndef NDEBUG
+                                // Differential check against the unchanged nearest-hit
+                                // implementation; no extra work in release builds.
                                 float fraction{ 1.0f };
-                                hit = this->ray_vs_capsule( shoot_position, ray_end, capsule_start, capsule_end, hitbox.radius, fraction );
+                                const auto reference_hit = this->ray_vs_capsule( shoot_position, ray_end,
+                                        capsule_start, capsule_end, hitbox.radius, fraction );
+                                assert( hit == reference_hit );
+#endif
                         }
                         else
                         {

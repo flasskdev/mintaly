@@ -45,24 +45,26 @@ namespace math {
 		vector3( ) noexcept : x( 0.0f ), y( 0.0f ), z( 0.0f ) {}
 		constexpr vector3( float x, float y, float z ) noexcept : x( x ), y( y ), z( z ) {}
 
-		[[nodiscard]] vector3 operator+( const vector3& v ) const noexcept;
-		[[nodiscard]] vector3 operator-( const vector3& v ) const noexcept;
-		[[nodiscard]] vector3 operator*( float scalar ) const noexcept;
-		[[nodiscard]] vector3 operator/( float scalar ) const noexcept;
-		[[nodiscard]] vector3 operator-( ) const noexcept;
+		// Keep hot scalar operations visible to the optimizer even without LTO.
+		// Preserve the original arithmetic and evaluation order.
+		[[nodiscard]] vector3 operator+( const vector3& v ) const noexcept { return { x + v.x, y + v.y, z + v.z }; }
+		[[nodiscard]] vector3 operator-( const vector3& v ) const noexcept { return { x - v.x, y - v.y, z - v.z }; }
+		[[nodiscard]] vector3 operator*( float scalar ) const noexcept { return { x * scalar, y * scalar, z * scalar }; }
+		[[nodiscard]] vector3 operator/( float scalar ) const noexcept { return { x / scalar, y / scalar, z / scalar }; }
+		[[nodiscard]] vector3 operator-( ) const noexcept { return { -x, -y, -z }; }
 
-		vector3& operator*=( float scalar ) noexcept;
-		vector3& operator/=( float scalar ) noexcept;
-		vector3& operator+=( const vector3& v ) noexcept;
-		vector3& operator-=( const vector3& v ) noexcept;
+		vector3& operator*=( float scalar ) noexcept { x *= scalar; y *= scalar; z *= scalar; return *this; }
+		vector3& operator/=( float scalar ) noexcept { x /= scalar; y /= scalar; z /= scalar; return *this; }
+		vector3& operator+=( const vector3& v ) noexcept { x += v.x; y += v.y; z += v.z; return *this; }
+		vector3& operator-=( const vector3& v ) noexcept { x -= v.x; y -= v.y; z -= v.z; return *this; }
 
-		[[nodiscard]] bool operator==( const vector3& v ) const noexcept;
-		[[nodiscard]] bool operator!=( const vector3& v ) const noexcept;
+		[[nodiscard]] bool operator==( const vector3& v ) const noexcept { return x == v.x && y == v.y && z == v.z; }
+		[[nodiscard]] bool operator!=( const vector3& v ) const noexcept { return !( *this == v ); }
 
-		[[nodiscard]] float dot( const vector3& v ) const noexcept;
-		[[nodiscard]] vector3 cross( const vector3& v ) const noexcept;
+		[[nodiscard]] float dot( const vector3& v ) const noexcept { return x * v.x + y * v.y + z * v.z; }
+		[[nodiscard]] vector3 cross( const vector3& v ) const noexcept { return { y * v.z - z * v.y, z * v.x - x * v.z, x * v.y - y * v.x }; }
 
-		[[nodiscard]] float length_sqr( ) const noexcept;
+		[[nodiscard]] float length_sqr( ) const noexcept { return x * x + y * y + z * z; }
 		[[nodiscard]] float length( ) const noexcept;
 		[[nodiscard]] float length_2d( ) const noexcept;
 

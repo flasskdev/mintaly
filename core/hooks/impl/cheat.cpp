@@ -1148,12 +1148,16 @@ namespace hooks {
 			return false;
 		}
 
+		// Reuse the mapping only within this invocation. No model/shape pointers
+		// survive a trace, a model change or a new command.
+		std::array<int, 256> bone_indices;
 		// The client dereferences every resolved transform without checking the
 		// backing cache. Reject a stale scene node instead of faulting in it.
 		for ( auto i = 0; i < count; ++i )
 		{
 			const auto shape_ptr = shape_array + 16ull * i;
 			const auto bone_index = memory::call<int>( get_bone_index, model, shape_ptr );
+			bone_indices[ i ] = bone_index;
 
 			if ( bone_index >= 0 &&
 				( bone_index >= 256 ||
@@ -1191,8 +1195,7 @@ namespace hooks {
 
 		for ( auto i = 0; i < count; ++i )
 		{
-			const auto shape_ptr = shape_array + 16ull * i;
-			const auto bone_index = memory::call<int>( get_bone_index, model, shape_ptr );
+			const auto bone_index = bone_indices[ i ];
 
 			if ( bone_index < 0 || bone_index >= record->bone_count )
 			{

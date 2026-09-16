@@ -4,25 +4,6 @@
 namespace math {
 
 
-	vector3 vector3::operator+( const vector3& v ) const noexcept { return { x + v.x, y + v.y, z + v.z }; }
-	vector3 vector3::operator-( const vector3& v ) const noexcept { return { x - v.x, y - v.y, z - v.z }; }
-	vector3 vector3::operator*( float scalar ) const noexcept { return { x * scalar, y * scalar, z * scalar }; }
-	vector3 vector3::operator/( float scalar ) const noexcept { return { x / scalar, y / scalar, z / scalar }; }
-	vector3 vector3::operator-( ) const noexcept { return { -x, -y, -z }; }
-
-	vector3& vector3::operator*=( float scalar ) noexcept { x *= scalar; y *= scalar; z *= scalar; return *this; }
-	vector3& vector3::operator/=( float scalar ) noexcept { x /= scalar; y /= scalar; z /= scalar; return *this; }
-	vector3& vector3::operator+=( const vector3& v ) noexcept { x += v.x; y += v.y; z += v.z; return *this; }
-	vector3& vector3::operator-=( const vector3& v ) noexcept { x -= v.x; y -= v.y; z -= v.z; return *this; }
-
-	bool vector3::operator==( const vector3& v ) const noexcept { return x == v.x && y == v.y && z == v.z; }
-	bool vector3::operator!=( const vector3& v ) const noexcept { return !( *this == v ); }
-
-	float vector3::dot( const vector3& v ) const noexcept { return x * v.x + y * v.y + z * v.z; }
-	vector3 vector3::cross( const vector3& v ) const noexcept { return { y * v.z - z * v.y, z * v.x - x * v.z, x * v.y - y * v.x }; }
-
-	float vector3::length_sqr( ) const noexcept { return x * x + y * y + z * z; }
-
 	float vector3::length( ) const noexcept
 	{
 		const auto len_sq = this->length_sqr( );
