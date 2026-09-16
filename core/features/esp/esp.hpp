@@ -88,8 +88,22 @@ namespace features::esp {
 		{
 		public:
 			void on_render( xdraw::draw_list& draw_list );
+			void on_sound_event( void* event );
+			void reset_sounds( );
 
 		private:
+			struct sound_record
+			{
+				std::uint32_t pawn_handle{};
+				std::chrono::steady_clock::time_point time{};
+			};
+			bool recently_sounded( std::uintptr_t controller, std::uint32_t pawn_handle,
+				const systems::local::snapshot& local, float duration );
+			std::mutex m_sound_mutex{};
+			std::unordered_map<std::uintptr_t, sound_record> m_sounds{};
+			std::uintptr_t m_sound_listener{};
+			std::uintptr_t m_sound_listener_controller{};
+
 			struct draw_offsets
 			{
 				float left{};

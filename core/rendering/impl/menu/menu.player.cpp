@@ -130,6 +130,16 @@ std::snprintf(popup_enable_id, sizeof(popup_enable_id), "##ov_enable_popup_%d", 
 if (xui::begin_popup(popup_enable_id, 220.0f))
 {
 xui::checkbox("only visible", ov.only_visible);
+if (ov.only_visible.value)
+{
+xui::checkbox("include sounds", ov.sound_reveal);
+if (ov.sound_reveal.value)
+{
+xui::slider_float("sound duration", ov.sound_duration, 0.1f, 5.0f, "%.1f s");
+xui::slider_float("sound distance", ov.sound_distance, 1.0f, 100.0f, "%.0f m");
+xui::text("steps / shots; distance estimate", tokens::col_accent);
+}
+}
 xui::end_popup();
 }
 xui::toggle("box", ov.m_box.enabled);
