@@ -296,30 +296,34 @@ namespace features::combat {
                 continue;
 
             auto records = g_shared.lc().get_valid_records(pawn);
-            if (records.empty())
+            // Extrapolation needs a valid source pose, so calling it only when
+            // records is empty made the old fallback effectively unreachable.
+            // Keep predictions out of melee scans and preserve both real poses.
+            shared::lagcomp::record* predicted_record{};
+            if (shared_ctx.weapon_type >= cstypes::weapon_type::pistol &&
+                shared_ctx.weapon_type <= cstypes::weapon_type::lmg)
             {
                 auto extrap = g_shared.lc().extrapolate(pawn);
-                if (!extrap.has_value())
-                    continue;
-                const_cast<rage*>(this)->m_extrapolated_records.push_back(std::move(*extrap));
-                records.push_back(&const_cast<rage*>(this)->m_extrapolated_records.back());
+                if (extrap)
+                {
+                    const_cast<rage*>(this)->m_extrapolated_records.push_back(std::move(*extrap));
+                    predicted_record = &const_cast<rage*>(this)->m_extrapolated_records.back();
+                }
             }
 
-            // Distance cull
+            if (records.empty())
+                continue;
+
+            // Distance cull includes the optional prediction and every real pose.
             if (max_distance_sq > 0.0f)
             {
                 const auto& origin = systems::g_prediction.pre().origin;
-                const auto delta_front = records.front()->origin - origin;
-                auto closest_sq = delta_front.x * delta_front.x + delta_front.y * delta_front.y + delta_front.z * delta_front.z;
-
-                if (records.size() > 1)
-                {
-                    const auto delta_back = records.back()->origin - origin;
-                    const auto back_sq = delta_back.x * delta_back.x + delta_back.y * delta_back.y + delta_back.z * delta_back.z;
-                    closest_sq = std::min(closest_sq, back_sq);
-                }
-
-                if (closest_sq > max_distance_sq)
+                const auto real_in_range = std::any_of(records.begin(), records.end(), [&](const auto* rec)
+                    {
+                        return (rec->origin - origin).length_sqr() <= max_distance_sq;
+                    });
+                if (!real_in_range && (!predicted_record ||
+                    (predicted_record->origin - origin).length_sqr() > max_distance_sq))
                     continue;
             }
 
@@ -328,21 +332,13 @@ namespace features::combat {
             c.health = health;
             c.armor = memory::read<int>(pawn + SCHEMA("C_CSPlayerPawn", "m_ArmorValue"_hash));
 
-            // Pick first and last record for scanning
-            std::array<int, k_max_scan_records> record_indices{};
-            auto picked{ 0 };
-
-            if (!records.empty())
-            {
-                record_indices[picked++] = 0;
-                if (records.size() > 1)
-                    record_indices[picked++] = static_cast<int>(records.size() - 1);
-            }
-
-            for (auto i = 0; i < picked; ++i)
-                c.records[i] = records[static_cast<std::size_t>(record_indices[i])];
-
-            c.record_count = picked;
+            c.records[c.record_count++] = records.front();
+            if (records.size() > 1)
+                c.records[c.record_count++] = records.back();
+            // The candidate array has room for a third, speculative pose without
+            // replacing the newest or oldest observed record.
+            if (predicted_record)
+                c.records[c.record_count++] = predicted_record;
 
             if (shared_ctx.weapon_type >= cstypes::weapon_type::pistol && shared_ctx.weapon_type <= cstypes::weapon_type::lmg)
             {
