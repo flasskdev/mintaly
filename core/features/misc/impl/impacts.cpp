@@ -244,8 +244,11 @@ namespace features::misc {
 			return;
 		}
 
-		const auto global_vars = memory::read<std::uintptr_t>( addresses::globals::global_vars );
-		const auto current_time = memory::read<float>( global_vars + 0x30 );
+		const auto global_vars = memory::safe_read<std::uintptr_t>( addresses::globals::global_vars ).value_or( 0 );
+		if ( !global_vars ) return;
+		const auto time = memory::safe_read<float>( global_vars + 0x30 );
+		if ( !time || !std::isfinite( *time ) ) return;
+		const auto current_time = *time;
 
 		std::unique_lock lock( this->m_mtx );
 
@@ -393,6 +396,7 @@ namespace features::misc {
 		const auto x = memory::call<float>(PATTERN (patterns::game_event_get_float), event, "x", 0.0f );
 		const auto y = memory::call<float>(PATTERN (patterns::game_event_get_float), event, "y", 0.0f );
 		const auto z = memory::call<float>(PATTERN (patterns::game_event_get_float), event, "z", 0.0f );
+		if ( !std::isfinite( x ) || !std::isfinite( y ) || !std::isfinite( z ) ) return;
 
 		{
 			std::unique_lock lock( this->m_mtx );
@@ -568,6 +572,7 @@ namespace features::misc {
 		}
 
 		const auto shoot_position = math::vector3{ out[ 0 ], out[ 1 ], out[ 2 ] };
+		if ( !std::isfinite( shoot_position.x ) || !std::isfinite( shoot_position.y ) || !std::isfinite( shoot_position.z ) ) return;
 
 		std::unique_lock lock( this->m_mtx );
 
@@ -584,8 +589,12 @@ namespace features::misc {
 
 	void impacts::on_boom( std::uintptr_t victim_pawn, int hitgroup, float damage, float hitchance, float inaccuracy, float spread, const math::vector3& aim_angle, const math::vector3& shoot_position, int tick, const std::array<systems::bones::data, 27>& skeleton, bool forced, std::uint32_t deferred_weapon, int command_tick )
 	{
-		const auto global_vars = memory::read<std::uintptr_t>( addresses::globals::global_vars );
-		const auto current_time = memory::read<float>( global_vars + 0x30 );
+		if ( !victim_pawn ) return;
+		const auto global_vars = memory::safe_read<std::uintptr_t>( addresses::globals::global_vars ).value_or( 0 );
+		if ( !global_vars ) return;
+		const auto time = memory::safe_read<float>( global_vars + 0x30 );
+		if ( !time || !std::isfinite( *time ) ) return;
+		const auto current_time = *time;
 
 		std::unique_lock lock( this->m_mtx );
 
@@ -1403,7 +1412,8 @@ namespace features::misc {
 			const auto duration = cfg.hit_marker_duration.value;
 			const auto elapsed = time - it->time;
 
-			if ( elapsed > duration )
+			if ( !std::isfinite( elapsed ) || elapsed < 0.0f ||
+				!std::isfinite( duration ) || duration <= 0.0f || elapsed > duration )
 			{
 				it = this->m_hitmarkers.erase( it );
 				continue;
@@ -1706,6 +1716,7 @@ namespace features::misc {
 
 	void impacts::render_hit_effect( xdraw::draw_list& draw_list, float time )
 	{
+		std::unique_lock lock( this->m_mtx );
 		const auto& cfg = settings::g_misc.m_impacts;
 
 		if ( !cfg.hit_effect.value || this->m_hit_effect_time <= 0.0f )
@@ -1714,9 +1725,10 @@ namespace features::misc {
 		}
 
 		const auto elapsed = time - this->m_hit_effect_time;
-		const auto duration = cfg.hit_effect_duration;
+		const auto duration = cfg.hit_effect_duration.value;
 
-		if ( elapsed > duration )
+		if ( !std::isfinite( elapsed ) || elapsed < 0.0f ||
+			!std::isfinite( duration ) || duration <= 0.0f || elapsed > duration )
 		{
 			this->m_hit_effect_time = 0.0f;
 			return;

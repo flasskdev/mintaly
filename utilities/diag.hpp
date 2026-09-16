@@ -820,7 +820,9 @@ namespace diag {
 			CloseHandle( thread );
 			if ( wait_result == WAIT_OBJECT_0 )
 			{
-	
+				// The worker releases the claim. Releasing it here could clear
+				// a new report's claim acquired after that worker finished.
+				return;
 			}
 
 			// Keep the claim while a timed-out worker may still use the request.
