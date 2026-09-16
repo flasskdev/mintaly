@@ -740,10 +740,10 @@ namespace features::misc {
 			return "death";
 		}
 
-		// 2. If no impact on world was confirmed, it flew past due to weapon spread
+		// Missing telemetry cannot establish spread, occlusion or pose error.
 		if ( !shot.impact_confirmed )
 		{
-			return "spread";
+			return "unconfirmed impact";
 		}
 
 		// 3. Prediction errors

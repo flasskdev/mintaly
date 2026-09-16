@@ -127,6 +127,34 @@ namespace {
         assert(zero_punch.x == ballistic.x && zero_punch.y == ballistic.y && zero_punch.z == ballistic.z);
     }
 
+    void timestamps()
+    {
+        auto stamp = normalize_stamp(100, 0.75f, 2, 0.5f);
+        assert(stamp && stamp->tick == 103 && stamp->fraction == 0.25f);
+        stamp = normalize_stamp(100, -0.25f, -2, 0.0f);
+        assert(stamp && stamp->tick == 97 && stamp->fraction == 0.75f);
+        stamp = normalize_stamp(100, 1.0f, 0, 0.0f);
+        assert(stamp && stamp->tick == 101 && stamp->fraction == 0.0f);
+        const auto low = std::numeric_limits<int>::min();
+        const auto high = std::numeric_limits<int>::max();
+        assert(!normalize_stamp(high, 0.75f, 0, 0.5f));
+        assert(!normalize_stamp(low, -0.25f, 0, 0.0f));
+        assert(!normalize_stamp(high, 0.0f, 1, 0.0f));
+        stamp = normalize_stamp(high, 0.0f, low, 0.0f);
+        assert(stamp && stamp->tick == -1 && stamp->fraction == 0.0f);
+        const auto nan = std::numeric_limits<float>::quiet_NaN();
+        const auto inf = std::numeric_limits<float>::infinity();
+        assert(!normalize_stamp(0, nan, 0, 0));
+        assert(!normalize_stamp(0, 0, 0, inf));
+        assert(!normalize_stamp(0, std::numeric_limits<float>::max(), 0, 0));
+        for (int i = -64; i <= 64; ++i)
+        {
+            stamp = normalize_stamp(100, i / 32.0f, 2, 0.25f);
+            assert(stamp && stamp->fraction >= 0 && stamp->fraction < 1);
+            assert(stamp->tick + static_cast<double>(stamp->fraction) == 102.25 + i / 32.0);
+        }
+    }
+
     void solver()
     {
         const auto seed_for = [](const vector& angle) { return static_cast<std::uint32_t>(angle.x); };
@@ -163,12 +191,38 @@ namespace {
                 ++calls;
                 return vector{static_cast<float>(seed + 1), 0, 0};
             });
-        assert(!result && calls <= 252);
+        assert(!result && calls <= 264);
 
         calls = 0;
         result = solve_spread(vector{}, seed_for,
             [&](std::uint32_t) -> std::optional<vector> { ++calls; return std::nullopt; });
         assert(!result && calls <= 241);
+
+        // The initial seed fails. A grid probe reaches an off-grid fixed point
+        // that a single correction per grid sample would never discover.
+        calls = 0;
+        result = solve_spread(vector{}, seed_for,
+            [&](std::uint32_t seed) -> std::optional<vector>
+            {
+                ++calls;
+                if (seed == 3 || seed == 1001) return vector{1001, 0, 0};
+                return std::nullopt;
+            });
+        assert(result && result->x == 1001 && calls == 4);
+
+        // Failed fallback chains remain bounded and never re-evaluate a seed.
+        std::array<bool, 2048> evaluated{};
+        calls = 0;
+        result = solve_spread(vector{}, seed_for,
+            [&](std::uint32_t seed) -> std::optional<vector>
+            {
+                assert(seed < evaluated.size() && !evaluated[seed]);
+                evaluated[seed] = true;
+                ++calls;
+                if (seed == 0) return std::nullopt;
+                return vector{seed < 1000 ? 1000.0f : 1.0f, 0, 0};
+            });
+        assert(!result && calls <= 264);
 
         // Quantized grid seeds must not repeat expensive inverse calculations.
         for (const auto repeated : {std::uint32_t{0}, std::numeric_limits<std::uint32_t>::max()})
@@ -204,5 +258,6 @@ int main()
     probabilities();
     score_bounds();
     command_seed();
+    timestamps();
     solver();
 }

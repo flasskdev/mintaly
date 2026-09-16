@@ -4,6 +4,7 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <limits>
 #include <optional>
 #include <span>
 #include <cstddef>
@@ -124,6 +125,34 @@ namespace features::combat::ballistics {
         return Angle{ballistic.x - punch.x, ballistic.y - punch.y, ballistic.z};
     }
 
+    struct shot_stamp
+    {
+        int tick{};
+        float fraction{};
+    };
+
+    // Validate before any float-to-int conversion or signed tick addition.
+    [[nodiscard]] inline std::optional<shot_stamp> normalize_stamp(int tick, float fraction,
+        int tick_delta, float fraction_delta)
+    {
+        if (!std::isfinite(fraction) || !std::isfinite(fraction_delta))
+            return std::nullopt;
+        const auto total = static_cast<double>(fraction) + static_cast<double>(fraction_delta);
+        const auto carry = std::floor(total);
+        auto normalized_tick = static_cast<double>(tick) + static_cast<double>(tick_delta) + carry;
+        auto normalized_fraction = static_cast<float>(total - carry);
+        // Rounding the double remainder to float can produce exactly one.
+        if (normalized_fraction >= 1.0f)
+        {
+            ++normalized_tick;
+            normalized_fraction = 0.0f;
+        }
+        if (normalized_tick < static_cast<double>(std::numeric_limits<int>::min()) ||
+            normalized_tick > static_cast<double>(std::numeric_limits<int>::max()))
+            return std::nullopt;
+        return shot_stamp{static_cast<int>(normalized_tick), normalized_fraction};
+    }
+
     // Engine-independent control flow: callbacks supply the real seed hash
     // and inverse-spread calculation. No RNG approximation or heap allocation.
     template <typename Angle, typename Seed, typename Correct>
@@ -135,7 +164,8 @@ namespace features::combat::ballistics {
 
         constexpr auto iteration_limit = 12;
         constexpr auto grid_samples = 240;
-        // At most 252 insertions into 512 slots. Exact keys (including zero
+        constexpr auto fallback_steps = 12;
+        // At most 264 insertions into 512 slots. Exact keys (including zero
         // and UINT32_MAX), no allocation and no false-positive rejection.
         std::array<std::uint32_t, 512> visited{};
         std::array<bool, 512> occupied{};
@@ -166,16 +196,28 @@ namespace features::combat::ballistics {
             seed = next;
         }
 
-        // Keep the existing full-pitch search as a deterministic fallback.
-        // A failed solve is not represented by a valid zero-degree angle.
+        // Keep every grid probe, but also follow short chains to seeds that
+        // the pitch grid never samples. A shared extra budget bounds the cost
+        // independently of grid size, and visited keys terminate cycles.
+        auto remaining_steps = fallback_steps;
         for (auto i = 0; i < grid_samples; ++i)
         {
             seed = seed_for(Angle{static_cast<float>(i) * 1.5f, aim.y, 0.0f});
-            if (!first_visit(seed))
-                continue;
-            const auto angle = correct(seed);
-            if (angle && finite(*angle) && seed_for(*angle) == seed)
-                return angle;
+            for (auto depth = 0; depth < 4; ++depth)
+            {
+                if (!first_visit(seed))
+                    break;
+                const auto angle = correct(seed);
+                if (!angle || !finite(*angle))
+                    break;
+                const auto next = seed_for(*angle);
+                if (next == seed)
+                    return angle;
+                if (depth == 3 || remaining_steps == 0)
+                    break;
+                --remaining_steps;
+                seed = next;
+            }
         }
         return std::nullopt;
     }

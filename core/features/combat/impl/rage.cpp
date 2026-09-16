@@ -1020,7 +1020,9 @@ namespace features::combat {
             std::array<math::vector3, 3> multipoints{};
             // Inaccuracy/spread are fixed for this eye pass. Evaluate tan once,
             // not once per hitbox; nullopt preserves disabled dynamic pointscale.
-            const auto cone_tangent = config.dynamic_pointscale.value
+            // Compensated shots are validated against their actual seed later;
+            // the uncompensated cone must not erase exposed edge candidates.
+            const auto cone_tangent = config.dynamic_pointscale.value && !config.no_spread.value
                 ? std::optional<float>{std::tanf(std::max(inaccuracy + shared_ctx.spread, 0.0f))}
                 : std::nullopt;
 
@@ -1030,7 +1032,10 @@ namespace features::combat {
                 if (cp.hitbox_index != 0 && cp.hitbox_index != 2 && cp.hitbox_index != 3 && cp.hitbox_index != 4 && cp.hitbox_index != 5 && cp.hitbox_index != 6)
                     continue;
 
-                if (cp.hitbox_index >= 0 && cp.hitbox_index < static_cast<int>(center_sufficient.size()) && center_sufficient[cp.hitbox_index])
+                // A reachable center may have no seed-consistent solution.
+                // Preserve edges for the bounded nospread alternative-shot pass.
+                if (!config.no_spread.value && cp.hitbox_index >= 0 &&
+                    cp.hitbox_index < static_cast<int>(center_sufficient.size()) && center_sufficient[cp.hitbox_index])
                     continue;
 
                 const auto& bone = skeleton[cp.bone_index];
@@ -1077,7 +1082,7 @@ namespace features::combat {
                     h.record = record;
                     results.push_back(h);
 
-                    if (pen.damage >= static_cast<float>(cand.health))
+                    if (!config.no_spread.value && pen.damage >= static_cast<float>(cand.health))
                         break;
                 }
             }
@@ -1151,28 +1156,23 @@ namespace features::combat {
 
         std::vector<record_group> groups;
         groups.reserve(16);
+        std::unordered_map<shared::lagcomp::record*, std::size_t> group_indices;
+        group_indices.reserve(16);
 
         for (auto i = 0; i < static_cast<int>(hits.size()); ++i)
         {
             auto rec = hits[i].record;
-            auto found{ false };
-            for (auto& g : groups)
-            {
-                if (g.record == rec)
-                {
-                    g.hit_indices.push_back(i);
-                    found = true;
-                    break;
-                }
-            }
-            if (!found)
+            const auto [it, inserted] = group_indices.try_emplace(rec, groups.size());
+            if (inserted)
             {
                 record_group g{};
                 g.record = rec;
                 g.hit_indices.reserve(16);
-                g.hit_indices.push_back(i);
                 groups.push_back(std::move(g));
             }
+            // Iterate the vector, never the hash map, to preserve first-seen
+            // record order and all existing near-tie selection semantics.
+            groups[it->second].hit_indices.push_back(i);
         }
 
         // Keep every valid hit; a damage-only top-eight shortlist can remove
@@ -1569,10 +1569,13 @@ namespace features::combat {
 
         if (!tgt.hit.source_eye.is_uninterpolated)
         {
-            stamp_frac = tgt.hit.source_eye.player_frac + tgt.hit.source_eye.lerp_ticks_frac;
-            const auto carry = static_cast<int>(std::floor(stamp_frac));
-            stamp_frac -= static_cast<float>(carry);
-            stamp_tick = tgt.hit.source_eye.player_tick + tgt.hit.source_eye.lerp_ticks_int + carry;
+            const auto stamp = ballistics::normalize_stamp(tgt.hit.source_eye.player_tick,
+                tgt.hit.source_eye.player_frac, tgt.hit.source_eye.lerp_ticks_int,
+                tgt.hit.source_eye.lerp_ticks_frac);
+            if (!stamp)
+                return;
+            stamp_tick = stamp->tick;
+            stamp_frac = stamp->fraction;
         }
 
         if (!std::isfinite(aim_angle.x) || !std::isfinite(aim_angle.y) ||
@@ -1648,7 +1651,11 @@ namespace features::combat {
             }
         }
 
-        features::misc::g_impacts.on_boom(tgt.hit.pawn, tgt.hit.hitgroup, tgt.hit.damage, tgt.hitchance, shared_ctx.inaccuracy, shared_ctx.spread, aim_angle, shoot_eye, tgt.hit.record->tick, g_shared.lc().get_skeleton(*tgt.hit.record), was_forced);
+        // Diagnostics compare the impact ray with the intended target ray,
+        // not the tilted pre-spread barrel direction produced by the solver.
+        const auto diagnostic_aim = config.no_spread.value
+            ? math::helpers::calculate_angle(shoot_eye, tgt.hit.position) : aim_angle;
+        features::misc::g_impacts.on_boom(tgt.hit.pawn, tgt.hit.hitgroup, tgt.hit.damage, tgt.hitchance, shared_ctx.inaccuracy, shared_ctx.spread, diagnostic_aim, shoot_eye, tgt.hit.record->tick, g_shared.lc().get_skeleton(*tgt.hit.record), was_forced);
         features::esp::player::g_chams.os().push(tgt.hit.pawn);
 
         const auto record_time = cstypes::tick_fraction::from_value(tgt.hit.record->simulation_time / cstypes::tick_interval);
