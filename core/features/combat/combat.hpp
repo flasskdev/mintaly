@@ -527,6 +527,8 @@ namespace features::combat {
                 struct scan_task { std::size_t candidate_index; int hitbox_index; };
                 mutable std::vector<scan_work> m_scan_work{};
                 mutable std::vector<scan_task> m_scan_tasks{};
+                mutable std::vector<std::vector<scan_hit>> m_candidate_hits{};
+                mutable std::vector<std::uint8_t> m_candidate_done{};
 
                 void scan_players( const math::vector3& eye, float inaccuracy, const aim_context& ctx, std::vector<candidate>& candidates, const systems::local::snapshot& local, std::vector<scan_hit>& out ) const;
                 void prepare_scan( const math::vector3& eye, float inaccuracy, const aim_context& ctx, const candidate& cand, shared::lagcomp::record* record, scan_work& work ) const;
