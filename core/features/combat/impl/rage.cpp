@@ -765,9 +765,9 @@ namespace features::combat {
     {
         diag::exception_scope scan_scope{ "rage: scan_players / batch" };
         if (candidates.empty()) return;
-        // Initialize TLS on the owner before any worker reads its slot index.
-        if (g_shared.g_autowall_tls_slot.ensure() == TLS_OUT_OF_INDEXES) return;
         const auto penetration = g_shared.pen(); // Immutable weapon-data snapshot.
+        // Initialize TLS on the owner before any worker reads its slot index.
+        if (!penetration.prepare_workers()) return;
         const auto max_fov = static_cast<float>(settings::g_combat.m_ragebot.get_group(
             g_shared.ctx().weapon_type, g_shared.ctx().item_def_idx).max_fov);
         const auto view_angles = ctx.view_angles;

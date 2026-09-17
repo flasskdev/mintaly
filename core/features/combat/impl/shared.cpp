@@ -42,6 +42,11 @@ namespace features::combat {
                 };
         }
 
+        bool shared::penetration::prepare_workers( ) const
+        {
+                return g_shared.g_autowall_tls_slot.ensure( ) != TLS_OUT_OF_INDEXES;
+        }
+
         shared::penetration::run_context shared::penetration::prepare_target( std::uintptr_t target_pawn, lagcomp::record* record ) const
         {
                 run_context ctx{};

@@ -120,9 +120,9 @@ namespace {
             assert(result.count == 0);
             return;
         }
-        assert(result.count >= 1 && result.count <= 4);
+        assert(result.count >= 1 && result.count <= threadpool::detail::max_partitions);
         const auto total = static_cast<std::int64_t>(end) - begin;
-        const auto count = std::clamp(requested, 1, 4);
+        const auto count = std::clamp(requested, 1, threadpool::detail::max_partitions);
         const auto expected_size = std::max((total + count - 1) / count,
             static_cast<std::int64_t>(std::max(minimum, 1)));
         auto cursor = begin;

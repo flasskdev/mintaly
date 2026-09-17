@@ -141,6 +141,8 @@ namespace features::combat {
                         };
 
                         void prepare( std::uintptr_t weapon_vdata, std::uintptr_t weapon );
+                        // Initialize trace TLS on the owner before publishing worker jobs.
+                        [[nodiscard]] bool prepare_workers( ) const;
 
                         [[nodiscard]] run_context prepare_target( std::uintptr_t target_pawn, lagcomp::record* record ) const;
                         [[nodiscard]] bool run( const math::vector3& start, const math::vector3& end, const run_context& ctx, std::uintptr_t local_pawn, int local_team, result& out ) const;
