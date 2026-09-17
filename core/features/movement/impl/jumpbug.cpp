@@ -91,7 +91,13 @@ namespace features::movement {
                 if (!finite(pos)) return std::nullopt;
                 // The movement segment uses only the current (crouched) hull.
                 const auto path = systems::g_tracing.trace_player_bbox(pre.networked_origin, pos, current, filter, movement);
-                if (!usable(path) || path.fraction < 1.0f) return std::nullopt;
+                if (!usable(path)) return std::nullopt;
+                if (path.fraction < 1.0f) {
+                    // At high fall speed the end of the tick can cross the floor.
+                    // It is an upper bound for refinement, NOT a valid release.
+                    if (!finite(path.normal) || path.normal.z < standable) return std::nullopt;
+                    return true;
+                }
                 auto below = pos;
                 below.z -= probe_depth;
                 const auto ground = systems::g_tracing.trace_player_bbox(pos, below, probe_hull, filter, movement);
