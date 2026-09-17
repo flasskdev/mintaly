@@ -27,6 +27,17 @@ namespace features::world {
 	{
 		settings::g_world.update_active( rendering::g_widgets.s_map_name );
 
+		const auto manager = memory::safe_read<std::uintptr_t>( addresses::globals::particle_manager ).value_or( 0 );
+		if ( manager != this->m_particle_manager )
+		{
+			// Handles belong to their original manager; never destroy them through a replacement.
+			this->m_effect_index = invalid_effect_index;
+			this->m_last_particle_type = -1;
+			this->m_last_round_start_time = 0.0f;
+			this->m_particle_loaded = false;
+			this->m_particle_manager = manager;
+		}
+
 		if ( !settings::g_world.m_weather.enabled.value )
 		{
 			if ( this->m_effect_index != invalid_effect_index )
@@ -75,6 +86,19 @@ namespace features::world {
 		const auto particle_manager = memory::read<std::uintptr_t>( addresses::globals::particle_manager );
 		if ( !particle_manager || !addresses::globals::resource_system )
 		{
+			return;
+		}
+		if ( !PATTERN( patterns::init_particle_path_buffer_alt )
+			|| !PATTERN( patterns::resource_system_load )
+			|| !PATTERN( patterns::particle_create_effect )
+			|| !PATTERN( patterns::particle_set_control_point ) )
+		{
+			static bool reported{};
+			if ( !reported )
+			{
+				logging::console::print( "[weather] required particle helper unavailable; check signatures for this game build" );
+				reported = true;
+			}
 			return;
 		}
 
@@ -127,12 +151,18 @@ namespace features::world {
 
 		this->m_effect_index = effect_index;
 		this->m_last_particle_type = static_cast< int >( settings::g_world.m_weather.type.value );
-		this->m_last_update = {};
-		this->m_color_valid = false;
+		static bool creation_failed{};
+		if ( effect_index == invalid_effect_index && !creation_failed )
+			logging::console::print( "[weather] effect creation failed; check embedded particle loading" );
+		creation_failed = effect_index == invalid_effect_index;
 	}
 
 	void weather::update_particles( )
 	{
+		// Do not spawn at the world origin while the observer/player model is unavailable.
+		const auto pawn = systems::g_local.get( ).view_pawn( );
+		if ( !pawn || !memory::safe_read<std::uintptr_t>( pawn + SCHEMA( "C_BaseEntity", "m_pGameSceneNode"_hash ) ).value_or( 0 ) )
+			return;
 		const auto current_type = static_cast< int >( settings::g_world.m_weather.type.value );
 
 		if ( this->m_effect_index != invalid_effect_index && this->m_last_particle_type != current_type )
@@ -158,11 +188,7 @@ namespace features::world {
 			}
 		}
 
-		// The effect simulates independently; control points do not need render-rate updates.
-		const auto now = std::chrono::steady_clock::now( );
-		if ( std::chrono::duration<float>( now - this->m_last_update ).count( ) < 1.0f / 60.0f )
-			return;
-
+		// Publish control points every update, including resource initialization frames.
 		const auto particle_manager = memory::read<std::uintptr_t>( addresses::globals::particle_manager );
 		const auto view_pawn = systems::g_local.get( ).view_pawn( );
 
@@ -177,7 +203,6 @@ namespace features::world {
 			return;
 		}
 
-		this->m_last_update = now;
 		const auto origin = memory::read<math::vector3>( game_scene_node + SCHEMA( "CGameSceneNode", "m_vecAbsOrigin"_hash ) );
 		const auto& weather = settings::g_world.m_weather;
 		if ( weather.type.value == settings::world::weather::weather_type::rain && weather.wind.value )
@@ -222,15 +247,8 @@ namespace features::world {
 		}
 
 		const auto color = math::vector3{ static_cast< float >( weather.color.value.r ), static_cast< float >( weather.color.value.g ), static_cast< float >( weather.color.value.b ) };
-		const std::array<float, 3> rgb{ color.x, color.y, color.z };
-		if ( !this->m_color_valid || this->m_last_color != rgb )
-		{
-			if ( memory::call<bool>( PATTERN( patterns::particle_set_control_point ), particle_manager, this->m_effect_index, 1, &color, 0 ) )
-			{
-				this->m_last_color = rgb;
-				this->m_color_valid = true;
-			}
-		}
+		// Do not infer persistent initialization from an undocumented return value.
+		memory::call<void>( PATTERN( patterns::particle_set_control_point ), particle_manager, this->m_effect_index, 1, &color, 0 );
 	}
 
 	void weather::release_particles( )

@@ -513,7 +513,6 @@ namespace hooks {
 				features::changer::g_knives.on_frame_stage_notify( );
 
 				features::world::g_scene.on_frame_stage_notify( );
-				features::world::g_weather.on_frame_stage_notify( );
 				features::world::g_smoke.on_frame_stage_notify( );
 				features::misc::g_other.on_frame_stage_notify( );
 			}
@@ -565,6 +564,7 @@ namespace hooks {
 		{
 			systems::g_view.update_matrix( );
 			systems::g_frame_data.update( );
+			features::world::g_weather.on_frame_stage_notify( );
 			features::world::g_smoke.on_frame_stage_notify( );
 		}
 
