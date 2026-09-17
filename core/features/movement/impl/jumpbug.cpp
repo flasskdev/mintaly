@@ -6,13 +6,13 @@
 #include <array>
 #include <cmath>
 #include "../movement.hpp"
+#include "../jumpbug_timing.hpp"
 #include <protection/game_addresses.hpp>
 
 namespace features::movement {
     namespace {
         constexpr float standing_height = 72.0f;
         constexpr float ground_probe = 2.0f;
-        constexpr int samples = 128;
 
         bool finite(const math::vector3& v) {
             return std::isfinite(v.x) && std::isfinite(v.y) && std::isfinite(v.z);
@@ -54,7 +54,9 @@ namespace features::movement {
         const auto normal_var = CONVAR("sv_standable_normal");
         if (!gravity_var || !normal_var) return;
         const float dt = cstypes::tick_interval;
-        const float gravity = gravity_var->get<float>() * pre.gravity_scale;
+        if (!std::isfinite(pre.gravity_scale) || pre.gravity_scale < 0.0f) return;
+        // Source movement uses the default multiplier for an unset (zero) scale.
+        const float gravity = gravity_var->get<float>() * (pre.gravity_scale > 0.0f ? pre.gravity_scale : 1.0f);
         const float standable = normal_var->get<float>();
         if (!std::isfinite(dt) || dt <= 0.0f || !std::isfinite(gravity) || gravity < 0.0f ||
             !std::isfinite(standable) || standable <= 0.0f || standable > 1.0f) return;
@@ -72,32 +74,54 @@ namespace features::movement {
         bool fire = false;
         float fire_when = 0.0f;
 
-        // A jumpbug needs a completed crouch and room to stand up. A swept
-        // hull hitting the floor is NOT success: at that point it may be too late.
+        const auto usable = [](const systems::tracing::result& trace) {
+            return !trace.all_solid && std::isfinite(trace.fraction) &&
+                trace.fraction >= 0.0f && trace.fraction <= 1.0f && finite(trace.end_pos);
+        };
+        // Stay crouched in flight. Only the release position needs to fit the
+        // expanded hull; sweeping that hull over the entire approach rejects
+        // paths which the actual crouched player can traverse.
         if (pre.ducked && standing_height - height > ground_probe) {
-            auto end = position(1.0f);
-            end.z -= ground_probe;
-            const auto approach = systems::g_tracing.trace_player_bbox(pre.networked_origin, end, expanded, filter, movement);
-            if (!approach.all_solid && std::isfinite(approach.fraction) && approach.fraction >= 0.0f &&
-                approach.fraction < 1.0f && approach.normal.z >= standable) {
-                for (int sample = 0; sample < samples; ++sample) {
-                    const float when = static_cast<float>(sample) / samples;
-                    const auto pos = position(when);
-                    if (!finite(pos)) break;
-                    // Reject collisions before the planned release (walls, ceilings,
-                    // and penetrated floors). Never use a standing-landing fallback.
-                    const auto path = systems::g_tracing.trace_player_bbox(pre.networked_origin, pos, expanded, filter, movement);
-                    if (path.all_solid || !std::isfinite(path.fraction) || path.fraction < 1.0f) continue;
-                    auto below = pos;
-                    below.z -= ground_probe;
-                    const auto ground = systems::g_tracing.trace_player_bbox(pos, below, expanded, filter, movement);
-                    if (!ground.all_solid && std::isfinite(ground.fraction) && ground.fraction > 0.0f &&
-                        ground.fraction < 1.0f && ground.normal.z >= standable) {
-                        fire = true;
-                        fire_when = when;
-                        break;
-                    }
+            auto probe_hull = current;
+            // A downward probe on the CURRENT hull reaches one unit below the
+            // eventual standing feet. It brackets the middle of the 2-unit window.
+            const float probe_depth = standing_height - height + ground_probe * 0.5f;
+            const auto when = jumpbug_timing::find_contact_time([&](float time) -> std::optional<bool> {
+                const auto pos = position(time);
+                if (!finite(pos)) return std::nullopt;
+                // The movement segment uses only the current (crouched) hull.
+                const auto path = systems::g_tracing.trace_player_bbox(pre.networked_origin, pos, current, filter, movement);
+                if (!usable(path)) return std::nullopt;
+                if (path.fraction < 1.0f) {
+                    // At high fall speed the end of the tick can cross the floor.
+                    // It is an upper bound for refinement, NOT a valid release.
+                    if (!finite(path.normal) || path.normal.z < standable) return std::nullopt;
+                    return true;
                 }
+                auto below = pos;
+                below.z -= probe_depth;
+                const auto ground = systems::g_tracing.trace_player_bbox(pos, below, probe_hull, filter, movement);
+                if (!usable(ground)) return std::nullopt;
+                if (ground.fraction == 1.0f) return false;
+                if (!finite(ground.normal) || ground.normal.z < standable) return std::nullopt;
+                return true;
+            });
+            const auto safe_release = [&](float time) {
+                const auto pos = position(time);
+                if (!finite(pos)) return false;
+                const auto path = systems::g_tracing.trace_player_bbox(pre.networked_origin, pos, current, filter, movement);
+                if (!usable(path) || path.fraction < 1.0f) return false;
+                const auto clearance = systems::g_tracing.trace_player_bbox(pos, pos, expanded, filter, movement);
+                if (!usable(clearance) || clearance.fraction != 1.0f) return false;
+                auto below = pos;
+                below.z -= ground_probe;
+                const auto ground = systems::g_tracing.trace_player_bbox(pos, below, expanded, filter, movement);
+                return usable(ground) && ground.fraction > 0.0f && ground.fraction < 1.0f &&
+                    finite(ground.normal) && ground.normal.z >= standable;
+            };
+            if (when && safe_release(*when) && safe_release(*when + jumpbug_timing::event_gap)) {
+                fire = true;
+                fire_when = *when;
             }
         }
 
@@ -134,12 +158,12 @@ namespace features::movement {
             step->set_analog_left_delta(0.0f);
         };
         // Hold crouch until the verified window; release jump before pressing it.
-        // input::apply stable-sorts these events, preserving equal-time order.
+        // Distinct times prevent unduck and jump being collapsed into one state.
         event(steps[0], jump, false, 0.0f);
         event(steps[1], duck, true, 0.0f);
         if (fire) {
             event(steps[2], duck, false, fire_when);
-            event(steps[3], jump, true, fire_when);
+            event(steps[3], jump, true, fire_when + jumpbug_timing::event_gap);
         }
         cmd->buttons.value = (cmd->buttons.value & ~controlled) | (fire ? jump : duck);
         cmd->buttons.value_changed |= controlled;
