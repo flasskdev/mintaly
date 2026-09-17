@@ -1,6 +1,7 @@
 #include <pch/pch.hpp>
 #include <utilities/memory/memory.hpp>
 #include <utilities/addresses/addresses.hpp>
+#include <utilities/logging/logging.hpp>
 #include <core/systems/systems.hpp>
 #include <core/rendering/rendering.hpp>
 #include <core/settings.hpp>
@@ -45,9 +46,12 @@ namespace features::world {
 		}
 
 		const auto round_start_time = memory::read<float>( game_rules + SCHEMA( "C_CSGameRules", "m_fRoundStartTime"_hash ) );
-		if ( round_start_time != this->m_last_round_start_time )
+		if ( round_start_time > 0.0f && round_start_time != this->m_last_round_start_time )
 		{
-			this->release_particles( );
+			if ( this->m_last_round_start_time != 0.0f )
+			{
+				this->release_particles( );
+			}
 			this->m_last_round_start_time = round_start_time;
 		}
 
@@ -69,12 +73,11 @@ namespace features::world {
 	void weather::create_particle( )
 	{
 		const auto particle_manager = memory::read<std::uintptr_t>( addresses::globals::particle_manager );
-		if ( !particle_manager )
+		if ( !particle_manager || !addresses::globals::resource_system )
 		{
 			return;
 		}
 
-		// FIX: "xs" returning a const char* will break here, its a dangling pointer. we use std::string's memory management to avoid this.
 		std::string particle_path = "";
 
 		switch ( settings::g_world.m_weather.type )
@@ -92,6 +95,11 @@ namespace features::world {
 			return;
 		}
 
+		if ( this->m_effect_index != invalid_effect_index )
+		{
+			this->release_particles( );
+		}
+
 		struct buffer_string
 		{
 			std::uint32_t m_unknown1{};
@@ -105,16 +113,17 @@ namespace features::world {
 
 			std::uintptr_t m_unknown3{};
 			std::uintptr_t m_unknown4{};
-		} buffer;
+		} buffer{};
 
-		memory::call<void>(PATTERN (patterns::init_particle_path_buffer_alt), &buffer, particle_path.c_str() );
-
+		memory::call<void>( PATTERN (patterns::init_particle_path_buffer_alt), &buffer, particle_path.c_str( ) );
 		buffer.m_unknown4 = 'fcpv';
-
-		memory::call<void>(PATTERN (patterns::resource_system_load), addresses::globals::resource_system, &buffer, "" );
+		memory::call<void>( PATTERN (patterns::resource_system_load), addresses::globals::resource_system, &buffer, "" );
 
 		auto effect_index{ invalid_effect_index };
-		memory::call<int*>(PATTERN (patterns::particle_create_effect), particle_manager, &effect_index, particle_path.c_str (), 8, 0ll, 0ll, 0ll, 0 );
+		if ( PATTERN (patterns::particle_create_effect) )
+		{
+			memory::call<int*>( PATTERN (patterns::particle_create_effect), particle_manager, &effect_index, particle_path.c_str( ), 8, 0ll, 0ll, 0ll, 0 );
+		}
 
 		this->m_effect_index = effect_index;
 		this->m_last_particle_type = static_cast< int >( settings::g_world.m_weather.type.value );
@@ -131,6 +140,14 @@ namespace features::world {
 
 		if ( this->m_effect_index == invalid_effect_index )
 		{
+			static auto s_last_create_attempt = std::chrono::steady_clock::time_point{};
+			const auto now = std::chrono::steady_clock::now( );
+			if ( std::chrono::duration<float>( now - s_last_create_attempt ).count( ) < 0.25f )
+			{
+				return;
+			}
+			s_last_create_attempt = now;
+
 			this->create_particle( );
 
 			if ( this->m_effect_index == invalid_effect_index )

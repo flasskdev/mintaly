@@ -33,6 +33,101 @@ namespace hooks {
 		};
 
 		inline viewmodel_anim_state g_vm_anim{};
+
+		struct shadow_state_t {
+			bool saved{ false };
+			bool orig_r_shadows{ true };
+			bool orig_lb_shadow_casting{ true };
+			bool orig_lb_baked_shadows{ true };
+			float orig_csm_max_dist{ -1.0f };
+			bool orig_csm_vm_shadows{ true };
+			bool orig_microshadowing{ true };
+			bool orig_particle_shadows{ true };
+			bool orig_smoke_shadow{ true };
+
+			void apply_fullbright( )
+			{
+				const auto cvar_shadows = CONVAR( "r_shadows" );
+				const auto cvar_lb_casting = CONVAR( "lb_enable_shadow_casting" );
+				const auto cvar_lb_baked = CONVAR( "lb_enable_baked_shadows" );
+				const auto cvar_csm_dist = CONVAR( "csm_max_shadow_dist_override" );
+				const auto cvar_csm_vm = CONVAR( "csm_viewmodel_shadows" );
+				const auto cvar_micro = CONVAR( "r_csgo_microshadowing" );
+				const auto cvar_particle = CONVAR( "r_particle_shadows" );
+				const auto cvar_smoke = CONVAR( "r_csgo_smoke_shadow" );
+
+				if ( !saved )
+				{
+					if ( cvar_shadows ) orig_r_shadows = cvar_shadows->m_value.i1;
+					if ( cvar_lb_casting ) orig_lb_shadow_casting = cvar_lb_casting->m_value.i1;
+					if ( cvar_lb_baked ) orig_lb_baked_shadows = cvar_lb_baked->m_value.i1;
+					if ( cvar_csm_dist ) orig_csm_max_dist = cvar_csm_dist->m_value.fl;
+					if ( cvar_csm_vm ) orig_csm_vm_shadows = cvar_csm_vm->m_value.i1;
+					if ( cvar_micro ) orig_microshadowing = cvar_micro->m_value.i1;
+					if ( cvar_particle ) orig_particle_shadows = cvar_particle->m_value.i1;
+					if ( cvar_smoke ) orig_smoke_shadow = cvar_smoke->m_value.i1;
+					saved = true;
+				}
+
+				if ( cvar_shadows ) { cvar_shadows->m_value.i1 = false; ++cvar_shadows->m_change_count; }
+				if ( cvar_lb_casting ) { cvar_lb_casting->m_value.i1 = false; ++cvar_lb_casting->m_change_count; }
+				if ( cvar_lb_baked ) { cvar_lb_baked->m_value.i1 = false; ++cvar_lb_baked->m_change_count; }
+				if ( cvar_csm_dist ) { cvar_csm_dist->m_value.fl = 0.0f; ++cvar_csm_dist->m_change_count; }
+				if ( cvar_csm_vm ) { cvar_csm_vm->m_value.i1 = false; ++cvar_csm_vm->m_change_count; }
+				if ( cvar_micro ) { cvar_micro->m_value.i1 = false; ++cvar_micro->m_change_count; }
+				if ( cvar_particle ) { cvar_particle->m_value.i1 = false; ++cvar_particle->m_change_count; }
+				if ( cvar_smoke ) { cvar_smoke->m_value.i1 = false; ++cvar_smoke->m_change_count; }
+			}
+
+			void restore( )
+			{
+				if ( !saved )
+					return;
+
+				const auto cvar_shadows = CONVAR( "r_shadows" );
+				const auto cvar_lb_casting = CONVAR( "lb_enable_shadow_casting" );
+				const auto cvar_lb_baked = CONVAR( "lb_enable_baked_shadows" );
+				const auto cvar_csm_dist = CONVAR( "csm_max_shadow_dist_override" );
+				const auto cvar_csm_vm = CONVAR( "csm_viewmodel_shadows" );
+				const auto cvar_micro = CONVAR( "r_csgo_microshadowing" );
+				const auto cvar_particle = CONVAR( "r_particle_shadows" );
+				const auto cvar_smoke = CONVAR( "r_csgo_smoke_shadow" );
+
+				if ( cvar_shadows ) { cvar_shadows->m_value.i1 = orig_r_shadows; ++cvar_shadows->m_change_count; }
+				if ( cvar_lb_casting ) { cvar_lb_casting->m_value.i1 = orig_lb_shadow_casting; ++cvar_lb_casting->m_change_count; }
+				if ( cvar_lb_baked ) { cvar_lb_baked->m_value.i1 = orig_lb_baked_shadows; ++cvar_lb_baked->m_change_count; }
+				if ( cvar_csm_dist ) { cvar_csm_dist->m_value.fl = orig_csm_max_dist; ++cvar_csm_dist->m_change_count; }
+				if ( cvar_csm_vm ) { cvar_csm_vm->m_value.i1 = orig_csm_vm_shadows; ++cvar_csm_vm->m_change_count; }
+				if ( cvar_micro ) { cvar_micro->m_value.i1 = orig_microshadowing; ++cvar_micro->m_change_count; }
+				if ( cvar_particle ) { cvar_particle->m_value.i1 = orig_particle_shadows; ++cvar_particle->m_change_count; }
+				if ( cvar_smoke ) { cvar_smoke->m_value.i1 = orig_smoke_shadow; ++cvar_smoke->m_change_count; }
+
+				saved = false;
+			}
+		};
+
+		inline shadow_state_t g_shadow_state{};
+		inline bool g_was_fullbright{ false };
+
+		inline void update_fullbright_shadows( )
+		{
+			const bool is_fullbright = settings::g_world.m_scene.fullbright.value;
+			if ( is_fullbright != g_was_fullbright )
+			{
+				if ( is_fullbright )
+					g_shadow_state.apply_fullbright( );
+				else
+					g_shadow_state.restore( );
+
+				g_was_fullbright = is_fullbright;
+			}
+		}
+
+		inline void reset_fullbright_shadows( )
+		{
+			g_shadow_state.restore( );
+			g_was_fullbright = false;
+		}
 	}
 
 	bool cheat::initialize () {
@@ -164,6 +259,7 @@ namespace hooks {
 		m_spec_cmds_handler.reset( );
 		m_collect_attached_entities.reset( );
 		m_play_music.reset( );
+		detail::reset_fullbright_shadows( );
 	}
 
 	HRESULT __fastcall cheat::present( IDXGISwapChain* thisptr, UINT sync_interval, UINT flags )
@@ -429,10 +525,17 @@ namespace hooks {
 
 			if ( is_active != was_active )
 			{
-				CONVAR ("r_draw3dskybox")->m_value.i1 = is_active;
+				const auto cvar = CONVAR ("r_draw3dskybox");
+				if ( cvar )
+				{
+					cvar->m_value.i1 = is_active;
+					++cvar->m_change_count;
+				}
 				was_active = is_active;
 			}
 		}
+
+		detail::update_fullbright_shadows( );
 
 		// Source 2 copies dynamic-light entries into scene objects during this stage.
 		// Publish our entry first, while keeping all manager mutations on the game thread.
@@ -1411,6 +1514,7 @@ namespace hooks {
 		systems::g_entities.reset( );
 		features::combat::g_shared.lc( ).clear( );
 		detail::g_vm_anim.initialized = false;
+		detail::reset_fullbright_shadows( );
 		diag::step( "level shutdown: cleanup complete" );
 	}
 

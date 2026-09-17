@@ -90,25 +90,25 @@ namespace features::misc {
 		function getSize(w) {
 			var t = w.type, p = w.path;
 			if (t === 1) {
-				if (p.indexOf("usp_silencer") !== -1) return "42px";
-				if (p.indexOf("deagle")       !== -1) return "36px";
-				if (p.indexOf("revolver")     !== -1) return "32px";
-				if (p.indexOf("tec9")         !== -1) return "36px";
-				if (p.indexOf("elite")        !== -1) return "32px";
-				return "30px";
+				if (p.indexOf("usp_silencer") !== -1) return "32px";
+				if (p.indexOf("deagle")       !== -1) return "27px";
+				if (p.indexOf("revolver")     !== -1) return "24px";
+				if (p.indexOf("tec9")         !== -1) return "27px";
+				if (p.indexOf("elite")        !== -1) return "24px";
+				return "23px";
 			}
 			if (t === 2 || t === 3 || t === 4 || t === 5 || t === 6)
-				return p.indexOf("mac10") !== -1 ? "30px" : "52px";
+				return p.indexOf("mac10") !== -1 ? "24px" : "40px";
 			if (t === 9) {
-				if (p.indexOf("incgrenade")   !== -1 || p.indexOf("smokegrenade") !== -1) return "14px";
-				if (p.indexOf("molotov")      !== -1 || p.indexOf("flashbang")    !== -1) return "16px";
-				return "14px";
+				if (p.indexOf("incgrenade")   !== -1 || p.indexOf("smokegrenade") !== -1) return "11px";
+				if (p.indexOf("molotov")      !== -1 || p.indexOf("flashbang")    !== -1) return "12px";
+				return "11px";
 			}
-			if (t === 7)  return "16px";
-			if (t === 8)  return "22px";
-			if (t === 11) return p.indexOf("healthshot") !== -1 ? "18px" : "14px";
-			if (t === 0)  return "46px";
-			return "16px";
+			if (t === 7)  return "12px";
+			if (t === 8)  return "17px";
+			if (t === 11) return p.indexOf("healthshot") !== -1 ? "14px" : "11px";
+			if (t === 0)  return "34px";
+			return "12px";
 		}
 
 		function updateWeaponIcon(parent, w, active_path) {
@@ -133,8 +133,9 @@ namespace features::misc {
 			img.SetImage(finalPath);
 
 			var sz           = getSize(w);
-			img.style.height = "16px";
+			img.style.height = "13px";
 			img.style.width  = sz;
+			img.style.minWidth = sz;
 			img.style.opacity = (w.path === active_path) ? "1.0" : "0.35";
 			img.style.visibility = "visible";
 		}
@@ -161,14 +162,17 @@ namespace features::misc {
 				container = $.CreatePanel("Panel", nameIcons, containerId);
 				container.AddClass("custom-weapons-container");
 				container.style.flowChildren     = "right";
-				container.style.height           = "20px";
+				container.style.height           = "17px";
 				container.style.width            = "fit-children";
-				container.style.padding          = "1px 4px";
+				container.style.padding          = "1px 3px";
 				container.style.verticalAlign    = "center";
-				container.style.marginLeft       = "3px";
+				container.style.marginLeft       = "2px";
 				container.style.backgroundColor  = "rgba(0,0,0,0.35)";
 				container.style.borderRadius     = "3px";
 				container.style.border           = "1px solid rgba(255,255,255,0.18)";
+			} else {
+				container.style.height           = "17px";
+				container.style.padding          = "1px 3px";
 			}
 
 			// Scoreboard rows cache their paint commands. Keep panel identities stable:

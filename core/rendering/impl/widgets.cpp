@@ -518,6 +518,8 @@ namespace rendering {
 			char name[ 64 ]{};
 			char value[ 32 ]{};
 			char key[ 16 ]{};
+			float nw{ 0.0f }, nh{ 0.0f };
+			float vw{ 0.0f }, vh{ 0.0f };
 			bool has_value_pill{ false };
 			xui::bind_mode mode{ xui::bind_mode::toggle };
 		};
@@ -541,6 +543,16 @@ namespace rendering {
 
 		bind_entry entries[ k_max_entries ]{};
 		auto count{ 0 };
+
+		static bind_entry s_cached_entries[ k_max_entries ]{};
+		static int s_cached_count = 0;
+		static float s_cached_max_w = 195.0f;
+		static auto s_last_binds_gather = std::chrono::steady_clock::time_point{};
+
+		const auto now = std::chrono::steady_clock::now( );
+		if ( std::chrono::duration<float>( now - s_last_binds_gather ).count( ) >= 0.04f )
+		{
+			s_last_binds_gather = now;
 
 		const auto& ctx = features::combat::g_shared.ctx( );
 		const auto has_weapon = ctx.valid && ctx.weapon_type >= cstypes::weapon_type::pistol && ctx.weapon_type <= cstypes::weapon_type::lmg;
@@ -853,7 +865,19 @@ namespace rendering {
 
 		for ( const auto entry : xui::slider_binds::all( ) )
 		{
-			if ( !entry )
+			if ( !entry || count >= k_max_entries )
+				continue;
+
+			bool has_active = false;
+			for ( std::size_t i = 0; i < entry->count; ++i )
+			{
+				if ( entry->binds[ i ].key != 0 && entry->binds[ i ].active )
+				{
+					has_active = true;
+					break;
+				}
+			}
+			if ( !has_active )
 				continue;
 
 			auto is_rage_group{ false };
@@ -935,6 +959,44 @@ namespace rendering {
 			}
 		}
 
+			float mw = 195.0f;
+			constexpr float el_gap = 5.0f;
+			for ( auto i = 0; i < count; ++i )
+			{
+				auto& e = entries[ i ];
+				const auto [nw, nh] = xdraw::measure_text( e.name );
+				const auto [vw, vh] = xdraw::measure_text( e.value );
+				e.nw = nw;
+				e.nh = nh;
+				e.vw = vw;
+				e.vh = vh;
+				const float mode_w = std::max( 46.0f, vw + 14.0f );
+				const float row_w = 14.0f + nw + 16.0f + el_gap + mode_w;
+				if ( row_w > mw )
+				{
+					mw = row_w;
+				}
+			}
+			const auto [header_tw, header_th] = xdraw::measure_text( "Keybinds" );
+			if ( header_tw + 45.0f > mw )
+			{
+				mw = header_tw + 45.0f;
+			}
+			s_cached_max_w = mw;
+			s_cached_count = count;
+			for ( auto i = 0; i < count; ++i )
+			{
+				s_cached_entries[ i ] = entries[ i ];
+			}
+		}
+
+		count = s_cached_count;
+		for ( int i = 0; i < count; ++i )
+		{
+			entries[ i ] = s_cached_entries[ i ];
+		}
+		const float max_w = s_cached_max_w;
+
 		// Keep the header visible as a preview while the menu is open.
 		if ( count > 0 || g_menu.is_open( ) )
 			container_alpha.fade_in( 0.2f );
@@ -950,7 +1012,6 @@ namespace rendering {
 		}
 
 		const auto master_alpha = container_alpha.alpha( ) * std::clamp( settings::g_misc.m_widgets.keybinds_opacity.value, 0.0f, 100.0f ) / 100.0f;
-		const auto master_u8 = static_cast< std::uint8_t >( 255.0f * master_alpha );
 
 		constexpr auto header_h{ 28.0f };
 		constexpr auto header_gap{ 10.0f };
@@ -960,35 +1021,13 @@ namespace rendering {
 		const auto [header_tw, header_th] = xdraw::measure_text( "Keybinds" );
 
 		auto draw_watermark_shadow = [&]( float sx, float sy, float sw, float sh ) {
-			draw_list.rect_filled( sx - 6.0f, sy - 5.0f, sw + 12.0f, sh + 11.0f,
-				xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 15.0f * master_alpha ) }, xdraw::corner_radius{ 12.0f } );
-			draw_list.rect_filled( sx - 4.0f, sy - 3.5f, sw + 8.0f, sh + 8.0f,
-				xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 30.0f * master_alpha ) }, xdraw::corner_radius{ 10.0f } );
-			draw_list.rect_filled( sx - 2.5f, sy - 2.0f, sw + 5.0f, sh + 5.0f,
-				xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 50.0f * master_alpha ) }, xdraw::corner_radius{ 8.5f } );
-			draw_list.rect_filled( sx - 1.0f, sy - 0.5f, sw + 2.0f, sh + 3.0f,
-				xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 75.0f * master_alpha ) }, xdraw::corner_radius{ 7.5f } );
+			draw_list.rect_filled( sx - 4.0f, sy - 3.0f, sw + 8.0f, sh + 7.0f,
+				xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 30.0f * master_alpha ) }, xdraw::corner_radius{ 9.0f } );
+			draw_list.rect_filled( sx - 1.5f, sy - 1.0f, sw + 3.0f, sh + 3.0f,
+				xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 65.0f * master_alpha ) }, xdraw::corner_radius{ 7.0f } );
 		};
 
 		constexpr float el_gap = 5.0f;
-
-		float max_w = 195.0f;
-		for ( auto i = 0; i < count; ++i )
-		{
-			const auto& e = entries[ i ];
-			const auto [nw, nh] = xdraw::measure_text( e.name );
-			const auto [vw, vh] = xdraw::measure_text( e.value );
-			const float mode_w = std::max( 46.0f, vw + 14.0f );
-			const float row_w = 14.0f + nw + 16.0f + el_gap + mode_w;
-			if ( row_w > max_w )
-			{
-				max_w = row_w;
-			}
-		}
-		if ( header_tw + 45.0f > max_w )
-		{
-			max_w = header_tw + 45.0f;
-		}
 
 		auto& widgets_cfg = settings::g_misc.m_widgets;
 
@@ -1076,9 +1115,8 @@ namespace rendering {
 		// Header drop shadow (watermark style)
 		draw_watermark_shadow( x, base_ry, max_w, header_h );
 
-		// Floating glass capsule container for header (semi-transparent)
-		draw_list.rect_filled_blurred( x, base_ry, max_w, header_h, card_r, xdraw::color{ 255, 255, 255, master_u8 } );
-		draw_list.rect_filled( x, base_ry, max_w, header_h, tokens::col_dark.alpha( static_cast< std::uint8_t >( 130.0f * master_alpha ) ), card_r );
+		// Header container
+		draw_list.rect_filled( x, base_ry, max_w, header_h, tokens::col_dark.alpha( static_cast< std::uint8_t >( 230.0f * master_alpha ) ), card_r );
 
 		const auto header_border_col = ( menu_open && ( hovered || s_is_dragging ) )
 			? s.accent.alpha( static_cast< std::uint8_t >( ( s_is_dragging ? 220.0f : 140.0f ) * master_alpha ) )
@@ -1119,8 +1157,7 @@ namespace rendering {
 		{
 			const auto empty_y = base_ry + header_h + header_gap;
 			draw_watermark_shadow( x, empty_y, max_w, row_h );
-			draw_list.rect_filled_blurred( x, empty_y, max_w, row_h, card_r, xdraw::color{ 255, 255, 255, master_u8 } );
-			draw_list.rect_filled( x, empty_y, max_w, row_h, tokens::col_card.alpha( static_cast< std::uint8_t >( 130.0f * master_alpha ) ), card_r );
+			draw_list.rect_filled( x, empty_y, max_w, row_h, tokens::col_card.alpha( static_cast< std::uint8_t >( 230.0f * master_alpha ) ), card_r );
 			draw_list.rect( x, empty_y, max_w, row_h, tokens::col_border.alpha( static_cast< std::uint8_t >( 100.0f * master_alpha ) ), card_r, 1.0f );
 
 			const auto empty_text = "No active binds";
@@ -1133,8 +1170,10 @@ namespace rendering {
 			{
 				const auto& e = entries[ i ];
 				const auto row_y = base_ry + header_h + header_gap + static_cast< float >( i ) * ( row_h + row_gap );
-				const auto [ nw, nh ] = xdraw::measure_text( e.name );
-				const auto [ vw, vh ] = xdraw::measure_text( e.value );
+				const float nw = e.nw;
+				const float nh = e.nh;
+				const float vw = e.vw;
+				const float vh = e.vh;
 
 				const float mode_w = std::max( 46.0f, vw + 14.0f );
 				const float mode_x = x + max_w - mode_w;
@@ -1144,59 +1183,26 @@ namespace rendering {
 				const float left_y = row_y;
 				const float left_w = mode_x - el_gap - left_x;
 
-				// 1. Element 1 (Left: Bind Name + Key)
-				draw_watermark_shadow( left_x, left_y, left_w, row_h );
-				draw_list.rect_filled_blurred( left_x, left_y, left_w, row_h, card_r, xdraw::color{ 255, 255, 255, master_u8 } );
-				draw_list.rect_filled( left_x, left_y, left_w, row_h, tokens::col_card.alpha( static_cast< std::uint8_t >( 130.0f * master_alpha ) ), card_r );
+				// Fast single-pass shadow for the row
+				draw_list.rect_filled( x - 1.5f, row_y - 1.0f, max_w + 3.0f, row_h + 2.0f,
+					xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 45.0f * master_alpha ) }, card_r );
 
+				// 1. Element 1 (Left: Bind Name + Key)
+				draw_list.rect_filled( left_x, left_y, left_w, row_h, tokens::col_card.alpha( static_cast< std::uint8_t >( 230.0f * master_alpha ) ), card_r );
 				draw_list.rect( left_x, left_y, left_w, row_h, tokens::col_border.alpha( static_cast< std::uint8_t >( 110.0f * master_alpha ) ), card_r, 1.0f );
 
-				// Small rounded border on left that follows the card's rounded corner
-				const auto r = card_r.tl;
-				const auto cx_tl = left_x + r;
-				const auto cy_tl = left_y + r;
-				const auto cx_bl = left_x + r;
-				const auto cy_bl = left_y + row_h - r;
-				constexpr auto half_pi = std::numbers::pi_v<float> * 0.5f;
-
-				std::array<float, 28> border_pts{};
-				constexpr int segs = 6;
-				const float step = half_pi / static_cast< float >( segs );
-
-				// Top-left arc (from top to left)
-				for ( int s_idx = 0; s_idx <= segs; ++s_idx )
-				{
-					const float a = 1.5f * std::numbers::pi_v<float> - static_cast< float >( s_idx ) * step;
-					border_pts[ s_idx * 2 ] = cx_tl + r * std::cos( a );
-					border_pts[ s_idx * 2 + 1 ] = cy_tl + r * std::sin( a );
-				}
-
-				// Bottom-left arc (from left to bottom)
-				for ( int s_idx = 0; s_idx <= segs; ++s_idx )
-				{
-					const float a = std::numbers::pi_v<float> - static_cast< float >( s_idx ) * step;
-					border_pts[ ( segs + 1 + s_idx ) * 2 ] = cx_bl + r * std::cos( a );
-					border_pts[ ( segs + 1 + s_idx ) * 2 + 1 ] = cy_bl + r * std::sin( a );
-				}
-
-				if ( e.mode == xui::bind_mode::hold_off )
-				{
-					draw_list.polyline( border_pts, tokens::col_text_dim.alpha( static_cast< std::uint8_t >( 120.0f * master_alpha ) ), false, 1.4f );
-				}
-				else
-				{
-					draw_list.polyline( border_pts, s.accent.alpha( static_cast< std::uint8_t >( 45.0f * master_alpha ) ), false, 3.0f );
-					draw_list.polyline( border_pts, s.accent.alpha( static_cast< std::uint8_t >( 245.0f * master_alpha ) ), false, 1.6f );
-				}
+				// Sleek left indicator bar (zero heap allocations)
+				const auto bar_col = ( e.mode == xui::bind_mode::hold_off )
+					? tokens::col_text_dim.alpha( static_cast< std::uint8_t >( 120.0f * master_alpha ) )
+					: s.accent.alpha( static_cast< std::uint8_t >( 245.0f * master_alpha ) );
+				draw_list.rect_filled( left_x + 3.0f, left_y + 4.5f, 2.5f, row_h - 9.0f, bar_col, xdraw::corner_radius{ 1.25f } );
 
 				// Name text
-				const float name_x = left_x + 11.0f;
+				const float name_x = left_x + 10.0f;
 				draw_list.text( name_x, left_y + ( row_h - nh ) * 0.5f - 0.5f, e.name, tokens::col_text.alpha( static_cast< std::uint8_t >( 240.0f * master_alpha ) ) );
 
 				// 2. Element 2 (Right: Mode / State)
-				draw_watermark_shadow( mode_x, mode_y, mode_w, row_h );
-				draw_list.rect_filled_blurred( mode_x, mode_y, mode_w, row_h, card_r, xdraw::color{ 255, 255, 255, master_u8 } );
-				draw_list.rect_filled( mode_x, mode_y, mode_w, row_h, tokens::col_card.alpha( static_cast< std::uint8_t >( 130.0f * master_alpha ) ), card_r );
+				draw_list.rect_filled( mode_x, mode_y, mode_w, row_h, tokens::col_card.alpha( static_cast< std::uint8_t >( 230.0f * master_alpha ) ), card_r );
 
 				if ( e.has_value_pill || e.mode != xui::bind_mode::hold_off )
 				{
@@ -1274,12 +1280,9 @@ namespace rendering {
 		const auto radius = xdraw::corner_radius{ 6.0f };
 		const auto& accent = ctx.style.accent;
 		const auto draw_card = [&]( float cy, float height, xdraw::color background, xdraw::color border ) {
-			draw_list.rect_filled( x - 6.0f, cy - 5.0f, width + 12.0f, height + 11.0f, xdraw::color{ 0, 0, 0, alpha( 15.0f ) }, xdraw::corner_radius{ 12.0f } );
-			draw_list.rect_filled( x - 4.0f, cy - 3.5f, width + 8.0f, height + 8.0f, xdraw::color{ 0, 0, 0, alpha( 30.0f ) }, xdraw::corner_radius{ 10.0f } );
-			draw_list.rect_filled( x - 2.5f, cy - 2.0f, width + 5.0f, height + 5.0f, xdraw::color{ 0, 0, 0, alpha( 50.0f ) }, xdraw::corner_radius{ 8.5f } );
-			draw_list.rect_filled( x - 1.0f, cy - 0.5f, width + 2.0f, height + 3.0f, xdraw::color{ 0, 0, 0, alpha( 75.0f ) }, xdraw::corner_radius{ 7.5f } );
-			draw_list.rect_filled_blurred( x, cy, width, height, radius, xdraw::color{ 255, 255, 255, alpha( 255.0f ) } );
-			draw_list.rect_filled( x, cy, width, height, background.alpha( alpha( 130.0f ) ), radius );
+			draw_list.rect_filled( x - 4.0f, cy - 3.0f, width + 8.0f, height + 7.0f, xdraw::color{ 0, 0, 0, alpha( 30.0f ) }, xdraw::corner_radius{ 9.0f } );
+			draw_list.rect_filled( x - 1.5f, cy - 1.0f, width + 3.0f, height + 3.0f, xdraw::color{ 0, 0, 0, alpha( 65.0f ) }, xdraw::corner_radius{ 7.0f } );
+			draw_list.rect_filled( x, cy, width, height, background.alpha( alpha( 230.0f ) ), radius );
 			draw_list.rect( x, cy, width, height, border, radius, 1.0f );
 		};
 		const auto border = this->m_teammate_damage_hovered || this->m_teammate_damage_dragging
@@ -1322,6 +1325,11 @@ namespace rendering {
 					return nullptr;
 				}
 
+				if ( !steam_id )
+				{
+					return nullptr;
+				}
+
 				auto it = this->m_entries.find( steam_id );
 				if ( it != this->m_entries.end( ) && it->second.texture )
 				{
@@ -1331,7 +1339,7 @@ namespace rendering {
 				const auto now = std::chrono::steady_clock::now( );
 				if ( it != this->m_entries.end( ) )
 				{
-					if ( std::chrono::duration<float>( now - it->second.last_request ).count( ) < 0.5f )
+					if ( std::chrono::duration<float>( now - it->second.last_request ).count( ) < 2.0f )
 					{
 						return nullptr;
 					}
@@ -1390,81 +1398,121 @@ namespace rendering {
 		struct spectator_entry
 		{
 			char name[ 128 ];
+			float nw{ 0.0f }, nh{ 0.0f };
 			std::uint64_t steam_id;
 		};
 
 		spectator_entry entries[ 32 ]{};
 		auto count{ 0 };
 
-		const auto local = systems::g_local.get( );
-		const auto game_rules = memory::read<std::uintptr_t>( addresses::globals::game_rules );
-		const bool game_in_progress = game_rules && memory::read<int>( game_rules + SCHEMA( "C_CSGameRules", "m_gamePhase"_hash ) ) < 4;
+		static spectator_entry s_cached_entries[ 32 ]{};
+		static int s_cached_count = 0;
+		static float s_cached_max_w = 175.0f;
+		static auto s_last_spec_scan = std::chrono::steady_clock::time_point{};
 
-		if ( local.is_valid( ) && systems::g_entities.exists( local.view_controller( ) ) && game_in_progress )
+		const auto now = std::chrono::steady_clock::now( );
+		if ( std::chrono::duration<float>( now - s_last_spec_scan ).count( ) >= 0.1f )
 		{
-			const auto local_controller = local.controller;
-			const auto view_controller = local.view_controller( );
-			const auto view_pawn = local.view_pawn( );
-			if ( view_pawn )
+			s_last_spec_scan = now;
+			s_cached_count = 0;
+
+			const auto local = systems::g_local.get( );
+			const auto game_rules = memory::read<std::uintptr_t>( addresses::globals::game_rules );
+			const bool game_in_progress = game_rules && memory::read<int>( game_rules + SCHEMA( "C_CSGameRules", "m_gamePhase"_hash ) ) < 4;
+
+			if ( local.is_valid( ) && systems::g_entities.exists( local.view_controller( ) ) && game_in_progress )
 			{
-				for ( const auto& player : systems::g_entities.get_by_type( systems::entities::type::player ) )
+				const auto local_controller = local.controller;
+				const auto view_controller = local.view_controller( );
+				const auto view_pawn = local.view_pawn( );
+				if ( view_pawn )
 				{
-					if ( player.ptr == view_controller || player.ptr == local_controller || count >= 32 )
+					for ( const auto& player : systems::g_entities.get_by_type( systems::entities::type::player ) )
 					{
-						continue;
+						if ( player.ptr == view_controller || player.ptr == local_controller || s_cached_count >= 32 )
+						{
+							continue;
+						}
+
+						if ( memory::read<bool>( player.ptr + SCHEMA( "CCSPlayerController", "m_bPawnIsAlive"_hash ) ) )
+						{
+							continue;
+						}
+
+						const auto obs_pawn_handle = memory::read<std::uint32_t>( player.ptr + SCHEMA( "CCSPlayerController", "m_hObserverPawn"_hash ) );
+						if ( !obs_pawn_handle || obs_pawn_handle == 0xffffffff )
+						{
+							continue;
+						}
+
+						const auto obs_pawn = systems::g_entities.lookup( obs_pawn_handle );
+						if ( !obs_pawn )
+						{
+							continue;
+						}
+
+						const auto observer_services = memory::safe_read<std::uintptr_t>( obs_pawn + SCHEMA( "C_BasePlayerPawn", "m_pObserverServices"_hash ) ).value_or( 0 );
+						if ( !observer_services || ( observer_services >> 48 ) != 0 )
+						{
+							continue;
+						}
+
+						const auto observer_target_handle = memory::safe_read<std::uint32_t>( observer_services + SCHEMA( "CPlayer_ObserverServices", "m_hObserverTarget"_hash ) ).value_or( 0 );
+						if ( !observer_target_handle )
+						{
+							continue;
+						}
+
+						const auto observer_target = systems::g_entities.lookup( observer_target_handle );
+						if ( observer_target != view_pawn )
+						{
+							continue;
+						}
+
+						const auto name_ptr = memory::read<std::uintptr_t>( player.ptr + SCHEMA( "CCSPlayerController", "m_sSanitizedPlayerName"_hash ) );
+						if ( !name_ptr )
+						{
+							continue;
+						}
+
+						auto name = memory::read_string( name_ptr, 127 );
+						std::ranges::transform( name, name.begin( ), [ ]( unsigned char c ) { return std::tolower( c ); } );
+
+						const auto [ nw, nh ] = xdraw::measure_text( name );
+						auto& e = s_cached_entries[ s_cached_count++ ];
+						strncpy_s( e.name, name.c_str( ), sizeof( e.name ) - 1 );
+						e.name[ sizeof( e.name ) - 1 ] = '\0';
+						e.nw = nw;
+						e.nh = nh;
+						e.steam_id = memory::safe_read<std::uint64_t>( player.ptr + SCHEMA( "CBasePlayerController", "m_steamID"_hash ) ).value_or( 0 );
 					}
-
-					if ( memory::read<bool>( player.ptr + SCHEMA( "CCSPlayerController", "m_bPawnIsAlive"_hash ) ) )
-					{
-						continue;
-					}
-
-					const auto obs_pawn_handle = memory::read<std::uint32_t>( player.ptr + SCHEMA( "CCSPlayerController", "m_hObserverPawn"_hash ) );
-					if ( !obs_pawn_handle || obs_pawn_handle == 0xffffffff )
-					{
-						continue;
-					}
-
-					const auto obs_pawn = systems::g_entities.lookup( obs_pawn_handle );
-					if ( !obs_pawn )
-					{
-						continue;
-					}
-
-					const auto observer_services = memory::safe_read<std::uintptr_t>( obs_pawn + SCHEMA( "C_BasePlayerPawn", "m_pObserverServices"_hash ) ).value_or( 0 );
-					if ( !observer_services || ( observer_services >> 48 ) != 0 )
-					{
-						continue;
-					}
-
-					const auto observer_target_handle = memory::safe_read<std::uint32_t>( observer_services + SCHEMA( "CPlayer_ObserverServices", "m_hObserverTarget"_hash ) ).value_or( 0 );
-					if ( !observer_target_handle )
-					{
-						continue;
-					}
-
-					const auto observer_target = systems::g_entities.lookup( observer_target_handle );
-					if ( observer_target != view_pawn )
-					{
-						continue;
-					}
-
-					const auto name_ptr = memory::read<std::uintptr_t>( player.ptr + SCHEMA( "CCSPlayerController", "m_sSanitizedPlayerName"_hash ) );
-					if ( !name_ptr )
-					{
-						continue;
-					}
-
-					auto name = memory::read_string( name_ptr, 127 );
-					std::ranges::transform( name, name.begin( ), [ ]( unsigned char c ) { return std::tolower( c ); } );
-
-					auto& e = entries[ count++ ];
-					strncpy_s( e.name, name.c_str( ), sizeof( e.name ) - 1 );
-					e.name[ sizeof( e.name ) - 1 ] = '\0';
-					e.steam_id = memory::safe_read<std::uint64_t>( player.ptr + SCHEMA( "CBasePlayerController", "m_steamID"_hash ) ).value_or( 0 );
 				}
 			}
+
+			float mw = 175.0f;
+			constexpr float av_size = 32.0f;
+			for ( auto i = 0; i < s_cached_count; ++i )
+			{
+				const float row_w = av_size + 14.0f + s_cached_entries[ i ].nw + 16.0f;
+				if ( row_w > mw )
+				{
+					mw = row_w;
+				}
+			}
+			const auto [header_tw, header_th] = xdraw::measure_text( "Spectators" );
+			if ( header_tw + 45.0f > mw )
+			{
+				mw = header_tw + 45.0f;
+			}
+			s_cached_max_w = mw;
 		}
+
+		count = s_cached_count;
+		for ( int i = 0; i < count; ++i )
+		{
+			entries[ i ] = s_cached_entries[ i ];
+		}
+		const float max_w = s_cached_max_w;
 
 		if ( count > 0 || g_menu.is_open( ) )
 			container_alpha.fade_in( 0.2f );
@@ -1480,7 +1528,6 @@ namespace rendering {
 		}
 
 		const auto master_alpha = container_alpha.alpha( ) * std::clamp( settings::g_misc.m_widgets.spectator_opacity.value, 0.0f, 100.0f ) / 100.0f;
-		const auto master_u8 = static_cast< std::uint8_t >( 255.0f * master_alpha );
 
 		constexpr auto header_h{ 28.0f };
 		constexpr auto header_gap{ 10.0f };
@@ -1490,32 +1537,13 @@ namespace rendering {
 		const auto [header_tw, header_th] = xdraw::measure_text( "Spectators" );
 
 		auto draw_watermark_shadow = [&]( float sx, float sy, float sw, float sh ) {
-			draw_list.rect_filled( sx - 6.0f, sy - 5.0f, sw + 12.0f, sh + 11.0f,
-				xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 15.0f * master_alpha ) }, xdraw::corner_radius{ 12.0f } );
-			draw_list.rect_filled( sx - 4.0f, sy - 3.5f, sw + 8.0f, sh + 8.0f,
-				xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 30.0f * master_alpha ) }, xdraw::corner_radius{ 10.0f } );
-			draw_list.rect_filled( sx - 2.5f, sy - 2.0f, sw + 5.0f, sh + 5.0f,
-				xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 50.0f * master_alpha ) }, xdraw::corner_radius{ 8.5f } );
-			draw_list.rect_filled( sx - 1.0f, sy - 0.5f, sw + 2.0f, sh + 3.0f,
-				xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 75.0f * master_alpha ) }, xdraw::corner_radius{ 7.5f } );
+			draw_list.rect_filled( sx - 4.0f, sy - 3.0f, sw + 8.0f, sh + 7.0f,
+				xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 30.0f * master_alpha ) }, xdraw::corner_radius{ 9.0f } );
+			draw_list.rect_filled( sx - 1.5f, sy - 1.0f, sw + 3.0f, sh + 3.0f,
+				xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 65.0f * master_alpha ) }, xdraw::corner_radius{ 7.0f } );
 		};
 
 		constexpr float av_size = 32.0f;
-		float max_w = 175.0f;
-		for ( auto i = 0; i < count; ++i )
-		{
-			const auto& e = entries[ i ];
-			const auto [nw, nh] = xdraw::measure_text( e.name );
-			const float row_w = av_size + 14.0f + nw + 16.0f;
-			if ( row_w > max_w )
-			{
-				max_w = row_w;
-			}
-		}
-		if ( header_tw + 45.0f > max_w )
-		{
-			max_w = header_tw + 45.0f;
-		}
 
 		auto& widgets_cfg = settings::g_misc.m_widgets;
 
@@ -1603,9 +1631,8 @@ namespace rendering {
 		// Header drop shadow (watermark style)
 		draw_watermark_shadow( x, base_ry, max_w, header_h );
 
-		// Floating glass capsule container for header (semi-transparent)
-		draw_list.rect_filled_blurred( x, base_ry, max_w, header_h, card_r, xdraw::color{ 255, 255, 255, master_u8 } );
-		draw_list.rect_filled( x, base_ry, max_w, header_h, tokens::col_dark.alpha( static_cast< std::uint8_t >( 130.0f * master_alpha ) ), card_r );
+		// Header container
+		draw_list.rect_filled( x, base_ry, max_w, header_h, tokens::col_dark.alpha( static_cast< std::uint8_t >( 230.0f * master_alpha ) ), card_r );
 
 		const auto header_border_col = ( menu_open && ( hovered || s_is_dragging ) )
 			? s.accent.alpha( static_cast< std::uint8_t >( ( s_is_dragging ? 220.0f : 140.0f ) * master_alpha ) )
@@ -1646,8 +1673,7 @@ namespace rendering {
 		{
 			const auto empty_y = base_ry + header_h + header_gap;
 			draw_watermark_shadow( x, empty_y, max_w, row_h );
-			draw_list.rect_filled_blurred( x, empty_y, max_w, row_h, card_r, xdraw::color{ 255, 255, 255, master_u8 } );
-			draw_list.rect_filled( x, empty_y, max_w, row_h, tokens::col_card.alpha( static_cast< std::uint8_t >( 130.0f * master_alpha ) ), card_r );
+			draw_list.rect_filled( x, empty_y, max_w, row_h, tokens::col_card.alpha( static_cast< std::uint8_t >( 230.0f * master_alpha ) ), card_r );
 			draw_list.rect( x, empty_y, max_w, row_h, tokens::col_border.alpha( static_cast< std::uint8_t >( 100.0f * master_alpha ) ), card_r, 1.0f );
 
 			const auto empty_text = "No spectators";
@@ -1660,16 +1686,17 @@ namespace rendering {
 			{
 				const auto& e = entries[ i ];
 				const auto row_y = base_ry + header_h + header_gap + static_cast< float >( i ) * ( row_h + row_gap );
-				const auto [ nw, nh ] = xdraw::measure_text( e.name );
+				const float nw = e.nw;
+				const float nh = e.nh;
 				const auto avatar_tex = avatars.get( e.steam_id );
 
 				const auto card_x = x + 4.0f;
 				const auto card_w = max_w - 4.0f;
 
-				// Individual separated card (semi-transparent with watermark-style shadow)
-				draw_watermark_shadow( card_x, row_y, card_w, row_h );
-				draw_list.rect_filled_blurred( card_x, row_y, card_w, row_h, card_r, xdraw::color{ 255, 255, 255, master_u8 } );
-				draw_list.rect_filled( card_x, row_y, card_w, row_h, tokens::col_card.alpha( static_cast< std::uint8_t >( 130.0f * master_alpha ) ), card_r );
+				// Fast single-pass card shadow
+				draw_list.rect_filled( card_x - 1.5f, row_y - 1.0f, card_w + 3.0f, row_h + 2.0f,
+					xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 45.0f * master_alpha ) }, card_r );
+				draw_list.rect_filled( card_x, row_y, card_w, row_h, tokens::col_card.alpha( static_cast< std::uint8_t >( 230.0f * master_alpha ) ), card_r );
 				draw_list.rect( card_x, row_y, card_w, row_h, tokens::col_border.alpha( static_cast< std::uint8_t >( 110.0f * master_alpha ) ), card_r, 1.0f );
 
 				// Steam avatar icon: slightly larger than the element background card
@@ -1677,9 +1704,9 @@ namespace rendering {
 				const auto av_y = row_y + ( row_h - av_size ) * 0.5f;
 				const auto av_r = xdraw::corner_radius{ 6.0f };
 
-				// Avatar soft drop shadow
-				draw_list.rect_filled( av_x - 1.5f, av_y - 1.0f, av_size + 3.0f, av_size + 3.0f,
-					xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 70.0f * master_alpha ) }, xdraw::corner_radius{ 7.0f } );
+				// Avatar fast soft drop shadow
+				draw_list.rect_filled( av_x - 1.0f, av_y - 0.5f, av_size + 2.0f, av_size + 2.0f,
+					xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 55.0f * master_alpha ) }, av_r );
 
 				if ( avatar_tex )
 				{
@@ -1691,8 +1718,7 @@ namespace rendering {
 					draw_list.rect_filled( av_x, av_y, av_size, av_size, tokens::col_elevated.alpha( static_cast< std::uint8_t >( 220.0f * master_alpha ) ), av_r );
 					draw_list.rect( av_x, av_y, av_size, av_size, tokens::col_border.alpha( static_cast< std::uint8_t >( 130.0f * master_alpha ) ), av_r, 1.0f );
 					const char letter_str[ 2 ] = { static_cast< char >( std::toupper( static_cast< unsigned char >( e.name[ 0 ] ? e.name[ 0 ] : '?' ) ) ), '\0' };
-					const auto [ lw, lh ] = xdraw::measure_text( letter_str );
-					draw_list.text( av_x + ( av_size - lw ) * 0.5f, av_y + ( av_size - lh ) * 0.5f - 0.5f, letter_str, tokens::col_text_dim.alpha( static_cast< std::uint8_t >( 200.0f * master_alpha ) ) );
+					draw_list.text( av_x + ( av_size - 8.0f ) * 0.5f, av_y + ( av_size - 11.0f ) * 0.5f - 0.5f, letter_str, tokens::col_text_dim.alpha( static_cast< std::uint8_t >( 200.0f * master_alpha ) ) );
 				}
 
 				// Name text (SPEC badge removed)
