@@ -67,6 +67,7 @@ namespace features::combat {
                         [[nodiscard]] record* get_oldest_was_valid( std::uintptr_t pawn );
                         [[nodiscard]] std::optional<visual_record> get_oldest_was_valid_visual( std::uintptr_t pawn ) const;
                         [[nodiscard]] std::vector<record*> get_valid_records( std::uintptr_t pawn );
+                        [[nodiscard]] std::vector<record> get_scan_records( std::uintptr_t pawn ) const;
                         [[nodiscard]] std::array<systems::bones::data, 27> get_skeleton( const record& record ) const;
 
                         [[nodiscard]] std::optional<record> extrapolate( std::uintptr_t pawn );
@@ -407,9 +408,8 @@ namespace features::combat {
                 void clear_duckpeek_reduck( ) noexcept { this->m_duckpeek_reduck = false; this->m_duckpeek_reduck_ticks = 0; }
 
                 static constexpr auto k_max_lagcomp_records{ 16 };
-                // Scanning the newest and oldest valid records covers the useful lag-comp
-                // extremes without multiplying every penetration and hitchance test.
-                static constexpr auto k_max_scan_records{ 2 };
+                // Include intermediate observed poses without scanning the entire history.
+                static constexpr auto k_max_scan_records{ 4 };
 
         private:
                 struct aim_context
@@ -439,6 +439,8 @@ namespace features::combat {
                         int armor{};
                         float min_damage{};
                         std::array<shared::lagcomp::record*, k_max_lagcomp_records> records{};
+                        // Own the observed poses through scanning, worker joins and firing.
+                        std::vector<shared::lagcomp::record> record_snapshots{};
                         // Lazy, command-local preparation shared by all eye/stop scans.
                         // Kept off the stack; unused knife/taser candidates allocate nothing.
                         std::vector<shared::penetration::run_context> prepared_records{};

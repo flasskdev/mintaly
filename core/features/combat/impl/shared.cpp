@@ -838,6 +838,41 @@ namespace features::combat {
                 return result;
         }
 
+        std::vector<shared::lagcomp::record> shared::lagcomp::get_scan_records( std::uintptr_t pawn ) const
+        {
+                std::shared_lock records_lock( this->m_records_mtx );
+                std::vector<record> result;
+                const auto it = this->m_records.find( pawn );
+                if ( it == this->m_records.end( ) )
+                        return result;
+                const auto cutoff = detail::capture_record_cutoff( );
+                if ( !cutoff )
+                        return result;
+
+                std::vector<const record*> valid;
+                valid.reserve( it->second.size( ) );
+                const auto max_ticks = std::clamp( settings::g_combat.m_lagcomp.max_backtrack_ticks.value,
+                        1, static_cast<int>( rage::k_max_lagcomp_records ) );
+                for ( const auto& rec : it->second )
+                {
+                        if ( !detail::valid_record_at( rec, cutoff ) )
+                                continue;
+                        if ( !valid.empty( ) && static_cast<std::int64_t>( valid.front( )->tick ) - rec.tick > max_ticks )
+                                continue;
+                        valid.push_back( &rec );
+                }
+                const auto count = std::min( valid.size( ), static_cast<std::size_t>( rage::k_max_scan_records ) );
+                result.reserve( count );
+                for ( std::size_t i = 0; i < count; ++i )
+                {
+                        const auto index = count > 1 ? i * ( valid.size( ) - 1 ) / ( count - 1 ) : 0;
+                        result.push_back( *valid[ index ] );
+                        result.back( ).is_applied = false;
+                }
+                // Copy under the lock, not after returning raw deque pointers.
+                return result;
+        }
+
         std::array<systems::bones::data, 27> shared::lagcomp::get_skeleton( const record& record ) const
         {
                 std::array<systems::bones::data, 27> skeleton;

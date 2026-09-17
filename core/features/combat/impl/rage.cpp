@@ -176,23 +176,23 @@ namespace features::combat {
 
         aim_context out{};
         out.velocity = prestate.velocity;
-        auto accuracy = g_shared.get_accuracy_state(true);
-        auto aim_punch = g_shared.get_aim_punch(local.pawn);
-        // Refresh the fallback as well: a failed prediction must not reuse old eyes.
-        g_shared.sh().snapshot(local.pawn, ctx.weapon_services);
-
-        systems::g_prediction.simulate(cmd, local, [&]
+        std::optional<shared::weapon_accuracy> accuracy;
+        math::vector3 aim_punch{};
+        // Accuracy updates mutate weapon state. Run them only inside the guard,
+        // once, at the same predicted time as recoil and the shooting position.
+        const auto predicted = systems::g_prediction.simulate(cmd, local, [&]
             {
                 g_shared.sh().snapshot(local.pawn, ctx.weapon_services);
                 out.velocity = memory::read<math::vector3>(local.pawn + SCHEMA("C_BaseEntity", "m_vecAbsVelocity"_hash));
+                out.on_ground = (memory::read<std::uint32_t>(local.pawn + SCHEMA("C_BaseEntity", "m_fFlags"_hash)) & cstypes::entity_flags::on_ground) != 0;
                 accuracy = g_shared.get_accuracy_state(true);
                 // Preserve recoil decay at the simulated time before state_guard
                 // restores the pawn. fire_gun must not read the older punch again.
                 aim_punch = g_shared.get_aim_punch(local.pawn);
             });
 
-        if (!accuracy || !std::isfinite(aim_punch.x) || !std::isfinite(aim_punch.y) ||
-            !std::isfinite(aim_punch.z))
+        if (!predicted || !accuracy || !ballistics::finite(out.velocity) ||
+            !std::isfinite(aim_punch.x) || !std::isfinite(aim_punch.y) || !std::isfinite(aim_punch.z))
         {
             ctx.valid = false;
             return out;
@@ -205,7 +205,6 @@ namespace features::combat {
         ctx.recoil_index = accuracy->recoil_index;
         ctx.aim_punch = aim_punch;
         out.view_angles = systems::g_input.get_view_angles();
-        out.on_ground = (prestate.flags & cstypes::entity_flags::on_ground) != 0;
         out.is_scoped = ctx.is_scoped;
         out.weapon_max_speed = ctx.weapon_max_speed;
         out.accurate_threshold = ctx.weapon_max_speed * 0.34f;
@@ -349,9 +348,14 @@ namespace features::combat {
             if (memory::read<bool>(pawn + SCHEMA("C_CSPlayerPawn", "m_bGunGameImmunity"_hash)))
                 continue;
 
-            auto records = g_shared.lc().get_valid_records(pawn);
-            if (records.empty())
+            candidate c{};
+            c.record_snapshots = g_shared.lc().get_scan_records(pawn);
+            if (c.record_snapshots.empty())
                 continue;
+            std::vector<shared::lagcomp::record*> records;
+            records.reserve(c.record_snapshots.size());
+            for (auto& record : c.record_snapshots)
+                records.push_back(&record);
 
             const auto gun = shared_ctx.weapon_type >= cstypes::weapon_type::pistol &&
                 shared_ctx.weapon_type <= cstypes::weapon_type::lmg;
@@ -383,17 +387,14 @@ namespace features::combat {
                     continue;
             }
 
-            candidate c{};
             c.extrapolation_pending = defer_extrapolation;
             c.pawn = pawn;
             c.health = health;
             c.armor = memory::read<int>(pawn + SCHEMA("C_CSPlayerPawn", "m_ArmorValue"_hash));
 
-            c.records[c.record_count++] = records.front();
-            if (records.size() > 1)
-                c.records[c.record_count++] = records.back();
-            // The candidate array has room for a third, speculative pose without
-            // replacing the newest or oldest observed record.
+            for (auto* record : records)
+                c.records[c.record_count++] = record;
+            // Keep speculative poses separate from the observed history.
             if (predicted_record)
                 c.records[c.record_count++] = predicted_record;
 
@@ -403,7 +404,7 @@ namespace features::combat {
                 c.min_damage = this->get_min_damage(config, health, config.min_damage_override.value);
             }
 
-            out.push_back(c);
+            out.push_back(std::move(c));
         }
 
         if (out.size() > 1)
@@ -550,6 +551,22 @@ namespace features::combat {
             else if (!duckpeek_active)
             {
                 this->m_release_duck_for_shot = false;
+            }
+            // Compensation can fail at high movement inaccuracy. Reuse normal
+            // stop planning instead of retrying the same moving shot indefinitely.
+            if (allow_fire && autostop_enabled && this->should_stop_movement(ctx))
+            {
+                this->m_should_stop = had_target;
+                if (!had_target)
+                {
+                    const auto primary_eye = eye_candidates.entries[0].position;
+                    const auto stop = this->predict_stop(ctx, primary_eye, local);
+                    if (stop)
+                    {
+                        const auto planned = scan_from_eye_candidates(stop->eye - primary_eye, stop->inaccuracy);
+                        this->m_should_stop = this->select_best(ctx, planned, stop->inaccuracy).valid;
+                    }
+                }
             }
             return had_target;
         }
@@ -1233,25 +1250,60 @@ namespace features::combat {
             // Engine spread generation still runs once on the caller.
             const auto cache = g_shared.build_spread_cache(eval_inaccuracy, aim_ctx.spread);
             const auto range = g_shared.ctx().range;
-            hitchances.resize(hits.size());
+            hitchances.assign(hits.size(), -1.0f);
             std::sort(queries.begin(), queries.end(), [](const auto& a, const auto& b)
             {
                 return a.upper_score != b.upper_score ? a.upper_score > b.upper_score
                     : a.hit_index < b.hit_index;
             });
-            auto best_evaluated_score = -std::numeric_limits<float>::infinity();
-            for (auto& query : queries)
+            struct worker_query
             {
-                const auto& hit = hits[query.hit_index];
-                // Preserve the final ranking's near-tie rule. No prefix-based
-                // hitchance estimate and no fixed shortlist can reject a winner.
-                if (query.upper_score + 0.01f < best_evaluated_score)
+                math::vector3 eye;
+                math::vector3 angle;
+                systems::hitboxes::entry hitbox;
+                systems::bones::data bone;
+                float result{};
+            };
+            constexpr std::size_t batch_size = 32;
+            std::array<worker_query, batch_size> batch;
+            auto best_evaluated_score = -std::numeric_limits<float>::infinity();
+            for (std::size_t first = 0; first < queries.size();)
+            {
+                if (queries[first].upper_score + 0.01f < best_evaluated_score)
                     break;
-                const auto bone = hit.record->bones[hit.bone_index];
-                const auto result = g_shared.calculate_hitchance(hit.source_eye.position, hit.aim_angle,
-                    hit.hitbox, bone, cache, range);
-                hitchances[query.hit_index] = result;
-                best_evaluated_score = std::max(best_evaluated_score, score_for(hit, result));
+                // Establish a useful pruning bound before queuing a large batch.
+                const auto limit = first == 0 ? std::size_t{1} : batch_size;
+                std::size_t count = 0;
+                while (count < limit && first + count < queries.size() &&
+                    queries[first + count].upper_score + 0.01f >= best_evaluated_score)
+                {
+                    const auto& hit = hits[queries[first + count].hit_index];
+                    batch[count++] = {hit.source_eye.position, hit.aim_angle, hit.hitbox,
+                        hit.record->bones[hit.bone_index], 0.0f};
+                }
+                const auto evaluate = [&](int begin, int end)
+                {
+                    for (auto i = begin; i < end; ++i)
+                    {
+                        auto& query = batch[i];
+                        query.result = g_shared.calculate_hitchance(query.eye, query.angle,
+                            query.hitbox, query.bone, cache, range);
+                    }
+                };
+                // Small batches stay on the caller; workers see no pawn, record,
+                // settings or engine RNG. parallel_for joins before reduction.
+                if (count >= 16 && cache.count >= 64)
+                    threadpool::parallel_for(0, static_cast<int>(count), evaluate, 8);
+                else
+                    evaluate(0, static_cast<int>(count));
+                for (std::size_t i = 0; i < count; ++i)
+                {
+                    const auto index = queries[first + i].hit_index;
+                    hitchances[index] = batch[i].result;
+                    best_evaluated_score = std::max(best_evaluated_score,
+                        score_for(hits[index], batch[i].result));
+                }
+                first += count;
             }
         }
 
@@ -1269,6 +1321,8 @@ namespace features::combat {
                     continue;
 
                 const auto hc = config.no_spread.value ? 1.0f : hitchances[idx];
+                if (hc < 0.0f)
+                    continue;
                 const auto score = score_for(h, hc);
 
                 auto is_better = !best.valid || score > best.score;
