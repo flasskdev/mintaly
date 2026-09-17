@@ -127,6 +127,8 @@ namespace features::world {
 
 		this->m_effect_index = effect_index;
 		this->m_last_particle_type = static_cast< int >( settings::g_world.m_weather.type.value );
+		this->m_last_update = {};
+		this->m_color_valid = false;
 	}
 
 	void weather::update_particles( )
@@ -156,6 +158,11 @@ namespace features::world {
 			}
 		}
 
+		// The effect simulates independently; control points do not need render-rate updates.
+		const auto now = std::chrono::steady_clock::now( );
+		if ( std::chrono::duration<float>( now - this->m_last_update ).count( ) < 1.0f / 60.0f )
+			return;
+
 		const auto particle_manager = memory::read<std::uintptr_t>( addresses::globals::particle_manager );
 		const auto view_pawn = systems::g_local.get( ).view_pawn( );
 
@@ -170,6 +177,7 @@ namespace features::world {
 			return;
 		}
 
+		this->m_last_update = now;
 		const auto origin = memory::read<math::vector3>( game_scene_node + SCHEMA( "CGameSceneNode", "m_vecAbsOrigin"_hash ) );
 		const auto& weather = settings::g_world.m_weather;
 		if ( weather.type.value == settings::world::weather::weather_type::rain && weather.wind.value )
@@ -213,8 +221,16 @@ namespace features::world {
 			memory::call<bool>( PATTERN( patterns::particle_set_control_point ), particle_manager, this->m_effect_index, 0, &origin, 0 );
 		}
 
-		const auto color = math::vector3{ static_cast< float >( settings::g_world.m_weather.color.value.r ), static_cast< float >( settings::g_world.m_weather.color.value.g ), static_cast< float >( settings::g_world.m_weather.color.value.b ) };
-		memory::call<bool>(PATTERN (patterns::particle_set_control_point), particle_manager, this->m_effect_index, 1, &color, 0 );
+		const auto color = math::vector3{ static_cast< float >( weather.color.value.r ), static_cast< float >( weather.color.value.g ), static_cast< float >( weather.color.value.b ) };
+		const std::array<float, 3> rgb{ color.x, color.y, color.z };
+		if ( !this->m_color_valid || this->m_last_color != rgb )
+		{
+			if ( memory::call<bool>( PATTERN( patterns::particle_set_control_point ), particle_manager, this->m_effect_index, 1, &color, 0 ) )
+			{
+				this->m_last_color = rgb;
+				this->m_color_valid = true;
+			}
+		}
 	}
 
 	void weather::release_particles( )

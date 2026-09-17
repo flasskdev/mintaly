@@ -616,26 +616,17 @@ namespace rendering {
 				continue;
 			}
 
-			auto is_rage_group{ false };
-			for ( auto i = 0u; i < settings::combat::ragebot::k_group_count; ++i )
+			// Settings have stable addresses; membership does not depend on bind state.
+			static std::unordered_map<const xui::setting*, bool> rage_membership;
+			const auto [rage_it, new_rage_setting] = rage_membership.try_emplace( setting, false );
+			if ( new_rage_setting )
 			{
-				if ( is_in_rage_group( setting, settings::g_combat.m_ragebot.groups[ i ] ) )
-				{
-					is_rage_group = true;
-					break;
-				}
+				for ( const auto& group : settings::g_combat.m_ragebot.groups )
+					rage_it->second = rage_it->second || is_in_rage_group( setting, group );
+				for ( const auto& weapon : settings::g_combat.m_ragebot.weapons )
+					rage_it->second = rage_it->second || is_in_rage_group( setting, weapon.cfg );
 			}
-			if ( !is_rage_group )
-			{
-				for ( auto i = 0u; i < settings::combat::ragebot::k_weapon_count; ++i )
-				{
-					if ( is_in_rage_group( setting, settings::g_combat.m_ragebot.weapons[ i ].cfg ) )
-					{
-						is_rage_group = true;
-						break;
-					}
-				}
-			}
+			const auto is_rage_group = rage_it->second;
 
 			if ( is_rage_group )
 			{
@@ -715,26 +706,16 @@ namespace rendering {
 				continue;
 			}
 
-			auto is_legit_group{ false };
-			for ( auto i = 0u; i < settings::combat::legitbot::k_group_count; ++i )
+			static std::unordered_map<const xui::setting*, bool> legit_membership;
+			const auto [legit_it, new_legit_setting] = legit_membership.try_emplace( setting, false );
+			if ( new_legit_setting )
 			{
-				if ( is_in_legit_group( setting, settings::g_combat.m_legitbot.groups[ i ] ) )
-				{
-					is_legit_group = true;
-					break;
-				}
+				for ( const auto& group : settings::g_combat.m_legitbot.groups )
+					legit_it->second = legit_it->second || is_in_legit_group( setting, group );
+				for ( const auto& weapon : settings::g_combat.m_legitbot.weapons )
+					legit_it->second = legit_it->second || is_in_legit_group( setting, weapon.cfg );
 			}
-			if ( !is_legit_group )
-			{
-				for ( auto i = 0u; i < settings::combat::legitbot::k_weapon_count; ++i )
-				{
-					if ( is_in_legit_group( setting, settings::g_combat.m_legitbot.weapons[ i ].cfg ) )
-					{
-						is_legit_group = true;
-						break;
-					}
-				}
-			}
+			const auto is_legit_group = legit_it->second;
 
 			if ( is_legit_group )
 			{
@@ -1170,6 +1151,8 @@ namespace rendering {
 			{
 				const auto& e = entries[ i ];
 				const auto row_y = base_ry + header_h + header_gap + static_cast< float >( i ) * ( row_h + row_gap );
+				if ( row_y + row_h + 2.0f < 0.0f || row_y - 2.0f > static_cast<float>( screen_h ) )
+					continue;
 				const float nw = e.nw;
 				const float nh = e.nh;
 				const float vw = e.vw;
@@ -1317,6 +1300,7 @@ namespace rendering {
 			};
 
 			std::unordered_map<std::uint64_t, entry> m_entries{};
+			std::chrono::steady_clock::time_point m_last_load{};
 
 			[[nodiscard]] ID3D11ShaderResourceView* get( std::uint64_t steam_id )
 			{
@@ -1344,6 +1328,11 @@ namespace rendering {
 						return nullptr;
 					}
 				}
+
+				// Spread Steam calls and GPU uploads across frames, including failed requests.
+				if ( now - this->m_last_load < std::chrono::milliseconds( 50 ) )
+					return nullptr;
+				this->m_last_load = now;
 
 				auto& e = this->m_entries[ steam_id ];
 				e.last_request = now;
@@ -1378,6 +1367,12 @@ namespace rendering {
 		};
 
 		static avatar_cache avatars{};
+		static std::string avatar_map;
+		if ( avatar_map != s_map_name )
+		{
+			avatars.clear( );
+			avatar_map = s_map_name;
+		}
 
 		struct row_anim_t
 		{
@@ -1688,6 +1683,9 @@ namespace rendering {
 				const auto row_y = base_ry + header_h + header_gap + static_cast< float >( i ) * ( row_h + row_gap );
 				const float nw = e.nw;
 				const float nh = e.nh;
+				// Include the avatar and shadow overhang when culling off-screen rows.
+				if ( row_y + row_h + 5.0f < 0.0f || row_y - 5.0f > static_cast<float>( screen_h ) )
+					continue;
 				const auto avatar_tex = avatars.get( e.steam_id );
 
 				const auto card_x = x + 4.0f;
