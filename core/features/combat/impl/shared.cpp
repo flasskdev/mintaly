@@ -42,6 +42,11 @@ namespace features::combat {
                 };
         }
 
+        bool shared::penetration::prepare_workers( ) const
+        {
+                return g_shared.g_autowall_tls_slot.ensure( ) != TLS_OUT_OF_INDEXES;
+        }
+
         shared::penetration::run_context shared::penetration::prepare_target( std::uintptr_t target_pawn, lagcomp::record* record ) const
         {
                 run_context ctx{};
@@ -131,15 +136,20 @@ namespace features::combat {
 
                 // Dynamic TLS for autowall state (manual-map compatible)
                 auto& tls_slot = g_shared.g_autowall_tls_slot;
-                (void)tls_slot.ensure( );
+                if ( tls_slot.ensure( ) == TLS_OUT_OF_INDEXES ) return false;
                 autowall_state_t state{ true, ctx.record };
-                tls_slot.set( &state );
-
-                // The hitbox-transform hook supplies this thread's record directly.
-                // Do not swap the live entity pose: Present may read it concurrently.
-                systems::g_tracing.setup_trace( trace, start, trace_delta, filter, 4, true );
-
-                tls_slot.set( nullptr );
+                {
+                        struct restore_tls
+                        {
+                                utilities::tls::slot<autowall_state_t>& slot;
+                                autowall_state_t* previous;
+                                ~restore_tls( ) { slot.set( previous ); }
+                        } restore{ tls_slot, tls_slot.get( ) };
+                        tls_slot.set( &state );
+                        // Restore even if setup throws; never leave TLS pointing at
+                        // a destroyed stack record, and preserve an outer trace.
+                        systems::g_tracing.setup_trace( trace, start, trace_delta, filter, 4, true );
+                }
 
                 const auto num_hits = trace->num_hits;
                 const auto hit_array = reinterpret_cast< std::uintptr_t >( trace->hit_array_pointer );
@@ -914,6 +924,34 @@ namespace features::combat {
                 return count;
         }
 
+        std::vector<shared::lagcomp::record> shared::lagcomp::get_scan_records( std::uintptr_t pawn ) const
+        {
+                std::shared_lock records_lock( this->m_records_mtx );
+                std::vector<record> out;
+                const auto it = this->m_records.find( pawn );
+                if ( it == this->m_records.end( ) ) return out;
+
+                const auto max_ticks = std::clamp( settings::g_combat.m_lagcomp.max_backtrack_ticks.value,
+                        1, static_cast<int>( rage::k_max_lagcomp_records ) );
+                const record* newest{};
+                const record* oldest{};
+                int count{};
+                for ( const auto& rec : it->second )
+                {
+                        if ( !rec.is_valid( ) ) continue;
+                        if ( !newest ) newest = &rec;
+                        if ( newest->tick - rec.tick > max_ticks ) break;
+                        oldest = &rec;
+                        if ( ++count == rage::k_max_lagcomp_records ) break;
+                }
+                if ( !newest ) return out;
+                out.reserve( rage::k_max_scan_records );
+                out.push_back( *newest );
+                if ( oldest != newest ) out.push_back( *oldest );
+                for ( auto& rec : out ) rec.is_applied = false;
+                return out;
+        }
+
         std::array<systems::bones::data, 27> shared::lagcomp::get_skeleton( const record& record ) const
         {
                 std::array<systems::bones::data, 27> skeleton;
@@ -1210,13 +1248,17 @@ namespace features::combat {
 
         float shared::calculate_hitchance( const math::vector3& shoot_position, const math::vector3& aim_angle, const systems::hitboxes::entry& hitbox, const systems::bones::data& bone, const spread_cache& cache ) const
         {
+                return this->calculate_hitchance( shoot_position, aim_angle, hitbox, bone, cache, this->m_ctx.range );
+        }
+
+        float shared::calculate_hitchance( const math::vector3& shoot_position, const math::vector3& aim_angle, const systems::hitboxes::entry& hitbox, const systems::bones::data& bone, const spread_cache& cache, float range ) const
+        {
                 if ( cache.count <= 0 || cache.count > static_cast< int >( cache.values.size( ) ) ||
-                        !std::isfinite( this->m_ctx.range ) || this->m_ctx.range <= 0.0f ||
+                        !std::isfinite( range ) || range <= 0.0f ||
                         !std::isfinite( aim_angle.x ) || !std::isfinite( aim_angle.y ) || !std::isfinite( aim_angle.z ) )
                         return 0.0f;
 
                 const auto is_capsule = hitbox.radius > 0.001f;
-                const auto range = this->m_ctx.range;
                 const auto dir_sq = range * range;
 
                 // Precompute capsule geometry invariants outside sample loop

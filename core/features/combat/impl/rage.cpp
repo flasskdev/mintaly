@@ -7,8 +7,34 @@
 #include <core/features/features.hpp>
 #include <protection/game_addresses.hpp>
 #include <utilities/threadpool/threadpool.hpp>
+#include <utilities/performance.hpp>
 
 namespace features::combat {
+
+    namespace perf = utilities::performance;
+
+    namespace {
+        void report_rage_timings()
+        {
+            static auto last = std::chrono::steady_clock::now();
+            const auto now = std::chrono::steady_clock::now();
+            if (now - last < std::chrono::seconds(5)) return;
+            last = now;
+            const auto samples = perf::take_samples();
+            for (std::size_t i = 0; i < samples.size(); ++i)
+            {
+                const auto& value = samples[i];
+                if (!value.calls) continue;
+                char line[256]{};
+                _snprintf_s(line, sizeof(line), _TRUNCATE,
+                    "rage perf: %s calls=%llu avg_ms=%.3f max_ms=%.3f",
+                    perf::names[i], static_cast<unsigned long long>(value.calls),
+                    static_cast<double>(value.total_ns) / static_cast<double>(value.calls) / 1.0e6,
+                    static_cast<double>(value.maximum_ns) / 1.0e6);
+                diag::write(diag::level::debug, line);
+            }
+        }
+    }
 
     // Helper for faster angle calculations
     namespace math_opt {
@@ -18,6 +44,11 @@ namespace features::combat {
 
     void rage::on_create_move(systems::input::usercmd* cmd)
     {
+        // Scan storage belongs to this command and is not re-entrant.
+        static std::mutex command_mutex;
+        std::lock_guard command_lock(command_mutex);
+        report_rage_timings();
+        perf::scope total_timer{perf::stage::rage_total};
         auto& ctx = g_shared.ctx();
         const auto local = systems::g_local.get();
 
@@ -265,14 +296,16 @@ namespace features::combat {
 
     std::vector<rage::candidate>& rage::gather_candidates(const systems::local::snapshot& local, float max_distance_sq)
     {
+        perf::scope timer{perf::stage::gather};
         const auto& shared_ctx = g_shared.ctx();
         const auto players = systems::g_entities.get_by_type(systems::entities::type::player);
 
         s_candidates_buf.clear();
         s_candidates_buf.reserve(players.size());
 
-        this->m_extrapolated_records.clear();
-        this->m_extrapolated_records.reserve(players.size());
+        this->m_scan_records.clear();
+        // Reserve before publishing pointers; at most two owned poses per player.
+        this->m_scan_records.reserve(players.size() * k_max_scan_records);
 
         for (const auto& p : players)
         {
@@ -298,15 +331,19 @@ namespace features::combat {
             if (memory::read<bool>(pawn + SCHEMA("C_CSPlayerPawn", "m_bGunGameImmunity"_hash)))
                 continue;
 
-            std::array<shared::lagcomp::record*, k_max_lagcomp_records> records_buf{};
-            auto records_count = g_shared.lc().get_valid_records(pawn, records_buf);
-            if (records_count == 0)
+            auto snapshots = g_shared.lc().get_scan_records(pawn);
+            if (snapshots.empty())
             {
                 auto extrap = g_shared.lc().extrapolate(pawn);
-                if (!extrap.has_value())
-                    continue;
-                this->m_extrapolated_records.push_back(std::move(*extrap));
-                records_buf[records_count++] = &this->m_extrapolated_records.back();
+                if (!extrap.has_value()) continue;
+                snapshots.push_back(std::move(*extrap));
+            }
+            std::array<shared::lagcomp::record*, k_max_lagcomp_records> records_buf{};
+            int records_count{};
+            for (auto& snapshot : snapshots)
+            {
+                this->m_scan_records.push_back(std::move(snapshot));
+                records_buf[records_count++] = &this->m_scan_records.back();
             }
 
             // Distance cull
@@ -726,41 +763,120 @@ namespace features::combat {
 
     void rage::scan_players(const math::vector3& eye, float inaccuracy, const aim_context& ctx, std::vector<candidate>& candidates, const systems::local::snapshot& local, std::vector<scan_hit>& out) const
     {
-        diag::exception_scope scan_scope{ "rage: scan_players / dispatch" };
+        diag::exception_scope scan_scope{ "rage: scan_players / batch" };
+        if (candidates.empty()) return;
+        const auto penetration = g_shared.pen(); // Immutable weapon-data snapshot.
+        // Initialize TLS on the owner before any worker reads its slot index.
+        if (!penetration.prepare_workers()) return;
+        const auto max_fov = static_cast<float>(settings::g_combat.m_ragebot.get_group(
+            g_shared.ctx().weapon_type, g_shared.ctx().item_def_idx).max_fov);
+        const auto view_angles = ctx.view_angles;
+        const auto local_pawn = local.pawn;
+        const auto local_team = local.team;
 
-        // Parallel multi-core target evaluation across candidates and records
-        for (std::size_t ci = 0; ci < candidates.size(); ++ci)
+        m_scan_work.resize(candidates.size());
+        m_candidate_hits.resize(candidates.size());
+        m_candidate_done.assign(candidates.size(), 0);
+        for (auto& hits : m_candidate_hits) hits.clear();
+
+        // One queue per record round, not two barriers per individual player.
+        // Newest poses run first; retain the direct-hit early-out for older poses.
+        for (int ri = 0; ri < k_max_scan_records; ++ri)
         {
-            auto& cand = candidates[ci];
-            const auto before = out.size();
-
-            for (auto ri = 0; ri < cand.record_count; ++ri)
+            m_scan_tasks.clear();
+            for (std::size_t ci = 0; ci < candidates.size(); ++ci)
             {
-                if (!cand.records[ri] || !cand.records[ri]->valid)
-                    continue;
-
-                this->scan_player(eye, inaccuracy, ctx, cand, cand.records[ri], local, out);
-
-                // Check if any of the newly added hits are direct (non-penetrated)
-                auto has_direct_hit{ false };
-                for (auto i = before; i < out.size(); ++i)
+                auto& work = m_scan_work[ci];
+                work.point_count = 0;
+                const auto& cand = candidates[ci];
+                if (m_candidate_done[ci] || ri >= cand.record_count) continue;
+                this->prepare_scan(eye, inaccuracy, ctx, cand, cand.records[ri], work);
+                std::array<bool, 19> queued{};
+                for (int pi = 0; pi < work.point_count; ++pi)
                 {
-                    if (!out[i].penetrated)
+                    work.hits[pi].reset();
+                    const auto& point = work.points[pi];
+                    if (!point.is_center || point.hitbox_index < 0 || point.hitbox_index >= 19) continue;
+                    if (queued[point.hitbox_index]) continue;
+                    queued[point.hitbox_index] = true;
+                    m_scan_tasks.push_back({ci, point.hitbox_index});
+                }
+            }
+            if (m_scan_tasks.empty()) continue;
+
+            {
+                perf::scope timer{perf::stage::scan_batch};
+                threadpool::parallel_for(0, static_cast<int>(m_scan_tasks.size()), [&](int begin, int end)
+                {
+                    for (int ti = begin; ti < end; ++ti)
                     {
-                        has_direct_hit = true;
-                        break;
+                        const auto task = m_scan_tasks[ti];
+                        auto& work = m_scan_work[task.candidate_index];
+                        const auto& cand = candidates[task.candidate_index];
+                        bool center_sufficient{};
+                        // Each hitbox (its center and dependent multipoints) has
+                        // one owner. No shared push_back, masks or worker-ID buffers.
+                        for (int pi = 0; pi < work.point_count; ++pi)
+                        {
+                            const auto& point = work.points[pi];
+                            if (point.hitbox_index != task.hitbox_index) continue;
+                            if (!point.is_center && center_sufficient) continue;
+                            const auto aim = math::helpers::calculate_angle(eye, point.position);
+                            const auto fov = math::helpers::angle_distance(view_angles, aim);
+                            if (fov > max_fov) continue;
+                            shared::penetration::result pen{};
+                            if (!penetration.run(eye, point.position, work.penetration, local_pawn, local_team, pen)) continue;
+                            if (pen.damage < cand.min_damage) continue;
+                            if (!point.is_center && point.hitbox_index == 0 &&
+                                pen.hitgroup != systems::g_hitboxes.hitgroup_from_hitbox(0)) continue;
+                            if (point.is_center && (!pen.penetrated || pen.damage >= static_cast<float>(cand.health)))
+                                center_sufficient = true;
+
+                            scan_hit hit{};
+                            hit.position = point.position;
+                            hit.aim_angle = aim;
+                            hit.damage = pen.damage;
+                            hit.fov = fov;
+                            hit.hitbox_index = point.hitbox_index;
+                            hit.hitgroup = pen.hitgroup;
+                            hit.bone_index = point.bone_index;
+                            hit.hitbox = point.hitbox;
+                            hit.is_center = point.is_center;
+                            hit.penetrated = pen.penetrated;
+                            hit.pawn = cand.pawn;
+                            hit.health = cand.health;
+                            hit.record = work.penetration.record;
+                            work.hits[pi] = hit;
+                        }
+                    }
+                });
+            }
+            // Stable candidate/record/center/multipoint ordering is independent
+            // of worker completion order, preserving selection tie-breaking.
+            for (std::size_t ci = 0; ci < candidates.size(); ++ci)
+            {
+                const auto& work = m_scan_work[ci];
+                for (bool centers : {true, false})
+                {
+                    for (int pi = 0; pi < work.point_count; ++pi)
+                    {
+                        const auto& hit = work.hits[pi];
+                        if (!hit || hit->is_center != centers) continue;
+                        m_candidate_hits[ci].push_back(*hit);
+                        if (!hit->penetrated) m_candidate_done[ci] = 1;
                     }
                 }
-
-                if (has_direct_hit)
-                    break;
             }
         }
+        for (const auto& hits : m_candidate_hits)
+            out.insert(out.end(), hits.begin(), hits.end());
     }
 
-    void rage::scan_player(const math::vector3& eye, float inaccuracy, const aim_context& ctx, candidate& cand, shared::lagcomp::record* record, const systems::local::snapshot& local, std::vector<scan_hit>& results) const
+    void rage::prepare_scan(const math::vector3& eye, float inaccuracy, const aim_context& ctx, const candidate& cand, shared::lagcomp::record* record, scan_work& work) const
     {
-        diag::exception_scope player_scope{ "rage: scan_player / validation" };
+        perf::scope timer{perf::stage::prepare_scan};
+        work.point_count = 0;
+        diag::exception_scope player_scope{ "rage: prepare_scan / validation" };
         if (!cand.pawn || cand.record_count <= 0 || cand.health <= 0 ||
             !record || !record->valid || record->bone_count <= 0)
             return;
@@ -775,7 +891,8 @@ namespace features::combat {
             return;
 
         diag::set_exception_phase("rage: scan_player / prepare_target");
-        const auto pen_ctx = g_shared.pen().prepare_target(cand.pawn, record);
+        work.penetration = g_shared.pen().prepare_target(cand.pawn, record);
+        const auto& pen_ctx = work.penetration;
         if (pen_ctx.geometry_count <= 0)
             return;
 
@@ -838,18 +955,9 @@ namespace features::combat {
                 hitbox_lut[entry.index] = &entry;
         }
 
-        struct trace_point
-        {
-            math::vector3 position;
-            int hitbox_index;
-            int bone_index;
-            systems::hitboxes::entry hitbox;
-            bool is_center;
-        };
-
-        // Stack-allocated trace point buffer (19 hitboxes × max ~12 points = 228, 256 is safe)
-        std::array<trace_point, 256> points{};
-        auto point_count{ 0 };
+        // Reuse owner-allocated storage; workers never resize these buffers.
+        auto& points = work.points;
+        auto& point_count = work.point_count;
 
         // Batch debug points to avoid per-point mutex acquisition
         std::array<debug_point, 256> local_debug_points{};
@@ -934,164 +1042,12 @@ namespace features::combat {
                 m_debug_points.push_back(local_debug_points[i]);
         }
 
-        if (point_count == 0)
-            return;
-
-        diag::set_exception_phase("rage: scan_player / penetration");
-
-        // Separate center points and multipoints
-        std::array<int, 32> center_indices{};
-        auto center_count{ 0 };
-        for (auto pi = 0; pi < point_count; ++pi)
-        {
-            if (points[pi].is_center && center_count < static_cast<int>(center_indices.size()))
-                center_indices[center_count++] = pi;
-        }
-
-        static std::array<std::vector<scan_hit>, 64> s_thread_hits{};
-        const auto thread_count = threadpool::get_thread_count();
-        const auto num_threads = std::min(thread_count, static_cast<int>(s_thread_hits.size()));
-
-        std::array<std::atomic<bool>, 19> center_sufficient{};
-        for (auto& cs : center_sufficient)
-            cs.store(false, std::memory_order_relaxed);
-
-        // Phase 1: Parallel scan for center points across CPU cores
-        if (center_count > 0)
-        {
-            for (auto ti = 0; ti < num_threads; ++ti)
-                s_thread_hits[ti].clear();
-
-            threadpool::parallel_for_indexed(0, center_count, [&](int chunk_begin, int chunk_end, int thread_id)
-            {
-                auto& thread_out = s_thread_hits[thread_id < num_threads ? thread_id : 0];
-
-                for (auto ci = chunk_begin; ci < chunk_end; ++ci)
-                {
-                    const auto pi = center_indices[ci];
-                    const auto& tp = points[pi];
-
-                    const auto aim = math::helpers::calculate_angle(eye, tp.position);
-                    const auto fov = math::helpers::angle_distance(ctx.view_angles, aim);
-                    if (fov > config.max_fov)
-                        continue;
-
-                    shared::penetration::result pen{};
-                    if (!g_shared.pen().run(eye, tp.position, pen_ctx, local.pawn, local.team, pen))
-                        continue;
-
-                    if (pen.damage < cand.min_damage)
-                        continue;
-
-                    if (tp.hitbox_index >= 0 && tp.hitbox_index < static_cast<int>(center_sufficient.size()))
-                    {
-                        if (!pen.penetrated || pen.damage >= static_cast<float>(cand.health))
-                            center_sufficient[tp.hitbox_index].store(true, std::memory_order_relaxed);
-                    }
-
-                    scan_hit h{};
-                    h.position = tp.position;
-                    h.aim_angle = aim;
-                    h.damage = pen.damage;
-                    h.fov = fov;
-                    h.hitbox_index = tp.hitbox_index;
-                    h.hitgroup = pen.hitgroup;
-                    h.bone_index = tp.bone_index;
-                    h.hitbox = tp.hitbox;
-                    h.is_center = true;
-                    h.penetrated = pen.penetrated;
-                    h.pawn = cand.pawn;
-                    h.health = cand.health;
-                    h.record = record;
-                    thread_out.push_back(h);
-                }
-            }, 1);
-
-            for (auto ti = 0; ti < num_threads; ++ti)
-            {
-                for (auto& h : s_thread_hits[ti])
-                    results.push_back(std::move(h));
-            }
-        }
-
-        // Phase 2: Collect all multipoints that are not skipped by an already-sufficient center
-        std::array<int, 256> mp_indices{};
-        auto mp_count{ 0 };
-        for (auto pi = 0; pi < point_count; ++pi)
-        {
-            const auto& tp = points[pi];
-            if (tp.is_center)
-                continue;
-
-            if (tp.hitbox_index >= 0 && tp.hitbox_index < static_cast<int>(center_sufficient.size()) && center_sufficient[tp.hitbox_index].load(std::memory_order_relaxed))
-                continue;
-
-            mp_indices[mp_count++] = pi;
-        }
-
-        if (mp_count == 0)
-            return;
-
-        // Phase 3: Parallelize remaining multipoints across ALL CPU cores via threadpool
-        for (auto ti = 0; ti < num_threads; ++ti)
-            s_thread_hits[ti].clear();
-
-        threadpool::parallel_for_indexed(0, mp_count, [&](int chunk_begin, int chunk_end, int thread_id)
-        {
-            auto& thread_out = s_thread_hits[thread_id < num_threads ? thread_id : 0];
-
-            for (auto mi = chunk_begin; mi < chunk_end; ++mi)
-            {
-                const auto pi = mp_indices[mi];
-                const auto& tp = points[pi];
-
-                const auto aim = math::helpers::calculate_angle(eye, tp.position);
-                const auto fov = math::helpers::angle_distance(ctx.view_angles, aim);
-                if (fov > config.max_fov)
-                    continue;
-
-                shared::penetration::result pen{};
-                if (!g_shared.pen().run(eye, tp.position, pen_ctx, local.pawn, local.team, pen))
-                    continue;
-
-                if (pen.damage < cand.min_damage)
-                    continue;
-
-                // Headshot specific check for multipoint
-                if (tp.hitbox_index == 0)
-                {
-                    if (pen.hitgroup != systems::g_hitboxes.hitgroup_from_hitbox(tp.hitbox_index))
-                        continue;
-                }
-
-                scan_hit h{};
-                h.position = tp.position;
-                h.aim_angle = aim;
-                h.damage = pen.damage;
-                h.fov = fov;
-                h.hitbox_index = tp.hitbox_index;
-                h.hitgroup = pen.hitgroup;
-                h.bone_index = tp.bone_index;
-                h.hitbox = tp.hitbox;
-                h.is_center = false;
-                h.penetrated = pen.penetrated;
-                h.pawn = cand.pawn;
-                h.health = cand.health;
-                h.record = record;
-                thread_out.push_back(h);
-            }
-        }, 1);
-
-        // Phase 4: Gather multipoint hits from all worker threads
-        for (auto ti = 0; ti < num_threads; ++ti)
-        {
-            for (auto& h : s_thread_hits[ti])
-                results.push_back(std::move(h));
-        }
+        // Dispatch is owned by scan_players after all target inputs are ready.
     }
 
     rage::target rage::select_best(const aim_context& aim_ctx, const std::vector<scan_hit>& hits, float eval_inaccuracy) const
     {
+        perf::scope selection_timer{perf::stage::selection};
         auto hitgroup_priority = [](int hitbox_index) -> int
             {
                 if (hitbox_index == 0) return 4; // Head
@@ -1189,6 +1145,11 @@ namespace features::combat {
         const auto hc_cache = config.no_spread.value
             ? shared::spread_cache{}
             : g_shared.build_spread_cache( eval_inaccuracy, aim_ctx.spread );
+        const auto weapon_range = g_shared.ctx().range;
+        const auto no_spread = config.no_spread.value;
+        const auto batch_width = no_spread ? 1 : std::max(threadpool::get_thread_count(), 1);
+        std::array<float, 128> hitchances{};
+        hitchances.fill(-1.0f);
 
         target best{};
 
@@ -1214,10 +1175,29 @@ namespace features::combat {
             if (best.valid && best.score >= 1000000.0f && max_possible_score < best.score - 0.01f)
                 continue;
 
-            const auto& bone = h.record->bones[h.bone_index];
-            const auto hc = config.no_spread.value ?
-                1.0f :
-                g_shared.calculate_hitchance(h.source_eye.position, h.aim_angle, h.hitbox, bone, hc_cache);
+            if (!no_spread && hitchances[ci] < 0.0f)
+            {
+                // Ordered waves retain branch-and-bound between batches instead
+                // of evaluating every discarded candidate unconditionally.
+                const auto wave_end = ci + std::min(batch_width, cand_count - ci);
+                perf::scope timer{perf::stage::hitchance_batch};
+                threadpool::parallel_for(ci, wave_end, [&](int begin, int end)
+                {
+                    for (int wi = begin; wi < end; ++wi)
+                    {
+                        const auto& hit = hits[candidate_indices[wi]];
+                        auto hc_value = 0.0f;
+                        if (hit.record && hit.record->valid && hit.bone_index >= 0 &&
+                            hit.bone_index < 28 && hit.bone_index < hit.record->bone_count)
+                        {
+                            hc_value = g_shared.calculate_hitchance(hit.source_eye.position, hit.aim_angle,
+                                hit.hitbox, hit.record->bones[hit.bone_index], hc_cache, weapon_range);
+                        }
+                        hitchances[wi] = hc_value;
+                    }
+                });
+            }
+            const auto hc = no_spread ? 1.0f : hitchances[ci];
 
             const auto passes_hitchance = config.no_spread.value || hc >= needed_hc;
 
