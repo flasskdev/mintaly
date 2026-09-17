@@ -345,6 +345,7 @@ namespace features::changer {
 		void on_frame_stage_notify( );
 		void reset( );
 		void on_round_mvp( void* event );
+		void clear_mvp( );
 		[[nodiscard]] bool is_local_mvp( ) const;
 
 	private:

@@ -51,7 +51,7 @@ namespace systems {
 		const bool registered =
 			register_listener( xs( "bullet_impact" ), [ ]( void* event ) { features::misc::g_impacts.on_bullet_impact( reinterpret_cast<std::uintptr_t>( event ) ); } ) &&
 			register_listener( xs( "player_hurt" ), [ ]( void* event ) { features::misc::g_impacts.on_player_hurt( reinterpret_cast<std::uintptr_t>( event ) ); } ) &&
-			register_listener( xs( "round_start" ), [ ]( void* event ) { features::esp::player::g_overlay.reset_sounds( ); features::misc::g_other.on_round_start( ); } ) &&
+			register_listener( xs( "round_start" ), [ ]( void* event ) { features::esp::player::g_overlay.reset_sounds( ); features::misc::g_other.on_round_start( ); features::changer::g_music.clear_mvp( ); } ) &&
 			register_listener( xs( "player_death" ), [ ]( void* event ) { features::misc::g_other.on_player_death( reinterpret_cast<std::uintptr_t>( event ) ); } ) &&
 			register_listener( xs( "vote_cast" ), [ ]( void* event ) { features::misc::g_vote_logs.on_vote_cast( reinterpret_cast<std::uintptr_t>( event ) ); } ) &&
 			register_listener( xs( "vote_failed" ), [ ]( void* event ) { features::misc::g_vote_logs.on_vote_failed_event( reinterpret_cast<std::uintptr_t>( event ) ); } ) &&
