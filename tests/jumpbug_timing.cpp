@@ -6,6 +6,19 @@
 int main()
 {
     using namespace features::movement::jumpbug_timing;
+    for (float crouched : {36.0f, 54.0f, 72.0f}) {
+        const auto expansion = airborne_unduck_expansion(crouched, 72.0f);
+        assert(expansion);
+        const float lower = -*expansion;
+        const float upper = crouched + *expansion;
+        assert(upper - lower == 72.0f);
+        assert((upper + lower) * 0.5f == crouched * 0.5f);
+    }
+    assert(airborne_unduck_expansion(54.0f, 72.0f) == 9.0f);
+    assert(!airborne_unduck_expansion(0.0f, 72.0f));
+    assert(!airborne_unduck_expansion(73.0f, 72.0f));
+    assert(!airborne_unduck_expansion(NAN, 72.0f));
+    assert(!airborne_unduck_expansion(54.0f, INFINITY));
     for (int i = 0; i <= 1000; ++i)
     {
         const float target = latest_release * static_cast<float>(i) / 1000.0f;

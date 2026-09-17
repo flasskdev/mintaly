@@ -8,6 +8,14 @@ namespace features::movement::jumpbug_timing {
     inline constexpr float event_gap = 1.0f / 1024.0f;
     inline constexpr float latest_release = 1.0f - 2.0f * event_gap;
 
+    // Airborne unduck preserves the hull center: half the height difference
+    // extends below the crouched feet, the other half above the crouched head.
+    [[nodiscard]] inline std::optional<float> airborne_unduck_expansion(float crouched_height, float standing_height) {
+        if (!std::isfinite(crouched_height) || !std::isfinite(standing_height) ||
+            crouched_height <= 0.0f || standing_height < crouched_height) return std::nullopt;
+        return (standing_height - crouched_height) * 0.5f;
+    }
+
     // Find first contact with a swept probe, not a uniform sampling of a narrow
     // landing window. The callback returns nullopt for unusable traces; callers
     // must validate actual hull clearance/ground support at the returned time.
