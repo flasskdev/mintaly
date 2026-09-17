@@ -62,11 +62,15 @@ namespace threadpool {
 	};
 
 	bool initialize( );
+	void shutdown( ) noexcept;
+
+	[[nodiscard]] int get_thread_count( ) noexcept;
 
 	std::uintptr_t make_job( std::function<void( )>&& func, job_priority priority = job_priority::normal, const char* debug_name = nullptr );
 	job run( std::function<void( )> func, job_priority priority = job_priority::normal );
 	void run_sync( std::function<void( )> func, job_priority priority = job_priority::normal );
 	void parallel_for( int begin, int end, const std::function<void( int, int )>& body, int min_chunk_size = 1, job_priority priority = job_priority::normal );
+	void parallel_for_indexed( int begin, int end, const std::function<void( int, int, int )>& body, int min_chunk_size = 1 );
 	void run_batch( std::span<std::function<void( )>> tasks, job_priority priority = job_priority::normal );
 
 } // namespace threadpool

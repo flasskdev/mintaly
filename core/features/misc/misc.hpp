@@ -387,6 +387,10 @@ namespace features::misc {
                 void on_frame_stage_notify( );
                 void on_level_shutdown( bool retire_engine_entry = true );
                 void apply_scene_color( std::uintptr_t object ) const;
+                [[nodiscard]] bool is_target_object( std::uintptr_t object ) const
+                {
+                        return object != 0 && this->m_scene_object.load( std::memory_order_relaxed ) == object;
+                }
 
         private:
                 struct config_snapshot

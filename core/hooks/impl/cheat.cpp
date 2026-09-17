@@ -732,13 +732,21 @@ namespace hooks {
 
 	std::uintptr_t __fastcall cheat::light_scene_object( std::uintptr_t thisptr, std::uintptr_t object, std::uintptr_t a3 )
 	{
-		if ( lifecycle::is_unloading( ) )
+		if ( lifecycle::is_unloading( ) || !object )
 		{
 			return m_light_scene_object.call<std::uintptr_t>( thisptr, object, a3 );
 		}
 
-		const auto original_color = object
-			? memory::safe_read<std::array<float, 3>>( object + 0xe4 ) : std::nullopt;
+		const auto& scene = settings::g_world.m_scene;
+		const bool scene_lighting = scene.fullbright.value || scene.lighting.value;
+		const bool is_dlight = features::misc::g_dlight.is_target_object( object );
+
+		if ( !scene_lighting && !is_dlight )
+		{
+			return m_light_scene_object.call<std::uintptr_t>( thisptr, object, a3 );
+		}
+
+		const auto original_color = memory::safe_read<std::array<float, 3>>( object + 0xe4 );
 		if ( original_color )
 		{
 			features::world::g_scene.on_light_scene_object_pre( object );
@@ -760,7 +768,7 @@ namespace hooks {
 	{
 		m_draw_scene_object_array.call<void>( thisptr, a2, object_array );
 
-		if ( lifecycle::is_unloading( ) )
+		if ( lifecycle::is_unloading( ) || !object_array || !settings::g_world.m_scene.world_setting.value )
 		{
 			return;
 		}
@@ -769,66 +777,114 @@ namespace hooks {
 		features::world::g_scene.on_draw_scene_object_array( object_array );
 	}
 
-	std::uintptr_t __fastcall cheat::draw_scene_object( std::uintptr_t a1, std::uintptr_t a2, std::uintptr_t batch, int batch_count, int a5, std::uintptr_t a6, std::uintptr_t a7, std::uintptr_t a8 )
-	{
-		std::vector<std::pair<std::uintptr_t, std::uint32_t>> original_colors;
-		const auto& scene = settings::g_world.m_scene;
-		if ( !lifecycle::is_unloading( ) && batch && batch_count > 0 && batch_count <= ( 1 << 20 )
-			&& ( scene.fullbright.value || scene.world_setting.value || scene.skybox.custom_color.value ) )
+	namespace detail {
+		inline bool read_batch_colors( std::uintptr_t batch, int count, std::pair<std::uintptr_t, std::uint32_t>* out ) noexcept
 		{
-			original_colors.reserve( batch_count );
-			for ( auto i = 0; i < batch_count; ++i )
+			__try
 			{
-				const auto address = batch + static_cast<std::size_t>( i ) * 0x70 + 0x50;
-				const auto color = memory::safe_read<std::uint32_t>( address );
-				if ( color )
+				for ( int i = 0; i < count; ++i )
 				{
-					original_colors.emplace_back( address, *color );
+					const auto address = batch + static_cast<std::size_t>( i ) * 0x70 + 0x50;
+					out[ i ] = { address, *reinterpret_cast<const std::uint32_t*>( address ) };
 				}
+				return true;
 			}
-			// Only tint a batch when all of its original colors can be restored.
-			if ( original_colors.size( ) == static_cast<std::size_t>( batch_count ) )
+			__except ( EXCEPTION_EXECUTE_HANDLER )
 			{
-				diag::exception_scope exception_scope{ "world: primitive tint" };
-				features::world::g_scene.on_draw_scene_object( batch, batch_count );
+				return false;
 			}
 		}
 
-		const auto result = m_draw_scene_object.call<std::uintptr_t>( a1, a2, batch, batch_count, a5, a6, a7, a8 );
-		for ( const auto& [address, color] : original_colors )
+		inline void restore_batch_colors( const std::pair<std::uintptr_t, std::uint32_t>* in, std::size_t count ) noexcept
 		{
-			(void) memory::safe_write( address, color );
+			__try
+			{
+				for ( std::size_t i = 0; i < count; ++i )
+				{
+					*reinterpret_cast<std::uint32_t*>( in[ i ].first ) = in[ i ].second;
+				}
+			}
+			__except ( EXCEPTION_EXECUTE_HANDLER )
+			{
+			}
 		}
+	} // namespace detail
+
+	std::uintptr_t __fastcall cheat::draw_scene_object( std::uintptr_t a1, std::uintptr_t a2, std::uintptr_t batch, int batch_count, int a5, std::uintptr_t a6, std::uintptr_t a7, std::uintptr_t a8 )
+	{
+		const auto& scene = settings::g_world.m_scene;
+		const bool tint_active = ( scene.fullbright.value || scene.world_setting.value || scene.skybox.custom_color.value );
+
+		if ( lifecycle::is_unloading( ) || !batch || batch_count <= 0 || batch_count > ( 1 << 16 ) || !tint_active )
+		{
+			return m_draw_scene_object.call<std::uintptr_t>( a1, a2, batch, batch_count, a5, a6, a7, a8 );
+		}
+
+		constexpr std::size_t k_stack_batch_capacity = 128;
+		std::array<std::pair<std::uintptr_t, std::uint32_t>, k_stack_batch_capacity> stack_colors;
+		std::vector<std::pair<std::uintptr_t, std::uint32_t>> heap_colors;
+
+		auto* colors_data = stack_colors.data( );
+		if ( static_cast<std::size_t>( batch_count ) > k_stack_batch_capacity )
+		{
+			heap_colors.resize( batch_count );
+			colors_data = heap_colors.data( );
+		}
+
+		bool tinted = false;
+		if ( detail::read_batch_colors( batch, batch_count, colors_data ) )
+		{
+			diag::exception_scope exception_scope{ "world: primitive tint" };
+			features::world::g_scene.on_draw_scene_object( batch, batch_count );
+			tinted = true;
+		}
+
+		const auto result = m_draw_scene_object.call<std::uintptr_t>( a1, a2, batch, batch_count, a5, a6, a7, a8 );
+
+		if ( tinted )
+		{
+			detail::restore_batch_colors( colors_data, static_cast<std::size_t>( batch_count ) );
+		}
+
 		return result;
 	}
 
 	bool __fastcall cheat::is_glowing( std::uintptr_t glow_property )
 	{
-		if ( lifecycle::is_unloading( ) )
+		if ( lifecycle::is_unloading( ) || !glow_property )
 		{
 			return m_is_glowing.call<bool>( glow_property );
 		}
 
-		if ( glow_property )
-		{
-			const auto owner_entity = memory::safe_read<std::uintptr_t>( glow_property + 0x18 ).value_or( 0 );
-			if ( owner_entity )
-			{
-				const auto schema_name = systems::g_entities.get_schema_name( owner_entity );
-				if ( schema_name )
-				{
-					const auto owner_hash = fnv1a::runtime_hash( schema_name );
-					if ( owner_hash )
-					{
-						if ( features::esp::player::g_glow.on_is_glowing( owner_entity, owner_hash ) )
-						{
-							return true;
-						}
+		const auto& pcfg = settings::g_esp.m_player.m_glow;
+		const auto& icfg = settings::g_esp.m_item.m_glow;
+		const bool glow_active = pcfg.enemy.enabled.value || pcfg.enemy_ragdoll.enabled.value ||
+			pcfg.team.enabled.value || pcfg.team_ragdoll.enabled.value ||
+			pcfg.local.enabled.value || pcfg.local_ragdoll.enabled.value ||
+			icfg.enabled.value;
 
-						if ( features::esp::item::g_glow.on_is_glowing( owner_entity, owner_hash ) )
-						{
-							return true;
-						}
+		if ( !glow_active )
+		{
+			return m_is_glowing.call<bool>( glow_property );
+		}
+
+		const auto owner_entity = memory::safe_read<std::uintptr_t>( glow_property + 0x18 ).value_or( 0 );
+		if ( owner_entity )
+		{
+			const auto schema_name = systems::g_entities.get_schema_name( owner_entity );
+			if ( schema_name )
+			{
+				const auto owner_hash = fnv1a::runtime_hash( schema_name );
+				if ( owner_hash )
+				{
+					if ( features::esp::player::g_glow.on_is_glowing( owner_entity, owner_hash ) )
+					{
+						return true;
+					}
+
+					if ( features::esp::item::g_glow.on_is_glowing( owner_entity, owner_hash ) )
+					{
+						return true;
 					}
 				}
 			}
@@ -839,32 +895,42 @@ namespace hooks {
 
 	void __fastcall cheat::get_glow_color( std::uintptr_t glow_property, float* color )
 	{
-		if ( lifecycle::is_unloading( ) )
+		if ( lifecycle::is_unloading( ) || !glow_property )
 		{
 			m_get_glow_color.call<void>( glow_property, color );
 			return;
 		}
 
-		if ( glow_property )
-		{
-			const auto owner_entity = memory::safe_read<std::uintptr_t>( glow_property + 0x18 ).value_or( 0 );
-			if ( owner_entity )
-			{
-				const auto schema_name = systems::g_entities.get_schema_name( owner_entity );
-				if ( schema_name )
-				{
-					const auto owner_hash = fnv1a::runtime_hash( schema_name );
-					if ( owner_hash )
-					{
-						if ( features::esp::player::g_glow.on_get_glow_color( owner_entity, owner_hash, color ) )
-						{
-							return;
-						}
+		const auto& pcfg = settings::g_esp.m_player.m_glow;
+		const auto& icfg = settings::g_esp.m_item.m_glow;
+		const bool glow_active = pcfg.enemy.enabled.value || pcfg.enemy_ragdoll.enabled.value ||
+			pcfg.team.enabled.value || pcfg.team_ragdoll.enabled.value ||
+			pcfg.local.enabled.value || pcfg.local_ragdoll.enabled.value ||
+			icfg.enabled.value;
 
-						if ( features::esp::item::g_glow.on_get_glow_color( owner_entity, owner_hash, color ) )
-						{
-							return;
-						}
+		if ( !glow_active )
+		{
+			m_get_glow_color.call<void>( glow_property, color );
+			return;
+		}
+
+		const auto owner_entity = memory::safe_read<std::uintptr_t>( glow_property + 0x18 ).value_or( 0 );
+		if ( owner_entity )
+		{
+			const auto schema_name = systems::g_entities.get_schema_name( owner_entity );
+			if ( schema_name )
+			{
+				const auto owner_hash = fnv1a::runtime_hash( schema_name );
+				if ( owner_hash )
+				{
+					if ( features::esp::player::g_glow.on_get_glow_color( owner_entity, owner_hash, color ) )
+					{
+						return;
+					}
+
+					if ( features::esp::item::g_glow.on_get_glow_color( owner_entity, owner_hash, color ) )
+					{
+						return;
 					}
 				}
 			}

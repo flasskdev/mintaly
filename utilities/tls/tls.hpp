@@ -49,7 +49,14 @@ namespace utilities::tls {
                 {
                         if ( m_index == TLS_OUT_OF_INDEXES )
                         {
-                                m_index = TlsAlloc( );
+                                const DWORD idx = TlsAlloc( );
+                                if ( idx != TLS_OUT_OF_INDEXES )
+                                {
+                                        if ( InterlockedCompareExchange( (volatile LONG*)&m_index, (LONG)idx, (LONG)TLS_OUT_OF_INDEXES ) != (LONG)TLS_OUT_OF_INDEXES )
+                                        {
+                                                TlsFree( idx );
+                                        }
+                                }
                         }
                         return m_index;
                 }

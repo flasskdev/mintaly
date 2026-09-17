@@ -517,7 +517,7 @@ namespace features::movement {
             math::helpers::normalize_angle(restore_delta);
             if (std::fabsf(restore_delta) > 0.01f)
             {
-                this->apply_yaw_subtick(base, 0.995f, restore_delta);
+                (void)this->apply_yaw_subtick(base, 0.995f, restore_delta);
             }
 
             base->set_forwardmove(player_move.x);

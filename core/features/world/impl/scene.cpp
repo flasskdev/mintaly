@@ -435,12 +435,11 @@ namespace features::world {
 
 			if ((is_cloud || is_sun) && config.custom_color.value) {
 				const auto& color = is_cloud ? config.cloud_color.value : config.sun_color.value;
-				(void) memory::safe_write<std::uint32_t> (mesh + 0x50, color);
+				*reinterpret_cast<std::uint32_t*>(mesh + 0x50) = color;
 			} else if (fullbright_on) {
-				(void) memory::safe_write<std::uint32_t> (mesh + 0x50, settings::g_world.m_scene.fullbright_color.value);
+				*reinterpret_cast<std::uint32_t*>(mesh + 0x50) = settings::g_world.m_scene.fullbright_color.value;
 			} else if (!is_cloud && !is_sun && settings::g_world.m_scene.world_setting.value) {
-				(void) memory::safe_write<std::uint32_t> (
-					mesh + 0x50, settings::g_world.m_scene.world_color.value);
+				*reinterpret_cast<std::uint32_t*>(mesh + 0x50) = settings::g_world.m_scene.world_color.value;
 			}
 		}
 	}

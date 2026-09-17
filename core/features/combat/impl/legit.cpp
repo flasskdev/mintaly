@@ -218,6 +218,12 @@ namespace features::combat {
             this->reset_trigger();
             return;
         }
+
+        if (!g_shared.has_alive_enemies())
+        {
+            this->reset_trigger();
+            return;
+        }
         const auto aim_punch = g_shared.get_aim_punch(local.pawn);
 
         this->m_cached_view_angles = view_angles;
@@ -718,13 +724,13 @@ namespace features::combat {
                 continue;
             }
 
-            const auto records = g_shared.lc().get_valid_records(pawn);
-            if (records.empty())
+            std::array<shared::lagcomp::record*, 1> records{};
+            if (g_shared.lc().get_valid_records(pawn, records) <= 0)
             {
                 continue;
             }
 
-            const auto record = records.front();
+            const auto record = records[0];
             if (!record || !record->valid)
             {
                 continue;
@@ -989,30 +995,31 @@ namespace features::combat {
         const auto gather_records = [&](std::uintptr_t pawn) -> std::array<shared::lagcomp::record*, 3>
             {
                 std::array<shared::lagcomp::record*, 3> out{ nullptr, nullptr, nullptr };
-                const auto records = g_shared.lc().get_valid_records(pawn);
-                if (records.empty() || !records.front() || !records.front()->valid)
+                std::array<shared::lagcomp::record*, 16> records{};
+                const auto count = g_shared.lc().get_valid_records(pawn, records);
+                if (count <= 0 || !records[0] || !records[0]->valid)
                 {
                     return out;
                 }
 
-                out[0] = records.front();
-                if (records.size() > 2)
+                out[0] = records[0];
+                if (count > 2)
                 {
-                    const auto mid = records.size() / 2;
+                    const auto mid = count / 2;
                     if (records[mid] && records[mid]->valid)
                     {
                         out[1] = records[mid];
                     }
-                    if (records.back() && records.back()->valid)
+                    if (records[count - 1] && records[count - 1]->valid)
                     {
-                        out[2] = records.back();
+                        out[2] = records[count - 1];
                     }
                 }
-                else if (records.size() > 1)
+                else if (count > 1)
                 {
-                    if (records.back() && records.back()->valid)
+                    if (records[count - 1] && records[count - 1]->valid)
                     {
-                        out[1] = records.back();
+                        out[1] = records[count - 1];
                     }
                 }
                 return out;

@@ -179,37 +179,138 @@ namespace threadpool {
 		return raw;
 	}
 
+	namespace native {
+
+		struct alignas(64) worker_slot
+		{
+			HANDLE thread_handle{ nullptr };
+			DWORD thread_id{ 0 };
+			int worker_index{ 0 }; // 1-based index (main calling thread is 0)
+
+			std::atomic<uint32_t> task_gen{ 0 };
+			std::atomic<uint32_t> done_gen{ 0 };
+
+			int chunk_begin{ 0 };
+			int chunk_end{ 0 };
+			const std::function<void(int, int, int)>* body{ nullptr };
+		};
+
+		inline std::atomic<bool> g_shutdown{ false };
+		inline std::atomic<bool> g_initialized{ false };
+		inline int g_total_threads{ 1 };
+		inline int g_num_workers{ 0 };
+		inline std::array<worker_slot, 64> g_workers{};
+
+		inline DWORD WINAPI worker_thread_proc(LPVOID param)
+		{
+			auto* worker = static_cast<worker_slot*>(param);
+			SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_HIGHEST);
+
+			while (!g_shutdown.load(std::memory_order_relaxed))
+			{
+				uint32_t current_task = worker->task_gen.load(std::memory_order_acquire);
+				while (current_task == worker->done_gen.load(std::memory_order_relaxed))
+				{
+					worker->task_gen.wait(current_task);
+					if (g_shutdown.load(std::memory_order_relaxed))
+						return 0;
+					current_task = worker->task_gen.load(std::memory_order_acquire);
+				}
+
+				if (worker->body && *worker->body)
+				{
+					try
+					{
+						(*worker->body)(worker->chunk_begin, worker->chunk_end, worker->worker_index);
+					}
+					catch (...)
+					{
+					}
+				}
+
+				worker->done_gen.store(current_task, std::memory_order_release);
+				worker->done_gen.notify_one();
+			}
+
+			return 0;
+		}
+
+		inline void init_workers()
+		{
+			if (g_initialized.exchange(true))
+				return;
+
+			g_shutdown.store(false, std::memory_order_relaxed);
+			unsigned int hw = std::thread::hardware_concurrency();
+			if (hw == 0) hw = 4;
+			g_total_threads = static_cast<int>(std::clamp(hw, 1u, 64u));
+			g_num_workers = g_total_threads - 1;
+
+			for (int i = 0; i < g_num_workers; ++i)
+			{
+				auto& w = g_workers[i];
+				w.worker_index = i + 1; // 1-based (calling thread is 0)
+				w.task_gen.store(0, std::memory_order_relaxed);
+				w.done_gen.store(0, std::memory_order_relaxed);
+				w.thread_handle = CreateThread(nullptr, 0, worker_thread_proc, &w, 0, &w.thread_id);
+			}
+		}
+
+		inline void stop_workers() noexcept
+		{
+			if (!g_initialized.exchange(false))
+				return;
+
+			g_shutdown.store(true, std::memory_order_release);
+			for (int i = 0; i < g_num_workers; ++i)
+			{
+				auto& w = g_workers[i];
+				w.task_gen.fetch_add(1, std::memory_order_release);
+				w.task_gen.notify_all();
+			}
+
+			for (int i = 0; i < g_num_workers; ++i)
+			{
+				auto& w = g_workers[i];
+				if (w.thread_handle)
+				{
+					WaitForSingleObject(w.thread_handle, 500);
+					CloseHandle(w.thread_handle);
+					w.thread_handle = nullptr;
+				}
+			}
+		}
+
+	} // namespace native
+
 	bool initialize () {
+		native::init_workers ();
+
 		const auto tier0 = MODULE_BASE ("tier0.dll");
-		if (!tier0) {
-			return false;
-		}
+		if (tier0) {
+			const auto allocator_export = MODULE_EXPORT ("tier0.dll:g_pMemAlloc");
+			if (allocator_export) {
+				detail::g_mem_alloc = memory::read<std::uintptr_t> (allocator_export);
+			}
 
-		const auto allocator_export = MODULE_EXPORT ("tier0.dll:g_pMemAlloc");
-		if (!allocator_export) {
-			return false;
-		}
-		detail::g_mem_alloc = memory::read<std::uintptr_t> (allocator_export);
-		if (!detail::g_mem_alloc) {
-			return false;
-		}
+			const auto threadpool_export = MODULE_EXPORT ("tier0.dll:g_pThreadPool");
+			if (threadpool_export) {
+				detail::g_pool = pool (memory::read<std::uintptr_t> (threadpool_export));
+			}
 
-		detail::g_pool = pool (memory::read<std::uintptr_t> (MODULE_EXPORT ("tier0.dll:g_pThreadPool")));
-		if (!detail::g_pool.get ()) {
-			return false;
+			detail::std_function_job_vtable = memory::find_vtable_by_rtti (tier0, xs ("CStdFunctionJob"));
 		}
-
-		detail::std_function_job_vtable = memory::find_vtable_by_rtti (tier0, xs ("CStdFunctionJob"));
-		if (!detail::std_function_job_vtable) {
-			return false;
-		}
-
-		/*const auto api_set = GetModuleHandleA (xs ("api-ms-win-core-synch-l1-2-0.dll"));
-		if (api_set) {
-			detail::wait_on_address = reinterpret_cast<std::uintptr_t>(GetProcAddress (api_set, xs ("WaitOnAddress")));
-		}*/
 
 		return true;
+	}
+
+	void shutdown () noexcept {
+		native::stop_workers ();
+	}
+
+	int get_thread_count () noexcept {
+		native::init_workers ();
+		return native::g_total_threads;
 	}
 
 	job run (std::function<void ()> func, job_priority priority) {
@@ -230,58 +331,53 @@ namespace threadpool {
 		}
 	}
 
-	void parallel_for (int begin, int end, const std::function<void (int, int)>& body, int min_chunk_size, job_priority priority) {
+	void parallel_for_indexed (int begin, int end, const std::function<void (int, int, int)>& body, int min_chunk_size) {
 		if (begin >= end) {
 			return;
 		}
 
-		if (!detail::g_pool.valid () || !detail::g_mem_alloc || !detail::std_function_job_vtable) {
-			body (begin, end);
+		native::init_workers ();
+
+		const auto total = end - begin;
+		const auto max_chunks = std::min (native::g_total_threads, static_cast<int> ((total + min_chunk_size - 1) / min_chunk_size));
+		if (max_chunks <= 1) {
+			body (begin, end, 0);
 			return;
 		}
 
-		// Hardware capacity is process-wide; avoid querying it on every batch.
-		static const int max_chunks {static_cast<int>(std::clamp (
-			std::thread::hardware_concurrency (), 1u,
-			static_cast<unsigned>(detail::max_partitions)))};
 		const auto partition = detail::partition_range (begin, end, min_chunk_size, max_chunks);
 		if (partition.count <= 1) {
-			body (begin, end);
+			body (begin, end, 0);
 			return;
 		}
 
-		std::exception_ptr failure;
-		std::mutex failure_mutex;
-		const auto invoke = [&] (int cb, int ce) {
-			try {
-				body (cb, ce);
-			} catch (...) {
-				std::lock_guard lock (failure_mutex);
-				if (!failure) failure = std::current_exception ();
-			}
-		};
-
-		// At most three jobs are queued. Keep handles on the stack rather than
-		// allocating a vector for each parallel call. Empty handles wait safely.
-		std::array<job, detail::max_partitions - 1> jobs{};
-		{
-			// Also join on dispatch/allocation failure before references captured
-			// by already queued jobs can leave scope.
-			struct join_guard {
-				std::span<job> jobs;
-				~join_guard () { for (auto& j : jobs) j.wait (); }
-			} guard {std::span<job>{jobs}};
-
-			for (auto i = 0; i < partition.count - 1; ++i) {
-				const auto chunk = partition.chunks[i];
-				jobs[i] = run ([&invoke, chunk] () { invoke (chunk.begin, chunk.end); }, priority);
-				if (!jobs[i]) invoke (chunk.begin, chunk.end);
-			}
-
-			const auto last = partition.chunks[partition.count - 1];
-			invoke (last.begin, last.end);
+		// Dispatch chunks 1..count-1 to background workers
+		for (int i = 1; i < partition.count; ++i) {
+			auto& w = native::g_workers [i - 1];
+			w.chunk_begin = partition.chunks [i].begin;
+			w.chunk_end = partition.chunks [i].end;
+			w.body = &body;
+			w.task_gen.fetch_add (1, std::memory_order_release);
+			w.task_gen.notify_one ();
 		}
-		if (failure) std::rethrow_exception (failure);
+
+		// Calling thread executes chunk 0 (thread_id = 0)
+		body (partition.chunks [0].begin, partition.chunks [0].end, 0);
+
+		// Wait for all dispatched workers to complete
+		for (int i = 1; i < partition.count; ++i) {
+			auto& w = native::g_workers [i - 1];
+			const uint32_t expected = w.task_gen.load (std::memory_order_relaxed);
+			while (w.done_gen.load (std::memory_order_acquire) != expected) {
+				w.done_gen.wait (expected - 1);
+			}
+		}
+	}
+
+	void parallel_for (int begin, int end, const std::function<void (int, int)>& body, int min_chunk_size, job_priority /*priority*/) {
+		parallel_for_indexed (begin, end, [&body] (int b, int e, int /*tid*/) {
+			body (b, e);
+		}, min_chunk_size);
 	}
 
 	void run_batch (std::span<std::function<void ()>> tasks, job_priority priority) {

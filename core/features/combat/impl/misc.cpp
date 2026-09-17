@@ -234,6 +234,11 @@ namespace features::combat {
                 const auto local_game_scene_node = memory::read<std::uintptr_t>(local.pawn + SCHEMA("C_BaseEntity", "m_pGameSceneNode"_hash));
                 if (!local_game_scene_node) return view_angles.y;
 
+                if (!g_shared.has_alive_enemies()) {
+                    this->m_indicator_yaw = base_yaw;
+                    return base_yaw;
+                }
+
             const auto local_origin = memory::read<math::vector3>(local_game_scene_node + SCHEMA("CGameSceneNode", "m_vecAbsOrigin"_hash));
             const auto eye_pos = local_origin + memory::read<math::vector3>(local.pawn + SCHEMA("C_BaseModelEntity", "m_vecViewOffset"_hash));
             const auto players = systems::g_entities.get_by_type(systems::entities::type::player);

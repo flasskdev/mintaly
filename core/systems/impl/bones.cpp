@@ -18,9 +18,12 @@ namespace systems {
 			return result;
 		}
 
-		const auto& bone = *reinterpret_cast< data* >( cache + static_cast< std::size_t >( bone_id ) * sizeof( data ) );
-		result.position = bone.position;
-		result.rotation = bone.rotation;
+		const auto opt = memory::safe_read< data >( cache + static_cast< std::size_t >( bone_id ) * sizeof( data ) );
+		if ( opt )
+		{
+			result.position = opt->position;
+			result.rotation = opt->rotation;
+		}
 
 		return result;
 	}
@@ -69,9 +72,13 @@ namespace systems {
 				continue;
 			}
 
-			const auto& bone = *reinterpret_cast< data* >( cache + static_cast< std::size_t >( bone_id ) * sizeof( data ) );
-			skeleton[ bone_id ].position = bone.position;
-			skeleton[ bone_id ].rotation = bone.rotation;
+			const auto opt = memory::safe_read< data >( cache + static_cast< std::size_t >( bone_id ) * sizeof( data ) );
+			if ( !opt )
+			{
+				continue;
+			}
+			skeleton[ bone_id ].position = opt->position;
+			skeleton[ bone_id ].rotation = opt->rotation;
 		}
 
 		return skeleton;

@@ -2408,32 +2408,12 @@ namespace xdraw {
 		full_scissor.right = static_cast< LONG >( std::ceil( vp.Width ) );
 		full_scissor.bottom = static_cast< LONG >( std::ceil( vp.Height ) );
 
-		auto bb_w{ 0 };
-		auto bb_h{ 0 };
+		const auto target_w = static_cast< int >( std::ceil( vp.Width ) );
+		const auto target_h = static_cast< int >( std::ceil( vp.Height ) );
 
+		if ( target_w > 0 && target_h > 0 && ( target_w != d.blur_cached_w || target_h != d.blur_cached_h ) )
 		{
-			ComPtr<ID3D11RenderTargetView> rtv{};
-			d.context->OMGetRenderTargets( 1, &rtv, nullptr );
-
-			if ( rtv )
-			{
-				ComPtr<ID3D11Resource> res{};
-				rtv->GetResource( &res );
-
-				ComPtr<ID3D11Texture2D> bb_tex{};
-				if ( res && SUCCEEDED( res.As( &bb_tex ) ) )
-				{
-					D3D11_TEXTURE2D_DESC desc{};
-					bb_tex->GetDesc( &desc );
-					bb_w = static_cast< int >( desc.Width );
-					bb_h = static_cast< int >( desc.Height );
-				}
-			}
-		}
-
-		if ( bb_w > 0 && bb_h > 0 && ( bb_w != d.blur_cached_w || bb_h != d.blur_cached_h ) )
-		{
-			detail::create_blur_textures( bb_w, bb_h );
+			detail::create_blur_textures( target_w, target_h );
 		}
 
 		{

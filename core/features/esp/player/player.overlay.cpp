@@ -115,7 +115,7 @@ namespace features::esp::player {
 			if ( item.schema_hash != "C_C4"_hash || !item.ptr )
 				continue;
 
-			const auto owner_handle = memory::safe_read<std::uint32_t>( item.ptr + SCHEMA( "C_BaseEntity", "m_hOwnerEntity"_hash ) ).value_or( 0 );
+			const auto owner_handle = memory::read<std::uint32_t>( item.ptr + SCHEMA( "C_BaseEntity", "m_hOwnerEntity"_hash ) );
 			if ( owner_handle )
 			{
 				c4_carrier_pawn = systems::g_entities.lookup( owner_handle );
@@ -123,13 +123,13 @@ namespace features::esp::player {
 					break;
 			}
 
-			const auto c4_scene = memory::safe_read<std::uintptr_t>( item.ptr + SCHEMA( "C_BaseEntity", "m_pGameSceneNode"_hash ) ).value_or( 0 );
+			const auto c4_scene = memory::read<std::uintptr_t>( item.ptr + SCHEMA( "C_BaseEntity", "m_pGameSceneNode"_hash ) );
 			if ( c4_scene )
 			{
-				const auto parent_node = memory::safe_read<std::uintptr_t>( c4_scene + SCHEMA( "CGameSceneNode", "m_pParent"_hash ) ).value_or( 0 );
+				const auto parent_node = memory::read<std::uintptr_t>( c4_scene + SCHEMA( "CGameSceneNode", "m_pParent"_hash ) );
 				if ( parent_node )
 				{
-					const auto parent_owner = memory::safe_read<std::uintptr_t>( parent_node + SCHEMA( "CGameSceneNode", "m_pOwner"_hash ) ).value_or( 0 );
+					const auto parent_owner = memory::read<std::uintptr_t>( parent_node + SCHEMA( "CGameSceneNode", "m_pOwner"_hash ) );
 					if ( parent_owner )
 					{
 						c4_carrier_pawn = parent_owner;

@@ -6,7 +6,7 @@
 
 namespace threadpool::detail {
 
-    inline constexpr int max_partitions = 4;
+    inline constexpr int max_partitions = 64;
 
     struct work_chunk
     {

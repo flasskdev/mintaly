@@ -1,6 +1,4 @@
 #include <pch/pch.hpp>
-#include <cassert>
-#include <core/features/combat/ballistics.hpp>
 #include <utilities/memory/memory.hpp>
 #include <utilities/addresses/addresses.hpp>
 #include <utilities/logging/logging.hpp>
@@ -24,123 +22,12 @@ namespace features::combat {
                         std::uint8_t pad[ 3 ];
                 };
 
-                [[nodiscard]] std::optional<float> capture_record_cutoff( )
-                {
-                        const auto local_pawn = systems::g_local.get( ).pawn;
-                        const auto net_channel = memory::call<std::uintptr_t>(PATTERN (patterns::get_net_channel), 0, 0 );
-                        const auto global_vars = memory::read<std::uintptr_t>( addresses::globals::global_vars );
-                        if ( !local_pawn || !net_channel || !global_vars )
-                                return std::nullopt;
-                        const auto server_limit = CONVAR ("sv_maxunlag")->get<float>( );
-                        const auto player_limit = CONVAR ("sv_maxunlag_player")->get<float>( );
-                        const auto max_unlag = player_limit > 0.0f ? std::min( server_limit, player_limit ) : server_limit;
-                        const auto current_time = memory::read<float>( global_vars + 0x30 );
-                        const auto latency = memory::call_vfunc<float>( net_channel, 10, 0 );
-                        return ballistics::lagcomp_cutoff( max_unlag, current_time, latency );
-                }
-
-                [[nodiscard]] bool valid_record_at( const shared::lagcomp::record& record,
-                        const std::optional<float>& cutoff )
-                {
-                        return record.valid && cutoff && std::isfinite( record.simulation_time ) &&
-                                record.simulation_time >= *cutoff;
-                }
-
-                // Hitchance needs existence, not the nearest contact fraction.
-                // Prepare all ray-invariant terms once for a hitbox/eye pair.
-                // The exact root tests and tolerances match ray_vs_capsule.
-                struct capsule_hitchance_query
-                {
-                        math::vector3 origin;
-                        math::vector3 caps[ 2 ];
-                        math::vector3 ab;
-                        math::vector3 co[ 2 ];
-                        math::vector3 oc_perp{};
-                        float ab_sq;
-                        float n{};
-                        float cylinder_c{};
-                        float sphere_c[ 2 ];
-
-                        capsule_hitchance_query( const math::vector3& ray_origin,
-                                const math::vector3& a, const math::vector3& b, float radius )
-                                : origin( ray_origin ), caps{ a, b }, ab( b - a ),
-                                  co{ ray_origin - a, ray_origin - b }, ab_sq( ab.dot( ab ) )
-                        {
-                                const auto radius_sq = radius * radius;
-                                if ( ab_sq > 1e-8f )
-                                {
-                                        n = ab.dot( co[ 0 ] ) / ab_sq;
-                                        oc_perp = co[ 0 ] - ab * n;
-                                        cylinder_c = oc_perp.dot( oc_perp ) - radius_sq;
-                                }
-                                for ( auto i = 0; i < 2; ++i )
-                                        sphere_c[ i ] = co[ i ].dot( co[ i ] ) - radius_sq;
-                        }
-
-                        [[nodiscard]] bool intersects( const math::vector3& ray_dir ) const
-                        {
-                                const auto dir_sq = ray_dir.dot( ray_dir );
-                                if ( dir_sq < 1e-8f )
-                                        return false;
-
-                                if ( ab_sq > 1e-8f )
-                                {
-                                        const auto m = ab.dot( ray_dir ) / ab_sq;
-                                        const auto d_perp = ray_dir - ab * m;
-                                        const auto a = d_perp.dot( d_perp );
-                                        const auto half_b = d_perp.dot( oc_perp );
-                                        if ( a > 1e-8f )
-                                        {
-                                                const auto disc = half_b * half_b - a * cylinder_c;
-                                                if ( disc >= 0.0f )
-                                                {
-                                                        const auto sqrt_disc = std::sqrt( disc );
-                                                        for ( auto r = 0; r < 2; ++r )
-                                                        {
-                                                                const auto t = ( -half_b + ( r == 0 ? -sqrt_disc : sqrt_disc ) ) / a;
-                                                                if ( t < 0.0f || t >= 1.0f )
-                                                                        continue;
-                                                                const auto s = m * t + n;
-                                                                if ( s >= 0.0f && s <= 1.0f )
-                                                                        return true;
-                                                        }
-                                                }
-                                        }
-                                }
-
-                                for ( auto i = 0; i < 2; ++i )
-                                {
-                                        const auto half_b = co[ i ].dot( ray_dir );
-                                        const auto disc = half_b * half_b - dir_sq * sphere_c[ i ];
-                                        if ( disc < 0.0f )
-                                                continue;
-                                        const auto sqrt_disc = std::sqrt( disc );
-                                        for ( auto r = 0; r < 2; ++r )
-                                        {
-                                                const auto t = ( -half_b + ( r == 0 ? -sqrt_disc : sqrt_disc ) ) / dir_sq;
-                                                if ( t < 0.0f || t >= 1.0f )
-                                                        continue;
-                                                if ( ab_sq > 1e-8f )
-                                                {
-                                                        const auto hit_point = origin + ray_dir * t - caps[ i ];
-                                                        const auto sign = i == 0 ? -1.0f : 1.0f;
-                                                        if ( sign * ab.dot( hit_point ) < 0.0f )
-                                                                continue;
-                                                }
-                                                return true;
-                                        }
-                                }
-                                return false;
-                        }
-                };
-
         } // namespace detail
 
         void shared::penetration::prepare( std::uintptr_t weapon_vdata, std::uintptr_t weapon )
         {
                 if ( !weapon_vdata || !weapon )
                 {
-                        this->m_weapon_data = {};
                         return;
                 }
 
@@ -160,37 +47,38 @@ namespace features::combat {
                 run_context ctx{};
                 ctx.target_pawn = target_pawn;
                 ctx.record = record;
-                if ( !target_pawn || !record || !record->valid || record->pawn != target_pawn )
-                        return ctx;
-
-                if ( record->game_scene_node )
+                if ( record && record->game_scene_node )
                 {
                         ctx.hitboxes = systems::g_hitboxes.query( record->game_scene_node );
-                        ctx.hitboxes.count = std::clamp( ctx.hitboxes.count, 0,
-                                static_cast<int>( ctx.hitboxes.entries.size( ) ) );
-                        const auto bone_count = std::min( record->bone_count,
-                                static_cast<int>( std::size( record->bones ) ) );
+
+                        auto geom_idx = 0;
                         for ( const auto& hitbox : ctx.hitboxes )
                         {
-                                if ( hitbox.bone < 0 || hitbox.bone >= bone_count ||
-                                        !ballistics::finite( hitbox.mins ) || !ballistics::finite( hitbox.maxs ) ||
-                                        !std::isfinite( hitbox.radius ) )
+                                if ( hitbox.bone < 0 || hitbox.bone >= record->bone_count )
                                         continue;
+                                if ( geom_idx >= static_cast< int >( ctx.geometry.size( ) ) )
+                                        break;
+
                                 const auto& bone = record->bones[ hitbox.bone ];
-                                if ( !ballistics::finite( bone.position ) ||
-                                        !std::isfinite( bone.rotation.x ) || !std::isfinite( bone.rotation.y ) ||
-                                        !std::isfinite( bone.rotation.z ) || !std::isfinite( bone.rotation.w ) )
-                                        continue;
-                                auto& prepared = ctx.geometry[ ctx.geometry_count++ ];
-                                prepared.hitbox = hitbox;
-                                prepared.position = bone.position;
-                                prepared.capsule_start = bone.rotation.rotate_vector( hitbox.mins ) + bone.position;
-                                prepared.capsule_end = bone.rotation.rotate_vector( hitbox.maxs ) + bone.position;
-                                prepared.inverse_rotation = bone.rotation;
-                                prepared.inverse_rotation.x = -prepared.inverse_rotation.x;
-                                prepared.inverse_rotation.y = -prepared.inverse_rotation.y;
-                                prepared.inverse_rotation.z = -prepared.inverse_rotation.z;
+                                auto& prep = ctx.geometry[ geom_idx++ ];
+                                prep.hitbox = hitbox;
+
+                                if ( hitbox.radius > 0.001f )
+                                {
+                                        prep.capsule_start = bone.rotation.rotate_vector( hitbox.mins ) + bone.position;
+                                        prep.capsule_end   = bone.rotation.rotate_vector( hitbox.maxs ) + bone.position;
+                                }
+                                else
+                                {
+                                        prep.position = bone.position;
+                                        auto inv = bone.rotation;
+                                        inv.x = -inv.x;
+                                        inv.y = -inv.y;
+                                        inv.z = -inv.z;
+                                        prep.inverse_rotation = inv;
+                                }
                         }
+                        ctx.geometry_count = geom_idx;
                 }
 
                 ctx.target_armor = memory::read<int>( target_pawn + SCHEMA( "C_CSPlayerPawn", "m_ArmorValue"_hash ) );
@@ -205,12 +93,17 @@ namespace features::combat {
                         }
                 }
 
+                static const auto cv_ct_head = CONVAR( "mp_damage_scale_ct_head" );
+                static const auto cv_t_head = CONVAR( "mp_damage_scale_t_head" );
+                static const auto cv_ct_body = CONVAR( "mp_damage_scale_ct_body" );
+                static const auto cv_t_body = CONVAR( "mp_damage_scale_t_body" );
+
                 ctx.scales =
                 {
-                        .ct_head = CONVAR ("mp_damage_scale_ct_head")->get<float>( ),
-                        .t_head = CONVAR ("mp_damage_scale_t_head")->get<float>( ),
-                        .ct_body = CONVAR ("mp_damage_scale_ct_body")->get<float>( ),
-                        .t_body = CONVAR ("mp_damage_scale_t_body")->get<float>( )
+                        .ct_head = cv_ct_head ? cv_ct_head->get<float>( ) : 1.0f,
+                        .t_head = cv_t_head ? cv_t_head->get<float>( ) : 1.0f,
+                        .ct_body = cv_ct_body ? cv_ct_body->get<float>( ) : 1.0f,
+                        .t_body = cv_t_body ? cv_t_body->get<float>( ) : 1.0f
                 };
 
                 ctx.armor_ratio = this->m_weapon_data.armor_ratio;
@@ -221,28 +114,16 @@ namespace features::combat {
 
         bool shared::penetration::run( const math::vector3& start, const math::vector3& end, const run_context& ctx, std::uintptr_t local_pawn, int local_team, result& out ) const
         {
-                out = {};
-                if ( !ctx.target_pawn || !ctx.record || !ctx.record->valid || ctx.geometry_count <= 0 ||
-                        !std::isfinite( this->m_weapon_data.penetration ) || this->m_weapon_data.penetration < 0.0f ||
-                        !std::isfinite( this->m_weapon_data.range_modifier ) || this->m_weapon_data.range_modifier <= 0.0f ||
-                        !std::isfinite( this->m_weapon_data.damage ) || this->m_weapon_data.damage <= 0.0f ||
-                        !std::isfinite( this->m_weapon_data.range ) || this->m_weapon_data.range <= 0.0f ||
-                        !std::isfinite( start.x ) || !std::isfinite( start.y ) || !std::isfinite( start.z ) ||
-                        !std::isfinite( end.x ) || !std::isfinite( end.y ) || !std::isfinite( end.z ) )
+                if ( this->m_weapon_data.damage <= 0.0f )
                 {
                         return false;
                 }
 
-                const auto delta = end - start;
-                const auto distance_sq = delta.length_sqr( );
-                if ( !std::isfinite( distance_sq ) || distance_sq <= 0.0f )
-                        return false;
-
-                const auto direction = delta.normalized( );
+                const auto direction = ( end - start ).normalized( );
                 const auto trace_delta = direction * this->m_weapon_data.range;
 
                 auto filter = systems::g_tracing.make_filter( local_pawn, 0x1c300b, 3, 15 );
-                // A single value-initialized stack buffer keeps traces independent.
+                // Rage scanning calls this hundreds of times in a frame.
                 systems::tracing::trace_data trace_storage{};
                 auto* trace = &trace_storage;
                 trace->array_pointer = &trace->elements;
@@ -250,24 +131,15 @@ namespace features::combat {
 
                 // Dynamic TLS for autowall state (manual-map compatible)
                 auto& tls_slot = g_shared.g_autowall_tls_slot;
-                if ( tls_slot.ensure( ) == TLS_OUT_OF_INDEXES )
-                        return false;
-                {
-                        autowall_state_t state{ true, ctx.record };
-                        struct restore_tls
-                        {
-                                utilities::tls::slot<autowall_state_t>& slot;
-                                autowall_state_t* previous;
-                                ~restore_tls( ) { slot.set( previous ); }
-                        } restore{ tls_slot, tls_slot.get( ) };
-                        tls_slot.set( &state );
-                        if ( tls_slot.get( ) != &state )
-                                return false;
+                (void)tls_slot.ensure( );
+                autowall_state_t state{ true, ctx.record };
+                tls_slot.set( &state );
 
-                        // Restore a nested caller's pose even if tracing throws.
-                        // Never swap the live entity pose used by the render thread.
-                        systems::g_tracing.setup_trace( trace, start, trace_delta, filter, 4, true );
-                }
+                // The hitbox-transform hook supplies this thread's record directly.
+                // Do not swap the live entity pose: Present may read it concurrently.
+                systems::g_tracing.setup_trace( trace, start, trace_delta, filter, 4, true );
+
+                tls_slot.set( nullptr );
 
                 const auto num_hits = trace->num_hits;
                 const auto hit_array = reinterpret_cast< std::uintptr_t >( trace->hit_array_pointer );
@@ -282,41 +154,19 @@ namespace features::combat {
 
                 memory::call<void> (PATTERN (patterns::trace_bullet), trace, this->m_weapon_data.damage, this->m_weapon_data.penetration, this->m_weapon_data.range_modifier, 4, local_team, static_cast<std::uintptr_t>(0));
 
-                // Geometry is only needed after the penetration trace reaches this
-                // target. Blocked multipoints must not intersect every hitbox again.
-                const auto find_hitbox = [ & ]( ) -> int
-                {
-                auto actual_hitbox{ -1 };
-                auto closest_hitbox_fraction{ 1.0f };
-                for ( auto i = 0; i < ctx.geometry_count; ++i )
-                {
-                        const auto& prepared = ctx.geometry[ i ];
-                        const auto& hitbox = prepared.hitbox;
-                        auto fraction{ 1.0f };
-                        const auto intersects = hitbox.radius > 0.001f
-                                ? g_shared.ray_vs_capsule( start, trace_delta, prepared.capsule_start,
-                                        prepared.capsule_end, hitbox.radius, fraction )
-                                : ballistics::segment_box(
-                                        prepared.inverse_rotation.rotate_vector( start - prepared.position ),
-                                        prepared.inverse_rotation.rotate_vector( trace_delta ),
-                                        hitbox.mins, hitbox.maxs, fraction );
-                        if ( intersects && fraction < closest_hitbox_fraction )
-                        {
-                                closest_hitbox_fraction = fraction;
-                                actual_hitbox = hitbox.index;
-                        }
-                }
-                return actual_hitbox;
-                };
-
+                // First confirm if the engine bullet trace actually struck the target pawn.
+                // This avoids ray-vs-capsule tests on all 19 hitboxes for rays that were
+                // stopped by walls or missed completely.
                 auto penetrated{ false };
+                auto target_hit_idx{ -1 };
+                float target_damage{ 0.0f };
 
                 for ( auto i = 0; i < num_hits; ++i )
                 {
                         auto hit = reinterpret_cast< detail::bullet_trace_record* >( hit_array + i * sizeof( detail::bullet_trace_record ) );
-                        const auto damage = hit->damage_applied;
+                        const auto damage = *reinterpret_cast< float* >( reinterpret_cast< std::uintptr_t >( hit ) + 8 );
 
-                        if ( !std::isfinite( damage ) || damage <= 0.0f )
+                        if ( damage <= 0.0f )
                         {
                                 break;
                         }
@@ -325,7 +175,7 @@ namespace features::combat {
                         {
                                 penetrated = true;
 
-                                if ( !std::isfinite( hit->exit_fraction ) || hit->exit_fraction >= 1.0f )
+                                if ( *reinterpret_cast< float* >( reinterpret_cast< std::uintptr_t >( hit ) + 4 ) == 1.0f )
                                 {
                                         break;
                                 }
@@ -342,50 +192,155 @@ namespace features::combat {
                                 continue;
                         }
 
-                        const auto actual_hitbox = find_hitbox( );
-                        if ( actual_hitbox < 0 )
-                        {
-                                // The same ray and pose cannot yield a different
-                                // geometric hitbox at a later trace contact.
-                                out = {};
-                                return false;
-                        }
-
-                        out.hitbox = actual_hitbox;
-                        out.hitgroup = systems::g_hitboxes.hitgroup_from_hitbox( actual_hitbox );
-                        out.penetrated = penetrated;
-                        out.damage = damage;
-
-                        this->scale_damage( out.hitgroup, ctx.target_armor, ctx.has_helmet, ctx.target_team, ctx.armor_ratio, ctx.headshot_multiplier, ctx.scales, out.damage );
-                        if ( !std::isfinite( out.damage ) || out.damage <= 0.0f )
-                        {
-                                out = {};
-                                return false;
-                        }
-
-                        return true;
+                        target_hit_idx = i;
+                        target_damage = damage;
+                        break;
                 }
 
-                out = {};
-                return false;
+                if ( target_hit_idx < 0 )
+                {
+                        out = {};
+                        return false;
+                }
+
+                // Target pawn was hit: now determine the exact hitbox by fine raytracing.
+                auto actual_hitbox{ -1 };
+                auto closest_hitbox_fraction{ 1.0f };
+
+                if ( ctx.geometry_count > 0 )
+                {
+                        for ( auto gi = 0; gi < ctx.geometry_count; ++gi )
+                        {
+                                const auto& prep = ctx.geometry[ gi ];
+                                auto fraction{ 1.0f };
+                                auto intersects{ false };
+
+                                if ( prep.hitbox.radius > 0.001f )
+                                {
+                                        intersects = g_shared.ray_vs_capsule( start, trace_delta, prep.capsule_start, prep.capsule_end, prep.hitbox.radius, fraction );
+                                }
+                                else
+                                {
+                                        const auto local_origin = prep.inverse_rotation.rotate_vector( start - prep.position );
+                                        const auto local_delta = prep.inverse_rotation.rotate_vector( trace_delta );
+                                        auto entry{ 0.0f };
+                                        auto exit{ 1.0f };
+
+                                        const auto intersect_axis = [ & ]( float origin, float delta, float minimum, float maximum )
+                                        {
+                                                if ( std::fabsf( delta ) < 1.0e-8f )
+                                                {
+                                                        return origin >= minimum && origin <= maximum;
+                                                }
+
+                                                auto first = ( minimum - origin ) / delta;
+                                                auto second = ( maximum - origin ) / delta;
+                                                if ( first > second ) std::swap( first, second );
+                                                entry = std::max( entry, first );
+                                                exit = std::min( exit, second );
+                                                return entry <= exit;
+                                        };
+
+                                        intersects = intersect_axis( local_origin.x, local_delta.x, prep.hitbox.mins.x, prep.hitbox.maxs.x ) &&
+                                                intersect_axis( local_origin.y, local_delta.y, prep.hitbox.mins.y, prep.hitbox.maxs.y ) &&
+                                                intersect_axis( local_origin.z, local_delta.z, prep.hitbox.mins.z, prep.hitbox.maxs.z );
+                                        fraction = entry;
+                                }
+
+                                if ( intersects && fraction < closest_hitbox_fraction )
+                                {
+                                        closest_hitbox_fraction = fraction;
+                                        actual_hitbox = prep.hitbox.index;
+                                }
+                        }
+                }
+                else if ( ctx.record )
+                {
+                        for ( const auto& hitbox : ctx.hitboxes )
+                        {
+                                if ( hitbox.bone < 0 || hitbox.bone >= ctx.record->bone_count )
+                                {
+                                        continue;
+                                }
+
+                                const auto& bone = ctx.record->bones[ hitbox.bone ];
+                                auto fraction{ 1.0f };
+                                auto intersects{ false };
+
+                                if ( hitbox.radius > 0.001f )
+                                {
+                                        const auto capsule_start = bone.rotation.rotate_vector( hitbox.mins ) + bone.position;
+                                        const auto capsule_end = bone.rotation.rotate_vector( hitbox.maxs ) + bone.position;
+                                        intersects = g_shared.ray_vs_capsule( start, trace_delta, capsule_start, capsule_end, hitbox.radius, fraction );
+                                }
+                                else
+                                {
+                                        auto inverse = bone.rotation;
+                                        inverse.x = -inverse.x;
+                                        inverse.y = -inverse.y;
+                                        inverse.z = -inverse.z;
+
+                                        const auto local_origin = inverse.rotate_vector( start - bone.position );
+                                        const auto local_delta = inverse.rotate_vector( trace_delta );
+                                        auto entry{ 0.0f };
+                                        auto exit{ 1.0f };
+
+                                        const auto intersect_axis = [ & ]( float origin, float delta, float minimum, float maximum )
+                                                {
+                                                        if ( std::fabsf( delta ) < 1.0e-8f )
+                                                        {
+                                                                return origin >= minimum && origin <= maximum;
+                                                        }
+
+                                                        auto first = ( minimum - origin ) / delta;
+                                                        auto second = ( maximum - origin ) / delta;
+                                                        if ( first > second ) std::swap( first, second );
+                                                        entry = std::max( entry, first );
+                                                        exit = std::min( exit, second );
+                                                        return entry <= exit;
+                                                };
+
+                                        intersects = intersect_axis( local_origin.x, local_delta.x, hitbox.mins.x, hitbox.maxs.x ) &&
+                                                intersect_axis( local_origin.y, local_delta.y, hitbox.mins.y, hitbox.maxs.y ) &&
+                                                intersect_axis( local_origin.z, local_delta.z, hitbox.mins.z, hitbox.maxs.z );
+                                        fraction = entry;
+                                }
+
+                                if ( intersects && fraction < closest_hitbox_fraction )
+                                {
+                                        closest_hitbox_fraction = fraction;
+                                        actual_hitbox = hitbox.index;
+                                }
+                        }
+                }
+
+                if ( actual_hitbox < 0 )
+                {
+                        out = {};
+                        return false;
+                }
+
+                out.hitbox = actual_hitbox;
+                out.hitgroup = systems::g_hitboxes.hitgroup_from_hitbox( actual_hitbox );
+                out.penetrated = penetrated;
+                out.damage = target_damage;
+
+                this->scale_damage( out.hitgroup, ctx.target_armor, ctx.has_helmet, ctx.target_team, ctx.armor_ratio, ctx.headshot_multiplier, ctx.scales, out.damage );
+
+                return true;
         }
 
         bool shared::penetration::can( const math::vector3& start, const math::vector3& direction, float& out_damage, const systems::local::snapshot& local ) const
         {
                 out_damage = 0.0f;
 
-                if ( !local.pawn || !ballistics::finite( start ) || !ballistics::finite( direction ) ||
-                        !std::isfinite( direction.length_sqr( ) ) || direction.length_sqr( ) <= 0.0f ||
-                        !std::isfinite( this->m_weapon_data.damage ) || this->m_weapon_data.damage <= 0.0f ||
-                        !std::isfinite( this->m_weapon_data.penetration ) || this->m_weapon_data.penetration <= 0.0f ||
-                        !std::isfinite( this->m_weapon_data.range ) || this->m_weapon_data.range <= 0.0f ||
-                        !std::isfinite( this->m_weapon_data.range_modifier ) || this->m_weapon_data.range_modifier <= 0.0f )
+                if ( this->m_weapon_data.damage <= 0.0f || this->m_weapon_data.penetration <= 0.0f )
                 {
                         return false;
                 }
 
                 const auto local_team = memory::read<int>( local.pawn + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) );
-                const auto trace_delta = direction.normalized( ) * this->m_weapon_data.range;
+                const auto trace_delta = direction * this->m_weapon_data.range;
 
                 auto filter = systems::g_tracing.make_filter( local.pawn, 0x1c300b, 3, 15 );
                 systems::tracing::trace_data trace_storage{};
@@ -411,7 +366,7 @@ namespace features::combat {
                         auto hit = reinterpret_cast< detail::bullet_trace_record* >( hit_array + i * sizeof( detail::bullet_trace_record ) );
                         const auto damage = hit->damage_applied;
 
-                        if ( !std::isfinite( damage ) || damage <= 0.0f )
+                        if ( damage <= 0.0f )
                         {
                                 break;
                         }
@@ -420,7 +375,7 @@ namespace features::combat {
                         {
                                 // Match run(): bit 0 marks a penetration record and an exit
                                 // fraction of 1 means the bullet did not make it through.
-                                if ( !std::isfinite( hit->exit_fraction ) || hit->exit_fraction >= 1.0f )
+                                if ( hit->exit_fraction == 1.0f )
                                 {
                                         break;
                                 }
@@ -504,111 +459,213 @@ namespace features::combat {
                 damage = std::floor( damage_to_health );
         }
 
-        bool shared::lagcomp::record::setup( std::uintptr_t pawn )
-        {
-                this->pawn = pawn;
-                this->game_scene_node = memory::read<std::uintptr_t>( pawn + SCHEMA( "C_BaseEntity", "m_pGameSceneNode"_hash ) );
+	__declspec(noinline) static int safe_copy_bones( systems::bones::data* dest, const void* src, int max_bones ) noexcept
+	{
+		if ( !dest || !src || max_bones <= 0 )
+			return 0;
 
-                if ( !this->game_scene_node )
-                {
-                        return false;
-                }
+		// Fast path: attempt block copy under SEH
+		__try
+		{
+			std::memcpy( dest, src, sizeof( systems::bones::data ) * max_bones );
+			return max_bones;
+		}
+		__except ( EXCEPTION_EXECUTE_HANDLER )
+		{
+		}
 
-                this->bone_cache = memory::read<std::uintptr_t>( this->game_scene_node + SCHEMA( "CSkeletonInstance", "m_modelState"_hash ) + 0x80 );
-                if ( !this->bone_cache )
-                {
-                        return false;
-                }
+		// Boundary fallback: copy bone-by-bone up to the valid page boundary
+		int copied = 0;
+		__try
+		{
+			const auto* s = reinterpret_cast< const systems::bones::data* >( src );
+			for ( int i = 0; i < max_bones; ++i )
+			{
+				dest[ i ] = s[ i ];
+				copied++;
+			}
+		}
+		__except ( EXCEPTION_EXECUTE_HANDLER )
+		{
+		}
+		return copied;
+	}
 
-                this->bone_count = memory::read<int>( this->game_scene_node + SCHEMA( "CSkeletonInstance", "m_modelState"_hash ) + 0x8c );
-                if ( this->bone_count <= 0 )
-                {
-                        return false;
-                }
-                this->bone_count = std::min( this->bone_count, 128 );
+	__declspec(noinline) static bool safe_copy_memory( void* dest, const void* src, std::size_t size ) noexcept
+	{
+		if ( !dest || !src || size == 0 )
+			return false;
 
-                const auto abs_origin = memory::read<math::vector3>( this->game_scene_node + SCHEMA( "CGameSceneNode", "m_vecAbsOrigin"_hash ) );
-                const auto abs_rotation = memory::read<math::vector3>( this->game_scene_node + SCHEMA( "CGameSceneNode", "m_angAbsRotation"_hash ) );
-                if ( !std::isfinite( abs_origin.x ) || !std::isfinite( abs_origin.y ) || !std::isfinite( abs_origin.z ) )
-                {
-                        return false;
-                }
+		__try
+		{
+			std::memcpy( dest, src, size );
+			return true;
+		}
+		__except ( EXCEPTION_EXECUTE_HANDLER )
+		{
+			return false;
+		}
+	}
 
-                // Network origin is encoded. Records and bones must stay in the same
-                // evaluated world-space coordinate system.
-                this->origin = abs_origin;
-                this->rotation = abs_rotation;
+	bool shared::lagcomp::record::setup( std::uintptr_t pawn )
+	{
+		this->pawn = pawn;
+		this->game_scene_node = memory::read<std::uintptr_t>( pawn + SCHEMA( "C_BaseEntity", "m_pGameSceneNode"_hash ) );
 
-                this->simulation_time = memory::read<float>( pawn + SCHEMA( "C_BaseEntity", "m_flSimulationTime"_hash ) );
+		if ( !this->game_scene_node )
+		{
+			return false;
+		}
 
-                const auto global_vars = memory::read<std::uintptr_t>( addresses::globals::global_vars );
-                if ( !global_vars )
-                {
-                        return false;
-                }
+		this->bone_cache = memory::read<std::uintptr_t>( this->game_scene_node + SCHEMA( "CSkeletonInstance", "m_modelState"_hash ) + 0x80 );
+		if ( !this->bone_cache )
+		{
+			return false;
+		}
 
-                const auto backup_current_time = memory::read<float>( global_vars + 0x30 );
-                const auto backup_tick_count = memory::read<int>( global_vars + 0x44 );
-                memory::write<float>( global_vars + 0x30, this->simulation_time );
-                memory::write<int>( global_vars + 0x44, cstypes::time_to_ticks( this->simulation_time ) );
+		this->bone_count = memory::read<int>( this->game_scene_node + SCHEMA( "CSkeletonInstance", "m_modelState"_hash ) + 0x8c );
+		if ( this->bone_count <= 0 )
+		{
+			return false;
+		}
+		this->bone_count = std::clamp( this->bone_count, 1, 128 );
 
-                memory::call<void>(PATTERN (patterns::game_scene_node_set_mesh_group), this->game_scene_node, 0xfffff );
-                memory::call<void>(PATTERN (patterns::game_scene_node_set_skeleton), this->game_scene_node, 0x100 );
+		const auto abs_origin = memory::read<math::vector3>( this->game_scene_node + SCHEMA( "CGameSceneNode", "m_vecAbsOrigin"_hash ) );
+		const auto abs_rotation = memory::read<math::vector3>( this->game_scene_node + SCHEMA( "CGameSceneNode", "m_angAbsRotation"_hash ) );
+		if ( !std::isfinite( abs_origin.x ) || !std::isfinite( abs_origin.y ) || !std::isfinite( abs_origin.z ) )
+		{
+			return false;
+		}
 
-                memory::write<int>( global_vars + 0x44, backup_tick_count );
-                memory::write<float>( global_vars + 0x30, backup_current_time );
+		// Network origin is encoded. Records and bones must stay in the same
+		// evaluated world-space coordinate system.
+		this->origin = abs_origin;
+		this->rotation = abs_rotation;
 
-                this->bone_cache = memory::read<std::uintptr_t>( this->game_scene_node + SCHEMA( "CSkeletonInstance", "m_modelState"_hash ) + 0x80 );
-                if ( !this->bone_cache )
-                {
-                        return false;
-                }
+		this->simulation_time = memory::read<float>( pawn + SCHEMA( "C_BaseEntity", "m_flSimulationTime"_hash ) );
 
-                std::memcpy( this->bones, reinterpret_cast< void* >( this->bone_cache ), sizeof( systems::bones::data ) * this->bone_count );
+		const auto global_vars = memory::read<std::uintptr_t>( addresses::globals::global_vars );
+		if ( !global_vars )
+		{
+			return false;
+		}
 
-                this->tick = cstypes::time_to_ticks( this->simulation_time );
-                this->valid = true;
+		const auto backup_current_time = memory::read<float>( global_vars + 0x30 );
+		const auto backup_tick_count = memory::read<int>( global_vars + 0x44 );
+		memory::write<float>( global_vars + 0x30, this->simulation_time );
+		memory::write<int>( global_vars + 0x44, cstypes::time_to_ticks( this->simulation_time ) );
 
-                return true;
-        }
+		memory::call<void>(PATTERN (patterns::game_scene_node_set_mesh_group), this->game_scene_node, 0xfffff );
+		memory::call<void>(PATTERN (patterns::game_scene_node_set_skeleton), this->game_scene_node, 0x100 );
 
-        bool shared::lagcomp::record::is_valid( ) const
-        {
-                return this->valid && detail::valid_record_at( *this, detail::capture_record_cutoff( ) );
-        }
+		memory::write<int>( global_vars + 0x44, backup_tick_count );
+		memory::write<float>( global_vars + 0x30, backup_current_time );
 
-        void shared::lagcomp::record::apply( )
-        {
-                if ( !this->valid || this->is_applied || !this->game_scene_node )
-                {
-                        return;
-                }
+		this->bone_cache = memory::read<std::uintptr_t>( this->game_scene_node + SCHEMA( "CSkeletonInstance", "m_modelState"_hash ) + 0x80 );
+		if ( !this->bone_cache )
+		{
+			return false;
+		}
 
-                this->bone_cache = memory::read<std::uintptr_t>( this->game_scene_node + SCHEMA( "CSkeletonInstance", "m_modelState"_hash ) + 0x80 );
-                if ( !this->bone_cache )
-                {
-                        return;
-                }
+		const auto post_count = memory::read<int>( this->game_scene_node + SCHEMA( "CSkeletonInstance", "m_modelState"_hash ) + 0x8c );
+		if ( post_count > 0 )
+		{
+			this->bone_count = std::min( this->bone_count, post_count );
+		}
+		this->bone_count = std::clamp( this->bone_count, 1, 128 );
 
-                const auto size = sizeof( systems::bones::data ) * this->bone_count;
-                std::memcpy( this->bones_backup, reinterpret_cast< void* >( this->bone_cache ), size );
-                std::memcpy( reinterpret_cast< void* >( this->bone_cache ), this->bones, size );
+		const auto copied = safe_copy_bones( this->bones, reinterpret_cast< void* >( this->bone_cache ), this->bone_count );
+		if ( copied < 27 )
+		{
+			return false;
+		}
+		this->bone_count = copied;
 
-                this->is_applied = true;
-        }
+		this->tick = cstypes::time_to_ticks( this->simulation_time );
+		this->valid = true;
 
-        void shared::lagcomp::record::restore( )
-        {
-                if ( !this->valid || !this->is_applied || !this->bone_cache )
-                {
-                        return;
-                }
+		return true;
+	}
 
-                const auto size = sizeof( systems::bones::data ) * this->bone_count;
-                std::memcpy( reinterpret_cast< void* >( this->bone_cache ), this->bones_backup, size );
+	bool shared::lagcomp::record::is_valid( ) const
+	{
+		if ( !this->valid )
+		{
+			return false;
+		}
 
-                this->is_applied = false;
-        }
+		const auto local_pawn = systems::g_local.get( ).pawn;
+		const auto net_channel = memory::call<std::uintptr_t>(PATTERN (patterns::get_net_channel), 0, 0 );
+		const auto global_vars = memory::read<std::uintptr_t>( addresses::globals::global_vars );
+
+		if ( !local_pawn || !net_channel || !global_vars )
+		{
+			return false;
+		}
+
+		const auto max_unlag = [ ]
+			{
+				const auto server_limit = CONVAR ("sv_maxunlag")->get<float>( );
+				const auto player_limit = CONVAR ("sv_maxunlag_player")->get<float>( );
+				return player_limit > 0.0f ? std::min( server_limit, player_limit ) : server_limit;
+			}( );
+
+		const auto current_time = memory::read<float>( global_vars + 0x30 );
+		const auto latency = memory::call_vfunc<float>( net_channel, 10, 0 );
+
+		if ( !std::isfinite( max_unlag ) || !std::isfinite( current_time ) ||
+			!std::isfinite( latency ) )
+		{
+			return false;
+		}
+
+		// This value is the effective ping for the selected flow in this build;
+		// combining both flows double-counts latency and can erase the window.
+		const auto budget = max_unlag - std::max( latency, 0.0f );
+
+		return budget > 0.0f && this->simulation_time >= current_time - budget;
+	}
+
+	void shared::lagcomp::record::apply( )
+	{
+		if ( !this->valid || this->is_applied || !this->game_scene_node || this->bone_count <= 0 )
+		{
+			return;
+		}
+
+		this->bone_cache = memory::read<std::uintptr_t>( this->game_scene_node + SCHEMA( "CSkeletonInstance", "m_modelState"_hash ) + 0x80 );
+		if ( !this->bone_cache )
+		{
+			return;
+		}
+
+		const auto size = sizeof( systems::bones::data ) * this->bone_count;
+		if ( !safe_copy_memory( this->bones_backup, reinterpret_cast< void* >( this->bone_cache ), size ) )
+		{
+			return;
+		}
+
+		if ( !safe_copy_memory( reinterpret_cast< void* >( this->bone_cache ), this->bones, size ) )
+		{
+			safe_copy_memory( reinterpret_cast< void* >( this->bone_cache ), this->bones_backup, size );
+			return;
+		}
+
+		this->is_applied = true;
+	}
+
+	void shared::lagcomp::record::restore( )
+	{
+		if ( !this->valid || !this->is_applied || !this->bone_cache || this->bone_count <= 0 )
+		{
+			return;
+		}
+
+		const auto size = sizeof( systems::bones::data ) * this->bone_count;
+		safe_copy_memory( reinterpret_cast< void* >( this->bone_cache ), this->bones_backup, size );
+
+		this->is_applied = false;
+	}
 
         void shared::lagcomp::run( )
         {
@@ -621,9 +678,6 @@ namespace features::combat {
                         return;
                 }
 
-                // Bone setup temporarily changes global time, then restores it.
-                // Use one consistent validation window for this whole update.
-                const auto cutoff = detail::capture_record_cutoff( );
                 std::unordered_set<std::uintptr_t> active{};
 
                 for ( const auto& p : systems::g_entities.get_by_type( systems::entities::type::player ) )
@@ -677,25 +731,14 @@ namespace features::combat {
 
                         auto& records = this->m_records[ pawn ];
                         const auto simulation_time = memory::read<float>( pawn + SCHEMA( "C_BaseEntity", "m_flSimulationTime"_hash ) );
-                        if ( !std::isfinite( simulation_time ) || simulation_time < 0.0f )
-                        {
-                                records.clear( );
-                                continue;
-                        }
-
-                        // Respawns and time resets must not leave future poses in history.
-                        if ( !records.empty( ) && simulation_time < records.front( ).simulation_time )
-                        {
-                                records.clear( );
-                        }
-
                         const auto simulation_tick = cstypes::time_to_ticks( simulation_time );
-                        if ( records.empty( ) || simulation_time > records.front( ).simulation_time )
+
+                        if ( records.empty( ) || simulation_tick > records.front( ).tick )
                         {
                                 pending.push_back( { pawn, simulation_tick } );
                         }
 
-                        while ( !records.empty( ) && !detail::valid_record_at( records.back( ), cutoff ) )
+                        while ( !records.empty( ) && !records.back( ).is_valid( ) )
                         {
                                 records.pop_back( );
                         }
@@ -712,15 +755,6 @@ namespace features::combat {
 
                         if ( rec.setup( p.pawn ) )
                         {
-                                rec.velocity = memory::read<math::vector3>( p.pawn + SCHEMA( "C_BaseEntity", "m_vecVelocity"_hash ) );
-                                rec.flags = memory::read<std::uint32_t>( p.pawn + SCHEMA( "C_BaseEntity", "m_fFlags"_hash ) );
-                                const auto collision = memory::read<std::uintptr_t>( p.pawn + SCHEMA( "C_BaseEntity", "m_pCollision"_hash ) );
-                                if ( collision )
-                                {
-                                        rec.obb_mins = memory::read<math::vector3>( collision + SCHEMA( "CCollisionProperty", "m_vecMins"_hash ) );
-                                        rec.obb_maxs = memory::read<math::vector3>( collision + SCHEMA( "CCollisionProperty", "m_vecMaxs"_hash ) );
-                                }
-
                                 this->m_records[ p.pawn ].emplace_front( std::move( rec ) );
                         }
                 }
@@ -729,7 +763,7 @@ namespace features::combat {
                 {
                         for ( auto& rec : records )
                         {
-                                rec.was_valid = detail::valid_record_at( rec, cutoff );
+                                rec.was_valid = rec.is_valid( );
                         }
                 }
         }
@@ -744,10 +778,9 @@ namespace features::combat {
                         return nullptr;
                 }
 
-                const auto cutoff = detail::capture_record_cutoff( );
                 for ( auto rit = it->second.rbegin( ); rit != it->second.rend( ); ++rit )
                 {
-                        if ( detail::valid_record_at( *rit, cutoff ) )
+                        if ( rit->is_valid( ) )
                         {
                                 return &( *rit );
                         }
@@ -819,58 +852,66 @@ namespace features::combat {
                         return result;
                 }
 
-                const auto cutoff = detail::capture_record_cutoff( );
-                if ( !cutoff )
-                        return result;
                 result.reserve( it->second.size( ) );
-                const auto max_ticks = std::clamp( settings::g_combat.m_lagcomp.max_backtrack_ticks.value, 1, static_cast< int >( rage::k_max_lagcomp_records ) );
+
                 for ( auto& rec : it->second )
                 {
-                        if ( !detail::valid_record_at( rec, cutoff ) )
-                                continue;
-                        // Fold the backtrack filter into collection, without
-                        // assuming that all subsequent timestamps are ordered.
-                        if ( !result.empty( ) &&
-                                static_cast<std::int64_t>( result.front( )->tick ) - rec.tick > max_ticks )
-                                continue;
-                        result.push_back( &rec );
+                        if ( rec.is_valid( ) )
+                        {
+                                result.push_back( &rec );
+                        }
                 }
+
+                if ( result.empty( ) )
+                {
+                        return result;
+                }
+
+                const auto max_ticks = std::clamp( settings::g_combat.m_lagcomp.max_backtrack_ticks.value, 1, static_cast< int >( rage::k_max_lagcomp_records ) );
+                const auto newest_tick = result.front( )->tick;
+
+                result.erase(
+                        std::remove_if( result.begin( ), result.end( ), [ newest_tick, max_ticks ]( const record* rec )
+                                {
+                                        return ( newest_tick - rec->tick ) > max_ticks;
+                                } ),
+                        result.end( )
+                );
+
                 return result;
         }
 
-        std::vector<shared::lagcomp::record> shared::lagcomp::get_scan_records( std::uintptr_t pawn ) const
+        int shared::lagcomp::get_valid_records( std::uintptr_t pawn, std::span<record*> out )
         {
                 std::shared_lock records_lock( this->m_records_mtx );
-                std::vector<record> result;
-                const auto it = this->m_records.find( pawn );
-                if ( it == this->m_records.end( ) )
-                        return result;
-                const auto cutoff = detail::capture_record_cutoff( );
-                if ( !cutoff )
-                        return result;
 
-                std::vector<const record*> valid;
-                valid.reserve( it->second.size( ) );
-                const auto max_ticks = std::clamp( settings::g_combat.m_lagcomp.max_backtrack_ticks.value,
-                        1, static_cast<int>( rage::k_max_lagcomp_records ) );
-                for ( const auto& rec : it->second )
+                auto it = this->m_records.find( pawn );
+                if ( it == this->m_records.end( ) || it->second.empty( ) || out.empty( ) )
                 {
-                        if ( !detail::valid_record_at( rec, cutoff ) )
-                                continue;
-                        if ( !valid.empty( ) && static_cast<std::int64_t>( valid.front( )->tick ) - rec.tick > max_ticks )
-                                continue;
-                        valid.push_back( &rec );
+                        return 0;
                 }
-                const auto count = std::min( valid.size( ), static_cast<std::size_t>( rage::k_max_scan_records ) );
-                result.reserve( count );
-                for ( std::size_t i = 0; i < count; ++i )
+
+                const auto max_ticks = std::clamp( settings::g_combat.m_lagcomp.max_backtrack_ticks.value, 1, static_cast< int >( rage::k_max_lagcomp_records ) );
+                auto count{ 0 };
+                auto newest_tick{ -1 };
+
+                for ( auto& rec : it->second )
                 {
-                        const auto index = count > 1 ? i * ( valid.size( ) - 1 ) / ( count - 1 ) : 0;
-                        result.push_back( *valid[ index ] );
-                        result.back( ).is_applied = false;
+                        if ( !rec.is_valid( ) )
+                                continue;
+
+                        if ( newest_tick < 0 )
+                                newest_tick = rec.tick;
+
+                        if ( ( newest_tick - rec.tick ) > max_ticks )
+                                break;
+
+                        out[ count++ ] = &rec;
+                        if ( count >= static_cast< int >( out.size( ) ) )
+                                break;
                 }
-                // Copy under the lock, not after returning raw deque pointers.
-                return result;
+
+                return count;
         }
 
         std::array<systems::bones::data, 27> shared::lagcomp::get_skeleton( const record& record ) const
@@ -1035,8 +1076,11 @@ namespace features::combat {
                 const auto local = systems::g_local.get( );
                 if ( !local.pawn )
                 {
+                        this->m_has_alive_enemies = false;
                         return;
                 }
+
+                this->m_has_alive_enemies = systems::g_entities.has_alive_enemies( local.controller, local.pawn, local.view_team, local.is_team_mode );
 
                 const auto global_vars = memory::read<std::uintptr_t>( addresses::globals::global_vars );
                 const auto movement_services = memory::read<std::uintptr_t>( local.pawn + SCHEMA( "C_BasePlayerPawn", "m_pMovementServices"_hash ) );
@@ -1094,6 +1138,7 @@ namespace features::combat {
                 {
                         this->m_ctx = {};
                         this->m_last_shoot_tick = 0;
+                        this->m_has_alive_enemies = false;
                 }
         }
 
@@ -1102,13 +1147,12 @@ namespace features::combat {
                 return memory::call<std::uint32_t>(PATTERN (patterns::get_tick_view_angles), nullptr, &angles, tick );
         }
 
-        math::vector2 shared::calculate_spread( std::uint32_t seed, float accuracy, float spread, float recoil_index, int item_def_idx, int num_bullets ) const
+        math::vector2 shared::calculate_spread( int seed, float accuracy, float spread, float recoil_index, int item_def_idx, int num_bullets ) const
         {
                 math::vector2 out{};
 
                 const auto fire_mode = this->quick_revolver_active( ) ? 1 : 0;
-                // Match the engine's 32-bit wrapping seed without signed overflow.
-                memory::call<void>(PATTERN (patterns::weapon_calculate_spread), static_cast< std::int16_t >( item_def_idx ), num_bullets, fire_mode, seed + std::uint32_t{ 1 }, accuracy, spread, recoil_index, &out.x, &out.y );
+                memory::call<void>(PATTERN (patterns::weapon_calculate_spread), static_cast< std::int16_t >( item_def_idx ), num_bullets, fire_mode, static_cast< std::uint32_t >( seed + 1 ), accuracy, spread, recoil_index, &out.x, &out.y );
 
                 return out;
         }
@@ -1133,7 +1177,6 @@ namespace features::combat {
                 cache.initialized = true;
 
                 if ( samples <= 0 || !std::isfinite( inaccuracy ) || inaccuracy < 0.0f ||
-                        !std::isfinite( this->m_ctx.recoil_index ) ||
                         !std::isfinite( spread ) || spread < 0.0f )
                         return cache;
 
@@ -1141,6 +1184,8 @@ namespace features::combat {
                 if ( inaccuracy == 0.0f && spread == 0.0f )
                 {
                         cache.count = 1;
+                        cache.values[ 0 ] = {};
+                        cache.inv_len[ 0 ] = 1.0f;
                         return cache;
                 }
 
@@ -1149,6 +1194,9 @@ namespace features::combat {
                 {
                         cache.values[ i ] = this->calculate_spread( i, inaccuracy, spread,
                                 this->m_ctx.recoil_index, this->m_ctx.item_def_idx, this->m_ctx.num_bullets );
+                        const auto sx = cache.values[ i ].x;
+                        const auto sy = cache.values[ i ].y;
+                        cache.inv_len[ i ] = 1.0f / std::sqrt( 1.0f + sx * sx + sy * sy );
                 }
                 cache.count = n;
                 return cache;
@@ -1162,129 +1210,178 @@ namespace features::combat {
 
         float shared::calculate_hitchance( const math::vector3& shoot_position, const math::vector3& aim_angle, const systems::hitboxes::entry& hitbox, const systems::bones::data& bone, const spread_cache& cache ) const
         {
-                return this->calculate_hitchance( shoot_position, aim_angle, hitbox, bone, cache, this->m_ctx.range );
-        }
-
-        float shared::calculate_hitchance( const math::vector3& shoot_position, const math::vector3& aim_angle, const systems::hitboxes::entry& hitbox, const systems::bones::data& bone, const spread_cache& cache, float range ) const
-        {
                 if ( cache.count <= 0 || cache.count > static_cast< int >( cache.values.size( ) ) ||
-                        !std::isfinite( range ) || range <= 0.0f ||
-                        !ballistics::finite( shoot_position ) || !ballistics::finite( bone.position ) ||
-                        !ballistics::finite( hitbox.mins ) || !ballistics::finite( hitbox.maxs ) ||
-                        !std::isfinite( hitbox.radius ) || !std::isfinite( bone.rotation.x ) ||
-                        !std::isfinite( bone.rotation.y ) || !std::isfinite( bone.rotation.z ) ||
-                        !std::isfinite( bone.rotation.w ) || !ballistics::finite( aim_angle ) )
+                        !std::isfinite( this->m_ctx.range ) || this->m_ctx.range <= 0.0f ||
+                        !std::isfinite( aim_angle.x ) || !std::isfinite( aim_angle.y ) || !std::isfinite( aim_angle.z ) )
                         return 0.0f;
 
+                const auto is_capsule = hitbox.radius > 0.001f;
+                const auto range = this->m_ctx.range;
+                const auto dir_sq = range * range;
+
+                // Precompute capsule geometry invariants outside sample loop
                 const auto capsule_start = bone.rotation.rotate_vector( hitbox.mins ) + bone.position;
                 const auto capsule_end   = bone.rotation.rotate_vector( hitbox.maxs ) + bone.position;
-                if ( !ballistics::finite( capsule_start ) || !ballistics::finite( capsule_end ) )
-                        return 0.0f;
-                const auto is_capsule    = hitbox.radius > 0.001f;
-                const auto capsule_query = is_capsule
-                        ? std::optional<detail::capsule_hitchance_query>{ std::in_place,
-                                shoot_position, capsule_start, capsule_end, hitbox.radius }
-                        : std::nullopt;
+                const auto ab            = capsule_end - capsule_start;
+                const auto ab_sq         = ab.dot( ab );
+                const auto inv_ab_sq     = ab_sq > 1e-8f ? ( 1.0f / ab_sq ) : 0.0f;
+                const auto oc            = shoot_position - capsule_start;
+                const auto co1           = shoot_position - capsule_end;
+                const auto radius_sq     = hitbox.radius * hitbox.radius;
+                const auto n_cyl         = ab_sq > 1e-8f ? ( ab.dot( oc ) * inv_ab_sq ) : 0.0f;
+                const auto oc_perp       = oc - ab * n_cyl;
+                const auto c_cyl         = oc_perp.dot( oc_perp ) - radius_sq;
+                const auto c_sphere0     = oc.dot( oc ) - radius_sq;
+                const auto c_sphere1     = co1.dot( co1 ) - radius_sq;
 
+                const auto fast_capsule_test = [ & ]( const math::vector3& ray_dir ) -> bool
+                {
+                        if ( ab_sq > 1e-8f )
+                        {
+                                const auto m = ab.dot( ray_dir ) * inv_ab_sq;
+                                const auto d_perp = ray_dir - ab * m;
+                                const auto a = d_perp.dot( d_perp );
+                                const auto half_b = d_perp.dot( oc_perp );
+
+                                if ( a > 1e-8f )
+                                {
+                                        const auto disc = half_b * half_b - a * c_cyl;
+                                        if ( disc >= 0.0f )
+                                        {
+                                                const auto sqrt_disc = std::sqrt( disc );
+                                                for ( int r = 0; r < 2; ++r )
+                                                {
+                                                        const auto t = ( -half_b + ( r == 0 ? -sqrt_disc : sqrt_disc ) ) / a;
+                                                        if ( t >= 0.0f && t < 1.0f )
+                                                        {
+                                                                const auto s = m * t + n_cyl;
+                                                                if ( s >= 0.0f && s <= 1.0f )
+                                                                        return true;
+                                                        }
+                                                }
+                                        }
+                                }
+                        }
+
+                        // Cap 0 (capsule_start)
+                        const auto half_b0 = oc.dot( ray_dir );
+                        const auto disc0 = half_b0 * half_b0 - dir_sq * c_sphere0;
+                        if ( disc0 >= 0.0f )
+                        {
+                                const auto sqrt_disc = std::sqrt( disc0 );
+                                for ( int r = 0; r < 2; ++r )
+                                {
+                                        const auto t = ( -half_b0 + ( r == 0 ? -sqrt_disc : sqrt_disc ) ) / dir_sq;
+                                        if ( t >= 0.0f && t < 1.0f )
+                                        {
+                                                if ( ab_sq > 1e-8f )
+                                                {
+                                                        const auto hit_point = oc + ray_dir * t;
+                                                        if ( -ab.dot( hit_point ) < 0.0f )
+                                                                continue;
+                                                }
+                                                return true;
+                                        }
+                                }
+                        }
+
+                        // Cap 1 (capsule_end)
+                        const auto half_b1 = co1.dot( ray_dir );
+                        const auto disc1 = half_b1 * half_b1 - dir_sq * c_sphere1;
+                        if ( disc1 >= 0.0f )
+                        {
+                                const auto sqrt_disc = std::sqrt( disc1 );
+                                for ( int r = 0; r < 2; ++r )
+                                {
+                                        const auto t = ( -half_b1 + ( r == 0 ? -sqrt_disc : sqrt_disc ) ) / dir_sq;
+                                        if ( t >= 0.0f && t < 1.0f )
+                                        {
+                                                if ( ab_sq > 1e-8f )
+                                                {
+                                                        const auto hit_point = co1 + ray_dir * t;
+                                                        if ( ab.dot( hit_point ) < 0.0f )
+                                                                continue;
+                                                }
+                                                return true;
+                                        }
+                                }
+                        }
+
+                        return false;
+                };
+
+                // Precompute box invariants
                 auto inverse_rotation = bone.rotation;
                 inverse_rotation.x = -inverse_rotation.x;
                 inverse_rotation.y = -inverse_rotation.y;
                 inverse_rotation.z = -inverse_rotation.z;
-                const auto box_ray_origin = is_capsule ? math::vector3{}
-                        : inverse_rotation.rotate_vector( shoot_position - bone.position );
+                const auto box_ray_origin = inverse_rotation.rotate_vector( shoot_position - bone.position );
 
                 const auto ray_vs_box = [ & ]( const math::vector3& ray_direction ) -> bool
                 {
                         const auto direction = inverse_rotation.rotate_vector( ray_direction );
-                        auto fraction{ 1.0f };
-                        return ballistics::segment_box( box_ray_origin, direction,
-                                hitbox.mins, hitbox.maxs, fraction );
+                        auto entry{ 0.0f };
+                        auto exit{ 1.0f };
+
+                        const auto intersect_axis = [ & ]( float origin, float delta, float minimum, float maximum ) -> bool
+                        {
+                                if ( std::fabs( delta ) < 1.0e-8f )
+                                        return origin >= minimum && origin <= maximum;
+                                auto first  = ( minimum - origin ) / delta;
+                                auto second = ( maximum - origin ) / delta;
+                                if ( first > second ) std::swap( first, second );
+                                entry = std::max( entry, first );
+                                exit  = std::min( exit,  second );
+                                return entry <= exit;
+                        };
+
+                        return intersect_axis( box_ray_origin.x, direction.x, hitbox.mins.x, hitbox.maxs.x ) &&
+                               intersect_axis( box_ray_origin.y, direction.y, hitbox.mins.y, hitbox.maxs.y ) &&
+                               intersect_axis( box_ray_origin.z, direction.z, hitbox.mins.z, hitbox.maxs.z );
                 };
 
                 math::vector3 forward{}, left{}, up{};
                 math::helpers::angle_vectors_left( aim_angle, &forward, &left, &up );
 
-                return ballistics::sample_ratio( cache.count, [ & ]( int i )
+                auto hits{ 0 };
+                const auto n = cache.count;
+
+                for ( auto i = 0; i < n; ++i )
                 {
-                        const auto& sp       = cache.values[ i ];
+                        const auto& sp = cache.values[ i ];
                         if ( !std::isfinite( sp.x ) || !std::isfinite( sp.y ) )
-                                return false;
+                                continue;
+
+                        const auto ray_scale = range * cache.inv_len[ i ];
                         const auto direction = forward + ( left * sp.x ) + ( up * sp.y );
-                        const auto ray_end   = direction.normalized( ) * range;
-                        if ( !ballistics::finite( ray_end ) || ray_end.length_sqr( ) <= 0.0f )
-                                return false;
+                        const auto ray_end   = direction * ray_scale;
 
-                        bool hit{ false };
-                        if ( is_capsule )
-                        {
-                                hit = capsule_query->intersects( ray_end );
-#ifndef NDEBUG
-                                // Differential check against the unchanged nearest-hit
-                                // implementation; no extra work in release builds.
-                                float fraction{ 1.0f };
-                                const auto reference_hit = this->ray_vs_capsule( shoot_position, ray_end,
-                                        capsule_start, capsule_end, hitbox.radius, fraction );
-                                assert( hit == reference_hit );
-#endif
-                        }
-                        else
-                        {
-                                hit = ray_vs_box( ray_end );
-                        }
+                        const auto hit = is_capsule ? fast_capsule_test( ray_end ) : ray_vs_box( ray_end );
+                        if ( hit ) ++hits;
+                }
 
-                        return hit;
-                } );
+                return static_cast< float >( hits ) / static_cast< float >( n );
         }
 
         math::vector3 shared::find_spread_correction( const math::vector3& aim_angle, int tick ) const
         {
-                // Compatibility for existing callers; firing uses the explicit
-                // optional result and never treats failure as a zero-angle solution.
-                return this->solve_spread_correction( aim_angle, tick ).value_or( math::vector3{} );
-        }
+                for ( auto i = 0; i < 720; i++ )
+                {
+                        const auto test_angles = math::vector3{ static_cast< float >( i ) / 2.0f, aim_angle.y, 0.0f };
+                        const auto seed = this->get_spread_seed( test_angles, tick );
+                        const auto spread = this->calculate_spread( seed, this->m_ctx.inaccuracy, this->m_ctx.spread, this->m_ctx.recoil_index, this->m_ctx.item_def_idx, this->m_ctx.num_bullets );
 
-        std::optional<math::vector3> shared::solve_spread_correction( const math::vector3& aim_angle, int tick ) const
-        {
-                const auto inaccuracy = this->m_ctx.inaccuracy;
-                const auto spread_amount = this->m_ctx.spread;
-                const auto recoil = this->m_ctx.recoil_index;
-                const auto item = this->m_ctx.item_def_idx;
-                const auto bullets = this->m_ctx.num_bullets;
-                const auto punch = this->m_ctx.aim_punch;
-                if ( !ballistics::finite( punch ) || !ballistics::finite( aim_angle ) || !std::isfinite( inaccuracy ) || inaccuracy < 0.0f ||
-                        !std::isfinite( spread_amount ) || spread_amount < 0.0f || !std::isfinite( recoil ) )
-                        return std::nullopt;
-                if ( inaccuracy == 0.0f && spread_amount == 0.0f )
-                        return aim_angle;
+                        auto adj_angle = aim_angle;
+                        adj_angle.x += math::helpers::rad_to_deg( std::atan( std::sqrt( spread.x * spread.x + spread.y * spread.y ) ) );
+                        adj_angle.z = -math::helpers::rad_to_deg( std::atan2( spread.x, spread.y ) );
 
-                // No cross-command cache: prediction, recoil and fire mode may
-                // change within the same tick. The bounded fast path starts from
-                // the actual desired angle instead of an unrelated grid seed.
-                math::vector3 desired{};
-                math::helpers::angle_vectors_left( aim_angle, &desired );
-                return ballistics::solve_spread( aim_angle,
-                        [ & ]( const math::vector3& angle )
+                        if ( this->get_spread_seed( adj_angle, tick ) == seed )
                         {
-                                // The seed hashes the command view, not the
-                                // ballistic direction after recoil is applied.
-                                return this->get_spread_seed( ballistics::command_angles( angle, punch ), tick );
-                        },
-                        [ & ]( std::uint32_t seed ) -> std::optional<math::vector3>
-                        {
-                                const auto spread = this->calculate_spread( seed, inaccuracy,
-                                        spread_amount, recoil, item, bullets );
-                                if ( !std::isfinite( spread.x ) || !std::isfinite( spread.y ) )
-                                        return std::nullopt;
-                                auto corrected = aim_angle;
-                                corrected.x += math::helpers::rad_to_deg( std::atan( std::hypot( spread.x, spread.y ) ) );
-                                corrected.z = -math::helpers::rad_to_deg( std::atan2( spread.x, spread.y ) );
-                                math::vector3 forward{}, left{}, up{};
-                                math::helpers::angle_vectors_left( corrected, &forward, &left, &up );
-                                const auto direction = ( forward + left * spread.x + up * spread.y ).normalized( );
-                                if ( !ballistics::finite( direction ) || ( direction - desired ).length_sqr( ) > 1.0e-8f )
-                                        return std::nullopt;
-                                return corrected;
-                        } );
+                                return adj_angle;
+                        }
+                }
+
+                return {};
         }
 
         math::vector3 shared::get_eye_position( std::uintptr_t local_pawn ) const
@@ -1461,26 +1558,20 @@ namespace features::combat {
 
         float shared::get_inaccuracy( bool update_accuracy_penalty ) const
         {
-                const auto state = this->get_accuracy_state( update_accuracy_penalty );
-                return state ? state->inaccuracy : 0.0f;
-        }
-
-        std::optional<shared::weapon_accuracy> shared::get_accuracy_state( bool update_accuracy_penalty ) const
-        {
                 const auto accuracy_state_begin = SCHEMA( "C_CSWeaponBase", "m_flTurningInaccuracyDelta"_hash );
                 const auto accuracy_state_end = SCHEMA( "C_CSWeaponBase", "m_flRecoilIndex"_hash );
                 if ( !this->m_ctx.weapon || accuracy_state_begin <= 0 || accuracy_state_end < accuracy_state_begin )
                 {
-                        return std::nullopt;
+                        return 0.0f;
                 }
 
                 const auto accuracy_state_size = static_cast< std::size_t >( accuracy_state_end - accuracy_state_begin ) + sizeof( float );
                 if ( accuracy_state_size > 0x100 )
                 {
-                        return std::nullopt;
+                        return 0.0f;
                 }
 
-                std::array<std::uint8_t, 0x100> backup{};
+                std::vector<std::uint8_t> backup( accuracy_state_size );
                 std::memcpy( backup.data( ), reinterpret_cast< const void* >( this->m_ctx.weapon + accuracy_state_begin ), accuracy_state_size );
 
                 if ( update_accuracy_penalty )
@@ -1504,14 +1595,6 @@ namespace features::combat {
                         get_inaccuracy, this->m_ctx.weapon,
                         static_cast<float*>( nullptr ), static_cast<float*>( nullptr ) );
 
-                // Sample all spread inputs before restoring the accuracy update.
-                // Reading recoil/spread afterwards mixes two different weapon states.
-                const weapon_accuracy state{
-                        inaccuracy,
-                        this->get_spread( ),
-                        memory::read<float>( this->m_ctx.weapon + accuracy_state_end )
-                };
-
                 if ( ask_as_secondary )
                 {
                         memory::write( this->m_ctx.weapon + mode_offset, previous_mode );
@@ -1519,12 +1602,7 @@ namespace features::combat {
 
                 std::memcpy( reinterpret_cast< void* >( this->m_ctx.weapon + accuracy_state_begin ), backup.data( ), accuracy_state_size );
 
-                if ( !std::isfinite( state.inaccuracy ) || state.inaccuracy < 0.0f ||
-                        !std::isfinite( state.spread ) || state.spread < 0.0f ||
-                        !std::isfinite( state.recoil_index ) )
-                        return std::nullopt;
-
-                return state;
+                return inaccuracy;
         }
 
         float shared::get_inaccuracy_at_velocity( std::uintptr_t local_pawn, const math::vector3& velocity ) const

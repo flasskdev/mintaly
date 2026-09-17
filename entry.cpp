@@ -598,6 +598,7 @@ extern "C" int __stdcall entry (HMODULE module_handle, DWORD reason, LPVOID rese
 		CoUninitialize ();
 #endif
 
+		threadpool::shutdown ();
 		diag::shutdown ();
 
 #if defined( DEV )

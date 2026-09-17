@@ -205,6 +205,7 @@ namespace systems {
 		[[nodiscard]] std::uintptr_t get_by_index( int index );
 		[[nodiscard]] std::uintptr_t lookup( std::uint32_t handle ) const;
 		[[nodiscard]] std::vector<cached> get_by_type( type type ) const;
+		[[nodiscard]] bool has_alive_enemies( std::uintptr_t local_controller, std::uintptr_t local_pawn, int local_team, bool is_team_mode = true ) const;
 
 		[[nodiscard]] bool is_empty( ) const;
 

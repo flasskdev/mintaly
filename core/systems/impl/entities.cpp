@@ -266,6 +266,61 @@ namespace systems {
 		return this->m_cached.snapshot( type_index );
 	}
 
+	bool entities::has_alive_enemies( std::uintptr_t local_controller, std::uintptr_t local_pawn, int local_team, bool is_team_mode ) const
+	{
+		if ( !local_controller || !local_pawn )
+		{
+			return false;
+		}
+
+		std::shared_lock lock( this->m_cache_mtx );
+		const auto type_index = static_cast<std::size_t>( type::player );
+		const auto ready = this->m_cached.snapshot_if_ready( type_index );
+		if ( !ready )
+		{
+			return true;
+		}
+
+		for ( const auto& p : *ready )
+		{
+			if ( !p.ptr || p.ptr == local_controller )
+			{
+				continue;
+			}
+
+			if ( !memory::read<bool>( p.ptr + SCHEMA( "CCSPlayerController", "m_bPawnIsAlive"_hash ) ) )
+			{
+				continue;
+			}
+
+			const auto pawn_handle = memory::read<std::uint32_t>( p.ptr + SCHEMA( "CBasePlayerController", "m_hPawn"_hash ) );
+			if ( !pawn_handle )
+			{
+				continue;
+			}
+
+			const auto pawn = this->lookup( pawn_handle );
+			if ( !pawn || pawn == local_pawn )
+			{
+				continue;
+			}
+
+			const auto team = memory::read<int>( pawn + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) );
+			if ( is_team_mode && team == local_team )
+			{
+				continue;
+			}
+
+			const auto health = memory::read<int>( pawn + SCHEMA( "C_BaseEntity", "m_iHealth"_hash ) );
+			if ( health > 0 )
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+
 	bool entities::is_empty( ) const
 	{
 		std::shared_lock lock( this->m_cache_mtx );
