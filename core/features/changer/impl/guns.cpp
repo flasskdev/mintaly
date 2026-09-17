@@ -13,14 +13,11 @@ namespace features::changer {
 		this->process_hud_clear( );
 
 		const auto local = systems::g_local.get( );
-		if ( !local.is_alive || systems::g_local.is_in_cinematic( ) || !local.pawn || !local.controller )
-		{
-			return;
-		}
+		if ( !local.controller ) return;
 
 		const auto local_ctrl = local.controller;
 		const auto local_pawn = local.pawn;
-		const auto local_team = memory::read<int>( local_pawn + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) );
+		const auto local_team = local_pawn ? memory::read<int>( local_pawn + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) ) : 0;
 		const auto& active_skins = settings::g_changer.skins.for_team( local_team );
 
 		const auto hud_model = this->find_hud_model_weapon( local_pawn );
@@ -40,7 +37,7 @@ namespace features::changer {
 			return !systems::g_entities.lookup( owner );
 		} );
 
-		if ( true )
+		if ( local.is_alive && local_pawn && !systems::g_local.is_in_cinematic( ) )
 		{
 			const auto weapon_services = memory::read<std::uintptr_t>( local_pawn + SCHEMA( "C_BasePlayerPawn", "m_pWeaponServices"_hash ) );
 			if ( weapon_services )
@@ -113,7 +110,8 @@ namespace features::changer {
 							&& memory::read<int>( weapon + SCHEMA( "C_EconEntity", "m_nFallbackStatTrak"_hash ) ) == ( skin.stattrak ? skin.stattrak_count : -1 )
 							&& memory::read<int>( iv + SCHEMA( "C_EconItemView", "m_iEntityQuality"_hash ) ) == ( skin.stattrak ? 9 : 0 )
 							&& memory::read<std::uint32_t>( iv + SCHEMA( "C_EconItemView", "m_iAccountID"_hash ) ) == account_id
-							&& name_tag::matches( iv, skin.name_tag ) )
+							&& name_tag::matches( iv, skin.name_tag )
+							&& cosmetic_attributes::matches( iv, skin ) )
 						{
 							continue;
 						}
@@ -257,7 +255,8 @@ namespace features::changer {
 					&& memory::read<int>( weapon + SCHEMA( "C_EconEntity", "m_nFallbackStatTrak"_hash ) ) == ( skin.stattrak ? skin.stattrak_count : -1 )
 					&& memory::read<int>( iv + SCHEMA( "C_EconItemView", "m_iEntityQuality"_hash ) ) == ( skin.stattrak ? 9 : 0 )
 					&& memory::read<std::uint32_t>( iv + SCHEMA( "C_EconItemView", "m_iAccountID"_hash ) ) == remote_account_id
-					&& name_tag::matches( iv, skin.name_tag ) )
+					&& name_tag::matches( iv, skin.name_tag )
+					&& cosmetic_attributes::matches( iv, skin ) )
 				{
 					continue;
 				}
@@ -282,6 +281,7 @@ namespace features::changer {
 		const auto soc_offset = SCHEMA( "C_EconItemView", "m_bDisallowSOC"_hash );
 		if ( !skin || !soc_offset || !cosmetic_attributes::available( ) ) return false;
 		if ( !PATTERN( patterns::weapon_update_skin ) || !PATTERN( patterns::weapon_update_composite_material ) ) return false;
+		if ( !memory::safe_read<std::uintptr_t>( weapon + SCHEMA( "C_BaseEntity", "m_pGameSceneNode"_hash ) ).value_or( 0 ) ) return false;
 		if ( pawn == systems::g_local.get( ).pawn && handle == active_handle && !this->find_hud_model_weapon( pawn ) )
 			return false; // Retry rather than cache success before the HUD model exists.
 		if ( !name_tag::apply( iv, skin->name_tag ) ) return false;
@@ -372,6 +372,7 @@ namespace features::changer {
 
 	std::uintptr_t guns::find_hud_model_weapon( std::uintptr_t pawn )
 	{
+		if ( !pawn ) return 0;
 		const auto arms_handle = memory::safe_read<std::uint32_t>( pawn + SCHEMA( "C_CSPlayerPawn", "m_hHudModelArms"_hash ) ).value_or( 0 );
 		if ( !arms_handle )
 		{

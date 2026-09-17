@@ -57,6 +57,22 @@ namespace features::changer::cosmetic_attributes {
         return true;
     }
 
+    [[nodiscard]] inline bool matches(std::uintptr_t item_view, const settings::changer::applied_skin& skin) {
+        snapshot actual{};
+        if (!capture(item_view, actual)) return false;
+        const std::array<std::uint32_t, 5> expected{
+            std::bit_cast<std::uint32_t>(static_cast<float>(skin.paint_kit_id)),
+            std::bit_cast<std::uint32_t>(static_cast<float>(skin.seed)),
+            std::bit_cast<std::uint32_t>(skin.wear),
+            static_cast<std::uint32_t>(skin.stattrak_count), 0u
+        };
+        for (std::size_t i = 0; i < actual.size(); ++i) {
+            const bool required = i < 3 || skin.stattrak;
+            if (actual[i].present != required || (required && actual[i].bits != expected[i])) return false;
+        }
+        return true;
+    }
+
     inline void sanitize( std::uintptr_t /*item_view*/ ) {
         // No-op: do not corrupt internal engine attribute structures.
     }
@@ -92,6 +108,6 @@ namespace features::changer::cosmetic_attributes {
             memory::safe_call<void>(remove, item_view, static_cast<int>(indices[3]));
             memory::safe_call<void>(remove, item_view, static_cast<int>(indices[4]));
         }
-        return true;
+        return matches(item_view, skin);
     }
 }

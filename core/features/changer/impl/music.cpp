@@ -17,7 +17,7 @@ namespace {
 	void music::on_frame_stage_notify( )
 	{
 		const auto local = systems::g_local.get( );
-		if ( !local.is_alive || !local.controller )
+		if ( !local.controller )
 		{
 			return;
 		}

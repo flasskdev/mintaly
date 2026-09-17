@@ -43,15 +43,12 @@ namespace features::changer {
 	void gloves::on_frame_stage_notify( )
 	{
 		const auto local = systems::g_local.get( );
-		if ( !local.is_alive || systems::g_local.is_in_cinematic( ) || !local.pawn || !local.controller )
-		{
-			return;
-		}
+		if ( !local.controller ) return;
 
 		const auto local_ctrl = local.controller;
 		const auto local_pawn = local.pawn;
 
-		if ( true )
+		if ( local.is_alive && local_pawn && !systems::g_local.is_in_cinematic( ) )
 		{
 			const auto local_team = memory::read<int>( local_pawn + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) );
 			if ( local_team == 2 || local_team == 3 )
@@ -170,7 +167,9 @@ namespace features::changer {
 				continue;
 			}
 
-			const auto dormant = memory::safe_read<bool>( pawn + SCHEMA( "C_BaseEntity", "m_bDormant"_hash ) ).value_or( true );
+			const auto scene = memory::safe_read<std::uintptr_t>( pawn + SCHEMA( "C_BaseEntity", "m_pGameSceneNode"_hash ) ).value_or( 0 );
+			const auto dormant_offset = SCHEMA( "CGameSceneNode", "m_bDormant"_hash );
+			const auto dormant = !scene || ( dormant_offset && memory::safe_read<bool>( scene + dormant_offset ).value_or( true ) );
 			if ( dormant )
 			{
 				continue;
@@ -199,7 +198,8 @@ namespace features::changer {
 
 			if ( current_def == static_cast< std::uint16_t >( remote_glove_def->def_index ) &&
 				 current_id == detail::faux_item_id &&
-				 this->paint_attributes_match( remote_item_view, remote_glove_skin ) )
+				 this->paint_attributes_match( remote_item_view, remote_glove_skin ) &&
+				 !memory::safe_read<bool>( pawn + SCHEMA( "C_CSPlayerPawn", "m_bNeedToReApplyGloves"_hash ) ).value_or( true ) )
 			{
 				continue;
 			}
@@ -322,6 +322,27 @@ namespace features::changer {
 			return;
 		}
 
+		const bool is_local = ( pawn == systems::g_local.get( ).pawn );
+		if ( !is_local )
+		{
+			// Only update engine-owned, already initialized attributes. Never invent an attribute manager.
+			std::array<attribute_state, 3> attributes{};
+			if ( !this->read_paint_attributes( item_view, attributes ) ||
+				 !std::all_of( attributes.begin( ), attributes.end( ), []( const auto& a ) { return a.present; } ) ) return;
+			const auto count = memory::read<int>( item_view + detail::item_view_attribute_count_offset );
+			const auto data = memory::read<std::uintptr_t>( item_view + detail::item_view_attribute_data_offset );
+			const std::array<float, 3> values{ static_cast<float>( skin.paint_kit_id ), static_cast<float>( skin.seed ), skin.wear };
+			for ( int i = 0; i < count; ++i )
+			{
+				const auto attribute = data + static_cast<std::ptrdiff_t>( i ) * detail::item_attribute_stride;
+				const auto definition = memory::read<std::uint16_t>( attribute + detail::item_attribute_definition_offset );
+				for ( std::size_t slot = 0; slot < values.size( ); ++slot )
+					if ( definition == detail::glove_attribute_indices[slot] )
+						memory::write<float>( attribute + detail::item_attribute_value_offset, values[slot] );
+			}
+			if ( !this->paint_attributes_match( item_view, skin ) ) return;
+		}
+
 		memory::write<std::uint16_t>( item_view + SCHEMA( "C_EconItemView", "m_iItemDefinitionIndex"_hash ), static_cast< std::uint16_t >( def.def_index ) );
 		memory::write<std::uint64_t>( item_view + SCHEMA( "C_EconItemView", "m_iItemID"_hash ), detail::faux_item_id );
 		memory::write<std::uint32_t>( item_view + SCHEMA( "C_EconItemView", "m_iItemIDHigh"_hash ), static_cast< std::uint32_t >( detail::faux_item_id >> 32 ) );
@@ -331,10 +352,7 @@ namespace features::changer {
 		memory::write<bool>( item_view + SCHEMA( "C_EconItemView", "m_bInitialized"_hash ), true );
 		memory::write<bool>( item_view + SCHEMA( "C_EconItemView", "m_bDisallowSOC"_hash ), true );
 
-		// Only call set_attribute on the local player's gloves.
-		// Remote players' m_EconGloves has an uninitialized m_AttributeList — calling
-		// set_attribute on it crashes inside client.dll (NULL-deref on garbage manager pointer).
-		const bool is_local = ( pawn == systems::g_local.get( ).pawn );
+		// Remote attributes are updated above without calling an uninitialized manager.
 		if ( is_local )
 		{
 			const auto set_attribute = PATTERN( patterns::econ_item_view_set_attribute );
@@ -380,9 +398,10 @@ namespace features::changer {
 			memory::safe_call<void>( invalidate, item_view );
 		}
 
+		const auto reapply_offset = SCHEMA( "C_CSPlayerPawn", "m_bNeedToReApplyGloves"_hash );
+		if ( reapply_offset ) memory::write<bool>( pawn + reapply_offset, true );
 		if ( pawn == systems::g_local.get( ).pawn )
 		{
-			memory::write<bool>( pawn + SCHEMA( "C_CSPlayerPawn", "m_bNeedToReApplyGloves"_hash ), true );
 			memory::call_vfunc<void>( pawn, detail::post_data_update_index, 1 );
 		}
 
