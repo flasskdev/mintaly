@@ -4,6 +4,7 @@
 #include <utilities/math/math.hpp>
 #include <external/config.hpp>
 #include <utilities/skin_options.hpp>
+#include <utilities/cosmetic_config.hpp>
 #include <limits>
 
 namespace settings {
@@ -1576,19 +1577,12 @@ namespace settings {
                                         return;
                                 }
 
-                                ct_def = j.value("ct", static_cast<std::int16_t>(0));
-                                t_def = j.value("t", static_cast<std::int16_t>(0));
+                                ct_def = static_cast<std::int16_t>(cosmetic_config::field(j, "ct", 0, std::numeric_limits<std::int16_t>::max()));
+                                t_def = static_cast<std::int16_t>(cosmetic_config::field(j, "t", 0, std::numeric_limits<std::int16_t>::max()));
                         }
                 };
 
-                struct custom_agent_entry
-                {
-                        std::string name{};
-                        std::string model_path{};
-                        int team{ 3 }; // 0 = any, 2 = T, 3 = CT
-
-                        bool operator==( const custom_agent_entry& ) const = default;
-                };
+                using custom_agent_entry = cosmetic_config::custom_agent_entry;
 
                 struct custom_agents_field : config::custom_field
                 {
@@ -1622,24 +1616,10 @@ namespace settings {
                                         return;
                                 }
 
-                                selected_ct = j.value( "selected_ct", -1 );
-                                selected_t = j.value( "selected_t", -1 );
-
-                                entries.clear( );
-                                if ( j.contains( "entries" ) && j["entries"].is_array( ) )
-                                {
-                                        for ( const auto& item : j["entries"] )
-                                        {
-                                                custom_agent_entry entry;
-                                                entry.name = item.value( "name", std::string( "Custom Agent" ) );
-                                                entry.model_path = item.value( "model_path", item.value( "model", std::string( ) ) );
-                                                entry.team = item.value( "team", 3 );
-                                                if ( !entry.model_path.empty( ) )
-                                                {
-                                                        entries.push_back( entry );
-                                                }
-                                        }
-                                }
+                                auto decoded = cosmetic_config::decode_custom_agents(j);
+                                entries = std::move(decoded.entries);
+                                selected_ct = decoded.selected_ct;
+                                selected_t = decoded.selected_t;
                         }
                 };
 
@@ -1654,16 +1634,8 @@ namespace settings {
 
                         void deserialize(const nlohmann::json& j) override
                         {
-                                if (!j.is_object())
-                                {
-                                        if (j.is_number_integer())
-                                                id = j.get<int>();
-                                        else
-                                                id = 0;
-                                        return;
-                                }
-
-                                id = j.value("id", 0);
+                                id = j.is_object() ? cosmetic_config::field(j, "id", 0, 65534)
+                                                   : cosmetic_config::integer(j, 0, 65534);
                         }
                 };
 

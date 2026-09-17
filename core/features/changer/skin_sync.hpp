@@ -60,6 +60,7 @@ namespace features::changer {
 		std::atomic<bool> m_push_pending{ true };
 		std::atomic<bool> m_initialized{ false };
 		std::atomic<std::uint64_t> m_last_local_steam_id{ 0 };
+		std::atomic<int> m_local_team{ 0 }; // Last playing team, published by the game thread.
 		std::string m_local_payload{}; // Protected by m_mutex.
 		std::uint64_t m_payload_steam_id{};
 		std::chrono::steady_clock::time_point m_last_snapshot_time{}; // Producer thread only.

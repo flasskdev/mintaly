@@ -282,7 +282,8 @@ namespace {
 			}
 
 			const auto agent_item = g_econ_item_system.find_def( remote_agent_def );
-			if ( !agent_item || agent_item->category != econ_item_system::item_category::agent || agent_item->model_player.empty( ) )
+			if ( !agent_item || agent_item->category != econ_item_system::item_category::agent || agent_item->model_player.empty( ) ||
+				 ( agent_item->team( ) != 0 && agent_item->team( ) != remote_team ) )
 			{
 				continue;
 			}

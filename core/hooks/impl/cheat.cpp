@@ -494,14 +494,13 @@ namespace hooks {
 			features::changer::g_skin_sync.on_frame_stage_notify( );
 		}
 
+		// Music belongs to the controller and must work while dead or without a camera.
+		if ( stage == 6 || stage == 7 )
+			features::changer::g_music.on_frame_stage_notify( );
+
 		if ( systems::g_local.get( ).is_valid( ) && systems::g_view.has_camera( ) )
 		{
 			// Weapon cosmetics are applied after the original callback below.
-			if ( stage == 6 || stage == 7 )
-			{
-				features::changer::g_music.on_frame_stage_notify( );
-			}
-
 			if ( stage == 7 )
 			{
 				features::changer::g_knives.on_frame_stage_notify( );
