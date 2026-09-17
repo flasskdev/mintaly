@@ -496,11 +496,7 @@ namespace hooks {
 
 		if ( systems::g_local.get( ).is_valid( ) && systems::g_view.has_camera( ) )
 		{
-			if ( stage == 6 || stage == 7 )
-			{
-				features::changer::g_guns.on_frame_stage_notify( );
-			}
-
+			// Weapon cosmetics are applied after the original callback below.
 			if ( stage == 6 || stage == 7 )
 			{
 				features::changer::g_music.on_frame_stage_notify( );
@@ -550,6 +546,11 @@ namespace hooks {
 		if ( is_level_shutting_down( ) )
 		{
 			return;
+		}
+
+		if ( ( stage == 6 || stage == 12 ) && systems::g_local.get( ).is_valid( ) )
+		{
+			features::changer::g_guns.on_frame_stage_notify( );
 		}
 
 		// Process impacts after event dispatch, even when no camera is available.

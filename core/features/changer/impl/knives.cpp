@@ -333,7 +333,7 @@ namespace features::changer {
 	{
 		this->m_pending_hud_iv = 0;
         if (!cosmetic_attributes::available()) return;
-        if (!name_tag::apply(iv, skin->name_tag)) return;
+        if (!skin->name_tag.empty() && !name_tag::offsets()) return;
         const auto model_changed =
             memory::read<std::uint16_t>(iv + SCHEMA("C_EconItemView", "m_iItemDefinitionIndex"_hash)) != static_cast<std::uint16_t>(def->def_index)
             || memory::read<std::uint32_t>(weapon + SCHEMA("C_BaseEntity", "m_nSubclassID"_hash)) != detail::make_subclass_token(def->def_index);
@@ -357,6 +357,8 @@ namespace features::changer {
 		if (model_changed)
             this->update_model( weapon, iv, static_cast< std::uint16_t >( def->def_index ) );
         if (!cosmetic_attributes::apply(iv, *skin)) return;
+        // Subclass/model changes may rebuild the item view; set its name afterwards.
+        if (!name_tag::apply(iv, skin->name_tag)) return;
 		this->rebuild_paint( weapon, active_weapon, pawn, pk );
 		this->schedule_hud_clear( iv );
 
