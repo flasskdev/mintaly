@@ -70,6 +70,9 @@ namespace threadpool {
 	job run( std::function<void( )> func, job_priority priority = job_priority::normal );
 	void run_sync( std::function<void( )> func, job_priority priority = job_priority::normal );
 	void parallel_for( int begin, int end, const std::function<void( int, int )>& body, int min_chunk_size = 1, job_priority priority = job_priority::normal );
+	// Synchronous dynamic scheduling; a worker can call body several times.
+	// Independent callers serialize batches; nested calls run inline with ID 0.
+	// Exceptions are rethrown on the caller after every participant has joined.
 	void parallel_for_indexed( int begin, int end, const std::function<void( int, int, int )>& body, int min_chunk_size = 1 );
 	void run_batch( std::span<std::function<void( )>> tasks, job_priority priority = job_priority::normal );
 

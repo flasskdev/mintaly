@@ -507,8 +507,29 @@ namespace features::combat {
                 void run_knife( systems::input::usercmd* cmd, const aim_context& ctx, const systems::local::snapshot& local );
                 void auto_revolver( systems::input::usercmd* cmd, const aim_context& ctx, const systems::local::snapshot& local );
 
+                struct trace_point
+                {
+                        math::vector3 position{};
+                        int hitbox_index{};
+                        int bone_index{};
+                        systems::hitboxes::entry hitbox{};
+                        bool is_center{};
+                };
+
+                struct scan_work
+                {
+                        shared::penetration::run_context penetration{};
+                        std::array<trace_point, 256> points{};
+                        std::array<std::optional<scan_hit>, 256> hits{};
+                        int point_count{};
+                };
+
+                struct scan_task { std::size_t candidate_index; int hitbox_index; };
+                mutable std::vector<scan_work> m_scan_work{};
+                mutable std::vector<scan_task> m_scan_tasks{};
+
                 void scan_players( const math::vector3& eye, float inaccuracy, const aim_context& ctx, std::vector<candidate>& candidates, const systems::local::snapshot& local, std::vector<scan_hit>& out ) const;
-                void scan_player( const math::vector3& eye, float inaccuracy, const aim_context& ctx, candidate& cand, shared::lagcomp::record* record, const systems::local::snapshot& local, std::vector<scan_hit>& out ) const;
+                void prepare_scan( const math::vector3& eye, float inaccuracy, const aim_context& ctx, const candidate& cand, shared::lagcomp::record* record, scan_work& work ) const;
                 [[nodiscard]] target select_best( const aim_context& aim_ctx, const std::vector<scan_hit>& hits, float eval_inaccuracy ) const;
                 [[nodiscard]] float evaluate_hitchance( const scan_hit& hit, const aim_context& ctx, float inaccuracy ) const;
                 [[nodiscard]] float get_standing_inaccuracy( const systems::local::snapshot& local, const aim_context& ctx ) const;
@@ -550,7 +571,8 @@ namespace features::combat {
                 int m_revolver_cock_ticks{};
                 std::atomic<penetration_crosshair_state> m_penetration_crosshair_state{ penetration_crosshair_state::unavailable };
 
-                std::vector<shared::lagcomp::record> m_extrapolated_records{};
+                // Own scan poses through selection/fire; lagcomp may evict its deque.
+                std::vector<shared::lagcomp::record> m_scan_records{};
 
                 struct debug_point
                 {

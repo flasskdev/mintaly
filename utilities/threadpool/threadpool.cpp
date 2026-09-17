@@ -3,10 +3,14 @@
 #include <exception>
 #include <new>
 #include <thread>
+#include <limits>
+#include <stdexcept>
 #include <utilities/memory/memory.hpp>
+#include <utilities/diag.hpp>
+#include <utilities/performance.hpp>
 #include <protection/game_addresses.hpp>
 #include "threadpool.hpp"
-#include "partition.hpp"
+#include "work_queue.hpp"
 
 namespace threadpool {
 
@@ -183,107 +187,141 @@ namespace threadpool {
 
 		struct alignas(64) worker_slot
 		{
-			HANDLE thread_handle{ nullptr };
-			DWORD thread_id{ 0 };
-			int worker_index{ 0 }; // 1-based index (main calling thread is 0)
-
-			std::atomic<uint32_t> task_gen{ 0 };
-			std::atomic<uint32_t> done_gen{ 0 };
-
-			int chunk_begin{ 0 };
-			int chunk_end{ 0 };
-			const std::function<void(int, int, int)>* body{ nullptr };
+			HANDLE thread_handle{};
+			int worker_index{};
+			std::atomic<std::uint32_t> task_gen{};
+			std::atomic<std::uint32_t> done_gen{};
+			const std::function<void(int)>* body{};
+			std::exception_ptr error{};
 		};
 
-		inline std::atomic<bool> g_shutdown{ false };
-		inline std::atomic<bool> g_initialized{ false };
-		inline int g_total_threads{ 1 };
-		inline int g_num_workers{ 0 };
-		inline std::array<worker_slot, 64> g_workers{};
+		// A batch owns the slots until every participant has joined. Lifecycle
+		// operations use the same mutex, so callbacks cannot outlive their inputs.
+		inline std::mutex g_dispatch_mutex;
+		inline std::atomic<bool> g_shutdown{false};
+		inline bool g_initialized{};
+		inline std::atomic<int> g_total_threads{1};
+		inline std::vector<std::unique_ptr<worker_slot>> g_workers;
+
+		struct dispatch_tls
+		{
+			std::atomic<DWORD> index{TLS_OUT_OF_INDEXES};
+			~dispatch_tls()
+			{
+				const auto slot = index.load();
+				if (slot != TLS_OUT_OF_INDEXES) TlsFree(slot);
+			}
+		};
+		inline dispatch_tls g_tls;
+
+		inline bool in_dispatch() noexcept
+		{
+			const auto slot = g_tls.index.load(std::memory_order_acquire);
+			return slot != TLS_OUT_OF_INDEXES && TlsGetValue(slot) != nullptr;
+		}
+
+		// Dynamic TLS is required by this project's manual-mapped module.
+		struct dispatch_scope
+		{
+			DWORD slot;
+			void* previous;
+			dispatch_scope() : slot(g_tls.index.load(std::memory_order_acquire)), previous(TlsGetValue(slot))
+			{
+				if (!TlsSetValue(slot, this)) throw std::runtime_error("threadpool TLS setup failed");
+			}
+			~dispatch_scope() { TlsSetValue(slot, previous); }
+		};
 
 		inline DWORD WINAPI worker_thread_proc(LPVOID param)
 		{
-			auto* worker = static_cast<worker_slot*>(param);
-			SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_HIGHEST);
-
-			while (!g_shutdown.load(std::memory_order_relaxed))
+			auto& worker = *static_cast<worker_slot*>(param);
+			// Normal priority: do not preempt the game's render/input threads.
+			for (;;)
 			{
-				uint32_t current_task = worker->task_gen.load(std::memory_order_acquire);
-				while (current_task == worker->done_gen.load(std::memory_order_relaxed))
+				auto generation = worker.task_gen.load(std::memory_order_acquire);
+				while (generation == worker.done_gen.load(std::memory_order_relaxed))
 				{
-					worker->task_gen.wait(current_task);
-					if (g_shutdown.load(std::memory_order_relaxed))
-						return 0;
-					current_task = worker->task_gen.load(std::memory_order_acquire);
+					worker.task_gen.wait(generation);
+					generation = worker.task_gen.load(std::memory_order_acquire);
 				}
-
-				if (worker->body && *worker->body)
+				if (g_shutdown.load(std::memory_order_acquire)) return 0;
+				try
 				{
-					try
-					{
-						(*worker->body)(worker->chunk_begin, worker->chunk_end, worker->worker_index);
-					}
-					catch (...)
-					{
-					}
+					dispatch_scope scope;
+					(*worker.body)(worker.worker_index);
 				}
-
-				worker->done_gen.store(current_task, std::memory_order_release);
-				worker->done_gen.notify_one();
+				catch (...) { worker.error = std::current_exception(); }
+				worker.done_gen.store(generation, std::memory_order_release);
+				worker.done_gen.notify_one();
 			}
-
-			return 0;
 		}
 
+		// Caller holds g_dispatch_mutex. Publish initialization only after creation.
 		inline void init_workers()
 		{
-			if (g_initialized.exchange(true))
-				return;
-
-			g_shutdown.store(false, std::memory_order_relaxed);
-			unsigned int hw = std::thread::hardware_concurrency();
-			if (hw == 0) hw = 4;
-			g_total_threads = static_cast<int>(std::clamp(hw, 1u, 64u));
-			g_num_workers = g_total_threads - 1;
-
-			for (int i = 0; i < g_num_workers; ++i)
+			if (g_initialized) return;
+			if (g_tls.index.load() == TLS_OUT_OF_INDEXES)
 			{
-				auto& w = g_workers[i];
-				w.worker_index = i + 1; // 1-based (calling thread is 0)
-				w.task_gen.store(0, std::memory_order_relaxed);
-				w.done_gen.store(0, std::memory_order_relaxed);
-				w.thread_handle = CreateThread(nullptr, 0, worker_thread_proc, &w, 0, &w.thread_id);
+				const auto slot = TlsAlloc();
+				if (slot == TLS_OUT_OF_INDEXES) throw std::runtime_error("threadpool TLS allocation failed");
+				g_tls.index.store(slot, std::memory_order_release);
 			}
+			auto hw = GetActiveProcessorCount(ALL_PROCESSOR_GROUPS);
+			if (!hw) hw = std::thread::hardware_concurrency();
+			hw = std::max<DWORD>(hw, 1);
+			const auto total = static_cast<int>(std::min<DWORD>(hw, std::numeric_limits<int>::max()));
+			// Allocate all slots before starting any threads (exception-safe setup).
+			g_workers.clear();
+			g_workers.reserve(static_cast<std::size_t>(total - 1));
+			for (int i = 1; i < total; ++i)
+			{
+				auto worker = std::make_unique<worker_slot>();
+				worker->worker_index = i;
+				g_workers.push_back(std::move(worker));
+			}
+			g_shutdown.store(false, std::memory_order_release);
+			for (std::size_t i = 0; i < g_workers.size(); ++i)
+			{
+				auto& worker = *g_workers[i];
+				worker.thread_handle = CreateThread(nullptr, 0, worker_thread_proc, &worker, 0, nullptr);
+				if (!worker.thread_handle)
+				{
+					// Never wait for a worker that failed to start.
+					g_workers.resize(i);
+					diag::write(diag::level::warning, "threadpool: worker creation failed; using available workers");
+					break;
+				}
+			}
+			g_total_threads.store(static_cast<int>(g_workers.size()) + 1, std::memory_order_release);
+			g_initialized = true;
 		}
 
 		inline void stop_workers() noexcept
 		{
-			if (!g_initialized.exchange(false))
-				return;
-
+			// Shutdown is an owner/lifecycle operation, never a worker callback.
+			if (in_dispatch()) return;
+			std::lock_guard lock(g_dispatch_mutex);
+			if (!g_initialized) return;
 			g_shutdown.store(true, std::memory_order_release);
-			for (int i = 0; i < g_num_workers; ++i)
+			for (auto& worker : g_workers)
 			{
-				auto& w = g_workers[i];
-				w.task_gen.fetch_add(1, std::memory_order_release);
-				w.task_gen.notify_all();
+				worker->task_gen.fetch_add(1, std::memory_order_release);
+				worker->task_gen.notify_one();
 			}
-
-			for (int i = 0; i < g_num_workers; ++i)
+			for (auto& worker : g_workers)
 			{
-				auto& w = g_workers[i];
-				if (w.thread_handle)
-				{
-					WaitForSingleObject(w.thread_handle, 500);
-					CloseHandle(w.thread_handle);
-					w.thread_handle = nullptr;
-				}
+				// A timeout must not free a slot or unload code still in use.
+				WaitForSingleObject(worker->thread_handle, INFINITE);
+				CloseHandle(worker->thread_handle);
 			}
+			g_workers.clear();
+			g_total_threads.store(1, std::memory_order_release);
+			g_initialized = false;
 		}
-
 	} // namespace native
 
 	bool initialize () {
+		std::lock_guard lock(native::g_dispatch_mutex);
 		native::init_workers ();
 
 		const auto tier0 = MODULE_BASE ("tier0.dll");
@@ -309,8 +347,14 @@ namespace threadpool {
 	}
 
 	int get_thread_count () noexcept {
-		native::init_workers ();
-		return native::g_total_threads;
+		if (native::in_dispatch()) return native::g_total_threads.load(std::memory_order_acquire);
+		try {
+			std::lock_guard lock(native::g_dispatch_mutex);
+			native::init_workers();
+		} catch (...) {
+			return 1;
+		}
+		return native::g_total_threads.load(std::memory_order_acquire);
 	}
 
 	job run (std::function<void ()> func, job_priority priority) {
@@ -332,46 +376,61 @@ namespace threadpool {
 	}
 
 	void parallel_for_indexed (int begin, int end, const std::function<void (int, int, int)>& body, int min_chunk_size) {
-		if (begin >= end) {
+		if (begin >= end || !body) return;
+		// Nested work stays on its current thread rather than overwriting the
+		// parent batch's slots or deadlocking on the dispatch mutex.
+		if (native::in_dispatch()) {
+			body(begin, end, 0);
 			return;
 		}
 
-		native::init_workers ();
-
-		const auto total = end - begin;
-		const auto max_chunks = std::min (native::g_total_threads, static_cast<int> ((total + min_chunk_size - 1) / min_chunk_size));
-		if (max_chunks <= 1) {
-			body (begin, end, 0);
+		utilities::performance::scope dispatch_wait{utilities::performance::stage::pool_dispatch_wait};
+		std::unique_lock lock(native::g_dispatch_mutex);
+		dispatch_wait.finish();
+		native::init_workers();
+		native::dispatch_scope scope;
+		const auto grain = std::max(min_chunk_size, 1);
+		const auto total = static_cast<std::int64_t>(end) - begin;
+		const auto chunks = (total + grain - 1) / grain;
+		const auto participants = static_cast<int>(std::min<std::int64_t>(chunks, native::g_total_threads.load()));
+		if (participants <= 1) {
+			body(begin, end, 0);
 			return;
 		}
 
-		const auto partition = detail::partition_range (begin, end, min_chunk_size, max_chunks);
-		if (partition.count <= 1) {
-			body (begin, end, 0);
-			return;
+		detail::work_queue queue(begin, end, grain);
+		const std::function<void(int)> consume = [&](int id) {
+			detail::work_queue::chunk chunk{};
+			while (queue.claim(chunk)) body(chunk.begin, chunk.end, id);
+		};
+		for (int i = 1; i < participants; ++i) {
+			auto& worker = *native::g_workers[static_cast<std::size_t>(i - 1)];
+			worker.error = nullptr;
+			worker.body = &consume;
+			worker.task_gen.fetch_add(1, std::memory_order_release);
+			worker.task_gen.notify_one();
 		}
 
-		// Dispatch chunks 1..count-1 to background workers
-		for (int i = 1; i < partition.count; ++i) {
-			auto& w = native::g_workers [i - 1];
-			w.chunk_begin = partition.chunks [i].begin;
-			w.chunk_end = partition.chunks [i].end;
-			w.body = &body;
-			w.task_gen.fetch_add (1, std::memory_order_release);
-			w.task_gen.notify_one ();
-		}
-
-		// Calling thread executes chunk 0 (thread_id = 0)
-		body (partition.chunks [0].begin, partition.chunks [0].end, 0);
-
-		// Wait for all dispatched workers to complete
-		for (int i = 1; i < partition.count; ++i) {
-			auto& w = native::g_workers [i - 1];
-			const uint32_t expected = w.task_gen.load (std::memory_order_relaxed);
-			while (w.done_gen.load (std::memory_order_acquire) != expected) {
-				w.done_gen.wait (expected - 1);
+		std::exception_ptr error;
+		try { consume(0); }
+		catch (...) { error = std::current_exception(); }
+		{
+			utilities::performance::scope join_wait{utilities::performance::stage::pool_join_wait};
+			for (int i = 1; i < participants; ++i) {
+				auto& worker = *native::g_workers[static_cast<std::size_t>(i - 1)];
+				const auto expected = worker.task_gen.load(std::memory_order_relaxed);
+				auto done = worker.done_gen.load(std::memory_order_acquire);
+				while (done != expected) {
+					worker.done_gen.wait(done);
+					done = worker.done_gen.load(std::memory_order_acquire);
+				}
+				worker.body = nullptr;
+				if (!error && worker.error) error = worker.error;
 			}
 		}
+		// Join first even when the calling-thread callback throws: its captured
+		// stack objects remain alive until every worker has finished.
+		if (error) std::rethrow_exception(error);
 	}
 
 	void parallel_for (int begin, int end, const std::function<void (int, int)>& body, int min_chunk_size, job_priority /*priority*/) {

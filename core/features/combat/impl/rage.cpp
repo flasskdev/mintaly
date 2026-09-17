@@ -7,8 +7,34 @@
 #include <core/features/features.hpp>
 #include <protection/game_addresses.hpp>
 #include <utilities/threadpool/threadpool.hpp>
+#include <utilities/performance.hpp>
 
 namespace features::combat {
+
+    namespace perf = utilities::performance;
+
+    namespace {
+        void report_rage_timings()
+        {
+            static auto last = std::chrono::steady_clock::now();
+            const auto now = std::chrono::steady_clock::now();
+            if (now - last < std::chrono::seconds(5)) return;
+            last = now;
+            const auto samples = perf::take_samples();
+            for (std::size_t i = 0; i < samples.size(); ++i)
+            {
+                const auto& value = samples[i];
+                if (!value.calls) continue;
+                char line[256]{};
+                _snprintf_s(line, sizeof(line), _TRUNCATE,
+                    "rage perf: %s calls=%llu avg_ms=%.3f max_ms=%.3f",
+                    perf::names[i], static_cast<unsigned long long>(value.calls),
+                    static_cast<double>(value.total_ns) / static_cast<double>(value.calls) / 1.0e6,
+                    static_cast<double>(value.maximum_ns) / 1.0e6);
+                diag::write(diag::level::debug, line);
+            }
+        }
+    }
 
     // Helper for faster angle calculations
     namespace math_opt {
@@ -18,7 +44,11 @@ namespace features::combat {
 
     void rage::on_create_move(systems::input::usercmd* cmd)
     {
-        auto& ctx = g_shared.ctx();
+        // Scan storage belongs to this command and is not re-entrant.
+        static std::mutex command_mutex;
+        std::lock_guard command_lock(command_mutex);
+        report_rage_timings();
+        perf::scope total_timer{perf::stage::rage_total};
         const auto local = systems::g_local.get();
 
         this->update_penetration_crosshair(local);
