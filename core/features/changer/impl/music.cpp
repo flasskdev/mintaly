@@ -9,7 +9,8 @@
 namespace features::changer {
 
 namespace {
-	std::atomic<int> s_last_mvp_kit_id{ 0 };
+	std::mutex s_mvp_mutex;
+	int s_last_mvp_kit_id{};
 	std::chrono::steady_clock::time_point s_last_mvp_kit_time{};
 }
 
@@ -172,11 +173,22 @@ namespace {
 		this->m_original_music_kit_mvps = 0;
 		this->m_captured = false;
 		this->m_last_controller = 0;
+		this->clear_mvp( );
+	}
+
+	void music::clear_mvp( )
+	{
+		std::lock_guard lock( s_mvp_mutex );
+		s_last_mvp_kit_id = 0;
+		s_last_mvp_kit_time = {};
 		this->m_local_won_last_mvp = false;
+		this->m_last_mvp_time = {};
 	}
 
 	void music::on_round_mvp( void* event )
 	{
+		this->clear_mvp( );
+		std::lock_guard lock( s_mvp_mutex );
 		if ( !event )
 		{
 			return;
@@ -232,6 +244,7 @@ namespace {
 
 	bool music::is_local_mvp( ) const
 	{
+		std::lock_guard lock( s_mvp_mutex );
 		if ( !this->m_local_won_last_mvp )
 		{
 			return false;
@@ -245,13 +258,9 @@ namespace {
 
 	int get_current_mvp_kit_id( )
 	{
-		const auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(
-			std::chrono::steady_clock::now( ) - s_last_mvp_kit_time ).count( );
-		if ( elapsed <= 25 )
-		{
-			return s_last_mvp_kit_id.load( );
-		}
-		return 0;
+		std::lock_guard lock( s_mvp_mutex );
+		const auto elapsed = std::chrono::steady_clock::now( ) - s_last_mvp_kit_time;
+		return elapsed <= std::chrono::seconds( 25 ) ? s_last_mvp_kit_id : 0;
 	}
 
 } // namespace features::changer

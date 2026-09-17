@@ -2124,21 +2124,16 @@ namespace hooks {
 		}
 
 		const auto custom_kit = static_cast< std::uint16_t >( settings::g_changer.music.id );
-		if ( custom_kit > 0 )
+		if ( track_type == 11 ) // The anthem belongs to the MVP, not the listener.
 		{
-			if ( track_type == 11 ) // Music.MVPAnthem
-			{
-				const auto mvp_kit = features::changer::get_current_mvp_kit_id( );
-				if ( mvp_kit > 0 )
-				{
-					music_kit_id = static_cast< std::uint16_t >( mvp_kit );
-				}
-				else if ( features::changer::g_music.is_local_mvp( ) || music_kit_id == 0 || music_kit_id == 0xffff )
-				{
-					music_kit_id = custom_kit;
-				}
-			}
-			else if ( track_type == 1 ) // Main Menu / Lobby music
+			const auto winner_kit = features::changer::get_current_mvp_kit_id( );
+			if ( winner_kit > 0 && winner_kit < 0xffff )
+				music_kit_id = static_cast<std::uint16_t>( winner_kit );
+			// Otherwise preserve the engine's kit, including silence/unknown IDs.
+		}
+		else if ( custom_kit > 0 && custom_kit != 0xffff )
+		{
+			if ( track_type == 1 ) // Main Menu / Lobby music
 			{
 				music_kit_id = custom_kit;
 				if ( volume <= 0.01f )
