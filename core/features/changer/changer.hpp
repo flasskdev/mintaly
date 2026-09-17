@@ -285,6 +285,8 @@ namespace features::changer {
 
 		std::uint32_t m_last_active_handle{};
 		std::uintptr_t m_tracked_pawn{};
+		std::uintptr_t m_last_hud_model{};
+		float m_last_round_start_time{};
 		struct applied_weapon {
             std::uintptr_t weapon{};
             settings::changer::applied_skin skin{};
