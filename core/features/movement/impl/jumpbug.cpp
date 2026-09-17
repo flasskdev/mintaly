@@ -63,8 +63,11 @@ namespace features::movement {
 
         const auto filter = systems::g_tracing.make_player_movement_filter(local.pawn, mask, 11);
         const systems::tracing::bbox_collision current{pre.collision_mins, pre.collision_maxs};
+        const auto expansion = jumpbug_timing::airborne_unduck_expansion(height, standing_height);
+        if (!expansion) return;
         auto expanded = current;
-        expanded.mins.z -= standing_height - height;
+        expanded.mins.z -= *expansion;
+        expanded.maxs.z += *expansion;
         const auto position = [&](float when) {
             const float time = when * dt;
             auto pos = pre.networked_origin + pre.networked_velocity * time;
@@ -81,11 +84,11 @@ namespace features::movement {
         // Stay crouched in flight. Only the release position needs to fit the
         // expanded hull; sweeping that hull over the entire approach rejects
         // paths which the actual crouched player can traverse.
-        if (pre.ducked && standing_height - height > ground_probe) {
+        if (pre.ducked && *expansion > ground_probe) {
             auto probe_hull = current;
-            // A downward probe on the CURRENT hull reaches one unit below the
-            // eventual standing feet. It brackets the middle of the 2-unit window.
-            const float probe_depth = standing_height - height + ground_probe * 0.5f;
+            // Use the actual downward expansion, not the full height delta;
+            // the latter releases duck before standing feet reach the ground window.
+            const float probe_depth = *expansion + ground_probe * 0.5f;
             const auto when = jumpbug_timing::find_contact_time([&](float time) -> std::optional<bool> {
                 const auto pos = position(time);
                 if (!finite(pos)) return std::nullopt;
@@ -133,7 +136,8 @@ namespace features::movement {
         constexpr auto controlled = jump | duck;
         const int old_size = moves->m_current_size;
         std::array<proto::subtick_move_step*, 4> steps{};
-        const int needed = fire ? 4 : 2;
+        const bool hold_before_release = !fire || fire_when > 0.0f;
+        const int needed = fire ? (hold_before_release ? 4 : 3) : 2;
         // Allocate everything before modifying existing input. Failed allocation
         // must not leave half an unduck/jump sequence in the command.
         for (int i = 0; i < needed; ++i) {
@@ -160,10 +164,12 @@ namespace features::movement {
         // Hold crouch until the verified window; release jump before pressing it.
         // Distinct times prevent unduck and jump being collapsed into one state.
         event(steps[0], jump, false, 0.0f);
-        event(steps[1], duck, true, 0.0f);
+        int next_step = 1;
+        if (hold_before_release) event(steps[next_step++], duck, true, 0.0f);
         if (fire) {
-            event(steps[2], duck, false, fire_when);
-            event(steps[3], jump, true, fire_when + jumpbug_timing::event_gap);
+            // An immediate release must not also press duck at the same timestamp.
+            event(steps[next_step++], duck, false, fire_when);
+            event(steps[next_step], jump, true, fire_when + jumpbug_timing::event_gap);
         }
         cmd->buttons.value = (cmd->buttons.value & ~controlled) | (fire ? jump : duck);
         cmd->buttons.value_changed |= controlled;
