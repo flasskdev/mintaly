@@ -90,14 +90,14 @@ class catalog {
 public:
     void refresh() {
         auto& e = features::changer::g_econ_item_system;
-        e.poll_schema();
+        const bool rebuilt = e.poll_schema();
         const std::array<std::uintptr_t, 10> stamp{
             reinterpret_cast<std::uintptr_t>(e.skins().data()), e.skins().size(),
             reinterpret_cast<std::uintptr_t>(e.item_defs().data()), e.item_defs().size(),
             reinterpret_cast<std::uintptr_t>(e.paint_kits().data()), e.paint_kits().size(),
             reinterpret_cast<std::uintptr_t>(e.agents().data()), e.agents().size(),
             reinterpret_cast<std::uintptr_t>(e.gloves().data()), e.gloves().size()};
-        if (stamp == stamp_) return;
+        if (!rebuilt && stamp == stamp_) return;
         stamp_ = stamp;
         paints_.clear();
         for (auto& list : weapons_) list.clear();
@@ -195,11 +195,13 @@ struct cosmetics {
                 {"custom_agents", custom.serialize()}, {"music", music.serialize()}};
     }
     static cosmetics decode(const nlohmann::json& j) {
-        for (const auto* key : {"skins", "agents", "custom_agents", "music"})
-            if (!j.contains(key) || !j.at(key).is_object()) throw std::runtime_error("Invalid cosmetic profile");
+        if (!j.is_object() || !j.contains("skins") || !j.at("skins").is_object())
+            throw std::runtime_error("Invalid cosmetic profile");
         cosmetics c;
-        c.skins.deserialize(j.at("skins")); c.agents.deserialize(j.at("agents"));
-        c.custom.deserialize(j.at("custom_agents")); c.music.deserialize(j.at("music"));
+        c.skins.deserialize(j.at("skins"));
+        if (j.contains("agents")) c.agents.deserialize(j.at("agents"));
+        if (j.contains("custom_agents")) c.custom.deserialize(j.at("custom_agents"));
+        if (j.contains("music")) c.music.deserialize(j.at("music"));
         const auto validate_custom = [&](int& index, int side) {
             if (index < 0 || index >= static_cast<int>(c.custom.entries.size()) ||
                 (c.custom.entries[index].team != 0 && c.custom.entries[index].team != side)) index = -1;
@@ -211,9 +213,9 @@ struct cosmetics {
     void apply() const {
         auto& c = settings::g_changer;
         c.skins = skins; c.agents = agents; c.custom_agents = custom; c.music = music;
-        features::changer::g_guns.reset(); features::changer::g_knives.reset();
-        features::changer::g_gloves.reset(); features::changer::g_agents.reset();
-        features::changer::g_music.reset(); features::changer::g_skin_sync.trigger_push();
+        // Keep captured originals: changers need them to restore items removed by this profile.
+        features::changer::g_guns.reset();
+        features::changer::g_skin_sync.trigger_push();
         hooks::cheat::trigger_lobby_music(static_cast<std::uint16_t>(c.music.id));
         hover = {}; focused_weapon = {};
     }
@@ -449,7 +451,7 @@ inline bool sidebar(const xui::rect& r) {
     panel(main);
 
     // 1. Top Section: Cosmetic Config dropdown & save button
-    dl.text(r.x + 14.0f, r.y + 13.0f, "COSMETIC CONFIG", tokens::col_text_dim);
+    dl.text(r.x + 14.0f, r.y + 13.0f, theme::fit_text("CONFIG: " + profiles.status, r.w - 28.0f), tokens::col_text_dim);
     const xui::rect selector{r.x + 14.0f, r.y + 32.0f, r.w - 86.0f, 32.0f};
     const auto label = (profiles.selected >= 0 && profiles.selected < static_cast<int>(profiles.entries.size())) ? profiles.entries[profiles.selected].name : "Choose config";
     if (button(selector, theme::fit_text(label, selector.w - 18.0f).c_str(), false, profiles.ready() && !dialog_busy)) {

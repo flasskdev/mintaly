@@ -94,7 +94,8 @@ namespace features::changer {
 		for (const auto& [def, skin] : snapshot.skins) {
 			skins[std::to_string(def)] = {
 				{"p", skin.paint_kit_id}, {"w", skin.wear}, {"s", skin.seed},
-				{"t", skin.stattrak}, {"c", skin.stattrak_count}
+				{"t", skin.stattrak}, {"c", skin.stattrak_count},
+				{"n", skin_options::normalize_name_tag(skin.name_tag)}
 			};
 		}
 		const nlohmann::json payload = {
@@ -536,7 +537,8 @@ namespace features::changer {
 								s.seed = skin_json.value( "s", 0 );
 								s.stattrak = skin_json.value( "t", false );
 								s.stattrak_count = skin_json.value( "c", 0 );
-								player.skins[ def ] = s;
+								s.name_tag = skin_options::normalize_name_tag(skin_json.value("n", std::string{}));
+								player.skins[ def ] = cosmetic_attributes::normalize(s);
 							}
 							catch (const std::exception&) { diag::write(diag::level::warning, "[skin-sync] invalid remote response"); }
 						}

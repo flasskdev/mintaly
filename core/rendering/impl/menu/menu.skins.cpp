@@ -1944,7 +1944,14 @@ namespace rendering {
 				return;
 			}
 
-			const auto& items = skin_workspace::items.weapons(this->m_subtab);
+			std::vector<const features::changer::econ_item_system::item_def*> items;
+			for (const auto* item : skin_workspace::items.weapons(this->m_subtab))
+			{
+				if (!item) continue;
+				if (this->m_subtab == 0 && item->category != features::changer::econ_item_system::item_category::gun) continue;
+				if (item->team() != 0 && item->team() != skin_workspace::team) continue;
+				items.push_back(item);
+			}
 
 			const auto rows = ( static_cast< int >( items.size( ) ) + detail::k_columns - 1 ) / detail::k_columns;
 			const auto total_h = rows * card_h + ( rows > 0 ? ( rows - 1 ) * detail::k_card_gap : 0.0f );

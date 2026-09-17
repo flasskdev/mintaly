@@ -153,6 +153,9 @@ namespace features::changer {
 
 	bool econ_item_system::poll_schema( )
 	{
+		const auto now = std::chrono::steady_clock::now( );
+		if ( now - this->m_last_schema_poll < std::chrono::seconds( 1 ) ) return false;
+		this->m_last_schema_poll = now;
 		const auto system = memory::call<std::uintptr_t>( addresses::globals::item_system );
 		const auto schema = system
 			? memory::safe_read<std::uintptr_t>( system + 0x8 ).value_or( 0 )
@@ -170,8 +173,8 @@ namespace features::changer {
 			return false;
 		}
 
-		if ( item_count > static_cast<int>( this->m_item_defs.size( ) ) ||
-			 ( ( this->m_gloves.empty( ) || this->m_agents.empty( ) ) && item_count > 284 ) )
+		// The source table contains holes; its count is not the number of parsed definitions.
+		if ( item_count != this->m_item_schema_count || item_array != this->m_item_schema_array )
 		{
 			if ( !this->parse_item_defs( schema ) )
 			{
@@ -245,7 +248,7 @@ namespace features::changer {
 		auto it = this->m_image_cache.find( image_inventory );
 		if ( it == this->m_image_cache.end( ) )
 		{
-			auto entry = std::make_unique<image_entry>( );
+			auto entry = std::make_shared<image_entry>( );
 			it = this->m_image_cache.emplace( image_inventory, std::move( entry ) ).first;
 			this->request_decode( image_inventory );
 			return nullptr;
@@ -417,6 +420,11 @@ namespace features::changer {
 			this->m_item_defs.push_back( std::move( item ) );
 		}
 
+		if ( !this->m_item_defs.empty( ) )
+		{
+			this->m_item_schema_count = count;
+			this->m_item_schema_array = array;
+		}
 		return !this->m_item_defs.empty( );
 	}
 
@@ -985,41 +993,28 @@ static constexpr fallback_music_kit k_fallback_kits[] = {
 
 	void econ_item_system::request_decode( const std::string& image_inventory )
 	{
-		const auto key = image_inventory + xs( "_png" );
-
-		std::vector<std::byte> data;
+		// Called with m_image_mutex held. The worker owns the entry even if the cache is flushed.
+		const auto entry = this->m_image_cache.at( image_inventory );
+		entry->state.store( image_state::loading, std::memory_order_release );
+		threadpool::run( [this, entry, key = image_inventory + xs( "_png" )]( )
 		{
-			std::lock_guard lock( this->m_vpk_mutex );
-			data = this->read_vpk( key );
-		}
-
-		if ( data.empty( ) )
-		{
-			this->m_image_cache[ image_inventory ]->state.store( image_state::failed, std::memory_order_release );
-			return;
-		}
-
-		this->m_image_cache[ image_inventory ]->state.store( image_state::loading, std::memory_order_release );
-
-		threadpool::run( [ this, inv = image_inventory, buf = std::move( data ) ]( )
+			try
 			{
-				std::lock_guard lock( this->m_image_mutex );
-
-				const auto it = this->m_image_cache.find( inv );
-				if ( it == this->m_image_cache.end( ) )
+				std::vector<std::byte> data;
 				{
-					return;
+					std::lock_guard lock( this->m_vpk_mutex );
+					data = this->read_vpk( key );
 				}
-
-				if ( this->decode_vtex( std::span<const std::byte>( buf.data( ), buf.size( ) ), *it->second ) )
-				{
-					it->second->state.store( image_state::decoded, std::memory_order_release );
-				}
-				else
-				{
-					it->second->state.store( image_state::failed, std::memory_order_release );
-				}
-			} );
+				// Neither disk I/O nor decompression holds the render thread's cache mutex.
+				const bool decoded = !data.empty( ) && this->decode_vtex(
+					std::span<const std::byte>( data.data( ), data.size( ) ), *entry );
+				entry->state.store( decoded ? image_state::decoded : image_state::failed, std::memory_order_release );
+			}
+			catch ( const std::exception& )
+			{
+				entry->state.store( image_state::failed, std::memory_order_release );
+			}
+		} );
 	}
 
 	bool econ_item_system::finalize_texture( image_entry& entry )
@@ -1112,7 +1107,8 @@ static constexpr fallback_music_kit k_fallback_kits[] = {
 			return item_category::glove;
 		}
 
-		if ( std::strncmp( item_class, xs( "weapon_knife" ), 12 ) == 0 )
+		if ( std::strncmp( item_class, xs( "weapon_knife" ), 12 ) == 0 ||
+			 std::strcmp( item_class, "weapon_bayonet" ) == 0 )
 		{
 			return item_category::knife;
 		}

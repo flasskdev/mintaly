@@ -75,15 +75,13 @@ namespace {
 	void agents::on_frame_stage_notify( )
 	{
 		const auto local = systems::g_local.get( );
-		if ( !local.is_alive || systems::g_local.is_in_cinematic( ) || !local.pawn )
-		{
-			return;
-		}
+		if ( !local.controller ) return;
 
 		const auto local_ctrl = local.controller;
 		const auto local_pawn = local.pawn;
 
-		if ( true )
+		// Remote cosmetics remain active while the listener is dead or spectating.
+		if ( local.is_alive && local_pawn && !systems::g_local.is_in_cinematic( ) )
 		{
 			const auto team = memory::read<int>( local_pawn + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) );
 			const auto selected_def_index = ( team == 3 ) ? settings::g_changer.agents.ct_def : ( team == 2 ) ? settings::g_changer.agents.t_def : static_cast< std::int16_t >( 0 );
@@ -320,15 +318,17 @@ namespace {
 				continue;
 			}
 
-			if ( remote_model.size( ) >= 5 && remote_model.compare( remote_model.size( ) - 5, 5, ".vmdl" ) == 0 )
-			{
-				apply_model_safe( pawn, remote_model.c_str( ) );
-			}
+			bool applied = false;
+			if ( remote_model.ends_with( ".vmdl" ) )
+				applied = apply_model_safe( pawn, remote_model.c_str( ) );
 			else
-			{
-				const auto set_model = PATTERN( patterns::set_player_model );
-				set_model_guarded( set_model, pawn, remote_model.c_str( ) );
-			}
+				applied = set_model_guarded( PATTERN( patterns::set_player_model ), pawn, remote_model.c_str( ) );
+			if ( !applied ) continue;
+			const auto name_ptr = memory::safe_read<std::uintptr_t>( remote_model_state + SCHEMA( "CModelState", "m_ModelName"_hash ) ).value_or( 0 );
+			if ( !name_ptr ) continue;
+			auto applied_name = memory::read_string( name_ptr );
+			if ( applied_name.ends_with( ".vmdl_c" ) ) applied_name.resize( applied_name.size( ) - 2 );
+			if ( applied_name != remote_model ) continue; // Resource still loading: retry, do not cache the old model.
 
 			const auto collision = pawn + SCHEMA( "C_BaseModelEntity", "m_Collision"_hash );
 			memory::write<math::vector3>( collision + SCHEMA( "CCollisionProperty", "m_vecMins"_hash ), math::vector3( -16.0f, -16.0f, 0.0f ) );

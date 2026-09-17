@@ -504,8 +504,6 @@ namespace hooks {
 
 			if ( stage == 7 )
 			{
-				features::changer::g_agents.on_frame_stage_notify( );
-				features::changer::g_gloves.on_frame_stage_notify( );
 				features::changer::g_knives.on_frame_stage_notify( );
 
 				features::world::g_scene.on_frame_stage_notify( );
@@ -548,8 +546,11 @@ namespace hooks {
 			return;
 		}
 
-		if ( ( stage == 6 || stage == 12 ) && systems::g_local.get( ).is_valid( ) )
+		if ( stage == 6 || stage == 12 )
 		{
+			// Apply after network data, independently of the listener's camera/alive state.
+			features::changer::g_agents.on_frame_stage_notify( );
+			features::changer::g_gloves.on_frame_stage_notify( );
 			features::changer::g_guns.on_frame_stage_notify( );
 		}
 
@@ -2132,21 +2133,13 @@ namespace hooks {
 				music_kit_id = static_cast<std::uint16_t>( winner_kit );
 			// Otherwise preserve the engine's kit, including silence/unknown IDs.
 		}
-		else if ( custom_kit > 0 && custom_kit != 0xffff )
+		else if ( track_type == 1 && custom_kit > 0 && custom_kit != 0xffff )
 		{
-			if ( track_type == 1 ) // Main Menu / Lobby music
-			{
-				music_kit_id = custom_kit;
-				if ( volume <= 0.01f )
-				{
-					volume = 0.7f;
-				}
-			}
-			else
-			{
-				music_kit_id = custom_kit;
-			}
+			music_kit_id = custom_kit;
+			if ( volume <= 0.01f ) volume = 0.7f;
 		}
+		// In-match tracks retain the engine's owner/kit selection. A blanket listener
+		// override also replaces other players' anthems on builds with different track IDs.
 
 		m_play_music.call<void>( thisptr, track_type, music_kit_id, volume );
 	}

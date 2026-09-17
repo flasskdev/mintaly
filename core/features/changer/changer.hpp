@@ -203,8 +203,11 @@ namespace features::changer {
 		bool m_vpk_indexed{};
 		std::filesystem::path m_vpk_directory{};
 
-		std::unordered_map<std::string, std::unique_ptr<image_entry>> m_image_cache{};
+		std::unordered_map<std::string, std::shared_ptr<image_entry>> m_image_cache{};
 		std::mutex m_image_mutex{};
+		int m_item_schema_count{};
+		std::uintptr_t m_item_schema_array{};
+		std::chrono::steady_clock::time_point m_last_schema_poll{};
 
 		std::unordered_map<std::uint16_t, std::ifstream> m_archive_handles{};
 		std::mutex m_vpk_mutex{};
