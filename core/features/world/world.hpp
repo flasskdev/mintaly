@@ -19,6 +19,9 @@ namespace features::world {
         int m_last_particle_type{ -1 };
         float m_last_round_start_time{};
         bool m_particle_loaded{};
+        std::chrono::steady_clock::time_point m_last_update{};
+        std::array<float, 3> m_last_color{};
+        bool m_color_valid{};
     };
 
     class scene
