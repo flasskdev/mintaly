@@ -100,30 +100,26 @@ namespace features::misc {
 				return;
 			}
 
-			// 1. On-screen HUD toast notification (Panorama renders HTML natively)
-			const auto fn_voice = PATTERN (patterns::set_voice_data);
-			if ( fn_voice )
-			{
-				const auto voice_hud = memory::call<std::uintptr_t>( fn_find_hud, xs( "CCSGO_HudVoiceStatus" ) );
-				if ( voice_hud )
-				{
-					const auto voice = voice_hud - 0x20;
-					std::uint8_t flags[ 2 ]{ 1, 0 };
-					memory::call<void>( fn_voice, voice, formatted_msg, 0xFFFFFFFF, flags );
-				}
-			}
-
-			// 2. Panorama chat scrollview (renders HTML colors natively)
+			// Deliver once. Sending the same line through voice status AND chat
+			// can insert two entries when the full chat history is displayed.
 			const auto fn_chat = PATTERN (patterns::print_hud_chat);
 			if ( fn_chat )
 			{
 				const auto chat_hud = memory::call<std::uintptr_t>( fn_find_hud, xs( "CCSGO_HudChat" ) );
 				if ( chat_hud )
 				{
-					const auto chat = chat_hud - 0x20;
-					memory::call<void>( fn_chat, chat, formatted_msg );
+					memory::call<void>( fn_chat, chat_hud - 0x20, formatted_msg );
+					return;
 				}
 			}
+
+			// Voice status is a fallback, not a second notification sink.
+			const auto fn_voice = PATTERN (patterns::set_voice_data);
+			if ( !fn_voice ) return;
+			const auto voice_hud = memory::call<std::uintptr_t>( fn_find_hud, xs( "CCSGO_HudVoiceStatus" ) );
+			if ( !voice_hud ) return;
+			std::uint8_t flags[ 2 ]{ 1, 0 };
+			memory::call<void>( fn_voice, voice_hud - 0x20, formatted_msg, 0xFFFFFFFF, flags );
 
 			features::misc::g_scoreboard_weapons.run_script(
 				xs( "if(typeof(SChatManager)!=='undefined'&&SChatManager.process){SChatManager.process();}" )
