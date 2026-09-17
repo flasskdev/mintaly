@@ -51,26 +51,26 @@ namespace systems {
 		}
 		else
 		{
-			const auto observer_pawn_handle = memory::read<std::uint32_t>( local_player_controller + SCHEMA( "CCSPlayerController", "m_hObserverPawn"_hash ) );
-			if ( observer_pawn_handle )
+			const auto observer_pawn_handle = memory::safe_read<std::uint32_t>( local_player_controller + SCHEMA( "CCSPlayerController", "m_hObserverPawn"_hash ) ).value_or( 0 );
+			if ( observer_pawn_handle && observer_pawn_handle != 0xffffffff )
 			{
 				const auto observer_pawn = g_entities.lookup( observer_pawn_handle );
 				if ( observer_pawn )
 				{
-					const auto observer_services = memory::read<std::uintptr_t>( observer_pawn + SCHEMA( "C_BasePlayerPawn", "m_pObserverServices"_hash ) );
-					if ( observer_services )
+					const auto observer_services = memory::safe_read<std::uintptr_t>( observer_pawn + SCHEMA( "C_BasePlayerPawn", "m_pObserverServices"_hash ) ).value_or( 0 );
+					if ( observer_services && ( observer_services >> 48 ) == 0 )
 					{
-						const auto observer_target_handle = memory::read<std::uint32_t>( observer_services + SCHEMA( "CPlayer_ObserverServices", "m_hObserverTarget"_hash ) );
-						if ( observer_target_handle )
+						const auto observer_target_handle = memory::safe_read<std::uint32_t>( observer_services + SCHEMA( "CPlayer_ObserverServices", "m_hObserverTarget"_hash ) ).value_or( 0 );
+						if ( observer_target_handle && observer_target_handle != 0xffffffff )
 						{
 							const auto observer_target = g_entities.lookup( observer_target_handle );
 							if ( observer_target )
 							{
 								s.observer_pawn = observer_target;
-								s.view_team = memory::read<int>( observer_target + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) );
+								s.view_team = memory::safe_read<int>( observer_target + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) ).value_or( s.team );
 
-								const auto observer_target_controller_handle = memory::read<std::uint32_t>( observer_target + SCHEMA( "C_BasePlayerPawn", "m_hController"_hash ) );
-								if ( observer_target_controller_handle )
+								const auto observer_target_controller_handle = memory::safe_read<std::uint32_t>( observer_target + SCHEMA( "C_BasePlayerPawn", "m_hController"_hash ) ).value_or( 0 );
+								if ( observer_target_controller_handle && observer_target_controller_handle != 0xffffffff )
 								{
 									const auto observer_target_controller = g_entities.lookup( observer_target_controller_handle );
 									if ( observer_target_controller )
@@ -91,8 +91,10 @@ namespace systems {
 		}
 
 		{
-			const auto game_type = CONVAR ("game_type")->get<int> ();
-			const auto game_mode = CONVAR ("game_mode")->get<int>( );
+			const auto game_type_cvar = CONVAR ("game_type");
+			const auto game_mode_cvar = CONVAR ("game_mode");
+			const auto game_type = game_type_cvar ? game_type_cvar->get<int> () : 0;
+			const auto game_mode = game_mode_cvar ? game_mode_cvar->get<int>( ) : 0;
 			const auto is_ffa = ( game_type == 1 && game_mode == 2 ) || ( game_type == 2 && game_mode == 0 );
 
 			s.is_team_mode = !is_ffa;
@@ -101,31 +103,31 @@ namespace systems {
 		}
 
 		{
-			const auto game_rules = memory::read<std::uintptr_t>( addresses::globals::game_rules );
-			const auto global_vars = memory::read<std::uintptr_t>( addresses::globals::global_vars );
+			const auto game_rules = memory::safe_read<std::uintptr_t>( addresses::globals::game_rules ).value_or( 0 );
+			const auto global_vars = memory::safe_read<std::uintptr_t>( addresses::globals::global_vars ).value_or( 0 );
 
 			auto cinematic{ false };
 			auto freezetime{ false };
 
 			if ( game_rules && global_vars )
 			{
-				if ( memory::read<bool>( game_rules + SCHEMA( "C_CSGameRules", "m_bTeamIntroPeriod"_hash ) ) )
+				if ( memory::safe_read<bool>( game_rules + SCHEMA( "C_CSGameRules", "m_bTeamIntroPeriod"_hash ) ).value_or( false ) )
 				{
 					cinematic = true;
 				}
-				else if ( memory::read<int>( game_rules + SCHEMA( "C_CSGameRules", "m_gamePhase"_hash ) ) >= 4 )
+				else if ( memory::safe_read<int>( game_rules + SCHEMA( "C_CSGameRules", "m_gamePhase"_hash ) ).value_or( 0 ) >= 4 )
 				{
 					cinematic = true;
 				}
 
-				if ( memory::read<bool>( game_rules + SCHEMA( "C_CSGameRules", "m_bFreezePeriod"_hash ) ) )
+				if ( memory::safe_read<bool>( game_rules + SCHEMA( "C_CSGameRules", "m_bFreezePeriod"_hash ) ).value_or( false ) )
 				{
 					freezetime = true;
 				}
 				else
 				{
-					const auto round_start_time = memory::read<float>( game_rules + SCHEMA( "C_CSGameRules", "m_fRoundStartTime"_hash ) );
-					const auto current_time = memory::read<float>( global_vars + 0x30 );
+					const auto round_start_time = memory::safe_read<float>( game_rules + SCHEMA( "C_CSGameRules", "m_fRoundStartTime"_hash ) ).value_or( 0.0f );
+					const auto current_time = memory::safe_read<float>( global_vars + 0x30 ).value_or( 0.0f );
 
 					if ( round_start_time > current_time )
 					{

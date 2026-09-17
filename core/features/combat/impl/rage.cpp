@@ -1670,7 +1670,7 @@ namespace features::combat {
         const auto facing_away = forward.dot((tgt.hit.record->origin - systems::g_prediction.pre().networked_origin).normalized()) < 0.707107f;
         auto command_aim = punched_aim;
 
-        if (facing_away && settings::g_combat.m_antiaim.hide_shots.value)
+        if (settings::g_combat.m_antiaim.enabled.value && facing_away && settings::g_combat.m_antiaim.hide_shots.value)
         {
             command_aim.x = 179.9f;
             command_aim.y = std::remainderf(punched_aim.y + 180.0f, 360.0f);

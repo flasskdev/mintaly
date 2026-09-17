@@ -2669,6 +2669,11 @@ namespace xdraw {
 
 	ComPtr<ID3D11ShaderResourceView> create_srv_from_rgba( const std::uint8_t* pixels, int w, int h )
 	{
+		if ( !detail::g.device || !pixels || w <= 0 || h <= 0 )
+		{
+			return nullptr;
+		}
+
 		D3D11_TEXTURE2D_DESC td{};
 		td.Width = static_cast< UINT >( w );
 		td.Height = static_cast< UINT >( h );

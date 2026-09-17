@@ -6,6 +6,7 @@
 #include <core/settings.hpp>
 #include <utilities/steam/steam.hpp>
 #include <protection/game_addresses.hpp>
+#include <core/features/changer/cosmetic_attributes.hpp>
 
 namespace features::changer {
 
@@ -162,6 +163,19 @@ namespace features::changer {
 				continue;
 			}
 
+			const auto health = memory::safe_read<int>( pawn + SCHEMA( "C_BaseEntity", "m_iHealth"_hash ) ).value_or( 0 );
+			const auto life_state = memory::safe_read<std::uint8_t>( pawn + SCHEMA( "C_BaseEntity", "m_lifeState"_hash ) ).value_or( 1 );
+			if ( health <= 0 || life_state != 0 )
+			{
+				continue;
+			}
+
+			const auto dormant = memory::safe_read<bool>( pawn + SCHEMA( "C_BaseEntity", "m_bDormant"_hash ) ).value_or( true );
+			if ( dormant )
+			{
+				continue;
+			}
+
 			const auto remote_team = memory::safe_read<int>( pawn + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) ).value_or( 0 );
 			if ( remote_team != 2 && remote_team != 3 )
 			{
@@ -169,6 +183,17 @@ namespace features::changer {
 			}
 
 			const auto remote_item_view = pawn + SCHEMA( "C_CSPlayerPawn", "m_EconGloves"_hash );
+			if ( !remote_item_view || remote_item_view < 0x10000 )
+			{
+				continue;
+			}
+
+			std::array<attribute_state, 3> dummy_attrs{};
+			if ( !this->read_paint_attributes( remote_item_view, dummy_attrs ) )
+			{
+				continue;
+			}
+
 			const auto current_def = memory::safe_read<std::uint16_t>( remote_item_view + SCHEMA( "C_EconItemView", "m_iItemDefinitionIndex"_hash ) ).value_or( 0 );
 			const auto current_id = memory::safe_read<std::uint64_t>( remote_item_view + SCHEMA( "C_EconItemView", "m_iItemID"_hash ) ).value_or( 0 );
 
@@ -241,20 +266,22 @@ namespace features::changer {
 	{
 		const auto set_attribute = PATTERN( patterns::econ_item_view_set_attribute );
 		const auto remove_attribute = PATTERN( patterns::econ_item_view_remove_attribute );
-		if ( !set_attribute || !remove_attribute )
+		if ( !set_attribute || !remove_attribute || !item_view )
 		{
 			return false;
 		}
+
+		cosmetic_attributes::sanitize( item_view );
 
 		for ( std::size_t slot = 0; slot < detail::glove_attribute_indices.size( ); ++slot )
 		{
 			if ( this->m_original_attributes[ slot ].present )
 			{
-				memory::call<void>( set_attribute, item_view, detail::glove_attribute_names[ slot ], this->m_original_attributes[ slot ].value );
+				memory::safe_call<void>( set_attribute, item_view, detail::glove_attribute_names[ slot ], this->m_original_attributes[ slot ].value );
 			}
 			else
 			{
-				memory::call<void>( remove_attribute, item_view, static_cast< int >( detail::glove_attribute_indices[ slot ] ) );
+				memory::safe_call<void>( remove_attribute, item_view, static_cast< int >( detail::glove_attribute_indices[ slot ] ) );
 			}
 		}
 
@@ -290,8 +317,7 @@ namespace features::changer {
 
 	void gloves::apply( std::uintptr_t pawn, std::uintptr_t item_view, int team, const econ_item_system::item_def& def, const settings::changer::applied_skin& skin, std::uint32_t account_id )
 	{
-		const auto set_attribute = PATTERN( patterns::econ_item_view_set_attribute );
-		if ( !set_attribute )
+		if ( !item_view )
 		{
 			return;
 		}
@@ -305,12 +331,22 @@ namespace features::changer {
 		memory::write<bool>( item_view + SCHEMA( "C_EconItemView", "m_bInitialized"_hash ), true );
 		memory::write<bool>( item_view + SCHEMA( "C_EconItemView", "m_bDisallowSOC"_hash ), true );
 
-		// Definitions 6/7/8 are semantic floats; bit-casting the paint kit makes the composite invalid.
-		memory::call<void>( set_attribute, item_view, detail::glove_attribute_names[ 0 ], static_cast< float >( skin.paint_kit_id ) );
-		memory::call<void>( set_attribute, item_view, detail::glove_attribute_names[ 1 ], static_cast< float >( skin.seed ) );
-		memory::call<void>( set_attribute, item_view, detail::glove_attribute_names[ 2 ], skin.wear );
+		// Only call set_attribute on the local player's gloves.
+		// Remote players' m_EconGloves has an uninitialized m_AttributeList — calling
+		// set_attribute on it crashes inside client.dll (NULL-deref on garbage manager pointer).
+		const bool is_local = ( pawn == systems::g_local.get( ).pawn );
+		if ( is_local )
+		{
+			const auto set_attribute = PATTERN( patterns::econ_item_view_set_attribute );
+			if ( set_attribute )
+			{
+				memory::safe_call<void>( set_attribute, item_view, detail::glove_attribute_names[ 0 ], static_cast< float >( skin.paint_kit_id ) );
+				memory::safe_call<void>( set_attribute, item_view, detail::glove_attribute_names[ 1 ], static_cast< float >( skin.seed ) );
+				memory::safe_call<void>( set_attribute, item_view, detail::glove_attribute_names[ 2 ], skin.wear );
+			}
 
-		this->m_overridden = true;
+			this->m_overridden = true;
+		}
 		this->refresh( pawn, item_view, team );
 	}
 
@@ -339,19 +375,22 @@ namespace features::changer {
 	void gloves::refresh( std::uintptr_t pawn, std::uintptr_t item_view, int team ) const
 	{
 		const auto invalidate = PATTERN( patterns::econ_item_view_invalidate_description );
-		if ( invalidate )
+		if ( invalidate && item_view )
 		{
-			memory::call<void>( invalidate, item_view );
+			memory::safe_call<void>( invalidate, item_view );
 		}
 
-		memory::write<bool>( pawn + SCHEMA( "C_CSPlayerPawn", "m_bNeedToReApplyGloves"_hash ), true );
-		memory::call_vfunc<void>( pawn, detail::post_data_update_index, 1 );
+		if ( pawn == systems::g_local.get( ).pawn )
+		{
+			memory::write<bool>( pawn + SCHEMA( "C_CSPlayerPawn", "m_bNeedToReApplyGloves"_hash ), true );
+			memory::call_vfunc<void>( pawn, detail::post_data_update_index, 1 );
+		}
 
 		const auto set_bodygroup = PATTERN( patterns::set_bodygroup );
 		if ( set_bodygroup )
 		{
-			memory::call<void>( set_bodygroup, pawn, 0, 1u );
-			memory::call<void>( set_bodygroup, pawn, team == 2 ? 0 : 1, 1u );
+			memory::safe_call<void>( set_bodygroup, pawn, 0, 1u );
+			memory::safe_call<void>( set_bodygroup, pawn, team == 2 ? 0 : 1, 1u );
 		}
 	}
 

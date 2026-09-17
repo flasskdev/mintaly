@@ -57,34 +57,40 @@ namespace features::changer::cosmetic_attributes {
         return true;
     }
 
+    inline void sanitize( std::uintptr_t /*item_view*/ ) {
+        // No-op: do not corrupt internal engine attribute structures.
+    }
+
     [[nodiscard]] inline bool restore(std::uintptr_t item_view, const snapshot& saved) {
-        if (!available()) return false;
+        if (!available() || !item_view) return false;
+        sanitize(item_view);
         const auto set = PATTERN(patterns::econ_item_view_set_attribute);
         const auto remove = PATTERN(patterns::econ_item_view_remove_attribute);
         for (std::size_t slot = 0; slot < indices.size(); ++slot) {
             if (saved[slot].present)
-                memory::call<void>(set, item_view, names[slot], std::bit_cast<float>(saved[slot].bits));
+                memory::safe_call<void>(set, item_view, names[slot], std::bit_cast<float>(saved[slot].bits));
             else
-                memory::call<void>(remove, item_view, static_cast<int>(indices[slot]));
+                memory::safe_call<void>(remove, item_view, static_cast<int>(indices[slot]));
         }
         return true;
     }
 
     [[nodiscard]] inline bool apply(std::uintptr_t item_view, const settings::changer::applied_skin& skin) {
-        if (!available()) return false;
+        if (!available() || !item_view) return false;
+        sanitize(item_view);
         const auto set = PATTERN(patterns::econ_item_view_set_attribute);
         const auto remove = PATTERN(patterns::econ_item_view_remove_attribute);
-        memory::call<void>(set, item_view, names[0], static_cast<float>(skin.paint_kit_id));
-        memory::call<void>(set, item_view, names[1], static_cast<float>(skin.seed));
-        memory::call<void>(set, item_view, names[2], skin.wear);
+        memory::safe_call<void>(set, item_view, names[0], static_cast<float>(skin.paint_kit_id));
+        memory::safe_call<void>(set, item_view, names[1], static_cast<float>(skin.seed));
+        memory::safe_call<void>(set, item_view, names[2], skin.wear);
         if (skin.stattrak) {
             const auto count_val = std::bit_cast<float>(static_cast<std::int32_t>(skin.stattrak_count));
             const auto score_type = std::bit_cast<float>(std::int32_t{0});
-            memory::call<void>(set, item_view, names[3], count_val);
-            memory::call<void>(set, item_view, names[4], score_type);
+            memory::safe_call<void>(set, item_view, names[3], count_val);
+            memory::safe_call<void>(set, item_view, names[4], score_type);
         } else {
-            memory::call<void>(remove, item_view, static_cast<int>(indices[3]));
-            memory::call<void>(remove, item_view, static_cast<int>(indices[4]));
+            memory::safe_call<void>(remove, item_view, static_cast<int>(indices[3]));
+            memory::safe_call<void>(remove, item_view, static_cast<int>(indices[4]));
         }
         return true;
     }

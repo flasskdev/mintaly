@@ -18,10 +18,7 @@ namespace features::combat {
     void misc::antiaim::on_create_move(systems::input::usercmd* cmd) {
         this->m_antiaim_active = false;
 
-        const bool aa_enabled = settings::g_combat.m_antiaim.enabled.value;
-        const bool spin_enabled = settings::g_combat.m_antiaim.spinbot.value;
-
-        if ((!aa_enabled && !spin_enabled) ||
+        if (!settings::g_combat.m_antiaim.enabled.value ||
             systems::g_local.is_in_cinematic() ||
             systems::g_local.is_in_time_freeze()) {
             this->m_was_spinning = false;
@@ -102,7 +99,7 @@ namespace features::combat {
     }
 
     void misc::antiaim::on_render(xdraw::draw_list& draw_list) const {
-        if ((!settings::g_combat.m_antiaim.enabled.value && !settings::g_combat.m_antiaim.spinbot.value) ||
+        if (!settings::g_combat.m_antiaim.enabled.value ||
             !settings::g_combat.m_antiaim.direction_indicator.value ||
             !this->m_antiaim_active ||
             !systems::g_frame_data.valid())
@@ -204,6 +201,9 @@ namespace features::combat {
     }
 
     float misc::antiaim::get_yaw(systems::input::usercmd* cmd, const math::vector3& view_angles, const systems::local::snapshot& local) {
+        if (!settings::g_combat.m_antiaim.enabled.value)
+            return view_angles.y;
+
         const auto& prestate = systems::g_prediction.pre();
         const bool on_ground = (prestate.flags & cstypes::entity_flags::on_ground) != 0;
 

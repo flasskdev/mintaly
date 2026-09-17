@@ -634,21 +634,42 @@ found_type_descriptor:
 		return *reinterpret_cast<std::uintptr_t*>(vtable + index * sizeof (std::uintptr_t));
 	}
 
+	namespace detail {
+		__declspec(noinline) static bool safe_copy_str( const char* src, char* dst, std::size_t max_len, std::size_t& out_len )
+		{
+			__try
+			{
+				std::size_t i = 0;
+				for ( ; i < max_len; ++i )
+				{
+					char c = src[ i ];
+					dst[ i ] = c;
+					if ( c == '\0' )
+						break;
+				}
+				out_len = ( i < max_len ) ? i : max_len;
+				return true;
+			}
+			__except ( EXCEPTION_EXECUTE_HANDLER )
+			{
+				out_len = 0;
+				return false;
+			}
+		}
+	}
+
 	std::string read_string (std::uintptr_t address, std::size_t max_length) {
-		if (!address) {
+		if (!address || max_length == 0) {
 			return {};
 		}
 
-		auto str_ptr = reinterpret_cast<const char*>(address);
-
-		auto len {0ull};
-		for (; len < max_length && str_ptr [len] != '\0'; ++len);
-
-		if (len == 0) {
+		std::vector<char> buf( max_length + 1, '\0' );
+		std::size_t len = 0;
+		if ( !detail::safe_copy_str( reinterpret_cast<const char*>( address ), buf.data( ), max_length, len ) || len == 0 ) {
 			return {};
 		}
 
-		return std::string (str_ptr, len);
+		return std::string (buf.data( ), len);
 	}
 
 } // namespace memory

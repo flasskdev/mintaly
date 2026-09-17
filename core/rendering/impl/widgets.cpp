@@ -785,7 +785,20 @@ namespace rendering {
 				continue;
 			}
 
-			if ( setting == &settings::g_combat.m_antiaim.manual_left || setting == &settings::g_combat.m_antiaim.manual_right || setting == &settings::g_combat.m_antiaim.hide_shots || setting == &settings::g_combat.m_antiaim.avoid_backstab || setting == &settings::g_combat.m_antiaim.direction_indicator )
+			const bool is_aa_subsetting = (
+				setting == &settings::g_combat.m_antiaim.manual_left ||
+				setting == &settings::g_combat.m_antiaim.manual_right ||
+				setting == &settings::g_combat.m_antiaim.hide_shots ||
+				setting == &settings::g_combat.m_antiaim.avoid_backstab ||
+				setting == &settings::g_combat.m_antiaim.direction_indicator ||
+				setting == &settings::g_combat.m_antiaim.direction_indicator_glow ||
+				setting == &settings::g_combat.m_antiaim.spinbot ||
+				setting == &settings::g_combat.m_antiaim.jitters ||
+				setting == &settings::g_combat.m_antiaim.auto_yaw_adjust ||
+				( setting != &settings::g_combat.m_antiaim.enabled && setting->category == "anti aim" )
+			);
+
+			if ( is_aa_subsetting )
 			{
 				if ( !settings::g_combat.m_antiaim.enabled.value )
 				{
@@ -1412,8 +1425,8 @@ namespace rendering {
 			s_cached_count = 0;
 
 			const auto local = systems::g_local.get( );
-			const auto game_rules = memory::read<std::uintptr_t>( addresses::globals::game_rules );
-			const bool game_in_progress = game_rules && memory::read<int>( game_rules + SCHEMA( "C_CSGameRules", "m_gamePhase"_hash ) ) < 4;
+			const auto game_rules = memory::safe_read<std::uintptr_t>( addresses::globals::game_rules ).value_or( 0 );
+			const bool game_in_progress = game_rules && memory::safe_read<int>( game_rules + SCHEMA( "C_CSGameRules", "m_gamePhase"_hash ) ).value_or( 99 ) < 4;
 
 			if ( local.is_valid( ) && systems::g_entities.exists( local.view_controller( ) ) && game_in_progress )
 			{
@@ -1424,17 +1437,17 @@ namespace rendering {
 				{
 					for ( const auto& player : systems::g_entities.get_by_type( systems::entities::type::player ) )
 					{
-						if ( player.ptr == view_controller || player.ptr == local_controller || s_cached_count >= 32 )
+						if ( !player.ptr || player.ptr == view_controller || player.ptr == local_controller || s_cached_count >= 32 )
 						{
 							continue;
 						}
 
-						if ( memory::read<bool>( player.ptr + SCHEMA( "CCSPlayerController", "m_bPawnIsAlive"_hash ) ) )
+						if ( memory::safe_read<bool>( player.ptr + SCHEMA( "CCSPlayerController", "m_bPawnIsAlive"_hash ) ).value_or( true ) )
 						{
 							continue;
 						}
 
-						const auto obs_pawn_handle = memory::read<std::uint32_t>( player.ptr + SCHEMA( "CCSPlayerController", "m_hObserverPawn"_hash ) );
+						const auto obs_pawn_handle = memory::safe_read<std::uint32_t>( player.ptr + SCHEMA( "CCSPlayerController", "m_hObserverPawn"_hash ) ).value_or( 0 );
 						if ( !obs_pawn_handle || obs_pawn_handle == 0xffffffff )
 						{
 							continue;
@@ -1453,7 +1466,7 @@ namespace rendering {
 						}
 
 						const auto observer_target_handle = memory::safe_read<std::uint32_t>( observer_services + SCHEMA( "CPlayer_ObserverServices", "m_hObserverTarget"_hash ) ).value_or( 0 );
-						if ( !observer_target_handle )
+						if ( !observer_target_handle || observer_target_handle == 0xffffffff )
 						{
 							continue;
 						}
@@ -1464,13 +1477,17 @@ namespace rendering {
 							continue;
 						}
 
-						const auto name_ptr = memory::read<std::uintptr_t>( player.ptr + SCHEMA( "CCSPlayerController", "m_sSanitizedPlayerName"_hash ) );
+						const auto name_ptr = memory::safe_read<std::uintptr_t>( player.ptr + SCHEMA( "CCSPlayerController", "m_sSanitizedPlayerName"_hash ) ).value_or( 0 );
 						if ( !name_ptr )
 						{
 							continue;
 						}
 
 						auto name = memory::read_string( name_ptr, 127 );
+						if ( name.empty( ) )
+						{
+							name = "spectator";
+						}
 						std::ranges::transform( name, name.begin( ), [ ]( unsigned char c ) { return std::tolower( c ); } );
 
 						const auto [ nw, nh ] = xdraw::measure_text( name );

@@ -7,7 +7,7 @@ namespace memory {
 	namespace detail {
 
 		template <typename T>
-		[[nodiscard]] inline std::optional<T> safe_read_impl( std::uintptr_t address )
+		[[nodiscard]] __declspec(noinline) std::optional<T> safe_read_impl( std::uintptr_t address )
 		{
 			__try
 			{
@@ -20,7 +20,7 @@ namespace memory {
 		}
 
 		template <typename T>
-		[[nodiscard]] inline bool safe_write_impl(
+		[[nodiscard]] __declspec(noinline) bool safe_write_impl(
 			std::uintptr_t address,
 			const T& value )
 		{
@@ -89,6 +89,30 @@ namespace memory {
 		}
 
 		return reinterpret_cast< T( __fastcall* )( args_t... ) >( address )( args... );
+	}
+
+	template <typename T, typename... args_t>
+	__declspec(noinline) T safe_call( std::uintptr_t address, args_t... args )
+	{
+		if ( !address )
+		{
+			if constexpr ( std::is_void_v<T> )
+				return;
+			else
+				return T{};
+		}
+
+		__try
+		{
+			return reinterpret_cast< T( __fastcall* )( args_t... ) >( address )( args... );
+		}
+		__except ( EXCEPTION_EXECUTE_HANDLER )
+		{
+			if constexpr ( std::is_void_v<T> )
+				return;
+			else
+				return T{};
+		}
 	}
 
 	template <typename T, typename... args_t>

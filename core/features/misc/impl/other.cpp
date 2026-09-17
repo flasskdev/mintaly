@@ -218,9 +218,10 @@ namespace features::misc {
 
                         if (changer::cosmetic_attributes::available())
                         {
+                                changer::cosmetic_attributes::sanitize(iv);
                                 const auto set = PATTERN(patterns::econ_item_view_set_attribute);
                                 const auto count_val = std::bit_cast<float>(static_cast<std::int32_t>(target_skin->stattrak_count));
-                                memory::call<void>(set, iv, "kill eater", count_val);
+                                memory::safe_call<void>(set, iv, "kill eater", count_val);
                         }
 
                         std::thread([]() {
@@ -528,7 +529,7 @@ namespace features::misc {
                 std::string display_name = animated_name;
                 if (cfg.clantag.value)
                 {
-                        constexpr std::string_view tag{ "mintalynews.t.me" };
+                        constexpr std::string_view tag{ "mintaly" };
                         constexpr auto ticks_per_step{ 32 }; // 0.25 seconds at CS2's 64-tick interval.
                         constexpr auto phase_count{ static_cast<int>(tag.size() * 2) };
 

@@ -7,6 +7,7 @@
 #include <core/systems/systems.hpp>
 #include <core/settings.hpp>
 #include <protection/game_addresses.hpp>
+#include <core/features/changer/cosmetic_attributes.hpp>
 
 namespace features::changer::weapon_attributes {
 
@@ -79,15 +80,16 @@ namespace features::changer::weapon_attributes {
 		{
 			return false;
 		}
+		cosmetic_attributes::sanitize( item_view );
 		for ( std::size_t slot = 0; slot < stattrak_indices.size( ); ++slot )
 		{
 			if ( state.present[ slot ] )
 			{
-				memory::call<void>( set_attribute, item_view, stattrak_names[ slot ], std::bit_cast<float>( state.bits[ slot ] ) );
+				memory::safe_call<void>( set_attribute, item_view, stattrak_names[ slot ], std::bit_cast<float>( state.bits[ slot ] ) );
 			}
 			else
 			{
-				memory::call<void>( remove_attribute, item_view, static_cast<int>( stattrak_indices[ slot ] ) );
+				memory::safe_call<void>( remove_attribute, item_view, static_cast<int>( stattrak_indices[ slot ] ) );
 			}
 		}
 		return true;

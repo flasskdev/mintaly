@@ -13,17 +13,22 @@ namespace steam {
 
 	bool user::initialize( )
 	{
-		detail::user_interface = memory::call<std::uintptr_t>( MODULE_EXPORT( "steam_api64.dll:SteamAPI_SteamUser_v023" ) );
+		if ( !detail::user_interface ) {
+			const auto export_addr = MODULE_EXPORT( "steam_api64.dll:SteamAPI_SteamUser_v023" );
+			if ( export_addr ) {
+				detail::user_interface = memory::safe_call<std::uintptr_t>( export_addr );
+			}
+		}
 		return detail::user_interface != 0;
 	}
 
 	std::uint64_t user::get_steam_id( )
 	{
-		// Optional Steam initialization may fail in development builds. A valid
-		// export still must not be called with a null ISteamUser instance.
-		if ( !detail::user_interface )
+		if ( !initialize( ) )
 			return 0;
-		return memory::call<std::uint64_t>( MODULE_EXPORT( "steam_api64.dll:SteamAPI_ISteamUser_GetSteamID" ), detail::user_interface );
+		const auto fn = MODULE_EXPORT( "steam_api64.dll:SteamAPI_ISteamUser_GetSteamID" );
+		if ( !fn ) return 0;
+		return memory::safe_call<std::uint64_t>( fn, detail::user_interface );
 	}
 
 } // namespace steam
