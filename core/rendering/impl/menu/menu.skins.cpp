@@ -1127,8 +1127,8 @@ namespace rendering {
 						const auto tint = xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 150.0f * fade_alpha ) };
 
 						dl.image( ix, iy, iw, ih, fallback_img->srv.Get( ), tint );
-						break;
 					}
+					break;
 				}
 			}
 

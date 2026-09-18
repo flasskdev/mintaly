@@ -598,6 +598,7 @@ extern "C" int __stdcall entry (HMODULE module_handle, DWORD reason, LPVOID rese
 		CoUninitialize ();
 #endif
 
+		features::changer::g_econ_item_system.shutdown ();
 		threadpool::shutdown ();
 		diag::shutdown ();
 

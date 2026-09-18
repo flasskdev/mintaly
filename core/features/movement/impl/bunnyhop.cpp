@@ -135,6 +135,13 @@ namespace features::movement {
 			return;
 		}
 
+		const auto& jb = settings::g_movement.jumpbug;
+		const bool jb_active = (jb.value && prestate.networked_velocity.z < -200.0f) || (jb.bind.key != 0 && jb.bind.active);
+		if (jb_active && prestate.networked_velocity.z < 0.0f)
+		{
+			return;
+		}
+
 		cmd->buttons.value &= ~cstypes::command_buttons::in_jump;
 
 		const auto movement_services = memory::read<std::uintptr_t>(local.pawn + SCHEMA("C_BasePlayerPawn", "m_pMovementServices"_hash));

@@ -147,6 +147,7 @@ namespace features::changer {
 		}
 
 		this->build_skin_index( );
+		this->start_worker( );
 
 		return true;
 	}
@@ -262,9 +263,22 @@ namespace features::changer {
 
 		if ( state == image_state::decoded )
 		{
-			if ( this->finalize_texture( *it->second ) )
+			static thread_local int s_textures_uploaded = 0;
+			static thread_local std::chrono::steady_clock::time_point s_last_upload_time{};
+			const auto now = std::chrono::steady_clock::now( );
+			if ( now - s_last_upload_time > std::chrono::milliseconds( 8 ) )
 			{
-				return &it->second->image;
+				s_last_upload_time = now;
+				s_textures_uploaded = 0;
+			}
+
+			if ( s_textures_uploaded < 2 )
+			{
+				s_textures_uploaded++;
+				if ( this->finalize_texture( *it->second ) )
+				{
+					return &it->second->image;
+				}
 			}
 		}
 
@@ -310,8 +324,25 @@ namespace features::changer {
 		return std::clamp( weapon_rarity + paint_rarity - 2, 0, 7 );
 	}
 
+	econ_item_system::~econ_item_system( )
+	{
+		this->stop_worker( );
+	}
+
+	void econ_item_system::shutdown( )
+	{
+		this->stop_worker( );
+	}
+
 	void econ_item_system::flush_skin_images( )
 	{
+		{
+			std::lock_guard lock( this->m_work_mutex );
+			std::queue<std::string> empty_q;
+			std::swap( this->m_work_queue, empty_q );
+			this->m_queued_keys.clear( );
+		}
+
 		{
 			std::lock_guard lock( this->m_image_mutex );
 			this->m_image_cache.clear( );
@@ -991,30 +1022,108 @@ static constexpr fallback_music_kit k_fallback_kits[] = {
 		}
 	}
 
-	void econ_item_system::request_decode( const std::string& image_inventory )
+	void econ_item_system::start_worker( )
 	{
-		// Called with m_image_mutex held. The worker owns the entry even if the cache is flushed.
-		const auto entry = this->m_image_cache.at( image_inventory );
-		entry->state.store( image_state::loading, std::memory_order_release );
-		threadpool::run( [this, entry, key = image_inventory + xs( "_png" )]( )
+		if ( this->m_worker_thread.joinable( ) )
 		{
+			return;
+		}
+
+		this->m_worker_stop.store( false, std::memory_order_relaxed );
+		this->m_worker_thread = std::thread( &econ_item_system::worker_routine, this );
+	}
+
+	void econ_item_system::stop_worker( )
+	{
+		this->m_worker_stop.store( true, std::memory_order_release );
+		this->m_work_cv.notify_all( );
+
+		if ( this->m_worker_thread.joinable( ) )
+		{
+			this->m_worker_thread.join( );
+		}
+	}
+
+	void econ_item_system::worker_routine( )
+	{
+		SetThreadPriority( GetCurrentThread( ), THREAD_PRIORITY_BELOW_NORMAL );
+
+		while ( true )
+		{
+			std::string key;
+			{
+				std::unique_lock lock( this->m_work_mutex );
+				this->m_work_cv.wait( lock, [ this ]( ) {
+					return this->m_worker_stop.load( std::memory_order_relaxed ) || !this->m_work_queue.empty( );
+				} );
+
+				if ( this->m_worker_stop.load( std::memory_order_relaxed ) && this->m_work_queue.empty( ) )
+				{
+					break;
+				}
+
+				key = std::move( this->m_work_queue.front( ) );
+				this->m_work_queue.pop( );
+				this->m_queued_keys.erase( key );
+			}
+
+			std::shared_ptr<image_entry> entry;
+			{
+				std::lock_guard lock( this->m_image_mutex );
+				const auto it = this->m_image_cache.find( key );
+				if ( it != this->m_image_cache.end( ) )
+				{
+					entry = it->second;
+				}
+			}
+
+			if ( !entry )
+			{
+				continue;
+			}
+
 			try
 			{
 				std::vector<std::byte> data;
 				{
 					std::lock_guard lock( this->m_vpk_mutex );
-					data = this->read_vpk( key );
+					data = this->read_vpk( key + xs( "_png" ) );
 				}
-				// Neither disk I/O nor decompression holds the render thread's cache mutex.
-				const bool decoded = !data.empty( ) && this->decode_vtex(
+
+				bool decoded = !data.empty( ) && this->decode_vtex(
 					std::span<const std::byte>( data.data( ), data.size( ) ), *entry );
+
+				if ( decoded && entry->format == DXGI_FORMAT_BC7_UNORM && !entry->mip_buffers.empty( ) )
+				{
+					std::vector<std::uint8_t> rgba( static_cast< std::size_t >( entry->width ) * entry->height * 4 );
+					bc7::decode_image( entry->mip_buffers[ 0 ].data( ), rgba.data( ), static_cast< int >( entry->width ), static_cast< int >( entry->height ) );
+					entry->mip_buffers[ 0 ] = std::move( rgba );
+					entry->format = DXGI_FORMAT_R8G8B8A8_UNORM;
+				}
+
 				entry->state.store( decoded ? image_state::decoded : image_state::failed, std::memory_order_release );
 			}
-			catch ( const std::exception& )
+			catch ( ... )
 			{
 				entry->state.store( image_state::failed, std::memory_order_release );
 			}
-		} );
+		}
+	}
+
+	void econ_item_system::request_decode( const std::string& image_inventory )
+	{
+		// Called with m_image_mutex held. The worker owns the entry even if the cache is flushed.
+		const auto entry = this->m_image_cache.at( image_inventory );
+		entry->state.store( image_state::loading, std::memory_order_release );
+
+		{
+			std::lock_guard lock( this->m_work_mutex );
+			if ( this->m_queued_keys.insert( image_inventory ).second )
+			{
+				this->m_work_queue.push( image_inventory );
+			}
+		}
+		this->m_work_cv.notify_one( );
 	}
 
 	bool econ_item_system::finalize_texture( image_entry& entry )
@@ -1026,7 +1135,7 @@ static constexpr fallback_music_kit k_fallback_kits[] = {
 			return false;
 		}
 
-		if ( entry.mip_buffers.empty( ) )
+		if ( entry.mip_buffers.empty( ) || entry.mip_buffers[ 0 ].empty( ) )
 		{
 			entry.state.store( image_state::failed, std::memory_order_release );
 			return false;
@@ -1043,35 +1152,50 @@ static constexpr fallback_music_kit k_fallback_kits[] = {
 		}
 
 		const auto upload_data = upload_format == DXGI_FORMAT_R8G8B8A8_UNORM && !rgba_pixels.empty( ) ? rgba_pixels.data( ) : entry.mip_buffers[ 0 ].data( );
-		const auto upload_pitch = entry.width * 4;
+
+		UINT upload_pitch = 0;
+		if ( upload_format == DXGI_FORMAT_BC1_UNORM || upload_format == DXGI_FORMAT_BC4_UNORM )
+		{
+			upload_pitch = ( ( entry.width + 3 ) / 4 ) * 8;
+		}
+		else if ( upload_format == DXGI_FORMAT_BC2_UNORM || upload_format == DXGI_FORMAT_BC3_UNORM ||
+				  upload_format == DXGI_FORMAT_BC5_UNORM || upload_format == DXGI_FORMAT_BC6H_UF16 ||
+				  upload_format == DXGI_FORMAT_BC7_UNORM )
+		{
+			upload_pitch = ( ( entry.width + 3 ) / 4 ) * 16;
+		}
+		else
+		{
+			upload_pitch = entry.width * 4;
+		}
 
 		D3D11_TEXTURE2D_DESC td{};
 		td.Width = entry.width;
 		td.Height = entry.height;
-		td.MipLevels = 0;
+		td.MipLevels = 1;
 		td.ArraySize = 1;
 		td.Format = upload_format;
 		td.SampleDesc.Count = 1;
-		td.Usage = D3D11_USAGE_DEFAULT;
-		td.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;
-		td.MiscFlags = D3D11_RESOURCE_MISC_GENERATE_MIPS;
+		td.Usage = D3D11_USAGE_IMMUTABLE;
+		td.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+		td.MiscFlags = 0;
+
+		D3D11_SUBRESOURCE_DATA init_data{};
+		init_data.pSysMem = upload_data;
+		init_data.SysMemPitch = upload_pitch;
 
 		Microsoft::WRL::ComPtr<ID3D11Texture2D> tex;
-		if ( FAILED( device->CreateTexture2D( &td, nullptr, &tex ) ) )
+		if ( FAILED( device->CreateTexture2D( &td, &init_data, &tex ) ) )
 		{
 			entry.state.store( image_state::failed, std::memory_order_release );
 			return false;
 		}
 
-		Microsoft::WRL::ComPtr<ID3D11DeviceContext> ctx;
-		device->GetImmediateContext( &ctx );
-
-		ctx->UpdateSubresource( tex.Get( ), 0, nullptr, upload_data, upload_pitch, 0 );
-
 		D3D11_SHADER_RESOURCE_VIEW_DESC sv{};
 		sv.Format = upload_format;
 		sv.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
-		sv.Texture2D.MipLevels = static_cast< UINT >( -1 );
+		sv.Texture2D.MipLevels = 1;
+		sv.Texture2D.MostDetailedMip = 0;
 
 		Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> srv;
 		if ( FAILED( device->CreateShaderResourceView( tex.Get( ), &sv, &srv ) ) )
@@ -1079,8 +1203,6 @@ static constexpr fallback_music_kit k_fallback_kits[] = {
 			entry.state.store( image_state::failed, std::memory_order_release );
 			return false;
 		}
-
-		ctx->GenerateMips( srv.Get( ) );
 
 		entry.image.srv = std::move( srv );
 		entry.image.width = static_cast< int >( entry.width );

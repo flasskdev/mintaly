@@ -1,6 +1,10 @@
 #pragma once
 
 #include <filesystem>
+#include <queue>
+#include <thread>
+#include <condition_variable>
+#include <unordered_set>
 #include <utilities/cosmetic_identity.hpp>
 #include <core/settings.hpp>
 #include "cosmetic_attributes.hpp"
@@ -120,6 +124,8 @@ namespace features::changer {
 		};
 
 		[[nodiscard]] bool initialize( );
+		~econ_item_system( );
+		void shutdown( );
 
 		[[nodiscard]] const std::vector<paint_kit>& paint_kits( ) const { return this->m_paint_kits; }
 		[[nodiscard]] const std::vector<item_def>& item_defs( ) const { return this->m_item_defs; }
@@ -212,6 +218,17 @@ namespace features::changer {
 
 		std::unordered_map<std::uint16_t, std::ifstream> m_archive_handles{};
 		std::mutex m_vpk_mutex{};
+
+		void worker_routine( );
+		void start_worker( );
+		void stop_worker( );
+
+		std::thread m_worker_thread{};
+		std::queue<std::string> m_work_queue{};
+		std::unordered_set<std::string> m_queued_keys{};
+		std::mutex m_work_mutex{};
+		std::condition_variable m_work_cv{};
+		std::atomic<bool> m_worker_stop{ false };
 	};
 
 	class agents

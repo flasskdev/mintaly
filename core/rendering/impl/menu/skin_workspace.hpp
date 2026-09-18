@@ -455,9 +455,15 @@ inline bool sidebar(const xui::rect& r) {
     const xui::rect selector{r.x + 14.0f, r.y + 32.0f, r.w - 86.0f, 32.0f};
     const auto label = (profiles.selected >= 0 && profiles.selected < static_cast<int>(profiles.entries.size())) ? profiles.entries[profiles.selected].name : "Choose config";
     if (button(selector, theme::fit_text(label, selector.w - 18.0f).c_str(), false, profiles.ready() && !dialog_busy)) {
-        xui::overlays::add(std::make_unique<profile_popup>(selector));
+        if (xui::overlays::is_open(profile_popup_id)) {
+            xui::overlays::close(profile_popup_id);
+        } else {
+            xui::overlays::add(std::make_unique<profile_popup>(selector));
+        }
     }
-    xui::overlays::touch(profile_popup_id);
+    if (xui::overlays::is_open(profile_popup_id)) {
+        xui::overlays::touch(profile_popup_id);
+    }
 
     if (button({selector.right() + 6.0f, selector.y, 52.0f, 32.0f}, profiles.ready() ? "Save" : "Retry", false,
         !dialog_busy && (!profiles.ready() || profiles.selected >= 0))) {
