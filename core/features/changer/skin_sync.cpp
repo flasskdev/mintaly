@@ -78,18 +78,25 @@ namespace features::changer {
 	void skin_sync::capture_local_snapshot(std::uint64_t steam_id)
 	{
 		remote_player_skin snapshot{};
-		const auto local_pawn = systems::g_local.get().pawn;
-		const auto team = local_pawn ? memory::safe_read<int>(local_pawn + SCHEMA("C_BaseEntity", "m_iTeamNum"_hash)).value_or(0) : 0;
+		// A missing/dead pawn must not publish the empty global fallback over a team loadout.
+		// Entity access belongs to the game thread, not Present.
+		const auto team = this->m_local_team.load();
 		snapshot.skins = settings::g_changer.skins.for_team(team);
 		snapshot.music_kit_id = settings::g_changer.music.id;
 		snapshot.last_updated = std::chrono::steady_clock::now();
-		const auto official_agent = [](std::int16_t id, int custom) -> std::int16_t {
-			if (custom >= 0 || id <= 0) return 0;
+		const auto official_agent = [](std::int16_t id, int custom, int side) -> std::int16_t {
+			const auto& entries = settings::g_changer.custom_agents.entries;
+			if (custom >= 0 && custom < static_cast<int>(entries.size())) {
+				const auto& entry = entries[custom];
+				if (!entry.model_path.empty() && (entry.team == 0 || entry.team == side)) return 0;
+			}
+			if (id <= 0) return 0;
 			const auto def = g_econ_item_system.find_def(id);
-			return def && def->category == econ_item_system::item_category::agent && !def->model_player.empty() ? id : 0;
+			return def && def->category == econ_item_system::item_category::agent && !def->model_player.empty() &&
+				(def->team() == 0 || def->team() == side) ? id : 0;
 		};
-		snapshot.agent_ct = official_agent(settings::g_changer.agents.ct_def, settings::g_changer.custom_agents.selected_ct);
-		snapshot.agent_t = official_agent(settings::g_changer.agents.t_def, settings::g_changer.custom_agents.selected_t);
+		snapshot.agent_ct = official_agent(settings::g_changer.agents.ct_def, settings::g_changer.custom_agents.selected_ct, 3);
+		snapshot.agent_t = official_agent(settings::g_changer.agents.t_def, settings::g_changer.custom_agents.selected_t, 2);
 		nlohmann::json skins = nlohmann::json::object();
 		for (const auto& [def, skin] : snapshot.skins) {
 			skins[std::to_string(def)] = {
@@ -124,6 +131,7 @@ namespace features::changer {
 		const auto prev = this->m_last_local_steam_id.exchange( steam_id );
 		if ( prev != steam_id )
 		{
+			this->m_local_team = 0;
 			this->m_push_pending = true;
 			diag::writef(diag::level::info, "[skin-sync] local steam_id=%llu", static_cast<unsigned long long>(steam_id));
 		}
@@ -243,9 +251,13 @@ namespace features::changer {
 			if ( local_steam_id >= steam_id_base )
 				this->set_local_steam_id( local_steam_id );
 
-			// Only scan entities if local player is fully valid
-			if ( !systems::g_local.get( ).is_valid( ) )
-				return;
+			const auto local = systems::g_local.get();
+			if (!local.controller) return;
+			const auto team_offset = SCHEMA("C_BaseEntity", "m_iTeamNum"_hash);
+			if (team_offset) {
+				const auto team = memory::safe_read<int>(local.controller + team_offset).value_or(0);
+				this->m_local_team = cosmetic_config::retain_team(this->m_local_team.load(), team);
+			}
 
 			// Enqueue all other players' steam IDs for pulling (plus local steam ID to verify server sync)
 			std::vector<std::uint64_t> ids_to_query{};
@@ -499,49 +511,19 @@ namespace features::changer {
 					const auto sid = std::stoull(id_str);
 					if (std::to_string(sid) != id_str || std::find(ids_to_query.begin(), ids_to_query.end(), sid) == ids_to_query.end() || !user_data.is_object()) continue;
 					remote_player_skin player{};
-					player.music_kit_id = user_data.value( "music_kit_id", 0 );
+					player.music_kit_id = cosmetic_config::field(user_data, "music_kit_id", 0, 65534);
 					player.last_updated = std::chrono::steady_clock::now( );
 
-					// Verify that received agent IDs correspond strictly to official standard game agents
-					const auto raw_ct = static_cast<std::int16_t>( user_data.value( "agent_ct", 0 ) );
-					const auto raw_t = static_cast<std::int16_t>( user_data.value( "agent_t", 0 ) );
-
-					if ( raw_ct > 0 )
-					{
-						const auto def = g_econ_item_system.find_def( raw_ct );
-						if ( def && def->category == econ_item_system::item_category::agent && !def->model_player.empty( ) )
-						{
-							player.agent_ct = raw_ct;
-						}
-					}
-
-					if ( raw_t > 0 )
-					{
-						const auto def = g_econ_item_system.find_def( raw_t );
-						if ( def && def->category == econ_item_system::item_category::agent && !def->model_player.empty( ) )
-						{
-							player.agent_t = raw_t;
-						}
-					}
+					// The worker parses IDs only. agents.cpp validates category/model/team when applying.
+					// Looking up mutable econ vectors here races menu schema rebuilds and drops IDs
+					// received before their definitions become available.
+					player.agent_ct = static_cast<std::int16_t>(cosmetic_config::field(user_data, "agent_ct", 0, 32767));
+					player.agent_t = static_cast<std::int16_t>(cosmetic_config::field(user_data, "agent_t", 0, 32767));
 
 					if ( user_data.contains( "skins" ) && user_data[ "skins" ].is_object( ) )
 					{
-						for ( const auto& [def_str, skin_json] : user_data[ "skins" ].items( ) )
-						{
-							try
-							{
-								const auto def = static_cast<std::int16_t>( std::stoi( def_str ) );
-								settings::changer::applied_skin s{};
-								s.paint_kit_id = skin_json.value( "p", 0 );
-								s.wear = skin_json.value( "w", 0.01f );
-								s.seed = skin_json.value( "s", 0 );
-								s.stattrak = skin_json.value( "t", false );
-								s.stattrak_count = skin_json.value( "c", 0 );
-								s.name_tag = skin_options::normalize_name_tag(skin_json.value("n", std::string{}));
-								player.skins[ def ] = cosmetic_attributes::normalize(s);
-							}
-							catch (const std::exception&) { diag::write(diag::level::warning, "[skin-sync] invalid remote response"); }
-						}
+						// Use the same range checks, wear/seed normalization and name handling as configs.
+						player.skins = settings::changer::skin_map_field::decode_map(user_data["skins"]);
 					}
 
 					if (!this->m_cache.contains(sid))

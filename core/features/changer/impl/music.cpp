@@ -188,7 +188,7 @@ namespace {
 	void music::on_round_mvp( void* event )
 	{
 		this->clear_mvp( );
-		std::lock_guard lock( s_mvp_mutex );
+		std::unique_lock lock( s_mvp_mutex );
 		if ( !event )
 		{
 			return;
@@ -215,11 +215,21 @@ namespace {
 			}
 		}
 
+		if ( target_id < 0 || target_id >= 0xffff ) target_id = 0;
+		int winner_kit = target_id;
+		if ( !winner_kit && mvp_controller )
+		{
+			// No synced override: remember the winner's native kit, never the listener's kit.
+			const auto offset = SCHEMA( "CCSPlayerController", "m_iMusicKitID"_hash );
+			if ( offset ) winner_kit = memory::safe_read<int>( mvp_controller + offset ).value_or( 0 );
+		}
+		s_last_mvp_kit_id = winner_kit > 0 && winner_kit < 0xffff ? winner_kit : 0;
+		s_last_mvp_kit_time = std::chrono::steady_clock::now( );
+		// Engine callbacks can re-enter play_music(), which takes the same mutex.
+		lock.unlock( );
+
 		if ( target_id > 0 && mvp_controller )
 		{
-			s_last_mvp_kit_id = target_id;
-			s_last_mvp_kit_time = std::chrono::steady_clock::now( );
-
 			const auto kit_id_offset = SCHEMA( "CCSPlayerController", "m_iMusicKitID"_hash );
 			if ( kit_id_offset )
 			{
