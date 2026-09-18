@@ -68,11 +68,12 @@ namespace features::movement {
         auto expanded = current;
         expanded.mins.z -= *expansion;
         expanded.maxs.z += *expansion;
+        auto sweep_velocity = pre.networked_velocity;
+        const auto vertical = jumpbug_timing::movement_velocity_z(sweep_velocity.z, gravity, dt);
+        if (!vertical) return;
+        sweep_velocity.z = *vertical;
         const auto position = [&](float when) {
-            const float time = when * dt;
-            auto pos = pre.networked_origin + pre.networked_velocity * time;
-            pos.z -= 0.5f * gravity * time * time;
-            return pos;
+            return pre.networked_origin + sweep_velocity * (when * dt);
         };
         bool fire = false;
         float fire_when = 0.0f;
@@ -81,29 +82,28 @@ namespace features::movement {
             return !trace.all_solid && std::isfinite(trace.fraction) &&
                 trace.fraction >= 0.0f && trace.fraction <= 1.0f && finite(trace.end_pos);
         };
-        // Stay crouched in flight. Only the release position needs to fit the
-        // expanded hull; sweeping that hull over the entire approach rejects
-        // paths which the actual crouched player can traverse.
+        // Stay crouched in flight. Only the release position needs head clearance
+        // for the standing hull. The contact probe extends DOWN, not upwards.
         if (pre.ducked && *expansion > ground_probe) {
-            auto probe_hull = current;
-            // Use the actual downward expansion, not the full height delta;
-            // the latter releases duck before standing feet reach the ground window.
             const float probe_depth = *expansion + ground_probe * 0.5f;
+            auto probe_hull = current;
+            probe_hull.mins.z -= probe_depth;
             const auto when = jumpbug_timing::find_contact_time([&](float time) -> std::optional<bool> {
                 const auto pos = position(time);
                 if (!finite(pos)) return std::nullopt;
-                // The movement segment uses only the current (crouched) hull.
-                const auto path = systems::g_tracing.trace_player_bbox(pre.networked_origin, pos, current, filter, movement);
-                if (!usable(path)) return std::nullopt;
-                if (path.fraction < 1.0f) {
-                    // At high fall speed the end of the tick can cross the floor.
-                    // It is an upper bound for refinement, NOT a valid release.
-                    if (!finite(path.normal) || path.normal.z < standable) return std::nullopt;
-                    return true;
+                systems::tracing::result ground{};
+                if (time == 0.0f) {
+                    // A lowered hull could start inside the floor even though
+                    // crouched feet are clear and an immediate release is valid.
+                    auto below = pos;
+                    below.z -= probe_depth;
+                    ground = systems::g_tracing.trace_player_bbox(pos, below, current, filter, movement);
+                } else {
+                    // Sweep the entire prefix: once a ledge is reached, longer
+                    // prefixes still report it, even when their endpoints are
+                    // beyond the ledge. This makes refinement monotonic.
+                    ground = systems::g_tracing.trace_player_bbox(pre.networked_origin, pos, probe_hull, filter, movement);
                 }
-                auto below = pos;
-                below.z -= probe_depth;
-                const auto ground = systems::g_tracing.trace_player_bbox(pos, below, probe_hull, filter, movement);
                 if (!usable(ground)) return std::nullopt;
                 if (ground.fraction == 1.0f) return false;
                 if (!finite(ground.normal) || ground.normal.z < standable) return std::nullopt;

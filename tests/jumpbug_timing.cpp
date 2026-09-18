@@ -1,6 +1,8 @@
 #include <core/features/movement/jumpbug_timing.hpp>
 #include <cassert>
 #include <cmath>
+#include <initializer_list>
+#include <limits>
 #include <optional>
 
 int main()
@@ -37,17 +39,27 @@ int main()
         if (time > 0.4f && time < 0.6f) return std::nullopt;
         return time > 0.7f;
     }));
-    // Falling at different speeds: locate the middle of the available clearance
-    // window, not a fixed timer or a uniform 128-sample grid point.
+
+    constexpr float dt = 1.0f / 64.0f;
+    assert(movement_velocity_z(-1000.0f, 800.0f, dt) == -1006.25f);
+    assert(movement_velocity_z(-1000.0f, 0.0f, dt) == -1000.0f);
+    assert(!movement_velocity_z(NAN, 800.0f, dt));
+    assert(!movement_velocity_z(-1000.0f, INFINITY, dt));
+    assert(!movement_velocity_z(-1000.0f, -1.0f, dt));
+    assert(!movement_velocity_z(-1000.0f, 800.0f, 0.0f));
+    assert(!movement_velocity_z(-1000.0f, 800.0f, NAN));
+    assert(!movement_velocity_z(-std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), 4.0f));
+
+    // Match the movement predictor at release AND jump, across gravity settings
+    // and dangerous fall speeds. The previous parabolic path agreed only at t=1.
+    for (const float gravity : {0.0f, 800.0f, 1600.0f})
     for (const float speed : {200.0f, 1000.0f, 3500.0f})
     {
-        constexpr float dt = 1.0f / 64.0f;
-        constexpr float gravity = 800.0f;
         constexpr float target_time = 0.73123f;
-        const float height = speed * dt * target_time + 0.5f * gravity * dt * dt * target_time * target_time + 1.0f;
-        const auto clearance = [&](float time) {
-            return height - speed * dt * time - 0.5f * gravity * dt * dt * time * time;
-        };
+        const auto velocity = movement_velocity_z(-speed, gravity, dt);
+        assert(velocity);
+        const float height = -*velocity * dt * target_time + 1.0f;
+        const auto clearance = [&](float time) { return height + *velocity * dt * time; };
         const auto when = find_contact_time([&](float time) -> std::optional<bool> {
             return clearance(time) <= 1.0f;
         });
@@ -55,4 +67,22 @@ int main()
         assert(clearance(*when) > 0.0f && clearance(*when) < 2.0f);
         assert(clearance(*when + event_gap) > 0.0f);
     }
+
+    // A thin platform can be crossed entirely inside the tick. The old endpoint
+    // predicate misses it; a swept prefix still brackets its first contact.
+    constexpr float enter = 0.40123f;
+    constexpr float leave = enter + 2.0f * event_gap;
+    const auto support_at = [](float time) -> std::optional<bool> {
+        return time >= enter && time <= leave;
+    };
+    assert(!find_contact_time(support_at));
+    const auto when = find_contact_time([](float time) -> std::optional<bool> {
+        return time >= enter; // Prefix sweep intersects the platform.
+    });
+    assert(when && *support_at(*when) && *support_at(*when + event_gap));
+    assert(*when - enter <= 1.0f / 65536.0f);
+
+    // Already in the window must release immediately; no duplicate crouch press.
+    const auto immediate = find_contact_time([](float) -> std::optional<bool> { return true; });
+    assert(immediate && *immediate == 0.0f);
 }
