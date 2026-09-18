@@ -20,6 +20,7 @@ namespace features::changer::cosmetic_attributes {
     struct attribute_state {
         std::uint32_t bits{};
         bool present{};
+        bool operator==(const attribute_state&) const = default;
     };
     using snapshot = std::array<attribute_state, indices.size()>;
 
@@ -88,7 +89,8 @@ namespace features::changer::cosmetic_attributes {
             else
                 memory::safe_call<void>(remove, item_view, static_cast<int>(indices[slot]));
         }
-        return true;
+        snapshot actual{};
+        return capture(item_view, actual) && actual == saved;
     }
 
     [[nodiscard]] inline bool apply(std::uintptr_t item_view, const settings::changer::applied_skin& skin) {

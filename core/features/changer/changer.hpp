@@ -1,6 +1,7 @@
 #pragma once
 
 #include <filesystem>
+#include <utilities/cosmetic_identity.hpp>
 #include <core/settings.hpp>
 #include "cosmetic_attributes.hpp"
 #include "name_tag.hpp"
@@ -275,9 +276,25 @@ namespace features::changer {
 	{
 	public:
 		void on_frame_stage_notify( );
-		void reset( );
+		void reset( ); // Level teardown, on the game thread.
+		void invalidate( ) { m_invalidate_pending.store( true ); }
 
 	private:
+		struct original_weapon {
+			std::uintptr_t weapon{};
+			std::uint16_t def_index{};
+			std::uint64_t item_id{};
+			std::uint32_t id_high{}, id_low{}, account_id{};
+			int quality{}, paint_kit{}, seed{}, stattrak{};
+			float wear{};
+			bool initialized{}, disallow_soc{};
+			cosmetic_attributes::snapshot attributes{};
+			std::optional<name_tag::snapshot> custom_name{};
+		};
+		bool capture_original( std::uintptr_t weapon, std::uintptr_t iv, std::uint32_t handle );
+		bool restore( std::uintptr_t weapon, std::uintptr_t iv, std::uint32_t handle, std::uint32_t active_handle, std::uintptr_t pawn );
+		std::unordered_map<std::uint32_t, original_weapon> m_original_weapons{};
+		std::atomic<bool> m_invalidate_pending{ false };
 		bool apply( std::uintptr_t weapon, std::uintptr_t iv, std::uint32_t handle, std::uint32_t active_handle, std::uintptr_t pawn, const settings::changer::applied_skin* skin, std::uint32_t account_id );
 		void rebuild_paint( std::uintptr_t weapon, std::uint32_t handle, std::uint32_t active_handle, std::uintptr_t pawn, const econ_item_system::paint_kit* pk );
 		void update_view_model( std::uintptr_t pawn, const econ_item_system::paint_kit* pk );
@@ -291,7 +308,7 @@ namespace features::changer {
 		std::uintptr_t m_last_hud_model{};
 		float m_last_round_start_time{};
 		struct applied_weapon {
-            std::uintptr_t weapon{};
+            cosmetic_cache::identity visual{};
             settings::changer::applied_skin skin{};
         };
         std::unordered_map<std::uint32_t, applied_weapon> m_applied_weapons{};

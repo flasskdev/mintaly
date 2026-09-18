@@ -118,7 +118,7 @@ namespace rendering {
 			}
 
 			// Preserve captured originals so removed cosmetics can be restored on the game thread.
-			features::changer::g_guns.reset( );
+			features::changer::g_guns.invalidate( );
 			features::changer::g_skin_sync.trigger_push( );
 			settings::finalize_binds( );
 			settings::g_world.update_active( rendering::g_widgets.s_map_name );
@@ -226,7 +226,7 @@ namespace rendering {
 					detail::reset_popup_open = false;
 					config::registry::load( wname );
 					// Do not discard originals or call engine restoration from the menu thread.
-					features::changer::g_guns.reset( );
+					features::changer::g_guns.invalidate( );
 					features::changer::g_skin_sync.trigger_push( );
 					settings::finalize_binds( );
 					settings::g_world.update_active( rendering::g_widgets.s_map_name );

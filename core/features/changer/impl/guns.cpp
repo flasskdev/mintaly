@@ -6,11 +6,37 @@
 #include <core/settings.hpp>
 #include <utilities/steam/steam.hpp>
 #include <protection/game_addresses.hpp>
+#include <type_traits>
 namespace features::changer {
+
+	namespace {
+		constexpr std::uint64_t gun_faux_item_id = 0xf000000000000010ull;
+
+		cosmetic_cache::identity visual_identity( std::uintptr_t weapon )
+		{
+			cosmetic_cache::identity result{};
+			result.weapon = weapon;
+			if ( !weapon ) return result;
+			result.scene = memory::safe_read<std::uintptr_t>( weapon + SCHEMA( "C_BaseEntity", "m_pGameSceneNode"_hash ) ).value_or( 0 );
+			result.owner = memory::safe_read<std::uint32_t>( weapon + SCHEMA( "C_BaseEntity", "m_hOwnerEntity"_hash ) ).value_or( 0 );
+			if ( result.scene )
+				result.model = memory::safe_read<std::uintptr_t>( result.scene + SCHEMA( "CSkeletonInstance", "m_modelState"_hash ) + SCHEMA( "CModelState", "m_hModel"_hash ) ).value_or( 0 );
+			return result;
+		}
+	}
 
 	void guns::on_frame_stage_notify( )
 	{
 		this->process_hud_clear( );
+		if ( this->m_invalidate_pending.exchange( false ) )
+		{
+			this->m_applied_weapons.clear( );
+			this->m_last_active_handle = 0;
+		}
+		// Keep originals across HUD/round/pawn changes, but never across entity generations.
+		std::erase_if( this->m_original_weapons, []( const auto& entry ) {
+			return systems::g_entities.lookup( entry.first ) != entry.second.weapon;
+		} );
 
 		const auto local = systems::g_local.get( );
 		if ( !local.controller ) return;
@@ -32,9 +58,9 @@ namespace features::changer {
 			this->m_last_round_start_time = round_time;
 		}
 		std::erase_if( this->m_applied_weapons, []( const auto& entry ) {
-			if ( !systems::g_entities.exists( entry.second.weapon ) ) return true;
-			const auto owner = memory::safe_read<std::uint32_t>( entry.second.weapon + SCHEMA( "C_BaseEntity", "m_hOwnerEntity"_hash ) ).value_or( 0 );
-			return !systems::g_entities.lookup( owner );
+			const auto weapon = systems::g_entities.lookup( entry.first );
+			return weapon != entry.second.visual.weapon ||
+				!cosmetic_cache::reusable( entry.second.visual, visual_identity( weapon ) );
 		} );
 
 		if ( local.is_alive && local_pawn && !systems::g_local.is_in_cinematic( ) )
@@ -90,6 +116,7 @@ namespace features::changer {
 						const auto skin_it = active_skins.find( current_def_index );
 						if ( skin_it == active_skins.end( ) )
 						{
+							this->restore( weapon, iv, handle, active_handle, local_pawn );
 							continue;
 						}
 
@@ -101,7 +128,7 @@ namespace features::changer {
 						const auto current_seed = memory::safe_read<int>( weapon + SCHEMA( "C_EconEntity", "m_nFallbackSeed"_hash ) ).value_or( -1 );
 
 						if ( applied_it != this->m_applied_weapons.end( ) 
-							&& applied_it->second.weapon == weapon 
+							&& applied_it->second.visual.weapon == weapon 
 							&& applied_it->second.skin == skin 
 							&& current_pk == skin.paint_kit_id 
 							&& current_id_high == 0xf0000000 
@@ -123,7 +150,7 @@ namespace features::changer {
 						}
 
 						if (this->apply( weapon, iv, handle, active_handle, local_pawn, &skin, account_id ))
-							this->m_applied_weapons[ handle ] = { weapon, skin };
+							this->m_applied_weapons[ handle ] = { visual_identity( weapon ), skin };
 					}
 
 					if ( active_handle != this->m_last_active_handle )
@@ -143,7 +170,7 @@ namespace features::changer {
 								{
 									const auto skin = cosmetic_attributes::normalize( skin_it->second );
 									if ( this->apply( active_weapon, iv, active_handle, active_handle, local_pawn, &skin, account_id ) )
-										this->m_applied_weapons[ active_handle ] = { active_weapon, skin };
+										this->m_applied_weapons[ active_handle ] = { visual_identity( active_weapon ), skin };
 								}
 								else
 								{
@@ -176,10 +203,9 @@ namespace features::changer {
 			}
 
 			const auto remote_skin_data = g_skin_sync.get_remote_skin( sid );
-			if ( !remote_skin_data || remote_skin_data->skins.empty( ) )
-			{
-				continue;
-			}
+			const settings::changer::skin_map_field::map_type empty_skins{};
+			const auto& remote_skins = remote_skin_data ? remote_skin_data->skins : empty_skins;
+			// An empty profile (or pickup by a non-sync user) must restore our previous override.
 
 			const auto pawn_handle = memory::safe_read<std::uint32_t>( ctrl + SCHEMA( "CBasePlayerController", "m_hPawn"_hash ) ).value_or( 0 );
 			if ( !pawn_handle )
@@ -232,9 +258,10 @@ namespace features::changer {
 					continue;
 				}
 
-				const auto skin_it = remote_skin_data->skins.find( current_def_index );
-				if ( skin_it == remote_skin_data->skins.end( ) )
+				const auto skin_it = remote_skins.find( current_def_index );
+				if ( skin_it == remote_skins.end( ) )
 				{
+					this->restore( weapon, iv, handle, remote_active_handle, pawn );
 					continue;
 				}
 
@@ -246,7 +273,7 @@ namespace features::changer {
 				const auto current_seed = memory::safe_read<int>( weapon + SCHEMA( "C_EconEntity", "m_nFallbackSeed"_hash ) ).value_or( -1 );
 
 				if ( applied_it != this->m_applied_weapons.end( ) 
-					&& applied_it->second.weapon == weapon 
+					&& applied_it->second.visual.weapon == weapon 
 					&& applied_it->second.skin == skin 
 					&& current_pk == skin.paint_kit_id 
 					&& current_id_high == 0xf0000000 
@@ -269,7 +296,7 @@ namespace features::changer {
 
 				if ( this->apply( weapon, iv, handle, remote_active_handle, pawn, &skin, remote_account_id ) )
 				{
-					this->m_applied_weapons[ handle ] = { weapon, skin };
+					this->m_applied_weapons[ handle ] = { visual_identity( weapon ), skin };
 				}
 			}
 		}
@@ -284,6 +311,7 @@ namespace features::changer {
 		if ( !memory::safe_read<std::uintptr_t>( weapon + SCHEMA( "C_BaseEntity", "m_pGameSceneNode"_hash ) ).value_or( 0 ) ) return false;
 		if ( pawn == systems::g_local.get( ).pawn && handle == active_handle && !this->find_hud_model_weapon( pawn ) )
 			return false; // Retry rather than cache success before the HUD model exists.
+		if ( !this->capture_original( weapon, iv, handle ) ) return false;
 		if ( !name_tag::apply( iv, skin->name_tag ) ) return false;
 		memory::write<bool>( iv + soc_offset, true );
 
@@ -307,6 +335,93 @@ namespace features::changer {
 
 		this->rebuild_paint( weapon, handle, active_handle, pawn, pk );
 		this->schedule_hud_clear( iv );
+		return true;
+	}
+
+	bool guns::capture_original( std::uintptr_t weapon, std::uintptr_t iv, std::uint32_t handle )
+	{
+		const auto definition_offset = SCHEMA( "C_EconItemView", "m_iItemDefinitionIndex"_hash );
+		const auto id_offset = SCHEMA( "C_EconItemView", "m_iItemID"_hash );
+		if ( !definition_offset || !id_offset || systems::g_entities.lookup( handle ) != weapon ) return false;
+		const auto definition = memory::safe_read<std::uint16_t>( iv + definition_offset );
+		const auto item_id = memory::safe_read<std::uint64_t>( iv + id_offset );
+		if ( !definition || !item_id ) return false;
+		if ( const auto it = this->m_original_weapons.find( handle ); it != this->m_original_weapons.end( ) )
+		{
+			if ( it->second.weapon == weapon && it->second.def_index == *definition &&
+				( *item_id == gun_faux_item_id || *item_id == it->second.item_id ) ) return true;
+			this->m_original_weapons.erase( it );
+		}
+		// Never mistake an override from a lost snapshot for a native item.
+		if ( *item_id == gun_faux_item_id ) return false;
+		original_weapon saved{};
+		saved.weapon = weapon;
+		saved.def_index = *definition;
+		saved.item_id = *item_id;
+		const auto read = []( auto& destination, std::uintptr_t base, int offset ) {
+			if ( !offset ) return false;
+			const auto value = memory::safe_read<std::remove_reference_t<decltype(destination)>>( base + offset );
+			if ( !value ) return false;
+			destination = *value;
+			return true;
+		};
+		if ( !read( saved.id_high, iv, SCHEMA( "C_EconItemView", "m_iItemIDHigh"_hash ) ) ||
+			 !read( saved.id_low, iv, SCHEMA( "C_EconItemView", "m_iItemIDLow"_hash ) ) ||
+			 !read( saved.account_id, iv, SCHEMA( "C_EconItemView", "m_iAccountID"_hash ) ) ||
+			 !read( saved.quality, iv, SCHEMA( "C_EconItemView", "m_iEntityQuality"_hash ) ) ||
+			 !read( saved.initialized, iv, SCHEMA( "C_EconItemView", "m_bInitialized"_hash ) ) ||
+			 !read( saved.disallow_soc, iv, SCHEMA( "C_EconItemView", "m_bDisallowSOC"_hash ) ) ||
+			 !read( saved.paint_kit, weapon, SCHEMA( "C_EconEntity", "m_nFallbackPaintKit"_hash ) ) ||
+			 !read( saved.seed, weapon, SCHEMA( "C_EconEntity", "m_nFallbackSeed"_hash ) ) ||
+			 !read( saved.wear, weapon, SCHEMA( "C_EconEntity", "m_flFallbackWear"_hash ) ) ||
+			 !read( saved.stattrak, weapon, SCHEMA( "C_EconEntity", "m_nFallbackStatTrak"_hash ) ) ||
+			 !cosmetic_attributes::capture( iv, saved.attributes ) ) return false;
+		saved.custom_name = name_tag::capture( iv );
+		if ( name_tag::offsets( ) && !saved.custom_name ) return false;
+		this->m_original_weapons.emplace( handle, std::move( saved ) );
+		return true;
+	}
+
+	bool guns::restore( std::uintptr_t weapon, std::uintptr_t iv, std::uint32_t handle, std::uint32_t active_handle, std::uintptr_t pawn )
+	{
+		const auto it = this->m_original_weapons.find( handle );
+		if ( it == this->m_original_weapons.end( ) ) return true;
+		const auto& saved = it->second;
+		const auto definition = memory::safe_read<std::uint16_t>( iv + SCHEMA( "C_EconItemView", "m_iItemDefinitionIndex"_hash ) );
+		const auto item_id = memory::safe_read<std::uint64_t>( iv + SCHEMA( "C_EconItemView", "m_iItemID"_hash ) );
+		if ( !definition || !item_id ) return false;
+		if ( saved.weapon != weapon || systems::g_entities.lookup( handle ) != weapon || saved.def_index != *definition ||
+			( *item_id != gun_faux_item_id && *item_id != saved.item_id ) )
+		{
+			// A different server item/entity owns this slot now. Never write the old snapshot into it.
+			this->m_original_weapons.erase( it );
+			this->m_applied_weapons.erase( handle );
+			return true;
+		}
+		if ( !visual_identity( weapon ).ready( ) ||
+			 !memory::safe_read<std::uintptr_t>( weapon + SCHEMA( "C_BaseEntity", "m_nSubclassID"_hash ) + 0x8 ).value_or( 0 ) ||
+			 !PATTERN( patterns::weapon_update_skin ) || !PATTERN( patterns::weapon_update_composite_material ) ) return false;
+		if ( pawn == systems::g_local.get( ).pawn && handle == active_handle && !this->find_hud_model_weapon( pawn ) ) return false;
+		if ( !cosmetic_attributes::restore( iv, saved.attributes ) ) return false;
+		if ( saved.custom_name && !name_tag::restore( iv, *saved.custom_name ) ) return false;
+		const auto write = []( std::uintptr_t base, int offset, const auto& value ) {
+			return offset && memory::safe_write( base + offset, value );
+		};
+		if ( !write( iv, SCHEMA( "C_EconItemView", "m_iAccountID"_hash ), saved.account_id ) ||
+			 !write( iv, SCHEMA( "C_EconItemView", "m_iEntityQuality"_hash ), saved.quality ) ||
+			 !write( iv, SCHEMA( "C_EconItemView", "m_bInitialized"_hash ), saved.initialized ) ||
+			 !write( iv, SCHEMA( "C_EconItemView", "m_bDisallowSOC"_hash ), saved.disallow_soc ) ||
+			 !write( weapon, SCHEMA( "C_EconEntity", "m_nFallbackPaintKit"_hash ), saved.paint_kit ) ||
+			 !write( weapon, SCHEMA( "C_EconEntity", "m_nFallbackSeed"_hash ), saved.seed ) ||
+			 !write( weapon, SCHEMA( "C_EconEntity", "m_flFallbackWear"_hash ), saved.wear ) ||
+			 !write( weapon, SCHEMA( "C_EconEntity", "m_nFallbackStatTrak"_hash ), saved.stattrak ) ||
+			 !write( iv, SCHEMA( "C_EconItemView", "m_iItemIDHigh"_hash ), saved.id_high ) ||
+			 !write( iv, SCHEMA( "C_EconItemView", "m_iItemIDLow"_hash ), saved.id_low ) ||
+			 !write( iv, SCHEMA( "C_EconItemView", "m_iItemID"_hash ), saved.item_id ) ) return false;
+		this->rebuild_paint( weapon, handle, active_handle, pawn, g_econ_item_system.find_paint_kit( saved.paint_kit ) );
+		this->schedule_hud_clear( iv );
+		this->m_applied_weapons.erase( handle );
+		this->m_original_weapons.erase( it );
 		return true;
 	}
 
@@ -434,7 +549,12 @@ namespace features::changer {
 	void guns::reset( )
 	{
 		this->m_applied_weapons.clear( );
+		this->m_original_weapons.clear( );
+		this->m_invalidate_pending = false;
 		this->m_last_active_handle = 0;
+		this->m_tracked_pawn = 0;
+		this->m_last_hud_model = 0;
+		this->m_last_round_start_time = 0;
 	}
 
 } // namespace features::changer
