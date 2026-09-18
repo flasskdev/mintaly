@@ -81,7 +81,7 @@ inline static void draw_chams_layer( const char* label, const char* popup_id, se
 	}
 }
 
-inline static void draw_chams_config( const char* label, const char* id_suffix, settings::esp::chams_config& cfg, bool show_overlay = true )
+inline static void draw_chams_config( const char* label, const char* id_suffix, settings::esp::chams_config& cfg, bool show_overlay = true, bool show_through_wall = true )
 {
 	xui::toggle( label, cfg.enabled );
 
@@ -92,9 +92,12 @@ inline static void draw_chams_config( const char* label, const char* id_suffix, 
 	std::snprintf( popup_id, sizeof( popup_id ), "##primary_%s", id_suffix );
 	draw_chams_layer( label_buf, popup_id, cfg.primary, false );
 
-	std::snprintf( label_buf, sizeof( label_buf ), "through wall##%s", id_suffix );
-	std::snprintf( popup_id, sizeof( popup_id ), "##secondary_%s", id_suffix );
-	draw_chams_layer( label_buf, popup_id, cfg.secondary, true );
+	if ( show_through_wall )
+	{
+		std::snprintf( label_buf, sizeof( label_buf ), "through wall##%s", id_suffix );
+		std::snprintf( popup_id, sizeof( popup_id ), "##secondary_%s", id_suffix );
+		draw_chams_layer( label_buf, popup_id, cfg.secondary, true );
+	}
 
 	if ( show_overlay )
 	{

@@ -814,7 +814,7 @@ namespace rendering {
 						const auto chams_idx = chams_weapons::index( this->m_def );
 						std::string status = "default";
 						if ( chams_idx >= 0 && settings::g_esp.m_viewmodel.individual.weapons[ chams_idx ].override_default.value )
-							status = "custom";
+							status = settings::g_esp.m_viewmodel.individual.weapons[ chams_idx ].cfg.enabled.value ? "custom" : "off";
 
 						auto val_col = ( status == "custom" ) ? tokens::col_accent : style.text_dim;
 						val_col.a = static_cast< std::uint8_t >( val_col.a * item_alpha );
@@ -1655,6 +1655,12 @@ namespace rendering {
 			const auto it = skin_map( ).find( weapon->def_index );
 			if ( it == skin_map( ).end( ) )
 			{
+				xui::push_id( static_cast<std::uintptr_t>( weapon->def_index ) );
+				if ( xui::button( "Configure Chams for this Weapon", 230.0f ) )
+				{
+					skins_ui.active_tab = browser_tab::chams;
+				}
+				xui::pop_id( );
 				return;
 			}
 
@@ -1732,39 +1738,14 @@ namespace rendering {
 			{
 				auto& entry = esp.m_viewmodel.individual.weapons[ chams_idx ];
 
-				xui::checkbox( "Override default weapon chams", entry.override_default );
-				if ( entry.override_default.value )
+				// If not yet customized, initialize values from global default
+				if ( !entry.override_default.value )
 				{
-					if ( xui::button( "Copy from default", 160.0f ) )
-					{
-						entry.cfg.copy_values_from( esp.m_viewmodel.weapon );
-					}
-					xui::layout::same_line( );
-					if ( xui::button( "Reset to vanilla", 140.0f ) )
-					{
-						entry.cfg.enabled.value = false;
-						entry.cfg.primary.enabled.value = false;
-						entry.cfg.secondary.enabled.value = false;
-						entry.cfg.overlay.enabled.value = false;
-					}
+					entry.cfg.copy_values_from( esp.m_viewmodel.weapon );
+					entry.override_default.value = true;
+				}
 
-					xui::layout::spacing( 4.0f );
-					detail::draw_chams_config( "weapon chams", "vm_indiv_skins", entry.cfg );
-				}
-				else
-				{
-					xui::layout::spacing( 6.0f );
-					xui::text( "This weapon is currently using the global default weapon chams.", tokens::col_text_dim );
-					if ( xui::button( "Enable custom chams for this weapon", 260.0f ) )
-					{
-						entry.override_default.value = true;
-						entry.cfg.copy_values_from( esp.m_viewmodel.weapon );
-					}
-					xui::layout::spacing( 10.0f );
-					xui::layout::separator( );
-					xui::text( "GLOBAL WEAPON CHAMS (DEFAULT)", tokens::col_accent );
-					detail::draw_chams_config( "default weapon chams", "vm_def_skins", esp.m_viewmodel.weapon );
-				}
+				detail::draw_chams_config( "weapon chams", "vm_indiv_skins", entry.cfg, true, false );
 			}
 			else
 			{
@@ -1781,12 +1762,13 @@ namespace rendering {
 			auto& dl = xui::draw::current( );
 			const auto& input = xui::ctx( ).input;
 
-			const auto rarity = weapon ? econ.combined_rarity( weapon->def_index, pk->id ) : pk->rarity;
-			const auto rarity_col = k_rarity_colors[ std::clamp( rarity, 0, 7 ) ];
+			const auto rarity = ( weapon && pk->id != 0 ) ? econ.combined_rarity( weapon->def_index, pk->id ) : pk->rarity;
+			const auto rarity_col = k_rarity_colors[ std::clamp( static_cast<int>(rarity), 0, 7 ) ];
 
 			const auto image_h = std::floor( card.h * k_image_h_ratio );
 
-			const auto is_equipped = ( pk->id == current_kit_id );
+			const bool is_vanilla = ( pk->id == 0 );
+			const bool is_equipped = is_vanilla ? ( current_kit_id <= 0 ) : ( pk->id == current_kit_id );
 			const auto hovered = skin_workspace::hovered(card);
 			if (hovered && weapon) { skin_workspace::hover.weapon = weapon->def_index; skin_workspace::hover.paint = pk->id; }
 			const auto hover_anim = xui::anim::lerp( xui::fnv1a( "scard" ) + static_cast< std::uintptr_t >( pk->id ), hovered ? 1.0f : 0.0f, 14.0f );
@@ -1803,7 +1785,7 @@ namespace rendering {
 				dl.rect( card.x, card.y, card.w, card.h, bcol, xdraw::corner_radius{ tokens::btn_rounding }, 1.5f );
 			}
 
-			const auto img = weapon ? econ.get_skin_image( weapon->def_index, pk->id ) : nullptr;
+			const auto img = ( weapon && pk->id != 0 ) ? econ.get_skin_image( weapon->def_index, pk->id ) : ( weapon ? econ.get_skin_image( weapon->image_inventory ) : nullptr );
 			if ( img )
 			{
 				const auto target_h = image_h - 12.0f;
@@ -1882,33 +1864,67 @@ namespace rendering {
 				}
 				else
 				{
-					settings::changer::applied_skin selected{};
-					if ( const auto previous = skin_map( ).find( skins_ui.browsing_def ); previous != skin_map( ).end( ) )
-						selected = previous->second;
 					const auto browsing_def = econ.find_def( skins_ui.browsing_def );
-					if ( browsing_def )
+					if ( pk->id == 0 )
 					{
-						if ( browsing_def->category == features::changer::econ_item_system::item_category::knife )
+						if ( browsing_def && browsing_def->category == features::changer::econ_item_system::item_category::gun )
 						{
-							for ( const auto* k : econ.knives( ) )
-							{
-								skin_map( ).erase( k->def_index );
-							}
+							skin_map( ).erase( skins_ui.browsing_def );
 						}
-						else if ( browsing_def->category == features::changer::econ_item_system::item_category::glove )
+						else if ( browsing_def && browsing_def->category == features::changer::econ_item_system::item_category::glove )
 						{
 							for ( const auto* g : econ.gloves( ) )
 							{
 								skin_map( ).erase( g->def_index );
 							}
 						}
-					}
+						else
+						{
+							settings::changer::applied_skin selected{};
+							if ( const auto previous = skin_map( ).find( skins_ui.browsing_def ); previous != skin_map( ).end( ) )
+								selected = previous->second;
 
-					selected.paint_kit_id = pk->id;
-					const auto [low, high] = skin_options::wear_limits( pk->wear_min, pk->wear_max );
-					selected.wear = skin_options::clamp_wear( selected.wear, low, high );
-					if ( browsing_def && browsing_def->category == features::changer::econ_item_system::item_category::glove ) selected.stattrak = false;
-					skin_map( )[ skins_ui.browsing_def ] = selected;
+							if ( browsing_def && browsing_def->category == features::changer::econ_item_system::item_category::knife )
+							{
+								for ( const auto* k : econ.knives( ) )
+								{
+									skin_map( ).erase( k->def_index );
+								}
+							}
+
+							selected.paint_kit_id = 0;
+							skin_map( )[ skins_ui.browsing_def ] = selected;
+						}
+					}
+					else
+					{
+						settings::changer::applied_skin selected{};
+						if ( const auto previous = skin_map( ).find( skins_ui.browsing_def ); previous != skin_map( ).end( ) )
+							selected = previous->second;
+						if ( browsing_def )
+						{
+							if ( browsing_def->category == features::changer::econ_item_system::item_category::knife )
+							{
+								for ( const auto* k : econ.knives( ) )
+								{
+									skin_map( ).erase( k->def_index );
+								}
+							}
+							else if ( browsing_def->category == features::changer::econ_item_system::item_category::glove )
+							{
+								for ( const auto* g : econ.gloves( ) )
+								{
+									skin_map( ).erase( g->def_index );
+								}
+							}
+						}
+
+						selected.paint_kit_id = pk->id;
+						const auto [low, high] = skin_options::wear_limits( pk->wear_min, pk->wear_max );
+						selected.wear = skin_options::clamp_wear( selected.wear, low, high );
+						if ( browsing_def && browsing_def->category == features::changer::econ_item_system::item_category::glove ) selected.stattrak = false;
+						skin_map( )[ skins_ui.browsing_def ] = selected;
+					}
 				}
 
 				if ( auto win = xui::layout::current_window( ) )

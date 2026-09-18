@@ -141,6 +141,14 @@ public:
                     }
                 }
             }
+
+            // Prepend vanilla (default) skin at the top of the list
+            static const econ_type::paint_kit s_vanilla_kit{ .id = 0, .name = "vanilla", .localized_name = "Default (Vanilla)" };
+            if (q.empty() || lower(s_vanilla_kit.localized_name).find(q) != std::string::npos ||
+                std::string("vanilla").find(q) != std::string::npos ||
+                std::string("default").find(q) != std::string::npos) {
+                filtered_paints_.insert(filtered_paints_.begin(), &s_vanilla_kit);
+            }
         }
         return filtered_paints_;
     }
