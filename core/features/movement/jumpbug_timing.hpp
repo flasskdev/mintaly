@@ -16,9 +16,22 @@ namespace features::movement::jumpbug_timing {
         return (standing_height - crouched_height) * 0.5f;
     }
 
+    // Match the half-gravity step used by the movement landing predictor:
+    // gravity changes velocity before the tick's movement sweep, not along a
+    // separate parabolic chord for each binary-search candidate.
+    [[nodiscard]] inline std::optional<float> movement_velocity_z(float velocity, float gravity, float interval) {
+        if (!std::isfinite(velocity) || !std::isfinite(gravity) || gravity < 0.0f ||
+            !std::isfinite(interval) || interval <= 0.0f) return std::nullopt;
+        const float result = velocity - 0.5f * gravity * interval;
+        return std::isfinite(result) ? std::optional<float>{result} : std::nullopt;
+    }
+
     // Find first contact with a swept probe, not a uniform sampling of a narrow
-    // landing window. The callback returns nullopt for unusable traces; callers
-    // must validate actual hull clearance/ground support at the returned time.
+    // landing window. reached(t) must test the entire path [0, t], so contact
+    // remains true after passing a thin ledge. Testing only support at t breaks
+    // the monotonic predicate required by binary search.
+    // The callback returns nullopt for unusable traces; callers must validate
+    // actual hull clearance/ground support at the returned time.
     template <typename Probe>
     [[nodiscard]] std::optional<float> find_contact_time(Probe&& reached)
     {
