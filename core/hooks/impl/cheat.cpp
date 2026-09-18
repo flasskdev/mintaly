@@ -472,6 +472,7 @@ namespace hooks {
 			m_level_shutting_down.store( false, std::memory_order_release );
 		}
 
+		systems::g_model_preview.update( );
 		features::misc::g_auto_accept.run( );
 		if ( !local_player_controller || is_level_shutting_down( ) )
 		{
@@ -497,6 +498,9 @@ namespace hooks {
 		// Music belongs to the controller and must work while dead or without a camera.
 		if ( stage == 6 || stage == 7 )
 			features::changer::g_music.on_frame_stage_notify( );
+
+		if ( stage == 6 || stage == 7 )
+			features::changer::g_inspect_preview.on_frame_stage_notify( );
 
 		if ( systems::g_local.get( ).is_valid( ) && systems::g_view.has_camera( ) )
 		{
@@ -1053,6 +1057,16 @@ namespace hooks {
 
 		if ( scene_object )
 		{
+			systems::g_model_preview.on_generate_primitives(
+				0,
+				0,
+				scene_object,
+				primitive_buffer,
+				m_generate_primitives.original<void( __fastcall* )( std::uintptr_t, std::uintptr_t, std::uintptr_t, std::uintptr_t )>( ),
+				thisptr,
+				scene_view
+			);
+
 			if ( features::esp::player::g_chams.bt( ).is_active( scene_object ) )
 			{
 				return;
@@ -1080,25 +1094,15 @@ namespace hooks {
 								return;
 							}
 
-						if ( features::esp::item::g_chams.on_generate_primitives( owner_entity, owner_hash, scene_object, primitive_buffer, m_generate_primitives.original<void( __fastcall* )( std::uintptr_t, std::uintptr_t, std::uintptr_t, std::uintptr_t )>( ), thisptr, scene_view ) )
-						{
-							return;
+							if ( features::esp::item::g_chams.on_generate_primitives( owner_entity, owner_hash, scene_object, primitive_buffer, m_generate_primitives.original<void( __fastcall* )( std::uintptr_t, std::uintptr_t, std::uintptr_t, std::uintptr_t )>( ), thisptr, scene_view ) )
+							{
+								return;
+							}
 						}
-
-						systems::g_model_preview.on_generate_primitives(
-							owner_entity,
-							owner_hash,
-							scene_object,
-							primitive_buffer,
-							m_generate_primitives.original<void( __fastcall* )( std::uintptr_t, std::uintptr_t, std::uintptr_t, std::uintptr_t )>( ),
-							thisptr,
-							scene_view
-						);
 					}
 				}
 			}
 		}
-	}
 
 		m_generate_primitives.call<void>( thisptr, scene_object, scene_view, primitive_buffer );
 	}

@@ -10,6 +10,7 @@
 #include "cosmetic_attributes.hpp"
 #include "name_tag.hpp"
 #include "skin_sync.hpp"
+#include "inspect_preview.hpp"
 #include <core/systems/systems.hpp>
 
 namespace features::changer {

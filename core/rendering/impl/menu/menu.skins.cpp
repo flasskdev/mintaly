@@ -20,6 +20,7 @@
 #include "../../rendering.hpp"
 #include "../../theme.hpp"
 #include "skin_workspace.hpp"
+#include "menu.chams_common.hpp"
 #include <charconv>
 #include <limits>
 
@@ -260,6 +261,12 @@ namespace rendering {
 			browser
 		};
 
+		enum class browser_tab : int
+		{
+			skins = 0,
+			chams = 1
+		};
+
 		struct skins_state
 		{
 			skins_page current{ skins_page::grid };
@@ -269,6 +276,7 @@ namespace rendering {
 			std::int16_t browsing_def{};
 			int browsing_agent_team{};
 			std::string search_buf{};
+			browser_tab active_tab{ browser_tab::skins };
 		};
 
 		skins_state skins_ui{};
@@ -317,11 +325,13 @@ namespace rendering {
 			if ( p == skins_page::browser )
 			{
 				skins_ui.browsing_def = def;
+				skin_workspace::active_browsing_weapon = def;
 				if ( def != 0 )
 					skin_workspace::focused_weapon[skin_workspace::team == 3 ? 0 : 1] = def;
 			}
 			else
 			{
+				skin_workspace::active_browsing_weapon = 0;
 				skins_ui.browsing_agent_team = 0;
 			}
 		}
@@ -628,7 +638,8 @@ namespace rendering {
 					return popup.contains( input.mouse_x, input.mouse_y );
 				}
 
-				for ( auto i = 1; i < k_item_count; ++i )
+				const auto cur_count = this->get_count( );
+				for ( auto i = 1; i < cur_count; ++i )
 				{
 					const auto ir = this->get_item_rect( popup, i );
 					if ( !ir.contains( input.mouse_x, input.mouse_y ) )
@@ -636,19 +647,38 @@ namespace rendering {
 						continue;
 					}
 
-					const auto it = skin_map( ).find( this->m_def );
-					if ( it == skin_map( ).end( ) )
+					if ( i == 1 )
 					{
+						request_page( skins_page::browser, this->m_def );
+						skins_ui.active_tab = browser_tab::chams;
+						this->m_closing = true;
+						if ( this->m_sub_id != xui::null_id )
+							xui::overlays::close( this->m_sub_id );
 						return true;
 					}
 
-					if ( i == 1 )
+					const auto it = skin_map( ).find( this->m_def );
+					if ( it == skin_map( ).end( ) )
+					{
+						if ( i == 2 )
+						{
+							request_page( skins_page::browser, this->m_def );
+							skins_ui.active_tab = browser_tab::skins;
+							this->m_closing = true;
+							if ( this->m_sub_id != xui::null_id )
+								xui::overlays::close( this->m_sub_id );
+							return true;
+						}
+						return true;
+					}
+
+					if ( i == 2 )
 					{
 						const auto def = features::changer::g_econ_item_system.find_def( this->m_def );
 						if ( def && ( def->category == features::changer::econ_item_system::item_category::gun || def->category == features::changer::econ_item_system::item_category::knife ) )
 							it->second.stattrak = !it->second.stattrak;
 					}
-					else if ( i == 2 || i == 3 )
+					else if ( i == 3 || i == 4 )
 					{
 						if ( this->m_sub_id != xui::null_id )
 						{
@@ -656,9 +686,9 @@ namespace rendering {
 						}
 
 						const auto sub_anchor = xui::rect{ popup.right( ) + 4.0f, ir.y, 0.0f, 0.0f };
-						this->m_sub_id = ( i == 2 ) ? ( this->m_id ^ 0x77711ull ) : ( this->m_id ^ 0x77722ull );
+						this->m_sub_id = ( i == 3 ) ? ( this->m_id ^ 0x77711ull ) : ( this->m_id ^ 0x77722ull );
 
-						if ( i == 2 )
+						if ( i == 3 )
 						{
 							xui::overlays::add( std::make_unique<wear_sub_overlay>( this->m_sub_id, sub_anchor, this->m_def ) );
 						}
@@ -667,7 +697,7 @@ namespace rendering {
 							xui::overlays::add( std::make_unique<seed_sub_overlay>( this->m_sub_id, sub_anchor, this->m_def ) );
 						}
 					}
-					else if ( i == 4 )
+					else if ( i == 5 )
 					{
 						skin_map( ).erase( this->m_def );
 
@@ -727,8 +757,10 @@ namespace rendering {
 				dl.push_clip( popup.x, popup.y, popup.w, animated_h );
 
 				const auto it = skin_map( ).find( this->m_def );
+				const bool is_skinned = ( it != skin_map( ).end( ) );
+				const auto cur_count = this->get_count( );
 
-				for ( auto i = 0; i < k_item_count; ++i )
+				for ( auto i = 0; i < cur_count; ++i )
 				{
 					const auto ir = this->get_item_rect( popup, i );
 					const auto item_delay = i * 0.04f;
@@ -761,13 +793,6 @@ namespace rendering {
 						continue;
 					}
 
-					if ( i == k_item_count - 1 )
-					{
-						auto sep = style.separator;
-						sep.a = static_cast< std::uint8_t >( sep.a * item_alpha );
-						dl.line( ir.x + 6.0f, ir.y + slide, ir.right( ) - 6.0f, ir.y + slide, sep, 1.0f );
-					}
-
 					const auto is_hovered = !this->m_closing && ir.contains( input.mouse_x, input.mouse_y );
 					auto& ha = this->m_hover_anims[ i ];
 					ha += ( ( is_hovered ? 1.0f : 0.0f ) - ha ) * std::min( 18.0f * dt, 1.0f );
@@ -777,12 +802,53 @@ namespace rendering {
 						auto hov = style.combo_popup_item_hovered;
 						hov.a = static_cast< std::uint8_t >( hov.a * item_alpha * ha );
 						const auto first = ( i == 1 );
-						const auto last = ( i == k_item_count - 1 );
+						const auto last = ( i == cur_count - 1 );
 						dl.rect_filled( ir.x, ir.y + slide, ir.w, ir.h, hov, xdraw::corner_radius{ first ? pr : 0.0f, first ? pr : 0.0f, last ? pr : 0.0f, last ? pr : 0.0f } );
 					}
 
-					if ( i == k_item_count - 1 )
+					if ( i == 1 )
 					{
+						auto label_col = style.text;
+						label_col.a = static_cast< std::uint8_t >( label_col.a * item_alpha );
+
+						const auto chams_idx = chams_weapons::index( this->m_def );
+						std::string status = "default";
+						if ( chams_idx >= 0 && settings::g_esp.m_viewmodel.individual.weapons[ chams_idx ].override_default.value )
+							status = "custom";
+
+						auto val_col = ( status == "custom" ) ? tokens::col_accent : style.text_dim;
+						val_col.a = static_cast< std::uint8_t >( val_col.a * item_alpha );
+
+						const auto [lw, lh] = xdraw::measure_text( "chams" );
+						dl.text( ir.x + 8.0f, ir.y + ( k_item_h - lh ) * 0.5f + slide, "chams", label_col );
+
+						const auto [vw, vh] = xdraw::measure_text( status );
+						dl.text( ir.right( ) - vw - 8.0f, ir.y + ( k_item_h - vh ) * 0.5f + slide, status, val_col );
+						continue;
+					}
+
+					if ( !is_skinned )
+					{
+						// i == 2: browse skins
+						auto label_col = style.text;
+						label_col.a = static_cast< std::uint8_t >( label_col.a * item_alpha );
+						const auto [lw, lh] = xdraw::measure_text( "browse skins" );
+						dl.text( ir.x + 8.0f, ir.y + ( k_item_h - lh ) * 0.5f + slide, "browse skins", label_col );
+
+						auto val_col = tokens::col_accent;
+						val_col.a = static_cast< std::uint8_t >( val_col.a * item_alpha );
+						const auto [vw, vh] = xdraw::measure_text( ">" );
+						dl.text( ir.right( ) - vw - 8.0f, ir.y + ( k_item_h - vh ) * 0.5f + slide, ">", val_col );
+						continue;
+					}
+
+					if ( i == 5 )
+					{
+						// remove skin
+						auto sep = style.separator;
+						sep.a = static_cast< std::uint8_t >( sep.a * item_alpha );
+						dl.line( ir.x + 6.0f, ir.y + slide, ir.right( ) - 6.0f, ir.y + slide, sep, 1.0f );
+
 						auto col = xdraw::color{ 235, 75, 75, 230 };
 						col = xui::lerp( col, xdraw::color{ 255, 100, 100, 255 }, ha );
 						col.a = static_cast< std::uint8_t >( col.a * item_alpha );
@@ -792,20 +858,20 @@ namespace rendering {
 						continue;
 					}
 
-					static constexpr const char* labels[ ]{ "", "stattrak", "wear", "seed" };
+					static constexpr const char* labels[ ]{ "", "", "stattrak", "wear", "seed" };
 
 					std::string value;
 					if ( it != skin_map( ).end( ) )
 					{
-						if ( i == 1 )
+						if ( i == 2 )
 						{
 							value = it->second.stattrak ? "on" : "off";
 						}
-						else if ( i == 2 )
+						else if ( i == 3 )
 						{
 							value = format_wear( it->second.wear );
 						}
-						else if ( i == 3 )
+						else if ( i == 4 )
 						{
 							value = std::to_string( it->second.seed );
 						}
@@ -833,14 +899,18 @@ namespace rendering {
 			}
 
 		private:
-			static constexpr auto k_item_count{ 5 };
+			[[nodiscard]] int get_count( ) const
+			{
+				const auto it = skin_map( ).find( this->m_def );
+				return ( it != skin_map( ).end( ) ) ? 6 : 3;
+			}
 			static constexpr auto k_item_h{ 24.0f };
 			static constexpr auto k_pad{ 4.0f };
 			static constexpr auto k_popup_w{ 200.0f };
 
 			[[nodiscard]] xui::rect get_popup( ) const
 			{
-				const auto h = k_pad * 2.0f + k_item_h * static_cast< float >( k_item_count );
+				const auto h = k_pad * 2.0f + k_item_h * static_cast< float >( this->get_count( ) );
 				return { this->m_anchor.x, this->m_anchor.y, k_popup_w, h };
 			}
 
@@ -854,8 +924,8 @@ namespace rendering {
 			std::string m_skin_name{};
 			std::uintptr_t m_sub_id{ xui::null_id };
 			float m_open_anim{};
-			std::array<float, 5> m_hover_anims{};
-			std::array<float, 5> m_item_anims{};
+			std::array<float, 6> m_hover_anims{};
+			std::array<float, 6> m_item_anims{};
 		};
 
 		static inline void draw_agent_team_card( const xui::rect& card, int team, float fade_alpha )
@@ -1219,7 +1289,7 @@ namespace rendering {
 				return;
 			}
 
-			if ( input.rmb_clicked && is_skinned && pk )
+			if ( input.rmb_clicked )
 			{
 				const auto ctx_id = xui::fnv1a( "skin_ctx" ) ^ static_cast< std::uintptr_t >( def->def_index );
 
@@ -1230,7 +1300,8 @@ namespace rendering {
 				else
 				{
 					const auto anchor = xui::rect{ input.mouse_x, input.mouse_y, 0.0f, 0.0f };
-					xui::overlays::add( std::make_unique<skin_context_overlay>( ctx_id, anchor, def->def_index, def->localized_name, pk->localized_name ) );
+					const std::string skin_name = ( is_skinned && pk ) ? pk->localized_name : "";
+					xui::overlays::add( std::make_unique<skin_context_overlay>( ctx_id, anchor, def->def_index, def->localized_name, skin_name ) );
 				}
 			}
 		}
@@ -1628,6 +1699,79 @@ namespace rendering {
 			{
 				skin.stattrak = false;
 			}
+
+			xui::layout::spacing( 6.0f );
+			if ( xui::button( "Configure Chams for this Weapon", 230.0f ) )
+			{
+				skins_ui.active_tab = browser_tab::chams;
+			}
+
+			xui::pop_id( );
+		}
+
+		static void draw_weapon_chams_editor( const features::changer::econ_item_system::item_def* weapon )
+		{
+			if ( !weapon ) return;
+			auto& esp = settings::g_esp;
+			const auto def_idx = weapon->def_index;
+			const bool is_glove = ( weapon->category == features::changer::econ_item_system::item_category::glove );
+			const auto chams_idx = chams_weapons::index( def_idx );
+
+			xui::push_id( static_cast<std::uintptr_t>( def_idx ) ^ 0xccccull );
+			xui::section_header( "WEAPON CHAMS CONFIGURATION" );
+
+			const auto full_title = std::format( "{} Viewmodel Chams", weapon->localized_name );
+			xui::text( rendering::theme::fit_text( full_title, xui::layout::item_width( ) ), tokens::col_text );
+
+			if ( is_glove )
+			{
+				xui::text( "Glove / Arm viewmodel chams layer applied to first-person arms", tokens::col_text_dim );
+				detail::draw_chams_config( "arms chams", "vm_arms_skins", esp.m_viewmodel.arms );
+			}
+			else if ( chams_idx >= 0 )
+			{
+				auto& entry = esp.m_viewmodel.individual.weapons[ chams_idx ];
+
+				xui::checkbox( "Override default weapon chams", entry.override_default );
+				if ( entry.override_default.value )
+				{
+					if ( xui::button( "Copy from default", 160.0f ) )
+					{
+						entry.cfg.copy_values_from( esp.m_viewmodel.weapon );
+					}
+					xui::layout::same_line( );
+					if ( xui::button( "Reset to vanilla", 140.0f ) )
+					{
+						entry.cfg.enabled.value = false;
+						entry.cfg.primary.enabled.value = false;
+						entry.cfg.secondary.enabled.value = false;
+						entry.cfg.overlay.enabled.value = false;
+					}
+
+					xui::layout::spacing( 4.0f );
+					detail::draw_chams_config( "weapon chams", "vm_indiv_skins", entry.cfg );
+				}
+				else
+				{
+					xui::layout::spacing( 6.0f );
+					xui::text( "This weapon is currently using the global default weapon chams.", tokens::col_text_dim );
+					if ( xui::button( "Enable custom chams for this weapon", 260.0f ) )
+					{
+						entry.override_default.value = true;
+						entry.cfg.copy_values_from( esp.m_viewmodel.weapon );
+					}
+					xui::layout::spacing( 10.0f );
+					xui::layout::separator( );
+					xui::text( "GLOBAL WEAPON CHAMS (DEFAULT)", tokens::col_accent );
+					detail::draw_chams_config( "default weapon chams", "vm_def_skins", esp.m_viewmodel.weapon );
+				}
+			}
+			else
+			{
+				xui::text( "Using global default weapon chams", tokens::col_text_dim );
+				detail::draw_chams_config( "default weapon chams", "vm_def_skins_gen", esp.m_viewmodel.weapon );
+			}
+
 			xui::pop_id( );
 		}
 
@@ -2028,7 +2172,37 @@ namespace rendering {
 			back_text.a = static_cast< std::uint8_t >( back_text.a * fade_alpha );
 			dl.text( back_rect.x + ( back_rect.w - bw ) * 0.5f, back_rect.y + ( back_rect.h - bh ) * 0.5f, "back", back_text );
 
-			xui::layout::set_cursor( back_rect.right( ) + 6.0f - win->bounds.x, bar_y - win->bounds.y );
+			float next_header_x = back_rect.right( ) + 6.0f;
+			if ( detail::skins_ui.browsing_agent_team == 0 )
+			{
+				const float tab_w = 64.0f;
+				const auto skins_tab = xui::rect{ next_header_x, bar_y, tab_w, bar_h };
+				const auto chams_tab = xui::rect{ skins_tab.right( ) + 4.0f, bar_y, tab_w, bar_h };
+				next_header_x = chams_tab.right( ) + 8.0f;
+
+				const bool is_skins = ( detail::skins_ui.active_tab == detail::browser_tab::skins );
+				const bool is_chams = ( detail::skins_ui.active_tab == detail::browser_tab::chams );
+
+				const bool skins_h = skin_workspace::hovered( skins_tab );
+				const bool chams_h = skin_workspace::hovered( chams_tab );
+
+				if ( skins_h && input.mouse_clicked ) detail::skins_ui.active_tab = detail::browser_tab::skins;
+				if ( chams_h && input.mouse_clicked ) detail::skins_ui.active_tab = detail::browser_tab::chams;
+
+				auto skins_bg = is_skins ? tokens::col_accent : ( skins_h ? s.button_hovered : s.button_bg );
+				skins_bg.a = static_cast< std::uint8_t >( skins_bg.a * fade_alpha );
+				dl.rect_filled( skins_tab.x, skins_tab.y, skins_tab.w, skins_tab.h, skins_bg, xdraw::corner_radius{ s.button_rounding } );
+				const auto [stw, sth] = xdraw::measure_text( "Skins" );
+				dl.text( skins_tab.x + ( skins_tab.w - stw ) * 0.5f, skins_tab.y + ( skins_tab.h - sth ) * 0.5f, "Skins", is_skins ? tokens::col_text : tokens::col_text_dim );
+
+				auto chams_bg = is_chams ? tokens::col_accent : ( chams_h ? s.button_hovered : s.button_bg );
+				chams_bg.a = static_cast< std::uint8_t >( chams_bg.a * fade_alpha );
+				dl.rect_filled( chams_tab.x, chams_tab.y, chams_tab.w, chams_tab.h, chams_bg, xdraw::corner_radius{ s.button_rounding } );
+				const auto [ctw, cth] = xdraw::measure_text( "Chams" );
+				dl.text( chams_tab.x + ( chams_tab.w - ctw ) * 0.5f, chams_tab.y + ( chams_tab.h - cth ) * 0.5f, "Chams", is_chams ? tokens::col_text : tokens::col_text_dim );
+			}
+
+			xui::layout::set_cursor( next_header_x - win->bounds.x, bar_y - win->bounds.y );
 			xui::text_input( "##skin_search", detail::skins_ui.search_buf, 64, "search..." );
 
 			auto grid_top_y = bar_y + bar_h + 12.0f;
@@ -2137,6 +2311,16 @@ namespace rendering {
 				editor_input.mouse_clicked = false;
 				editor_input.mouse_double_clicked = false;
 			}
+			if ( detail::skins_ui.active_tab == detail::browser_tab::chams )
+			{
+				detail::draw_weapon_chams_editor( weapon );
+				editor_input.mouse_clicked = saved_clicked;
+				editor_input.mouse_double_clicked = saved_double_clicked;
+				win->content_h = grid_top_y - win->bounds.y + xui::layout::get_cursor( ).second + 30.0f;
+				xui::end_child( );
+				return;
+			}
+
 			detail::draw_skin_editor( weapon );
 			editor_input.mouse_clicked = saved_clicked;
 			editor_input.mouse_double_clicked = saved_double_clicked;

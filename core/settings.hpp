@@ -686,7 +686,7 @@ namespace settings {
                 {
                         struct entry
                         {
-                                config::val<bool> override_default{ false };
+                                xui::setting override_default{ false, {}, "override default", "" };
                                 chams_config cfg{};
                         };
                         std::array<entry, chams_weapons::entries.size()> weapons{};
@@ -696,7 +696,7 @@ namespace settings {
                                 for (std::size_t i = 0; i < weapons.size(); ++i)
                                 {
                                         const auto category = std::string(prefix) + " " + std::to_string(chams_weapons::entries[i].id);
-                                        weapons[i].override_default.reg(category, "override default");
+                                        weapons[i].override_default.category = category;
                                         weapons[i].cfg.init(category);
                                 }
                         }

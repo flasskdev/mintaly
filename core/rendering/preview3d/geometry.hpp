@@ -19,6 +19,7 @@ struct vec4 { float x{1.0f}, y{1.0f}, z{1.0f}, w{1.0f}; };
 inline vec3 operator+(vec3 a, vec3 b) { return {a.x+b.x,a.y+b.y,a.z+b.z}; }
 inline vec3 operator-(vec3 a, vec3 b) { return {a.x-b.x,a.y-b.y,a.z-b.z}; }
 inline vec3 operator*(vec3 a, float s) { return {a.x*s,a.y*s,a.z*s}; }
+inline vec4 operator*(vec4 a, float s) { return {a.x*s,a.y*s,a.z*s,a.w}; }
 inline vec3 operator/(vec3 a, float s) { return a*(1.0f/s); }
 inline float dot(vec3 a, vec3 b) { return a.x*b.x+a.y*b.y+a.z*b.z; }
 inline vec3 cross(vec3 a, vec3 b) { return {a.y*b.z-a.z*b.y,a.z*b.x-a.x*b.z,a.x*b.y-a.y*b.x}; }

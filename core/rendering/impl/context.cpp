@@ -113,6 +113,8 @@ namespace rendering {
 		xdraw::begin_frame( true );
 		features::changer::g_econ_item_system.begin_image_frame( );
 		g_menu.update_ui_state( );
+		features::changer::g_inspect_preview.set_available( true );
+		features::changer::g_inspect_preview.on_render_frame( g_menu.is_open( ) );
 		{
 			auto& dl = xdraw::get( xdraw::layer::bottom );
 

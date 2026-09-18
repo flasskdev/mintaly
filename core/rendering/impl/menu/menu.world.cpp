@@ -159,7 +159,7 @@ namespace rendering {
             if (chams_weapon > 0) {
                 auto& entry = item.m_chams.individual.weapons[chams_weapon - 1];
                 xui::push_id(static_cast<std::uintptr_t>(chams_weapon));
-                xui::checkbox("override group", entry.override_default.value);
+                xui::checkbox("override group", entry.override_default);
                 if (entry.override_default.value) {
                     xui::toggle("individual chams", entry.cfg.enabled);
                     draw_chams_layer("primary##individual", "##item_individual_primary", entry.cfg.primary);

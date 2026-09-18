@@ -776,4 +776,121 @@ namespace nemesis::preview3d {
         return result;
     }
 
+    inline mesh generate_standalone_weapon_mesh(int weapon_def_index, std::string_view weapon_name, int paint_kit_id, std::string_view skin_name) {
+        mesh base_mesh = generate_weapon_mesh(weapon_def_index, weapon_name);
+        const vec4 skin_col = get_skin_theme_color(paint_kit_id, skin_name);
+
+        mesh_builder mb;
+        for (std::size_t i = 0; i + 2 < base_mesh.vertices.size(); i += 3) {
+            vertex a = base_mesh.vertices[i];
+            vertex b = base_mesh.vertices[i+1];
+            vertex c = base_mesh.vertices[i+2];
+
+            if (paint_kit_id > 0 || !skin_name.empty()) {
+                a.color = skin_col;
+                b.color = skin_col;
+                c.color = skin_col;
+            } else {
+                vec4 vanilla_steel{0.32f, 0.35f, 0.39f, 1.0f};
+                a.color = vanilla_steel;
+                b.color = vanilla_steel;
+                c.color = vanilla_steel;
+            }
+            mb.add_triangle(a, b, c);
+        }
+
+        mesh result;
+        result.vertices = std::move(mb.vertices);
+        finalize_mesh(result, 666000 + weapon_def_index * 1000 + paint_kit_id);
+        return result;
+    }
+
+    inline mesh generate_gloves_mesh(int glove_def_index, int team = 3) {
+        mesh_builder mb;
+        const auto pal = get_agent_palette(team, 0, glove_def_index);
+
+        const vec3 l_pos{-0.42f, -0.05f, 0.0f};
+        const vec3 r_pos{+0.42f, -0.05f, 0.0f};
+
+        for (int side_idx = 0; side_idx < 2; ++side_idx) {
+            const float sign = (side_idx == 0) ? -1.0f : +1.0f;
+            const vec3 pos = (side_idx == 0) ? l_pos : r_pos;
+
+            // Forearm cuff
+            mb.add_cylinder({pos.x, pos.y - 0.65f, pos.z - 0.12f}, {pos.x, pos.y - 0.24f, pos.z}, 0.18f, 12, pal.uniform_base);
+            // Elastic wrist cinch strap
+            mb.add_box({pos.x, pos.y - 0.22f, pos.z}, {0.20f, 0.040f, 0.15f}, pal.belt_gear);
+            mb.add_box({pos.x + sign * 0.11f, pos.y - 0.22f, pos.z + 0.14f}, {0.045f, 0.030f, 0.015f}, {0.75f, 0.75f, 0.80f, 1.0f});
+
+            // Palm & back of hand
+            mb.add_box({pos.x, pos.y, pos.z}, {0.18f, 0.20f, 0.09f}, pal.gloves_primary);
+            // Armored knuckle guard plate
+            mb.add_box({pos.x, pos.y + 0.05f, pos.z + 0.085f}, {0.16f, 0.08f, 0.030f}, pal.gloves_secondary);
+
+            // 4 fingers
+            for (int f = 0; f < 4; ++f) {
+                float fx = pos.x - 0.12f + f * 0.080f;
+                mb.add_cylinder({fx, pos.y + 0.18f, pos.z + 0.02f}, {fx, pos.y + 0.40f, pos.z + 0.04f}, 0.035f, 8, pal.gloves_primary);
+                mb.add_box({fx, pos.y + 0.29f, pos.z + 0.050f}, {0.028f, 0.035f, 0.014f}, pal.gloves_secondary);
+                mb.add_cylinder({fx, pos.y + 0.40f, pos.z + 0.04f}, {fx, pos.y + 0.58f, pos.z + 0.05f}, 0.030f, 8, pal.gloves_primary);
+            }
+
+            // Thumb
+            mb.add_cylinder({pos.x + sign * 0.16f, pos.y + 0.02f, pos.z + 0.03f},
+                            {pos.x + sign * 0.29f, pos.y + 0.22f, pos.z + 0.07f}, 0.038f, 8, pal.gloves_primary);
+            mb.add_box({pos.x + sign * 0.24f, pos.y + 0.13f, pos.z + 0.10f}, {0.032f, 0.050f, 0.016f}, pal.gloves_secondary);
+        }
+
+        mesh result;
+        result.vertices = std::move(mb.vertices);
+        finalize_mesh(result, 777000 + glove_def_index);
+        return result;
+    }
+
+    inline mesh generate_music_mesh(int music_kit_id, std::string_view name) {
+        mesh_builder mb;
+        vec4 theme_col = get_skin_theme_color(music_kit_id, name);
+        if (music_kit_id <= 0) {
+            theme_col = {0.88f, 0.36f, 0.14f, 1.0f};
+        }
+
+        const vec4 vinyl_black{0.06f, 0.06f, 0.07f, 1.0f};
+        const vec4 groove_col{0.13f, 0.13f, 0.15f, 1.0f};
+
+        // Main vinyl record body
+        mb.add_cylinder({0.0f, -0.015f, 0.0f}, {0.0f, +0.015f, 0.0f}, 0.88f, 28, vinyl_black);
+
+        // Concentric track grooves
+        mb.add_cylinder({0.0f, -0.016f, 0.0f}, {0.0f, +0.016f, 0.0f}, 0.80f, 24, groove_col);
+        mb.add_cylinder({0.0f, -0.017f, 0.0f}, {0.0f, +0.017f, 0.0f}, 0.72f, 24, vinyl_black);
+        mb.add_cylinder({0.0f, -0.018f, 0.0f}, {0.0f, +0.018f, 0.0f}, 0.63f, 20, groove_col);
+        mb.add_cylinder({0.0f, -0.019f, 0.0f}, {0.0f, +0.019f, 0.0f}, 0.54f, 20, vinyl_black);
+        mb.add_cylinder({0.0f, -0.020f, 0.0f}, {0.0f, +0.020f, 0.0f}, 0.45f, 18, groove_col);
+
+        // Center vinyl paper label
+        mb.add_cylinder({0.0f, -0.021f, 0.0f}, {0.0f, +0.021f, 0.0f}, 0.33f, 20, theme_col);
+        // Center run-out ring
+        mb.add_cylinder({0.0f, -0.022f, 0.0f}, {0.0f, +0.022f, 0.0f}, 0.13f, 16, {0.92f, 0.92f, 0.94f, 1.0f});
+        // Center spindle hole
+        mb.add_cylinder({0.0f, -0.023f, 0.0f}, {0.0f, +0.023f, 0.0f}, 0.045f, 12, {0.02f, 0.02f, 0.03f, 1.0f});
+
+        // 2. Vinyl Jacket / Sleeve standing behind the disc
+        const vec3 sleeve_center{-0.42f, 0.32f, -0.32f};
+        const vec4 sleeve_bg{0.13f, 0.15f, 0.20f, 1.0f};
+        const vec4 sleeve_border = theme_col * 0.85f;
+
+        mb.add_box(sleeve_center, {0.52f, 0.52f, 0.032f}, sleeve_bg);
+        mb.add_box({sleeve_center.x, sleeve_center.y, sleeve_center.z + 0.033f}, {0.44f, 0.44f, 0.005f}, theme_col);
+
+        // 3. StatTrak MVP Counter module on bottom corner
+        const vec3 st_pos{sleeve_center.x + 0.30f, sleeve_center.y - 0.36f, sleeve_center.z + 0.050f};
+        mb.add_box(st_pos, {0.13f, 0.060f, 0.022f}, {0.09f, 0.09f, 0.11f, 1.0f});
+        mb.add_box({st_pos.x, st_pos.y, st_pos.z + 0.023f}, {0.10f, 0.040f, 0.005f}, {0.96f, 0.48f, 0.08f, 1.0f});
+
+        mesh result;
+        result.vertices = std::move(mb.vertices);
+        finalize_mesh(result, 888000 + music_kit_id);
+        return result;
+    }
+
 } // namespace nemesis::preview3d

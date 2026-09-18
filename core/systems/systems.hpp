@@ -648,8 +648,15 @@ namespace systems {
 
 		bool m_initialized = false;
 		void* m_current_texture = nullptr;
+		bool m_panel_spawned = false;
+		int m_spawn_throttle = 0;
+		void* m_root_panel = nullptr;
 	public:
 		bool initialize( );
+		void update( );
+		void spawn_preview_panel( );
+		void set_item( int def_index );
+		void set_agent( const std::string& model_path );
 
 		bool on_generate_primitives(
 			std::uintptr_t owner_entity,
@@ -666,14 +673,16 @@ namespace systems {
 		ID3D11ShaderResourceView* get_preview_srv( ) const {
 			if ( !m_current_texture ) return nullptr;
 			const auto* tex = reinterpret_cast<const c_texture_dx11*>( m_current_texture );
-			return tex ? tex->m_texture_SRV0 : nullptr;
+			return tex ? ( tex->m_texture_SRV0 ? tex->m_texture_SRV0 : tex->m_texture_SRV1 ) : nullptr;
 		}
 
-		void reset( ) { m_current_texture = nullptr; }
+		void reset( ) { m_current_texture = nullptr; m_panel_spawned = false; m_root_panel = nullptr; }
 
 	void shutdown( ) {
 		m_current_texture = nullptr;
 		m_initialized = false;
+		m_panel_spawned = false;
+		m_root_panel = nullptr;
 	}
 	};
 
