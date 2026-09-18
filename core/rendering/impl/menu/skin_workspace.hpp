@@ -225,6 +225,8 @@ struct profile { std::string name; cosmetics values; };
 
 class profile_store {
     bool initialized_ = false, writable_ = false;
+    int pending_load_ = -1;
+    nlohmann::json pending_values_;
     std::filesystem::path path_;
     bool persist(const std::vector<profile>& next) {
         if (!writable_) return false;
@@ -299,9 +301,32 @@ public:
         auto next = entries; next[selected].values = cosmetics::capture();
         if (persist(next)) entries = std::move(next);
     }
-    void select(int index) {
-        if (dialog_busy || index < 0 || index >= static_cast<int>(entries.size())) return;
+    bool select(int index) {
+        if (dialog_busy || index < 0 || index >= static_cast<int>(entries.size())) return false;
+        const auto current = cosmetics::capture().encode();
+        const bool dirty = selected >= 0 && selected < static_cast<int>(entries.size()) && current != entries[selected].values.encode();
+        if (dirty && (pending_load_ != index || pending_values_ != current)) {
+            pending_load_ = index; pending_values_ = current;
+            status = "Unsaved: select again to discard";
+            return false;
+        }
         entries[index].values.apply(); selected = index; status = "Loaded";
+        pending_load_ = -1; pending_values_ = {};
+        return true;
+    }
+    bool rename(std::string name) {
+        if (selected < 0 || selected >= static_cast<int>(entries.size()) || !writable_) return false;
+        const auto first = name.find_first_not_of(" \t\r\n");
+        if (first == std::string::npos) { status = "Name cannot be empty"; return false; }
+        name = name.substr(first, name.find_last_not_of(" \t\r\n") - first + 1);
+        if (name.size() > 64 || std::any_of(name.begin(), name.end(), [](unsigned char c) { return c < 32; })) {
+            status = "Invalid profile name"; return false;
+        }
+        for (int i = 0; i < static_cast<int>(entries.size()); ++i)
+            if (i != selected && lower(entries[i].name) == lower(name)) { status = "Name already exists"; return false; }
+        auto next = entries; next[selected].name = std::move(name);
+        if (!persist(next)) return false;
+        entries = std::move(next); return true;
     }
     void remove(int index) {
         if (index < 0 || index >= static_cast<int>(entries.size())) return;
@@ -341,7 +366,7 @@ public:
             if (input.mouse_clicked) {
                 if (delete_row_ == i && input.mouse_x >= row.right() - 72.0f) {
                     profiles.remove(i); delete_row_ = -1;
-                } else if (!dialog_busy) { profiles.select(i); m_closed = true; }
+                } else if (!dialog_busy) { m_closed = profiles.select(i); }
                 return true;
             }
         }
@@ -470,6 +495,25 @@ inline bool sidebar(const xui::rect& r) {
         if (profiles.ready()) profiles.save(); else profiles.load(true);
     }
 
+    static int editing_profile = -1;
+    static std::string profile_name;
+    if (editing_profile != profiles.selected) {
+        editing_profile = profiles.selected;
+        profile_name = editing_profile >= 0 ? profiles.entries[editing_profile].name : "";
+    }
+    if (profiles.selected >= 0 && !dialog_busy) {
+        const auto* parent = xui::layout::current_window();
+        if (parent) {
+            xui::layout::set_cursor(r.x + 14.0f - parent->bounds.x, selector.bottom() + 6.0f - parent->bounds.y);
+            if (xui::begin_child("##cosmetic_profile_name", r.w - 108.0f, 34.0f, false, false)) {
+                xui::text_input("##profile_name", profile_name, 64, "Profile name");
+                xui::end_child();
+            }
+        }
+        if (button({r.right() - 86.0f, selector.bottom() + 6.0f, 72.0f, 30.0f}, "Rename"))
+            profiles.rename(profile_name);
+    }
+
     // 2. Bottom Section of main panel: CT/T Loadouts in a single row with animated width & transitions
     constexpr float btn_h = 32.0f;
     const float loadout_top = main.bottom() - 12.0f - btn_h;
@@ -540,7 +584,7 @@ inline bool sidebar(const xui::rect& r) {
     }
 
     // 3. Middle Section: Interactive 3D Agent Preview (standing in buy-menu stance holding weapon)
-    const float prev_y = selector.bottom() + 10.0f;
+    const float prev_y = selector.bottom() + (profiles.selected >= 0 ? 48.0f : 10.0f);
     const float prev_h = std::max(80.0f, loadout_top - 10.0f - prev_y);
     const xui::rect preview{r.x + 14.0f, prev_y, r.w - 28.0f, prev_h};
 
@@ -665,7 +709,7 @@ inline bool sidebar(const xui::rect& r) {
         const std::string title = kit ? (weapon->localized_name + " | " + kit->localized_name) : weapon->localized_name;
         dl.text(preview.x + 20.0f, preview.bottom() - 21.0f, theme::fit_text(title, preview.w - 82.0f), tokens::col_text);
 
-        const auto* wep_img = econ.get_skin_image(weapon->image_inventory);
+        const auto* wep_img = econ.get_skin_image(weapon_id, resolved_paint);
         if (wep_img) {
             const xui::rect wep_r{preview.right() - 56.0f, preview.bottom() - 28.0f, 48.0f, 22.0f};
             image(wep_r, wep_img);

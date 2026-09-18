@@ -111,6 +111,7 @@ namespace rendering {
 		this->m_context->OMSetRenderTargets( 1, &this->m_rtv, nullptr );
 
 		xdraw::begin_frame( true );
+		features::changer::g_econ_item_system.begin_image_frame( );
 		g_menu.update_ui_state( );
 		{
 			auto& dl = xdraw::get( xdraw::layer::bottom );

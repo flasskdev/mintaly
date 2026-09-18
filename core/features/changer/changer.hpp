@@ -148,6 +148,7 @@ namespace features::changer {
 		bool poll_schema( );
 
 		void flush_skin_images( );
+		void begin_image_frame( ) { this->m_uploads_remaining = 2; }
 
 	private:
 		enum class image_state : std::uint8_t
@@ -204,8 +205,11 @@ namespace features::changer {
 			std::uint16_t archive_index{};
 			std::uint32_t offset{};
 			std::uint32_t length{};
+			std::vector<std::byte> preload{};
 		};
 
+		std::uint64_t m_vpk_data_offset{};
+		int m_uploads_remaining{ 2 };
 		std::unordered_map<std::string, vpk_file_entry> m_vpk_index{};
 		bool m_vpk_indexed{};
 		std::filesystem::path m_vpk_directory{};

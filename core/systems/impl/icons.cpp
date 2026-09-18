@@ -1,5 +1,6 @@
 #include <pch/pch.hpp>
 #include <utilities/game_path.hpp>
+#include <utilities/source_resource.hpp>
 #include "../systems.hpp"
 
 namespace systems {
@@ -210,10 +211,10 @@ namespace systems {
 					vpk_entry entry{};
 					file.read( reinterpret_cast< char* >( &entry ), sizeof( entry ) );
 
-					if ( entry.preload_bytes > 0 )
-					{
-						file.seekg( entry.preload_bytes, std::ios::cur );
-					}
+					if ( !file || entry.terminator != 0xffff || file.tellg( ) > tree_end ||
+						entry.preload_bytes > tree_end - file.tellg( ) ) return false;
+					std::vector<std::byte> raw( entry.preload_bytes );
+					if ( !raw.empty( ) && !file.read( reinterpret_cast<char*>( raw.data( ) ), raw.size( ) ) ) return false;
 
 					if ( !is_equipment )
 					{
@@ -228,7 +229,18 @@ namespace systems {
 					char archive_name[ 32 ];
 					std::snprintf( archive_name, sizeof( archive_name ), "pak01_%03d.vpk", entry.archive_index );
 
-					this->cache_svg_bytes( base_dir / archive_name, filename, entry.entry_offset, entry.entry_length );
+					if ( entry.entry_length > 8u * 1024u * 1024u ) continue;
+					if ( entry.entry_length )
+					{
+						std::ifstream archive( entry.archive_index == 0x7fff ? path : base_dir / archive_name, std::ios::binary );
+						const auto offset = static_cast<std::uint64_t>( entry.entry_offset ) +
+							( entry.archive_index == 0x7fff ? static_cast<std::uint64_t>( tree_end ) : 0 );
+						archive.seekg( static_cast<std::streamoff>( offset ) );
+						raw.resize( entry.preload_bytes + entry.entry_length );
+						if ( !archive.read( reinterpret_cast<char*>( raw.data( ) + entry.preload_bytes ), entry.entry_length ) ) continue;
+					}
+					auto svg = this->decompile_vsvg( raw );
+					if ( !svg.empty( ) ) this->m_pending_svgs[ filename ] = std::move( svg );
 				}
 			}
 		}
@@ -260,6 +272,24 @@ namespace systems {
 	}
 
 	std::vector<std::byte> icons::decompile_vsvg( std::span<const std::byte> data ) const
+	{
+		// Both raw VSVG and compiled VSVG_C occur in equipment archives.
+		const auto block = source_resource::data_block( data );
+		const auto svg_bytes = block ? *block : data;
+		if ( !svg_bytes.empty( ) )
+		{
+			const std::string_view text( reinterpret_cast<const char*>( svg_bytes.data( ) ), svg_bytes.size( ) );
+			const auto begin = text.find( "<svg" );
+			const auto end = text.rfind( "</svg>" );
+			if ( begin != std::string_view::npos && end != std::string_view::npos && end >= begin )
+				return { svg_bytes.begin( ) + begin, svg_bytes.begin( ) + end + 6 };
+		}
+		return {};
+	}
+
+	/* Legacy parser retained below is not used. */
+#if 0
+	std::vector<std::byte> legacy_decompile_vsvg( std::span<const std::byte> data )
 	{
 		const auto raw = reinterpret_cast< const std::uint8_t* >( data.data( ) );
 		const auto size = data.size( );
@@ -331,4 +361,5 @@ namespace systems {
 		return {};
 	}
 
+#endif
 } // namespace systems
