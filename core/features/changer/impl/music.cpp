@@ -187,6 +187,8 @@ namespace {
 
 	void music::on_round_mvp( void* event )
 	{
+		diag::writef( diag::level::info, "[music-sync] round_mvp received tick=%llu thread=%lu",
+			static_cast<unsigned long long>( GetTickCount64( ) ), GetCurrentThreadId( ) );
 		this->clear_mvp( );
 		std::unique_lock lock( s_mvp_mutex );
 		if ( !event )
@@ -227,6 +229,11 @@ namespace {
 		s_last_mvp_kit_time = std::chrono::steady_clock::now( );
 		// Engine callbacks can re-enter play_music(), which takes the same mutex.
 		lock.unlock( );
+		diag::writef( diag::level::info,
+			"[music-sync] round_mvp selected tick=%llu thread=%lu controller_found=%d local_winner=%d override_kit=%d winner_kit=%d listener_kit=%d",
+			static_cast<unsigned long long>( GetTickCount64( ) ), GetCurrentThreadId( ),
+			mvp_controller != 0, mvp_controller != 0 && mvp_controller == local_controller,
+			target_id, winner_kit, settings::g_changer.music.id );
 
 		if ( target_id > 0 && mvp_controller )
 		{
