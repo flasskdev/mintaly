@@ -154,6 +154,20 @@ namespace rendering {
                 xui::end_popup();
             }
 
+            static int chams_weapon = 0;
+            xui::combo("weapon##item_chams", chams_weapon, chams_weapons::names.data(), static_cast<int>(chams_weapons::names.size()));
+            if (chams_weapon > 0) {
+                auto& entry = item.m_chams.individual.weapons[chams_weapon - 1];
+                xui::push_id(static_cast<std::uintptr_t>(chams_weapon));
+                xui::checkbox("override group", entry.override_default.value);
+                if (entry.override_default.value) {
+                    xui::toggle("individual chams", entry.cfg.enabled);
+                    draw_chams_layer("primary##individual", "##item_individual_primary", entry.cfg.primary);
+                    draw_chams_layer("through wall##individual", "##item_individual_secondary", entry.cfg.secondary, true);
+                }
+                xui::pop_id();
+            }
+
             xui::toggle("item glow", item.m_glow.group_toggle(item_group));
             if (xui::begin_popup("##ig_grp_cfg", 220.0f))
             {
