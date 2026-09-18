@@ -317,32 +317,22 @@ namespace features::changer {
 
 	void gloves::apply( std::uintptr_t pawn, std::uintptr_t item_view, int team, const econ_item_system::item_def& def, const settings::changer::applied_skin& skin, std::uint32_t account_id )
 	{
-		if ( !item_view )
-		{
-			return;
-		}
+		if ( !item_view ) return;
 
 		const bool is_local = ( pawn == systems::g_local.get( ).pawn );
-		if ( !is_local )
-		{
-			// Only update engine-owned, already initialized attributes. Never invent an attribute manager.
-			std::array<attribute_state, 3> attributes{};
-			if ( !this->read_paint_attributes( item_view, attributes ) ||
-				 !std::all_of( attributes.begin( ), attributes.end( ), []( const auto& a ) { return a.present; } ) ) return;
-			const auto count = memory::read<int>( item_view + detail::item_view_attribute_count_offset );
-			const auto data = memory::read<std::uintptr_t>( item_view + detail::item_view_attribute_data_offset );
-			const std::array<float, 3> values{ static_cast<float>( skin.paint_kit_id ), static_cast<float>( skin.seed ), skin.wear };
-			for ( int i = 0; i < count; ++i )
-			{
-				const auto attribute = data + static_cast<std::ptrdiff_t>( i ) * detail::item_attribute_stride;
-				const auto definition = memory::read<std::uint16_t>( attribute + detail::item_attribute_definition_offset );
-				for ( std::size_t slot = 0; slot < values.size( ); ++slot )
-					if ( definition == detail::glove_attribute_indices[slot] )
-						memory::write<float>( attribute + detail::item_attribute_value_offset, values[slot] );
-			}
-			if ( !this->paint_attributes_match( item_view, skin ) ) return;
-		}
+		const auto set_attribute = PATTERN( patterns::econ_item_view_set_attribute );
+		if ( !set_attribute ) return;
 
+		// The engine owns attribute allocation and notifications for both local and
+		// remote gloves. An empty valid vector is not a reason to skip application.
+		const cosmetic_paint::values values{ static_cast<float>( skin.paint_kit_id ), static_cast<float>( skin.seed ), skin.wear };
+		if ( !cosmetic_paint::ensure<std::array<attribute_state, 3>>( values,
+			[&]( std::array<attribute_state, 3>& attributes ) { return this->read_paint_attributes( item_view, attributes ); },
+			[&]( std::size_t slot, float value ) {
+				memory::safe_call<void>( set_attribute, item_view, detail::glove_attribute_names[ slot ], value );
+			} ) ) return;
+
+		// Publish identity and refresh only after a fresh read confirms all attributes.
 		memory::write<std::uint16_t>( item_view + SCHEMA( "C_EconItemView", "m_iItemDefinitionIndex"_hash ), static_cast< std::uint16_t >( def.def_index ) );
 		memory::write<std::uint64_t>( item_view + SCHEMA( "C_EconItemView", "m_iItemID"_hash ), detail::faux_item_id );
 		memory::write<std::uint32_t>( item_view + SCHEMA( "C_EconItemView", "m_iItemIDHigh"_hash ), static_cast< std::uint32_t >( detail::faux_item_id >> 32 ) );
@@ -352,19 +342,7 @@ namespace features::changer {
 		memory::write<bool>( item_view + SCHEMA( "C_EconItemView", "m_bInitialized"_hash ), true );
 		memory::write<bool>( item_view + SCHEMA( "C_EconItemView", "m_bDisallowSOC"_hash ), true );
 
-		// Remote attributes are updated above without calling an uninitialized manager.
-		if ( is_local )
-		{
-			const auto set_attribute = PATTERN( patterns::econ_item_view_set_attribute );
-			if ( set_attribute )
-			{
-				memory::safe_call<void>( set_attribute, item_view, detail::glove_attribute_names[ 0 ], static_cast< float >( skin.paint_kit_id ) );
-				memory::safe_call<void>( set_attribute, item_view, detail::glove_attribute_names[ 1 ], static_cast< float >( skin.seed ) );
-				memory::safe_call<void>( set_attribute, item_view, detail::glove_attribute_names[ 2 ], skin.wear );
-			}
-
-			this->m_overridden = true;
-		}
+		if ( is_local ) this->m_overridden = true;
 		this->refresh( pawn, item_view, team );
 	}
 

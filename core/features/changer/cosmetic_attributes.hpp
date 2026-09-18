@@ -8,6 +8,7 @@
 #include <core/settings.hpp>
 #include <core/systems/systems.hpp>
 #include <utilities/memory/memory.hpp>
+#include <utilities/paint_attributes.hpp>
 #include <protection/game_addresses.hpp>
 
 namespace features::changer::cosmetic_attributes {
