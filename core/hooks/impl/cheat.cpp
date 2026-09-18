@@ -141,6 +141,12 @@ namespace hooks {
 			return false;
 		}
 
+		const auto preview_address = systems::model_preview::resource_view_address();
+		const bool preview_ready = preview_address && hooking::manager::create({
+			{ &m_preview_resource_view, &preview_resource_view, "preview_resource_view", preview_address }
+		});
+		systems::g_model_preview.set_capture_available(preview_ready);
+
 		const hooking::manager::entry feature_hooks[] {
 			{ &m_cmd_interpreter, &cmd_interpreter, xs ("cmd_interpreter"), PATTERN (patterns::cmd_interpreter) },
 			{ &m_frame_stage_notify, &frame_stage_notify, xs ("frame_stage_notify"), PATTERN (patterns::frame_stage_notify) },
@@ -197,6 +203,9 @@ namespace hooks {
 			}
 		}
 
+		features::changer::g_inspect_preview.set_available(m_frame_stage_notify.is_enabled());
+		systems::g_model_preview.set_capture_available(preview_ready && m_frame_stage_notify.is_enabled());
+
 		if (unavailable_hooks) {
 			logging::console::print (
 				xs ("feature hooks initialized with {} unavailable"),
@@ -225,6 +234,8 @@ namespace hooks {
 		m_is_glowing.reset( );
 		m_get_glow_color.reset( );
 		m_generate_primitives.reset( );
+		m_preview_resource_view.reset( );
+		systems::g_model_preview.set_capture_available(false);
 		m_parse_report_hit.reset( );
 		m_vote_start.reset( );
 		m_vote_pass.reset( );
@@ -319,6 +330,7 @@ namespace hooks {
 			return m_resize_buffers.call<long>( thisptr, buffer_count, width, height, new_format, swap_chain_flags );
 		}
 
+		systems::g_model_preview.reset();
 		rendering::g_context.on_resize_buffers( );
 
 		const auto result = m_resize_buffers.call<long>( thisptr, buffer_count, width, height, new_format, swap_chain_flags );
@@ -473,6 +485,8 @@ namespace hooks {
 		}
 
 		systems::g_model_preview.update( );
+		if (stage == 6 || stage == 7)
+			features::changer::g_inspect_preview.on_frame_stage_notify();
 		features::misc::g_auto_accept.run( );
 		if ( !local_player_controller || is_level_shutting_down( ) )
 		{
@@ -498,9 +512,6 @@ namespace hooks {
 		// Music belongs to the controller and must work while dead or without a camera.
 		if ( stage == 6 || stage == 7 )
 			features::changer::g_music.on_frame_stage_notify( );
-
-		if ( stage == 6 || stage == 7 )
-			features::changer::g_inspect_preview.on_frame_stage_notify( );
 
 		if ( systems::g_local.get( ).is_valid( ) && systems::g_view.has_camera( ) )
 		{
@@ -1047,6 +1058,16 @@ namespace hooks {
 		m_get_glow_color.call<void>( glow_property, color );
 	}
 
+	ID3D11ShaderResourceView* __fastcall cheat::preview_resource_view(
+        std::uintptr_t context, std::uintptr_t handle, char view, char alternate,
+        const char* name)
+    {
+        auto* srv = m_preview_resource_view.call<ID3D11ShaderResourceView*>(context, handle, view, alternate, name);
+        if (!lifecycle::is_unloading())
+            systems::g_model_preview.capture_resource(handle, alternate, srv);
+        return srv;
+    }
+
 	void __fastcall cheat::generate_primitives( std::uintptr_t thisptr, std::uintptr_t scene_object, std::uintptr_t scene_view, std::uintptr_t primitive_buffer )
 	{
 		if ( lifecycle::is_unloading( ) || is_level_shutting_down( ) )
@@ -1057,16 +1078,6 @@ namespace hooks {
 
 		if ( scene_object )
 		{
-			systems::g_model_preview.on_generate_primitives(
-				0,
-				0,
-				scene_object,
-				primitive_buffer,
-				m_generate_primitives.original<void( __fastcall* )( std::uintptr_t, std::uintptr_t, std::uintptr_t, std::uintptr_t )>( ),
-				thisptr,
-				scene_view
-			);
-
 			if ( features::esp::player::g_chams.bt( ).is_active( scene_object ) )
 			{
 				return;

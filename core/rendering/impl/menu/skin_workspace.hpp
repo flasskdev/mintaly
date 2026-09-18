@@ -5,8 +5,8 @@
 #include <core/hooks/hooks.hpp>
 #include "../../theme.hpp"
 #include <utilities/skin_inspect.hpp>
-#include <core/rendering/preview3d/renderer.hpp>
-#include <core/rendering/preview3d/game_model.hpp>
+#include <core/systems/native_preview.hpp>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <cctype>
@@ -28,31 +28,16 @@ struct hover_state {
 };
 inline hover_state hover;
 
-enum class inspect_mode : int {
-    auto_detect = 0,
-    weapon = 1,
-    agent = 2
-};
-
 struct preview_viewport {
-    std::unique_ptr<nemesis::preview3d::renderer> renderer{};
-    ID3D11Device* current_device = nullptr;
-    nemesis::preview3d::camera camera{ 0.15f, 0.08f, 2.4f };
-    bool dragging = false;
-    float drag_start_x = 0.0f;
-    float drag_start_y = 0.0f;
-    float initial_yaw = 0.15f;
-    float initial_pitch = 0.08f;
-
-    inspect_mode mode = inspect_mode::auto_detect;
-    std::uint64_t last_mesh_key = 0;
-    float spin_anim = 0.0f;
-    bool preview_2d = false;
-
-    void reset_camera(float dist = 2.4f) {
-        camera.yaw = 0.15f;
-        camera.pitch = 0.08f;
-        camera.distance = dist;
+    systems::model_preview::texture_ref frame_texture; // held through xdraw flush
+    systems::model_preview::kind last_kind = systems::model_preview::kind::weapon;
+    bool dragging = false, preview_2d = false;
+    float yaw{}, pitch{}, zoom = 1.0f;
+    float drag_start_x{}, drag_start_y{}, initial_yaw{}, initial_pitch{};
+    void reset_camera() {
+        yaw = pitch = 0.0f;
+        zoom = 1.0f;
+        dragging = false;
     }
 };
 inline preview_viewport g_viewport{};
@@ -475,7 +460,7 @@ inline void team_icon(float x, float y, int side) {
 }
 
 // Live operative + weapon buy-menu preview and cosmetic sidebar controls
-inline bool sidebar(const xui::rect& r) {
+inline bool sidebar(const xui::rect& r, int category) {
     auto& dl = xui::draw::current();
     auto& econ = features::changer::g_econ_item_system;
 
@@ -590,352 +575,174 @@ inline bool sidebar(const xui::rect& r) {
         dl.pop_clip();
     }
 
-    // 3. Middle Section: Interactive 3D Agent Preview (standing in buy-menu stance holding weapon)
+    // Original CS2 models and materials. Never substitute generated boxes or
+    // approximate skin colours and label those as a native model.
     const float prev_y = selector.bottom() + (profiles.selected >= 0 ? 48.0f : 10.0f);
     const float prev_h = std::max(80.0f, loadout_top - 10.0f - prev_y);
     const xui::rect preview{r.x + 14.0f, prev_y, r.w - 28.0f, prev_h};
-
-    dl.push_clip(preview.x, preview.y, preview.w, preview.h);
-
-    // Subtle dark gradient background for 3D studio viewport
-    dl.rect_filled(preview.x, preview.y, preview.w, preview.h, tokens::col_dark.alpha(175), xdraw::corner_radius{8.0f});
-
-    // 1. Resolve Target Item & Parameters
-    const bool is_music_hovered = hover.music.has_value();
-    const auto* active_music = econ.find_music_kit(hover.music.value_or(settings::g_changer.music.id));
-    const int music_id = active_music ? active_music->id : 0;
-    const std::string music_title = active_music ? active_music->localized_name : "Default Music Kit";
-
-    // Resolve active / hovered agent
-    const auto& ca = settings::g_changer.custom_agents;
-    const int custom = hover.custom != -2 ? hover.custom : (team == 3 ? ca.selected_ct : ca.selected_t);
-    auto agent_id = hover.agent.value_or(team == 3 ? settings::g_changer.agents.ct_def : settings::g_changer.agents.t_def);
-    const auto* agent = econ.find_def(agent_id);
-
-    if (!agent && custom < 0) {
-        for (const auto* a : econ.agents()) {
-            if (a->team() == team) { agent = a; break; }
-        }
-        if (!agent && !econ.agents().empty()) agent = econ.agents().front();
-    }
-    const int resolved_agent_id = agent ? agent->def_index : (team == 3 ? 50001 : 50002);
-
-    // Resolve active / hovered weapon & skin
-    const auto fallback_wep = (team == 3 ? 60 : 7);
-    int target_wep = active_browsing_weapon != 0 ? active_browsing_weapon : (focused_weapon[team == 3 ? 0 : 1] != 0 ? focused_weapon[team == 3 ? 0 : 1] : fallback_wep);
-    const auto weapon_id = hover.weapon.value_or(target_wep);
-    const auto* weapon = econ.find_def(weapon_id);
+    const xui::rect canvas{preview.x + 4.0f, preview.y + 32.0f,
+        std::max(1.0f, preview.w - 8.0f), std::max(1.0f, preview.h - 82.0f)};
+    auto& native = systems::g_model_preview;
+    using preview_kind = systems::model_preview::kind;
+    systems::model_preview::request request;
+    request.team = team;
+    request.width = std::clamp(static_cast<int>(canvas.w * 1.5f), 64, 1024);
+    request.height = std::clamp(static_cast<int>(canvas.h * 1.5f), 64, 1024);
+    std::string title;
+    const econ_type::skin_image* artwork = nullptr;
+    const econ_type::item_def* weapon = nullptr;
+    settings::changer::applied_skin selected_skin{};
     const auto& skins = settings::g_changer.skins.for_team(team);
+    bool can_inspect = false;
 
-    int resolved_paint = 0;
-    std::string skin_name{};
-    if (weapon) {
-        const auto it = skins.find(weapon_id);
-        resolved_paint = hover.paint.value_or(it != skins.end() ? it->second.paint_kit_id : 0);
-        const auto* kit = econ.find_paint_kit(resolved_paint);
-        if (kit) skin_name = kit->localized_name;
+    int active_category = category;
+    if (hover.music) active_category = 4;
+    else if (hover.agent) active_category = 3;
+    else if (hover.weapon) {
+        if (const auto* d = econ.find_def(*hover.weapon))
+            active_category = d->category == econ_type::item_category::glove ? 2 :
+                d->category == econ_type::item_category::knife ? 1 : 0;
     }
-
-    // Resolve equipped gloves
-    int glove_id = 0;
-    for (const auto& [def_index, skin] : skins) {
-        const auto* def = econ.find_def(def_index);
-        if (def && def->category == econ_type::item_category::glove) {
-            glove_id = def_index;
-            break;
+    if (active_category == 4) {
+        request.type = preview_kind::music;
+        request.music_kit = hover.music.value_or(settings::g_changer.music.id);
+        const auto* kit = econ.find_music_kit(request.music_kit);
+        title = kit ? kit->localized_name : "Default Music Kit";
+        if (kit) artwork = econ.get_skin_image(kit->image_inventory);
+    } else if (active_category == 3) {
+        request.type = preview_kind::agent;
+        const auto& ca = settings::g_changer.custom_agents;
+        const int custom = hover.custom != -2 ? hover.custom : (team == 3 ? ca.selected_ct : ca.selected_t);
+        request.def_index = hover.agent.value_or(team == 3 ? settings::g_changer.agents.ct_def : settings::g_changer.agents.t_def);
+        if (custom >= 0 && custom < static_cast<int>(ca.entries.size())) {
+            request.def_index = 0;
+            request.model_path = ca.entries[custom].model_path;
+            title = ca.entries[custom].name;
+        } else if (const auto* agent = econ.find_def(static_cast<std::int16_t>(request.def_index))) {
+            request.model_path = agent->model_player;
+            title = agent->localized_name;
+            artwork = econ.get_skin_image(agent->image_inventory);
+        } else {
+            request.def_index = 0;
+            request.model_path = team == 3 ? "agents/models/ctm_sas/ctm_sas.vmdl" : "agents/models/tm_phoenix/tm_phoenix.vmdl";
+            title = team == 3 ? "Default CT Agent" : "Default T Agent";
         }
-    }
-    const bool is_glove_item = weapon && weapon->category == econ_type::item_category::glove;
-    if (is_glove_item) {
-        glove_id = weapon->def_index;
-    }
-
-    enum class active_view_t : int {
-        standalone_weapon = 0,
-        agent = 1,
-        gloves = 2,
-        music = 3
-    };
-    active_view_t active_view = active_view_t::standalone_weapon;
-
-    if (is_music_hovered) {
-        active_view = active_view_t::music;
-    } else if (is_glove_item) {
-        active_view = active_view_t::gloves;
-    } else if (hover.agent.has_value() || (custom >= 0 && custom < static_cast<int>(ca.entries.size()))) {
-        active_view = active_view_t::agent;
-    } else if (weapon || hover.weapon.has_value() || active_browsing_weapon != 0) {
-        active_view = active_view_t::standalone_weapon;
-    } else if (agent) {
-        active_view = active_view_t::agent;
     } else {
-        active_view = active_view_t::standalone_weapon;
-    }
-
-    // 2. Ensure Direct3D 11 Renderer
-    auto* dev = xdraw::device();
-    if (!dev && rendering::g_context.get_device())
-        dev = rendering::g_context.get_device();
-
-    if (dev && (!g_viewport.renderer || g_viewport.current_device != dev)) {
-        g_viewport.renderer = std::make_unique<nemesis::preview3d::renderer>(dev);
-        g_viewport.current_device = dev;
-        g_viewport.last_mesh_key = 0;
-    }
-
-    // 3. Upload Mesh to GPU when Target/Skin Changes
-    std::uint64_t mesh_key = 14695981039346656037ull;
-    auto add_to_key = [&](std::uint64_t v) {
-        mesh_key ^= v;
-        mesh_key *= 1099511628211ull;
-    };
-    add_to_key(static_cast<std::uint64_t>(active_view));
-    add_to_key(static_cast<std::uint64_t>(team));
-    add_to_key(static_cast<std::uint64_t>(resolved_agent_id));
-    add_to_key(static_cast<std::uint64_t>(weapon_id));
-    add_to_key(static_cast<std::uint64_t>(resolved_paint));
-    add_to_key(static_cast<std::uint64_t>(glove_id));
-    add_to_key(static_cast<std::uint64_t>(music_id));
-    add_to_key(static_cast<std::uint64_t>(custom));
-
-    if (g_viewport.renderer && g_viewport.renderer->is_valid()) {
-        if (mesh_key != g_viewport.last_mesh_key) {
-            nemesis::preview3d::mesh m;
-            const std::string wep_name = weapon ? weapon->localized_name : "";
-
-            switch (active_view) {
-            case active_view_t::music:
-                m = nemesis::preview3d::generate_music_mesh(music_id, music_title);
-                break;
-            case active_view_t::gloves:
-                m = nemesis::preview3d::generate_gloves_mesh(glove_id, team);
-                break;
-            case active_view_t::standalone_weapon:
-            default:
-                m = nemesis::preview3d::generate_standalone_weapon_mesh(weapon_id, wep_name, resolved_paint, skin_name);
-                break;
+        const auto desired_category = active_category == 2 ? econ_type::item_category::glove :
+            active_category == 1 ? econ_type::item_category::knife : econ_type::item_category::gun;
+        const int focused = focused_weapon[team == 3 ? 0 : 1];
+        int def = hover.weapon.value_or(static_cast<std::int16_t>(active_browsing_weapon ? active_browsing_weapon : focused));
+        weapon = econ.find_def(static_cast<std::int16_t>(def));
+        if (!weapon || weapon->category != desired_category) {
+            weapon = nullptr;
+            // Prefer the equipped item in this category before a catalogue default.
+            for (const auto& [id, options] : skins) {
+                const auto* d = econ.find_def(id);
+                if (d && d->category == desired_category && (d->team() == 0 || d->team() == team) &&
+                    (!weapon || d->def_index < weapon->def_index)) weapon = d;
             }
+            if (!weapon) {
+                for (const auto* d : items.weapons(std::clamp(active_category, 0, 2))) {
+                    if (d && (d->team() == 0 || d->team() == team)) { weapon = d; break; }
+                }
+            }
+        }
+        request.type = active_category == 2 ? preview_kind::gloves :
+            active_category == 1 ? preview_kind::knife : preview_kind::weapon;
+        if (weapon) {
+            request.def_index = weapon->def_index;
+            if (const auto it = skins.find(weapon->def_index); it != skins.end()) selected_skin = it->second;
+            selected_skin.paint_kit_id = hover.paint.value_or(selected_skin.paint_kit_id);
+            request.paint_kit = std::max(0, selected_skin.paint_kit_id);
+            const auto* paint = econ.find_paint_kit(request.paint_kit);
+            title = weapon->localized_name + (paint ? " | " + paint->localized_name : "");
+            artwork = econ.get_skin_image(weapon->def_index, request.paint_kit);
+            if (!artwork) artwork = econ.get_skin_image(weapon->image_inventory);
+            can_inspect = true;
+        } else title = "No item selected";
+    }
 
-            g_viewport.renderer->upload(m);
-            g_viewport.last_mesh_key = mesh_key;
+    if (g_viewport.last_kind != request.type) {
+        g_viewport.last_kind = request.type;
+        g_viewport.reset_camera();
+    }
+    const auto& input = xui::ctx().input;
+    dl.push_clip(preview.x, preview.y, preview.w, preview.h);
+    dl.rect_filled(preview.x, preview.y, preview.w, preview.h,
+        tokens::col_dark.alpha(175), xdraw::corner_radius{8.0f});
+    // Toolbar is outside the drag surface. Clicking a button never starts orbit.
+    const xui::rect reset_btn{preview.right() - 34.0f, preview.y + 5.0f, 28.0f, 22.0f};
+    const xui::rect mode_btn{reset_btn.x - 48.0f, reset_btn.y, 42.0f, 22.0f};
+    const xui::rect inspect_btn{mode_btn.x - 90.0f, reset_btn.y, 84.0f, 22.0f};
+    if (button(reset_btn, "R")) g_viewport.reset_camera();
+    if (button(mode_btn, g_viewport.preview_2d ? "2D" : "3D")) {
+        g_viewport.preview_2d = !g_viewport.preview_2d;
+        g_viewport.dragging = false;
+    }
+    if (can_inspect && button(inspect_btn, "CS2 Inspect")) {
+        skin_inspect::item exact{};
+        exact.def_index = static_cast<std::uint32_t>(request.def_index);
+        exact.paint_kit = static_cast<std::uint32_t>(request.paint_kit);
+        exact.wear = std::isfinite(selected_skin.wear) ? std::clamp(selected_skin.wear, 0.0f, 1.0f) : 0.01f;
+        exact.seed = static_cast<std::uint32_t>(std::clamp(selected_skin.seed, 0, 1000));
+        exact.rarity = static_cast<std::uint32_t>(std::clamp(static_cast<int>(econ.combined_rarity(weapon->def_index, request.paint_kit)), 0, 7));
+        if (selected_skin.stattrak && request.type != preview_kind::gloves) {
+            exact.quality = 9;
+            exact.stattrak = static_cast<std::uint32_t>(std::max(0, selected_skin.stattrak_count));
+        }
+        // Queue for the game thread, then restore normal game input by closing
+        // the menu. Never run an engine command directly from this render call.
+        if (features::changer::g_inspect_preview.request(exact)) {
+            native.hide();
+            if (rendering::g_menu.is_open()) rendering::g_menu.toggle();
         }
     }
-
-    // 4. Interactive 3D Camera Controls (Drag / Zoom / Reset)
-    const auto& input = xui::ctx().input;
-    const bool is_hovered = hovered(preview);
-
-    if (is_hovered && input.mouse_clicked) {
+    if (!g_viewport.preview_2d && hovered(canvas) && input.mouse_clicked) {
         g_viewport.dragging = true;
         g_viewport.drag_start_x = input.mouse_x;
         g_viewport.drag_start_y = input.mouse_y;
-        g_viewport.initial_yaw = g_viewport.camera.yaw;
-        g_viewport.initial_pitch = g_viewport.camera.pitch;
+        g_viewport.initial_yaw = g_viewport.yaw;
+        g_viewport.initial_pitch = g_viewport.pitch;
     }
+    if (!input.mouse_down || xui::ctx().overlay_blocking()) g_viewport.dragging = false;
     if (g_viewport.dragging) {
-        if (!input.mouse_down) {
-            g_viewport.dragging = false;
-        } else {
-            const float dx = input.mouse_x - g_viewport.drag_start_x;
-            const float dy = input.mouse_y - g_viewport.drag_start_y;
-            g_viewport.camera.yaw = g_viewport.initial_yaw + dx * 0.014f;
-            g_viewport.camera.pitch = std::clamp(g_viewport.initial_pitch - dy * 0.012f, -1.15f, 1.15f);
-        }
+        g_viewport.yaw = g_viewport.initial_yaw + (input.mouse_x - g_viewport.drag_start_x) * 0.5f;
+        g_viewport.pitch = std::clamp(g_viewport.initial_pitch + (input.mouse_y - g_viewport.drag_start_y) * 0.4f, -85.0f, 85.0f);
     }
-
-    const float min_dist = (active_view == active_view_t::standalone_weapon) ? 1.2f : 1.6f;
-    const float max_dist = (active_view == active_view_t::standalone_weapon) ? 3.6f : 4.5f;
-    if (is_hovered && input.scroll_delta != 0.0f) {
-        g_viewport.camera.distance = std::clamp(g_viewport.camera.distance - input.scroll_delta * 0.20f, min_dist, max_dist);
+    if (hovered(canvas)) {
+        if (input.rmb_clicked) g_viewport.reset_camera();
+        g_viewport.zoom = std::clamp(g_viewport.zoom + input.scroll_delta * 0.12f, 0.7f, 2.2f);
     }
-    if (is_hovered && input.rmb_clicked) {
-        g_viewport.reset_camera(active_view == active_view_t::standalone_weapon ? 2.2f : 2.5f);
-    }
-
-    // 5. Dynamic Idle Motion / Turntable Spin
-    auto cam_render = g_viewport.camera;
-    if (!g_viewport.dragging) {
-        if (active_view == active_view_t::music) {
-            g_viewport.spin_anim += dt * 0.95f;
-            cam_render.yaw += g_viewport.spin_anim;
-            cam_render.pitch = std::sin(g_viewport.spin_anim * 0.45f) * 0.04f + 0.22f;
-        } else {
-            static float s_sway = 0.0f;
-            s_sway += dt;
-            cam_render.yaw += std::sin(s_sway * 0.75f) * 0.030f;
-            cam_render.pitch += std::cos(s_sway * 0.60f) * 0.015f;
-        }
-    }
-
-    // 6. Direct3D 11 Render & Draw to Screen (Live CS2 Engine 3D Capture)
-    static int s_last_preview_wep = -1;
-    if (weapon_id != s_last_preview_wep && weapon_id > 0) {
-        s_last_preview_wep = weapon_id;
-        systems::g_model_preview.set_item(weapon_id);
-    }
-
-    static int s_last_preview_agent = -1;
-    if (resolved_agent_id != s_last_preview_agent && resolved_agent_id > 0) {
-        s_last_preview_agent = resolved_agent_id;
-        if (agent && !agent->model_player.empty()) {
-            systems::g_model_preview.set_agent(agent->model_player);
-        }
-    }
-
-    ID3D11ShaderResourceView* game_srv = systems::g_model_preview.get_preview_srv();
-    ID3D11ShaderResourceView* srv = nullptr;
-
-    if (game_srv && !g_viewport.preview_2d) {
-        srv = game_srv;
-    }
-
-    if (srv && !g_viewport.preview_2d) {
-        dl.image(preview.x, preview.y, preview.w, preview.h, srv);
+    request.yaw = g_viewport.yaw;
+    request.pitch = g_viewport.pitch;
+    auto* dev = xdraw::device();
+    if (!dev) dev = rendering::g_context.get_device();
+    if (!g_viewport.preview_2d && rendering::g_menu.is_open()) {
+        native.submit(request);
+        g_viewport.frame_texture = native.acquire(dev);
     } else {
-        // High-Resolution 2D Icon / Artwork View
-        if (active_view == active_view_t::music) {
-            if (active_music) {
-                const auto* img = econ.get_skin_image(active_music->image_inventory);
-                if (img) {
-                    const float pad = 24.0f;
-                    const float sz = std::min(preview.w - pad * 2.0f, preview.h - 56.0f);
-                    const xui::rect mr{ preview.center_x() - sz * 0.5f, preview.center_y() - sz * 0.5f - 6.0f, sz, sz };
-                    image(mr, img);
-                }
-            }
-        } else if (active_view == active_view_t::agent && agent) {
-            const auto* img = econ.get_skin_image(agent->image_inventory);
-            if (img) {
-                const xui::rect agent_rect{preview.x + 8.0f, preview.y + 16.0f, preview.w - 16.0f, preview.h - 48.0f};
-                image(agent_rect, img);
-            }
-        } else if (weapon) {
-            const auto* wep_img = econ.get_skin_image(weapon_id, resolved_paint);
-            if (!wep_img) wep_img = econ.get_skin_image(weapon->image_inventory);
-            if (wep_img) {
-                const float pad = 16.0f;
-                const float max_w = preview.w - pad * 2.0f;
-                const float max_h = preview.h - 56.0f;
-                const float aspect = static_cast<float>(wep_img->width) / static_cast<float>(wep_img->height);
-                float iw = max_w, ih = max_w / aspect;
-                if (ih > max_h) { ih = max_h; iw = ih * aspect; }
-                const xui::rect img_r{ preview.center_x() - iw * 0.5f, preview.center_y() - ih * 0.5f - 6.0f, iw, ih };
-                dl.image(img_r.x, img_r.y, img_r.w, img_r.h, wep_img->srv.Get());
-            }
-        }
+        native.hide();
+        g_viewport.frame_texture.Reset();
     }
-
-    // 7. Top UI Controls & Mode Badges
-    const xui::rect reset_btn{preview.right() - 24.0f - 6.0f, preview.y + 6.0f, 24.0f, 20.0f};
-    const bool reset_hover = hovered(reset_btn);
-    dl.rect_filled(reset_btn.x, reset_btn.y, reset_btn.w, reset_btn.h, reset_hover ? tokens::col_card : tokens::col_elevated.alpha(180), xdraw::corner_radius{4.0f});
-    dl.rect(reset_btn.x, reset_btn.y, reset_btn.w, reset_btn.h, reset_hover ? tokens::col_accent : tokens::col_border, xdraw::corner_radius{4.0f});
-    dl.text(reset_btn.x + 8.0f, reset_btn.y + 3.0f, "R", reset_hover ? tokens::col_accent : tokens::col_text_dim);
-    if (reset_hover && input.mouse_clicked) {
-        g_viewport.reset_camera(active_view == active_view_t::standalone_weapon ? 2.2f : 2.5f);
+    const bool native_frame = g_viewport.frame_texture != nullptr;
+    dl.push_clip(canvas.x, canvas.y, canvas.w, canvas.h);
+    if (native_frame) {
+        // Zoom the retained render target without changing its aspect ratio.
+        const float w = canvas.w * g_viewport.zoom, h = canvas.h * g_viewport.zoom;
+        dl.image(canvas.center_x() - w * 0.5f, canvas.center_y() - h * 0.5f, w, h, g_viewport.frame_texture.Get());
+    } else if (!image(canvas, artwork)) {
+        dl.text(canvas.x + 12.0f, canvas.center_y(), "Preview unavailable", tokens::col_text_dim);
     }
-
-    // Interactive 3D / 2D Mode Switch
-    const float mode_w = 46.0f;
-    const xui::rect mode_btn{reset_btn.x - mode_w - 6.0f, preview.y + 6.0f, mode_w, 20.0f};
-    const bool mode_hover = hovered(mode_btn);
-    if (mode_hover && input.mouse_clicked) {
-        g_viewport.preview_2d = !g_viewport.preview_2d;
-    }
-    dl.rect_filled(mode_btn.x, mode_btn.y, mode_btn.w, mode_btn.h, mode_hover ? tokens::col_card : tokens::col_elevated.alpha(180), xdraw::corner_radius{4.0f});
-    dl.rect(mode_btn.x, mode_btn.y, mode_btn.w, mode_btn.h, mode_hover ? tokens::col_accent : tokens::col_border, xdraw::corner_radius{4.0f});
-    if (!g_viewport.preview_2d) {
-        dl.circle_filled(mode_btn.x + 8.0f, mode_btn.center_y(), 2.5f, xdraw::color{50, 220, 120});
-        dl.text(mode_btn.x + 15.0f, mode_btn.y + 3.0f, "3D", tokens::col_accent);
-    } else {
-        dl.circle_filled(mode_btn.x + 8.0f, mode_btn.center_y(), 2.5f, xdraw::color{75, 175, 255});
-        dl.text(mode_btn.x + 15.0f, mode_btn.y + 3.0f, "2D", tokens::col_text);
-    }
-
-    // Native CS2 3D Inspect Trigger Button
-    if (weapon) {
-        const float inspect_w = 84.0f;
-        const xui::rect inspect_btn{mode_btn.x - inspect_w - 6.0f, preview.y + 6.0f, inspect_w, 20.0f};
-        const bool inspect_h = hovered(inspect_btn);
-        dl.rect_filled(inspect_btn.x, inspect_btn.y, inspect_btn.w, inspect_btn.h,
-                       inspect_h ? tokens::col_card : tokens::col_elevated.alpha(180), xdraw::corner_radius{4.0f});
-        dl.rect(inspect_btn.x, inspect_btn.y, inspect_btn.w, inspect_btn.h,
-                inspect_h ? tokens::col_accent : tokens::col_border, xdraw::corner_radius{4.0f});
-        dl.text(inspect_btn.x + 6.0f, inspect_btn.y + 3.0f, "CS2 INSPECT", inspect_h ? tokens::col_accent : tokens::col_text);
-
-        if (inspect_h && input.mouse_clicked) {
-            skin_inspect::item it{};
-            it.def_index = weapon_id;
-            it.paint_kit = resolved_paint;
-            it.wear = 0.001f;
-            const auto cmd = skin_inspect::command(it);
-            if (cmd && addresses::globals::source2engine_to_client && PATTERN(patterns::engine_client_cmd)) {
-                memory::call<void>(PATTERN(patterns::engine_client_cmd), addresses::globals::source2engine_to_client, 0, cmd->c_str(), 0x7ffef001);
-            }
-        }
-    }
-
-    // Top Left: Model Source Badge
-    if (game_srv) {
-        const xui::rect badge{preview.x + 8.0f, preview.y + 6.0f, 96.0f, 20.0f};
-        dl.rect_filled(badge.x, badge.y, badge.w, badge.h, tokens::col_elevated.alpha(180), xdraw::corner_radius{4.0f});
-        dl.circle_filled(badge.x + 8.0f, badge.center_y(), 2.5f, xdraw::color{50, 220, 120});
-        dl.text(badge.x + 15.0f, badge.y + 3.0f, "CS2 ENGINE 3D", xdraw::color{50, 220, 120});
-    } else if (active_view == active_view_t::music) {
-        const xui::rect badge{preview.x + 8.0f, preview.y + 6.0f, 66.0f, 20.0f};
-        dl.rect_filled(badge.x, badge.y, badge.w, badge.h, tokens::col_elevated.alpha(180), xdraw::corner_radius{4.0f});
-        dl.text(badge.x + 8.0f, badge.y + 3.0f, ".VINYL 3D", xdraw::color{245, 170, 45});
-    } else if (active_view == active_view_t::gloves) {
-        const xui::rect badge{preview.x + 8.0f, preview.y + 6.0f, 72.0f, 20.0f};
-        dl.rect_filled(badge.x, badge.y, badge.w, badge.h, tokens::col_elevated.alpha(180), xdraw::corner_radius{4.0f});
-        dl.text(badge.x + 8.0f, badge.y + 3.0f, "GLOVES 3D", xdraw::color{45, 195, 245});
-    } else if (custom >= 0 && custom < static_cast<int>(ca.entries.size())) {
-        const auto& ce = ca.entries[custom];
-        const xui::rect badge{preview.x + 8.0f, preview.y + 6.0f, 130.0f, 20.0f};
-        dl.rect_filled(badge.x, badge.y, badge.w, badge.h, tokens::col_elevated.alpha(180), xdraw::corner_radius{4.0f});
-        dl.text(badge.x + 8.0f, badge.y + 3.0f, ".VMDL", tokens::col_accent);
-        dl.text(badge.x + 48.0f, badge.y + 3.0f, theme::fit_text(ce.name, 75.0f), tokens::col_text);
-    } else if (active_view == active_view_t::agent && agent) {
-        const xui::rect badge{preview.x + 8.0f, preview.y + 6.0f, 68.0f, 20.0f};
-        dl.rect_filled(badge.x, badge.y, badge.w, badge.h, tokens::col_elevated.alpha(180), xdraw::corner_radius{4.0f});
-        dl.text(badge.x + 8.0f, badge.y + 3.0f, "AGENT", tokens::col_accent);
-    } else if (weapon) {
-        const xui::rect badge{preview.x + 8.0f, preview.y + 6.0f, 78.0f, 20.0f};
-        dl.rect_filled(badge.x, badge.y, badge.w, badge.h, tokens::col_elevated.alpha(180), xdraw::corner_radius{4.0f});
-        dl.text(badge.x + 8.0f, badge.y + 3.0f, !g_viewport.preview_2d ? "WEAPON 3D" : "WEAPON 2D", tokens::col_accent);
-    }
-
-    // 8. Bottom Information Banner
-    if (active_view == active_view_t::music) {
-        const auto rarity_col = rarity_colors[5]; // Music kit pink rarity
-        dl.circle_filled(preview.x + 10.0f, preview.bottom() - 14.0f, 3.5f, rarity_col);
-        const std::string title = "Music Kit | " + music_title;
-        dl.text(preview.x + 20.0f, preview.bottom() - 21.0f, theme::fit_text(title, preview.w - 30.0f), tokens::col_text);
-    } else if (active_view == active_view_t::gloves && weapon) {
-        const auto rarity_col = rarity_colors[6]; // Covert gold
-        dl.circle_filled(preview.x + 10.0f, preview.bottom() - 14.0f, 3.5f, rarity_col);
-        dl.text(preview.x + 20.0f, preview.bottom() - 21.0f, theme::fit_text(weapon->localized_name, preview.w - 30.0f), tokens::col_text);
-    } else if (active_view == active_view_t::agent && agent) {
-        const auto rarity_col = rarity_colors[std::clamp(static_cast<int>(agent->rarity), 0, 7)];
-        dl.circle_filled(preview.x + 10.0f, preview.bottom() - 14.0f, 3.5f, rarity_col);
-        dl.text(preview.x + 20.0f, preview.bottom() - 21.0f, theme::fit_text(agent->localized_name, preview.w - 30.0f), tokens::col_text);
-    } else if (weapon) {
-        const auto* kit = econ.find_paint_kit(resolved_paint);
-        const auto rarity = kit ? econ.combined_rarity(weapon_id, resolved_paint) : weapon->rarity;
-        const auto rarity_col = rarity_colors[std::clamp(static_cast<int>(rarity), 0, 7)];
-
-        dl.circle_filled(preview.x + 10.0f, preview.bottom() - 14.0f, 3.5f, rarity_col);
-
-        const std::string title = kit ? (weapon->localized_name + " | " + kit->localized_name) : weapon->localized_name;
-        dl.text(preview.x + 20.0f, preview.bottom() - 21.0f, theme::fit_text(title, preview.w - 82.0f), tokens::col_text);
-
-        const auto* wep_img = econ.get_skin_image(weapon_id, resolved_paint);
-        if (wep_img) {
-            const xui::rect wep_r{preview.right() - 56.0f, preview.bottom() - 28.0f, 48.0f, 22.0f};
-            image(wep_r, wep_img);
-        }
-    }
-
+    dl.pop_clip();
+    dl.text(preview.x + 8.0f, preview.y + 9.0f, native_frame ? "CS2 3D" : "2D IMAGE",
+        native_frame ? tokens::col_accent : tokens::col_text_dim);
+    dl.text(preview.x + 8.0f, preview.bottom() - 44.0f,
+        theme::fit_text(title, preview.w - 16.0f), tokens::col_text);
+    const std::string hint = native_frame ?
+        (can_inspect ? "Catalog finish. Wear / seed: CS2 Inspect" : "Drag to rotate; wheel to enlarge; R to reset") :
+        g_viewport.preview_2d ? "2D catalogue artwork" : native.status();
+    dl.text(preview.x + 8.0f, preview.bottom() - 24.0f,
+        theme::fit_text(hint, preview.w - 16.0f), tokens::col_text_dim);
     dl.pop_clip();
 
     // 4. Mini Music Kit Panel (separated by 12px gap below main panel)

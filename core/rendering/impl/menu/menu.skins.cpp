@@ -1939,7 +1939,7 @@ namespace rendering {
 				if (*selected == removed) *selected = -1; else if (*selected > removed) --*selected;
 			skin_workspace::hover = {};
 		}
-		if (skin_workspace::sidebar({m_body_x, m_body_y, skin_workspace::left_width(m_body_w), m_body_h}))
+		if (skin_workspace::sidebar({m_body_x, m_body_y, skin_workspace::left_width(m_body_w), m_body_h}, m_subtab))
 			m_subtab = 4;
 		if (previous_team != skin_workspace::team)
 		{
@@ -1967,6 +1967,7 @@ namespace rendering {
 			detail::skins_ui.fade = 1.0f;
 			detail::skins_ui.browsing_agent_team = (this->m_subtab == 3) ? skin_workspace::team : 0;
 			detail::skins_ui.search_buf.clear( );
+			skin_workspace::active_browsing_weapon = 0;
 		}
 
 		auto& econ = features::changer::g_econ_item_system;
