@@ -5,8 +5,12 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
+#include <mutex>
 
 namespace {
+
+	std::mutex pending_input_mutex;
+	xui::input_state pending_input;
 
 	struct overlay_storage
 	{
@@ -556,6 +560,9 @@ namespace xui {
 			return true;
 
 		case WM_LBUTTONDOWN:
+		case WM_LBUTTONDBLCLK:
+			s.mouse_x = static_cast<float>( static_cast<short>( LOWORD( lp ) ) );
+			s.mouse_y = static_cast<float>( static_cast<short>( HIWORD( lp ) ) );
 			s.mouse_down = true;
 			s.mouse_clicked = true;
 			return true;
@@ -566,6 +573,9 @@ namespace xui {
 			return true;
 
 		case WM_RBUTTONDOWN:
+		case WM_RBUTTONDBLCLK:
+			s.mouse_x = static_cast<float>( static_cast<short>( LOWORD( lp ) ) );
+			s.mouse_y = static_cast<float>( static_cast<short>( HIWORD( lp ) ) );
 			s.rmb_down = true;
 			s.rmb_clicked = true;
 			return true;
@@ -573,6 +583,13 @@ namespace xui {
 		case WM_RBUTTONUP:
 			s.rmb_down = false;
 			s.rmb_released = true;
+			return true;
+
+		case WM_KILLFOCUS:
+			s.keys.clear( );
+			s.mouse_down = s.rmb_down = false;
+			s.mouse_clicked = s.rmb_clicked = false;
+			s.mouse_released = s.rmb_released = true;
 			return true;
 
 		case WM_MOUSEWHEEL:
@@ -1713,6 +1730,11 @@ namespace xui {
 	void begin( )
 	{
 		auto& c = get_ctx( );
+		{
+			std::lock_guard lock( pending_input_mutex );
+			c.input = pending_input;
+			pending_input.clear_frame( );
+		}
 
 		{
 			auto& dc = get_double_click( );
@@ -3123,7 +3145,9 @@ namespace xui {
 
 	bool wndproc( UINT msg, WPARAM wp, LPARAM lp )
 	{
-		return feed_wndproc( get_ctx( ).input, msg, wp, lp );
+		// WndProc may run during rendering; never erase new events at frame end.
+		std::lock_guard lock( pending_input_mutex );
+		return feed_wndproc( pending_input, msg, wp, lp );
 	}
 
 	bool begin_window( std::string_view title, float& x, float& y, float& w, float& h, bool resizable, float min_w, float min_h, float reveal )
@@ -3163,8 +3187,12 @@ namespace xui {
 
 		if ( allow_window_drag && c.active_window == id && input.mouse_down&& c.active_slider == null_id&& c.active_resize == null_id&& c.active_text_input == null_id&& c.active_child_scroll == null_id )
 		{
-			x += input.mouse_delta_x( );
-			y += input.mouse_delta_y( );
+			// The press frame may include movement from before the click.
+			if ( !input.mouse_clicked )
+			{
+				x += input.mouse_delta_x( );
+				y += input.mouse_delta_y( );
+			}
 			abs.x = x;
 			abs.y = y;
 		}

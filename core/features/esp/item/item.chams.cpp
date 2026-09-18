@@ -5,6 +5,7 @@
 #include <core/settings.hpp>
 #include <core/features/features.hpp>
 #include "../primitive_buffer.hpp"
+#include "../weapon_definition.hpp"
 
 namespace features::esp::item {
 
@@ -17,12 +18,11 @@ namespace features::esp::item {
 		}
 
 		const auto group_id = this->get_item_group( owner_hash );
-		if ( group_id == UINT32_MAX || !chams_cfg.is_active( group_id ) )
-		{
-			return false;
-		}
+		if ( group_id == UINT32_MAX ) return false;
+		const auto* specific = chams_cfg.individual.find( detail::weapon_definition( owner_entity ) );
+		if ( !specific && !chams_cfg.is_active( group_id ) ) return false;
 
-		const auto& cfg = chams_cfg.get_group( group_id );
+		const auto& cfg = specific ? *specific : chams_cfg.get_group( group_id );
 		if ( !cfg.enabled.value || ( !cfg.primary.enabled.value && !cfg.secondary.enabled.value ) ) return false;
 
 		if ( !owner_entity || owner_entity < 0x10000 )

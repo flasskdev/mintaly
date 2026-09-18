@@ -5,6 +5,7 @@
 #include <external/config.hpp>
 #include <utilities/skin_options.hpp>
 #include <utilities/cosmetic_config.hpp>
+#include <utilities/chams_weapons.hpp>
 #include <limits>
 
 namespace settings {
@@ -627,6 +628,19 @@ namespace settings {
                         xui::setting filled{ true,{}, "filled", "chams" };
                         outline_glow_config glow{};
 
+                        void copy_values_from(const chams_layer& other)
+                        {
+                                enabled.value = other.enabled.value; enabled.bind = other.enabled.bind;
+                                filled.value = other.filled.value; filled.bind = other.filled.bind;
+                                color.value = other.color.value; material.value = other.material.value;
+                                glow.intensity.value = other.glow.intensity.value;
+                                glow.thickness.value = other.glow.thickness.value;
+                                glow.softness.value = other.glow.softness.value;
+                                glow.opacity.value = other.glow.opacity.value;
+                                glow.inner_spread.value = other.glow.inner_spread.value;
+                                glow.pulse_speed.value = other.glow.pulse_speed.value;
+                        }
+
                         void init(std::string_view cat, std::string_view layer_prefix)
                         {
                                 const auto s = std::string(cat);
@@ -649,6 +663,14 @@ namespace settings {
                         chams_layer secondary{};
                         chams_layer overlay{};
 
+                        void copy_values_from(const chams_config& other)
+                        {
+                                enabled.value = other.enabled.value; enabled.bind = other.enabled.bind;
+                                primary.copy_values_from(other.primary);
+                                secondary.copy_values_from(other.secondary);
+                                overlay.copy_values_from(other.overlay);
+                        }
+
                         void init(std::string_view cat, std::string_view toggle_name = "chams")
                         {
                                 const auto s = std::string(cat);
@@ -657,6 +679,31 @@ namespace settings {
                                 this->primary.init(s, "primary");
                                 this->secondary.init(s, "secondary");
                                 this->overlay.init(s, "overlay");
+                        }
+                };
+
+                struct weapon_chams_overrides
+                {
+                        struct entry
+                        {
+                                config::val<bool> override_default{ false };
+                                chams_config cfg{};
+                        };
+                        std::array<entry, chams_weapons::entries.size()> weapons{};
+
+                        explicit weapon_chams_overrides(const char* prefix)
+                        {
+                                for (std::size_t i = 0; i < weapons.size(); ++i)
+                                {
+                                        const auto category = std::string(prefix) + " " + std::to_string(chams_weapons::entries[i].id);
+                                        weapons[i].override_default.reg(category, "override default");
+                                        weapons[i].cfg.init(category);
+                                }
+                        }
+                        const chams_config* find(std::uint16_t def) const
+                        {
+                                const auto i = chams_weapons::index(def);
+                                return i >= 0 && weapons[i].override_default.value ? &weapons[i].cfg : nullptr;
                         }
                 };
 
@@ -1021,6 +1068,13 @@ namespace settings {
                 {
                         chams_config weapon{};
                         chams_config arms{};
+                        weapon_chams_overrides individual{ "viewmodel weapon id" };
+
+                        const chams_config& for_weapon(std::uint16_t def) const
+                        {
+                                const auto* specific = individual.find(def);
+                                return specific ? *specific : weapon;
+                        }
 
                         viewmodel()
                         {
@@ -1163,6 +1217,7 @@ namespace settings {
                                 xui::setting utility{ true,{}, "utility", "chams items" };
 
                                 std::array<chams_config, k_group_count> groups{};
+                                weapon_chams_overrides individual{ "item weapon id" };
 
                                 chams()
                                 {

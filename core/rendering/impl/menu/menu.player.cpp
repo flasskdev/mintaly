@@ -409,7 +409,23 @@ xui::checkbox("filled##overlay", chams.overlay.filled);
 		{
 			if (xui::begin_child("##viewmodel", col_w, this->m_body_h, true))
 			{
-				detail::draw_chams_config("weapon chams", "vm_weapon", esp.m_viewmodel.weapon);
+				static int weapon_selection = 0;
+				xui::combo("weapon##chams", weapon_selection, chams_weapons::names.data(), static_cast<int>(chams_weapons::names.size()));
+				if (weapon_selection == 0)
+					 detail::draw_chams_config("weapon chams", "vm_weapon", esp.m_viewmodel.weapon);
+				else
+				{
+					auto& entry = esp.m_viewmodel.individual.weapons[weapon_selection - 1];
+					xui::push_id(static_cast<std::uintptr_t>(weapon_selection));
+					xui::checkbox("override default", entry.override_default.value);
+					if (entry.override_default.value)
+					{
+						if (xui::button("Copy default")) entry.cfg.copy_values_from(esp.m_viewmodel.weapon);
+						detail::draw_chams_config("weapon chams", "vm_individual", entry.cfg);
+					}
+					else xui::text("Using default weapon chams", tokens::col_text_dim);
+					xui::pop_id();
+				}
 				xui::layout::separator();
 				detail::draw_chams_config("arms chams", "vm_arms", esp.m_viewmodel.arms);
 				xui::end_child();

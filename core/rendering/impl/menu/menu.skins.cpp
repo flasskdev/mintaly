@@ -306,7 +306,7 @@ namespace rendering {
 
 		static inline void request_page( skins_page p, std::int16_t def = 0 )
 		{
-			if ( skins_ui.current == p && skins_ui.target == p )
+			if ( skins_ui.target == p && ( p != skins_page::browser || skins_ui.browsing_def == def ) )
 			{
 				return;
 			}

@@ -7,6 +7,7 @@
 #include <core/features/features.hpp>
 #include <protection/game_addresses.hpp>
 #include "../primitive_buffer.hpp"
+#include "../weapon_definition.hpp"
 
 namespace features::esp::player {
 
@@ -96,30 +97,20 @@ namespace features::esp::player {
 
 		if ( !is_player && !is_arms && !is_weapon )
 		{
-			if ( !settings::g_esp.m_viewmodel.weapon.enabled.value )
-			{
-				return false;
-			}
-
-			if ( !settings::g_esp.m_viewmodel.weapon.primary.enabled.value &&
-			     !settings::g_esp.m_viewmodel.weapon.secondary.enabled.value &&
-			     !settings::g_esp.m_viewmodel.weapon.overlay.enabled.value )
-			{
-				return false;
-			}
-
 			if ( ( !settings::g_misc.m_camera.thirdperson.value && !features::misc::g_camera.is_freecam_active( ) ) || !is_local_attachment( systems::g_local.get( ).view_pawn( ) ) )
 			{
 				return false;
 			}
-
-			apply_config( settings::g_esp.m_viewmodel.weapon, scene_object );
+			const auto& cfg = settings::g_esp.m_viewmodel.for_weapon( detail::weapon_definition( owner_entity ) );
+			if ( !cfg.enabled.value || ( !cfg.primary.enabled.value && !cfg.secondary.enabled.value && !cfg.overlay.enabled.value ) ) return false;
+			apply_config( cfg, scene_object );
 			return true;
 		}
 
 		if ( is_arms || is_weapon )
 		{
-			const auto& cfg = is_arms ? settings::g_esp.m_viewmodel.arms : settings::g_esp.m_viewmodel.weapon;
+			const auto& cfg = is_arms ? settings::g_esp.m_viewmodel.arms :
+				settings::g_esp.m_viewmodel.for_weapon( detail::active_weapon_definition( ) );
 			if ( !cfg.enabled.value )
 			{
 				return false;

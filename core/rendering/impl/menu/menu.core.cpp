@@ -1446,6 +1446,8 @@ namespace rendering {
         dl.line(sb_x + 1.0f, sb_y + 82.0f, sb_x + sb_w, sb_y + 82.0f, tokens::col_border);
         constexpr std::array<const char*, 7> names{ { "Ragebot", "Legitbot", "Movement", "Visuals", "Skins", "Misc", "Configs" } };
         float curr_y = sb_y + 98.0f;
+        const auto raw_expand = xui::anim::lerp(xui::fnv1a("visuals_sidebar_expand"), this->m_visuals_expanded ? 1.0f : 0.0f, 8.0f);
+        const auto expand_anim = xui::ease::smoothstep(raw_expand);
         for (int i = 0; i < static_cast<int>(names.size()); ++i)
         {
             const xui::rect button{ sb_x + 10.0f, curr_y, sb_w - 20.0f, 37.0f };
@@ -1474,6 +1476,8 @@ namespace rendering {
                     this->m_visuals_expanded = false;
                 }
                 ctx.active_window = xui::null_id;
+                ctx.active_text_input = xui::null_id;
+                ctx.input.mouse_clicked = false;
             }
             const auto amount = xui::anim::lerp(xui::fnv1a("mintaly_sidebar") + i,
                 active ? 1.0f : hovered ? 0.4f : 0.0f, 14.0f);
@@ -1552,8 +1556,6 @@ namespace rendering {
             const auto text_h = xdraw::measure_text(names[i]).second;
             dl.text(button.x + 43.0f, button.y + (button.h - text_h) * 0.5f,
                 names[i], active ? tokens::col_text : icon_color);
-            const auto raw_expand = xui::anim::lerp(xui::fnv1a("visuals_sidebar_expand"), this->m_visuals_expanded ? 1.0f : 0.0f, 8.0f); // ИЗМЕНЕНО: Скорость анимации снижена с 13.0f до 8.0f для большей плавности
-            const auto expand_anim = xui::ease::smoothstep(raw_expand);
             if (i == 3)
             {
                 const auto ch_x = button.x + button.w - 14.0f;
@@ -1849,6 +1851,9 @@ namespace rendering {
                 if (is_hovered && input.mouse_clicked)
                 {
                     const_cast<menu*>(this)->m_subtab = s;
+                    xui::ctx().active_window = xui::null_id;
+                    xui::ctx().active_text_input = xui::null_id;
+                    xui::ctx().input.mouse_clicked = false;
                 }
                 if (is_active)
                 {

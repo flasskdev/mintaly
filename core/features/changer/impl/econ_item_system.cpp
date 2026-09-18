@@ -8,6 +8,7 @@
 #include <utilities/logging/logging.hpp>
 #include <utilities/threadpool/threadpool.hpp>
 #include <utilities/game_path.hpp>
+#include <utilities/source_resource.hpp>
 #include "../changer.hpp"
 
 namespace features::changer {
@@ -263,18 +264,10 @@ namespace features::changer {
 
 		if ( state == image_state::decoded )
 		{
-			static thread_local int s_textures_uploaded = 0;
-			static thread_local std::chrono::steady_clock::time_point s_last_upload_time{};
-			const auto now = std::chrono::steady_clock::now( );
-			if ( now - s_last_upload_time > std::chrono::milliseconds( 8 ) )
+			// A slow frame must not reset the budget while drawing more cards.
+			if ( this->m_uploads_remaining > 0 )
 			{
-				s_last_upload_time = now;
-				s_textures_uploaded = 0;
-			}
-
-			if ( s_textures_uploaded < 2 )
-			{
-				s_textures_uploaded++;
+				--this->m_uploads_remaining;
 				if ( this->finalize_texture( *it->second ) )
 				{
 					return &it->second->image;
@@ -840,8 +833,6 @@ static constexpr fallback_music_kit k_fallback_kits[] = {
 			return !this->m_vpk_index.empty( );
 		}
 
-		this->m_vpk_indexed = true;
-
 		const auto csgo_directory = game_path::csgo_directory( );
 		if ( !csgo_directory )
 		{
@@ -889,8 +880,10 @@ static constexpr fallback_music_kit k_fallback_kits[] = {
 		}
 
 		const auto tree_end = static_cast< std::streamoff >( sizeof( vpk_header ) ) + static_cast< std::streamoff >( header.tree_size );
+		this->m_vpk_data_offset = static_cast<std::uint64_t>( tree_end );
+		this->m_vpk_index.clear( );
 
-		while ( file.tellg( ) < tree_end )
+		while ( file && file.tellg( ) < tree_end )
 		{
 			std::string extension;
 			std::getline( file, extension, '\0' );
@@ -927,10 +920,10 @@ static constexpr fallback_music_kit k_fallback_kits[] = {
 					vpk_entry entry{};
 					file.read( reinterpret_cast< char* >( &entry ), sizeof( entry ) );
 
-					if ( entry.preload_bytes > 0 )
-					{
-						file.seekg( entry.preload_bytes, std::ios::cur );
-					}
+					if ( !file || entry.terminator != 0xffff || file.tellg( ) > tree_end ||
+						entry.preload_bytes > tree_end - file.tellg( ) ) return false;
+					std::vector<std::byte> preload( entry.preload_bytes );
+					if ( !preload.empty( ) && !file.read( reinterpret_cast<char*>( preload.data( ) ), preload.size( ) ) ) return false;
 
 					if ( !is_econ )
 					{
@@ -944,13 +937,15 @@ static constexpr fallback_music_kit k_fallback_kits[] = {
 					{
 						entry.archive_index,
 						entry.entry_offset,
-						entry.entry_length
+						entry.entry_length,
+						std::move( preload )
 					};
 				}
 			}
 		}
 
-		return !this->m_vpk_index.empty( );
+		this->m_vpk_indexed = file.good( ) && !this->m_vpk_index.empty( );
+		return this->m_vpk_indexed;
 	}
 
 	void econ_item_system::build_skin_index( )
@@ -1087,7 +1082,7 @@ static constexpr fallback_music_kit k_fallback_kits[] = {
 				std::vector<std::byte> data;
 				{
 					std::lock_guard lock( this->m_vpk_mutex );
-					data = this->read_vpk( key + xs( "_png" ) );
+					data = this->read_vpk( source_resource::image_key( key ) );
 				}
 
 				bool decoded = !data.empty( ) && this->decode_vtex(
@@ -1131,7 +1126,7 @@ static constexpr fallback_music_kit k_fallback_kits[] = {
 		const auto device = xdraw::device( );
 		if ( !device )
 		{
-			entry.state.store( image_state::failed, std::memory_order_release );
+			// Keep decoded pixels until the renderer is available.
 			return false;
 		}
 
@@ -1268,25 +1263,26 @@ static constexpr fallback_music_kit k_fallback_kits[] = {
 		}
 
 		const auto& entry = it->second;
+		auto data = entry.preload;
+		if ( entry.length == 0 ) return data;
+		if ( entry.length > 64u * 1024u * 1024u ) return {};
 		auto& stream = this->m_archive_handles[ entry.archive_index ];
-
+		stream.clear( );
 		if ( !stream.is_open( ) )
 		{
 			char archive_name[ 32 ];
-			std::snprintf( archive_name, sizeof( archive_name ), xs( "pak01_%03d.vpk" ), entry.archive_index );
-
-			stream.open( this->m_vpk_directory / archive_name, std::ios::binary );
-			if ( !stream.is_open( ) )
-			{
-				return {};
-			}
+			std::snprintf( archive_name, sizeof( archive_name ), "pak01_%03u.vpk", static_cast<unsigned>( entry.archive_index ) );
+			stream.open( this->m_vpk_directory / ( entry.archive_index == 0x7fff ? "pak01_dir.vpk" : archive_name ), std::ios::binary );
+			if ( !stream.is_open( ) ) return {};
 		}
-
-		stream.seekg( entry.offset );
-
-		std::vector<std::byte> data( entry.length );
-		stream.read( reinterpret_cast< char* >( data.data( ) ), entry.length );
-
+		const auto offset = static_cast<std::uint64_t>( entry.offset ) +
+			( entry.archive_index == 0x7fff ? this->m_vpk_data_offset : 0 );
+		stream.seekg( 0, std::ios::end );
+		const auto end = stream.tellg( );
+		if ( end < 0 || offset > static_cast<std::uint64_t>( end ) || entry.length > static_cast<std::uint64_t>( end ) - offset ) return {};
+		stream.seekg( static_cast<std::streamoff>( offset ) );
+		data.resize( entry.preload.size( ) + entry.length );
+		if ( !stream.read( reinterpret_cast<char*>( data.data( ) + entry.preload.size( ) ), entry.length ) ) return {};
 		return data;
 	}
 
@@ -1301,52 +1297,10 @@ static constexpr fallback_music_kit k_fallback_kits[] = {
 		}
 
 		const auto file_size = *reinterpret_cast< const std::uint32_t* >( raw + 0x00 );
-		const auto header_version = *reinterpret_cast< const std::uint16_t* >( raw + 0x04 );
-		const auto block_count = *reinterpret_cast< const std::uint32_t* >( raw + 0x0C );
-
-		if ( header_version != 12 || block_count == 0 || block_count > 64 )
-		{
-			return false;
-		}
-
-		constexpr auto block_header_size{ 16u };
-		constexpr auto block_entry_size{ 12u };
-		constexpr auto data_fourcc{ 'D' | ( 'A' << 8 ) | ( 'T' << 16 ) | ( 'A' << 24 ) };
-
-		const std::uint8_t* data_block{ nullptr };
-		auto data_block_offset{ 0ull };
-
-		for ( auto i = 0u; i < block_count; i++ )
-		{
-			const auto entry_pos = block_header_size + i * block_entry_size;
-			if ( static_cast< std::size_t >( entry_pos ) + block_entry_size > size )
-			{
-				break;
-			}
-
-			const auto type = *reinterpret_cast< const std::uint32_t* >( raw + entry_pos );
-			const auto offset = *reinterpret_cast< const std::uint32_t* >( raw + entry_pos + 4 );
-
-			if ( type != data_fourcc )
-			{
-				continue;
-			}
-
-			const auto data_start = entry_pos + 4 + offset;
-			if ( static_cast< std::size_t >( data_start ) + 0x28 > size )
-			{
-				return false;
-			}
-
-			data_block = raw + data_start;
-			data_block_offset = data_start;
-			break;
-		}
-
-		if ( !data_block )
-		{
-			return false;
-		}
+		const auto block = source_resource::data_block( data );
+		if ( !block || block->size( ) < 0x28 ) return false;
+		const auto data_block = reinterpret_cast<const std::uint8_t*>( block->data( ) );
+		const auto data_block_offset = static_cast<std::size_t>( block->data( ) - data.data( ) );
 
 		const auto width = static_cast< std::uint32_t >( *reinterpret_cast< const std::uint16_t* >( data_block + 0x14 ) );
 		const auto height = static_cast< std::uint32_t >( *reinterpret_cast< const std::uint16_t* >( data_block + 0x16 ) );
@@ -1355,7 +1309,7 @@ static constexpr fallback_music_kit k_fallback_kits[] = {
 		const auto extra_data_offset = *reinterpret_cast< const std::uint32_t* >( data_block + 0x20 );
 		const auto extra_data_count = *reinterpret_cast< const std::uint32_t* >( data_block + 0x24 );
 
-		if ( width == 0 || height == 0 || mip_count == 0 )
+		if ( width == 0 || height == 0 || width > 8192 || height > 8192 || mip_count == 0 || mip_count > 14 )
 		{
 			return false;
 		}
