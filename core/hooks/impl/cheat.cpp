@@ -141,58 +141,54 @@ namespace hooks {
 			return false;
 		}
 
-		const auto preview_address = systems::model_preview::resource_view_address();
-		const bool preview_ready = preview_address && hooking::manager::create({
-			{ &m_preview_resource_view, &preview_resource_view, "preview_resource_view", preview_address }
-		});
-		systems::g_model_preview.set_capture_available(preview_ready);
+		const bool preview_ready = false;
 
 		const hooking::manager::entry feature_hooks[] {
-			{ &m_cmd_interpreter, &cmd_interpreter, xs ("cmd_interpreter"), PATTERN (patterns::cmd_interpreter) },
-			{ &m_frame_stage_notify, &frame_stage_notify, xs ("frame_stage_notify"), PATTERN (patterns::frame_stage_notify) },
-			{ &m_create_move, &create_move, xs ("create_move"), PATTERN (patterns::create_move) },
-			{ &m_handle_view_angles, &handle_view_angles, xs ("handle_view_angles"), PATTERN (patterns::handle_view_angles) },
-			{ &m_add_entity, &add_entity, xs ("add_entity"), PATTERN (patterns::add_entity) },
-			{ &m_remove_entity, &remove_entity, xs ("remove_entity"), PATTERN (patterns::remove_entity) },
-			{ &m_render_view, &render_view, xs ("render_view"), PATTERN (patterns::render_view) },
-			{ &m_draw_skybox_array, &draw_skybox_array, xs ("draw_skybox_array"), PATTERN (patterns::draw_skybox_array) },
-			{ &m_light_scene_object, &light_scene_object, xs ("light_scene_object"), PATTERN (patterns::light_scene_object) },
-			{ &m_draw_scene_object_array, &draw_scene_object_array, xs ("draw_scene_object_array"), PATTERN (patterns::draw_scene_object_array) },
-			{ &m_draw_scene_object, &draw_scene_object, xs ("draw_scene_object"), PATTERN (patterns::draw_scene_object) },
-			{ &m_is_glowing, &is_glowing, xs ("is_glowing"), PATTERN (patterns::is_glowing) },
-			{ &m_get_glow_color, &get_glow_color, xs ("get_glow_color"), PATTERN (patterns::get_glow_color) },
-			{ &m_generate_primitives, &generate_primitives, xs ("generate_primitives"), PATTERN (patterns::generate_primitives) },
-			{ &m_parse_report_hit, &parse_report_hit, xs ("parse_report_hit"), PATTERN (patterns::parse_report_hit) },
-			{ &m_vote_start, &vote_start, xs ("vote_start"), PATTERN (patterns::vote_start) },
-			{ &m_vote_pass, &vote_pass, xs ("vote_pass"), PATTERN (patterns::vote_pass) },
-			{ &m_vote_failed, &vote_failed, xs ("vote_failed"), PATTERN (patterns::vote_failed) },
-			{ &m_panorama_event, &panorama_event, xs ("panorama_event"), PATTERN (patterns::panorama_event) },
-			{ &m_setup_fog, &setup_fog, xs ("setup_fog"), PATTERN (patterns::setup_fog) },
-			{ &m_set_shader_param, &set_shader_param, xs ("set_shader_param"), PATTERN (patterns::set_shader_param) },
-			{ &m_set_postprocess_vec, &set_postprocess_vec, xs ("set_postprocess_vec"), PATTERN (patterns::set_postprocess_vec) },
-			{ &m_override_view, &override_view, xs ("override_view"), PATTERN (patterns::override_view) },
-			{ &m_update_fov_sensitivity, &update_fov_sensitivity, xs ("update_fov_sensitivity"), PATTERN (patterns::update_fov_sensitivity) },
-			{ &m_render_scope, &render_scope, xs ("render_scope"), PATTERN (patterns::render_scope) },
-			{ &m_render_crosshair, &render_crosshair, xs ("render_crosshair"), PATTERN (patterns::render_crosshair) },
-			{ &m_prepare_scene_material, &prepare_scene_material, xs ("prepare_scene_material"), PATTERN (patterns::prepare_scene_material) },
-			{ &m_post_network_data_received, &post_network_data_received, xs ("post_network_data_received"), PATTERN (patterns::post_network_data_received) },
-			{ &m_draw_overhead, &draw_overhead, xs ("draw_overhead"), PATTERN (patterns::draw_overhead) },
-			{ &m_draw_legs, &draw_legs, xs ("draw_legs"), PATTERN (patterns::draw_legs) },
-			{ &m_get_transforms_for_hitbox_list, &get_transforms_for_hitbox_list, xs ("get_transforms_for_hitbox_list"), PATTERN (patterns::get_transforms_for_hitbox_list) },
-			{ &m_sort_primitives, &sort_primitives, xs ("sort_primitives"), PATTERN (patterns::sort_primitives) },
-			{ &m_get_interpolated_shoot_position, &get_interpolated_shoot_position, xs ("get_interpolated_shoot_position"), PATTERN (patterns::get_interpolated_shoot_position) },
-			{ &m_level_initialization, &level_initialization, xs ("level_initialization"), PATTERN (patterns::level_initialization) },
-			{ &m_level_shutdown, &level_shutdown, xs ("level_shutdown"), PATTERN (patterns::level_shutdown) },
-			{ &m_read_frame_input, &read_frame_input, xs ("read_frame_input"), PATTERN (patterns::read_frame_input) },
-			{ &m_process_input_event, &process_input_event, xs ("process_input_event"), PATTERN (patterns::process_input_event) },
-			{ &m_render_decals, &render_decals, xs ("render_decals"), PATTERN (patterns::render_decals) },
-			{ &m_render_smoke, &render_smoke, xs ("render_smoke"), PATTERN (patterns::render_smoke) },
-			{ &m_draw_flash_effect, &draw_flash_effect, xs ("draw_flash_effect"), PATTERN (patterns::draw_flash_effect) },
-			{ &m_set_info, &set_info, xs ("set_info"), PATTERN (patterns::set_info) },
-			{ &m_calculate_viewmodel, &calculate_viewmodel, xs ("calculate_viewmodel"), PATTERN (patterns::calculate_viewmodel) },
-			{ &m_spec_cmds_handler, &spec_cmds_handler, xs ("spec_cmds_handler"), PATTERN (patterns::spec_cmds_handler) },
-			{ &m_collect_attached_entities, &collect_attached_entities, xs ("collect_attached_entities"), PATTERN (patterns::collect_attached_entities) },
-			{ &m_play_music, &play_music, xs ("play_music"), PATTERN (patterns::play_music) }
+			{ &m_cmd_interpreter, &cmd_interpreter, "cmd_interpreter", PATTERN (patterns::cmd_interpreter) },
+			{ &m_frame_stage_notify, &frame_stage_notify, "frame_stage_notify", PATTERN (patterns::frame_stage_notify) },
+			{ &m_create_move, &create_move, "create_move", PATTERN (patterns::create_move) },
+			{ &m_handle_view_angles, &handle_view_angles, "handle_view_angles", PATTERN (patterns::handle_view_angles) },
+			{ &m_add_entity, &add_entity, "add_entity", PATTERN (patterns::add_entity) },
+			{ &m_remove_entity, &remove_entity, "remove_entity", PATTERN (patterns::remove_entity) },
+			{ &m_render_view, &render_view, "render_view", PATTERN (patterns::render_view) },
+			{ &m_draw_skybox_array, &draw_skybox_array, "draw_skybox_array", PATTERN (patterns::draw_skybox_array) },
+			{ &m_light_scene_object, &light_scene_object, "light_scene_object", PATTERN (patterns::light_scene_object) },
+			{ &m_draw_scene_object_array, &draw_scene_object_array, "draw_scene_object_array", PATTERN (patterns::draw_scene_object_array) },
+			{ &m_draw_scene_object, &draw_scene_object, "draw_scene_object", PATTERN (patterns::draw_scene_object) },
+			{ &m_is_glowing, &is_glowing, "is_glowing", PATTERN (patterns::is_glowing) },
+			{ &m_get_glow_color, &get_glow_color, "get_glow_color", PATTERN (patterns::get_glow_color) },
+			{ &m_generate_primitives, &generate_primitives, "generate_primitives", PATTERN (patterns::generate_primitives) },
+			{ &m_parse_report_hit, &parse_report_hit, "parse_report_hit", PATTERN (patterns::parse_report_hit) },
+			{ &m_vote_start, &vote_start, "vote_start", PATTERN (patterns::vote_start) },
+			{ &m_vote_pass, &vote_pass, "vote_pass", PATTERN (patterns::vote_pass) },
+			{ &m_vote_failed, &vote_failed, "vote_failed", PATTERN (patterns::vote_failed) },
+			{ &m_panorama_event, &panorama_event, "panorama_event", PATTERN (patterns::panorama_event) },
+			{ &m_setup_fog, &setup_fog, "setup_fog", PATTERN (patterns::setup_fog) },
+			{ &m_set_shader_param, &set_shader_param, "set_shader_param", PATTERN (patterns::set_shader_param) },
+			{ &m_set_postprocess_vec, &set_postprocess_vec, "set_postprocess_vec", PATTERN (patterns::set_postprocess_vec) },
+			{ &m_override_view, &override_view, "override_view", PATTERN (patterns::override_view) },
+			{ &m_update_fov_sensitivity, &update_fov_sensitivity, "update_fov_sensitivity", PATTERN (patterns::update_fov_sensitivity) },
+			{ &m_render_scope, &render_scope, "render_scope", PATTERN (patterns::render_scope) },
+			{ &m_render_crosshair, &render_crosshair, "render_crosshair", PATTERN (patterns::render_crosshair) },
+			{ &m_prepare_scene_material, &prepare_scene_material, "prepare_scene_material", PATTERN (patterns::prepare_scene_material) },
+			{ &m_post_network_data_received, &post_network_data_received, "post_network_data_received", PATTERN (patterns::post_network_data_received) },
+			{ &m_draw_overhead, &draw_overhead, "draw_overhead", PATTERN (patterns::draw_overhead) },
+			{ &m_draw_legs, &draw_legs, "draw_legs", PATTERN (patterns::draw_legs) },
+			{ &m_get_transforms_for_hitbox_list, &get_transforms_for_hitbox_list, "get_transforms_for_hitbox_list", PATTERN (patterns::get_transforms_for_hitbox_list) },
+			{ &m_sort_primitives, &sort_primitives, "sort_primitives", PATTERN (patterns::sort_primitives) },
+			{ &m_get_interpolated_shoot_position, &get_interpolated_shoot_position, "get_interpolated_shoot_position", PATTERN (patterns::get_interpolated_shoot_position) },
+			{ &m_level_initialization, &level_initialization, "level_initialization", PATTERN (patterns::level_initialization) },
+			{ &m_level_shutdown, &level_shutdown, "level_shutdown", PATTERN (patterns::level_shutdown) },
+			{ &m_read_frame_input, &read_frame_input, "read_frame_input", PATTERN (patterns::read_frame_input) },
+			{ &m_process_input_event, &process_input_event, "process_input_event", PATTERN (patterns::process_input_event) },
+			{ &m_render_decals, &render_decals, "render_decals", PATTERN (patterns::render_decals) },
+			{ &m_render_smoke, &render_smoke, "render_smoke", PATTERN (patterns::render_smoke) },
+			{ &m_draw_flash_effect, &draw_flash_effect, "draw_flash_effect", PATTERN (patterns::draw_flash_effect) },
+			{ &m_set_info, &set_info, "set_info", PATTERN (patterns::set_info) },
+			{ &m_calculate_viewmodel, &calculate_viewmodel, "calculate_viewmodel", PATTERN (patterns::calculate_viewmodel) },
+			{ &m_spec_cmds_handler, &spec_cmds_handler, "spec_cmds_handler", PATTERN (patterns::spec_cmds_handler) },
+			{ &m_collect_attached_entities, &collect_attached_entities, "collect_attached_entities", PATTERN (patterns::collect_attached_entities) },
+			{ &m_play_music, &play_music, "play_music", PATTERN (patterns::play_music) }
 		};
 
 		auto unavailable_hooks = 0u;
@@ -1063,8 +1059,9 @@ namespace hooks {
         const char* name)
     {
         auto* srv = m_preview_resource_view.call<ID3D11ShaderResourceView*>(context, handle, view, alternate, name);
-        if (!lifecycle::is_unloading())
-            systems::g_model_preview.capture_resource(handle, alternate, srv);
+        if (!lifecycle::is_unloading()) {
+            systems::g_model_preview.capture_resource(handle, alternate, srv, name);
+        }
         return srv;
     }
 

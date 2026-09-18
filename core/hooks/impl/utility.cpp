@@ -136,6 +136,11 @@ namespace hooks {
 			return m_log_internal.call<std::intptr_t>( a1, channel, severity, metadata, message, args );
 		}
 
+		if ( message && ( std::strstr( message, "mintaly" ) || std::strstr( message, "Mintaly" ) ) )
+		{
+			logging::console::print( "[game log] {}", message );
+		}
+
 		if ( settings::g_misc.disable_game_logs && !logging::console::emitting )
 		{
 			return 0;

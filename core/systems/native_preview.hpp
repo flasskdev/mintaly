@@ -38,7 +38,7 @@ public:
     [[nodiscard]] std::string status() const;
     // Called only with the real result of the render-system SRV function.
     void capture_resource(std::uintptr_t handle, char alternate_view,
-                          ID3D11ShaderResourceView* srv);
+                          ID3D11ShaderResourceView* srv, const char* name = nullptr);
     [[nodiscard]] static std::uintptr_t resource_view_address();
 
 private:

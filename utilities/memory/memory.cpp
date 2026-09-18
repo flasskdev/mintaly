@@ -663,6 +663,8 @@ found_type_descriptor:
 			return {};
 		}
 
+		diag::probe_scope probe;
+
 		std::vector<char> buf( max_length + 1, '\0' );
 		std::size_t len = 0;
 		if ( !detail::safe_copy_str( reinterpret_cast<const char*>( address ), buf.data( ), max_length, len ) || len == 0 ) {
