@@ -393,7 +393,8 @@ namespace features::world {
 
 		const auto fullbright_on = settings::g_world.m_scene.fullbright.value;
 		const auto& config = settings::g_world.m_scene.skybox;
-		if (!config.custom_color.value && !settings::g_world.m_scene.world_setting.value && !fullbright_on) {
+		if (!config.custom_color.value && !settings::g_world.m_scene.world_setting.value && !fullbright_on &&
+			!settings::g_misc.m_smoke_and_fire_color.custom_molotov.value) {
 			return;
 		}
 

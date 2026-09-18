@@ -934,8 +934,35 @@ namespace features::misc {
 
 		input_pitch = std::clamp( input_pitch, -89.0f, 89.0f );
 
-		base->mutable_viewangles( )->set_x( input_pitch );
-		base->mutable_viewangles( )->set_y( corrected_yaw );
+		const auto view = base->mutable_viewangles( );
+		if ( !view ) return;
+		// Preserve world-space strafe direction when changing command yaw.
+		const float delta = ( view->y( ) - corrected_yaw ) * std::numbers::pi_v<float> / 180.0f;
+		const float c = std::cos( delta ), s = std::sin( delta );
+		const float forward = base->forwardmove( ), left = base->leftmove( );
+		base->set_forwardmove( forward * c - left * s );
+		base->set_leftmove( forward * s + left * c );
+		for ( int i = 0; i < base->subtick_moves_size( ); ++i ) {
+			if ( const auto step = base->mutable_subtick_moves( i ) ) {
+				const float f = step->analog_forward_delta( ), l = step->analog_left_delta( );
+				step->set_analog_forward_delta( f * c - l * s );
+				step->set_analog_left_delta( f * s + l * c );
+				step->set_pitch_delta( 0.0f );
+				step->set_yaw_delta( 0.0f );
+			}
+		}
+		view->set_x( input_pitch );
+		view->set_y( corrected_yaw );
+		view->set_z( 0.0f );
+		// Grenade release can use input history instead of base view angles.
+		for ( int i = 0; i < cmd->csgo_user_cmd.input_history_size( ); ++i ) {
+			const auto entry = cmd->csgo_user_cmd.mutable_input_history( i );
+			if ( const auto angles = entry ? entry->mutable_view_angles( ) : nullptr ) {
+				angles->set_x( input_pitch );
+				angles->set_y( corrected_yaw );
+				angles->set_z( 0.0f );
+			}
+		}
 	}
 
 	void projectile_trajectory::compute_desired_direction( math::vector3& desired_forward ) const

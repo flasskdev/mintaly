@@ -928,7 +928,8 @@ namespace hooks {
 	std::uintptr_t __fastcall cheat::draw_scene_object( std::uintptr_t a1, std::uintptr_t a2, std::uintptr_t batch, int batch_count, int a5, std::uintptr_t a6, std::uintptr_t a7, std::uintptr_t a8 )
 	{
 		const auto& scene = settings::g_world.m_scene;
-		const bool tint_active = ( scene.fullbright.value || scene.world_setting.value || scene.skybox.custom_color.value );
+		const bool tint_active = ( scene.fullbright.value || scene.world_setting.value || scene.skybox.custom_color.value ||
+			settings::g_misc.m_smoke_and_fire_color.custom_molotov.value );
 
 		if ( lifecycle::is_unloading( ) || !batch || batch_count <= 0 || batch_count > ( 1 << 16 ) || !tint_active )
 		{

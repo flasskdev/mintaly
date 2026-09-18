@@ -1744,6 +1744,8 @@ namespace settings {
                 {
                         xui::setting custom_smoke{ false,{}, "custom smoke color", "world" };
                         config::col smoke_color{ { 180, 100, 255, 255 }, "world", "smoke color" };
+                        xui::setting custom_molotov{ false,{}, "custom molotov color", "world" };
+                        config::col molotov_color{ { 180, 100, 255, 255 }, "world", "molotov color" };
                 } m_smoke_and_fire_color{};
 
                 struct impacts

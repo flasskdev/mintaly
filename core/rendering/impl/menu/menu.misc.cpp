@@ -549,8 +549,6 @@ namespace rendering {
                                         xui::end_popup( );
                                 }
                                 xui::layout::spacing( 3.0f );
-                                xui::toggle( "Super Toss", m.m_projectile_trajectory.super_toss );
-                                xui::layout::spacing( 3.0f );
                                 xui::toggle( "Dynamic Light", m.m_dlight.enabled );
                                 if ( xui::begin_popup( "##restore_dlight", 250.0f ) )
                                 {
