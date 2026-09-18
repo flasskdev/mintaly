@@ -2113,41 +2113,34 @@ namespace hooks {
 
 	void __fastcall cheat::play_music( void* thisptr, int track_type, std::uint16_t music_kit_id, float volume )
 	{
-		if ( lifecycle::is_unloading( ) )
+		if ( lifecycle::is_unloading( ) || is_level_shutting_down( ) )
 		{
 			m_play_music.call<void>( thisptr, track_type, music_kit_id, volume );
 			return;
 		}
 
-		if ( thisptr )
+		if ( thisptr ) s_last_music_thisptr = thisptr;
+		if ( track_type == 11 && systems::g_local.get( ).controller )
 		{
-			s_last_music_thisptr = thisptr;
+			if ( features::changer::g_music.queue_mvp_music( thisptr, track_type, music_kit_id, volume,
+				[]( void* context, int track, std::uint16_t kit, float gain ) {
+					if ( !lifecycle::is_unloading( ) && !is_level_shutting_down( ) && systems::g_local.get( ).controller )
+						m_play_music.call<void>( context, track, kit, gain );
+				} ) ) return;
+			const auto winner_kit = features::changer::get_current_mvp_kit_id( );
+			if ( winner_kit > 0 && winner_kit < 0xffff ) music_kit_id = static_cast<std::uint16_t>( winner_kit );
 		}
-
-		const auto engine_kit = music_kit_id;
-		const auto winner_kit = features::changer::get_current_mvp_kit_id( );
-		const auto custom_kit = static_cast< std::uint16_t >( settings::g_changer.music.id );
-		// Build-dependent track ID: verify against the trace on both clients before
-		// changing it. Unknown tracks must retain the engine's selection.
-		if ( track_type == 11 ) // The anthem belongs to the MVP, not the listener.
+		else if ( track_type == 1 && rendering::g_widgets.s_map_name.empty( ) && !systems::g_local.get( ).controller )
 		{
-			if ( winner_kit > 0 && winner_kit < 0xffff )
-				music_kit_id = static_cast<std::uint16_t>( winner_kit );
-			// Otherwise preserve the engine's kit, including silence/unknown IDs.
+			// Only actual lobby playback may use the listener's selected kit.
+			// Never turn an in-match victory track into the listener's music.
+			const auto custom_kit = settings::g_changer.music.id;
+			if ( custom_kit > 0 && custom_kit < 0xffff )
+			{
+				music_kit_id = static_cast<std::uint16_t>( custom_kit );
+				if ( volume <= 0.01f ) volume = 0.7f;
+			}
 		}
-		else if ( track_type == 1 && custom_kit > 0 && custom_kit != 0xffff )
-		{
-			music_kit_id = custom_kit;
-			if ( volume <= 0.01f ) volume = 0.7f;
-		}
-		// In-match tracks retain the engine's owner/kit selection. A blanket listener
-		// override also replaces other players' anthems on builds with different track IDs.
-
-		diag::writef( diag::level::info,
-			"[music-sync] play_music tick=%llu thread=%lu track=%d engine_kit=%u winner_kit=%d listener_kit=%d output_kit=%u volume=%.3f",
-			static_cast<unsigned long long>( GetTickCount64( ) ), GetCurrentThreadId( ), track_type,
-			static_cast<unsigned int>( engine_kit ), winner_kit, settings::g_changer.music.id,
-			static_cast<unsigned int>( music_kit_id ), static_cast<double>( volume ) );
 		m_play_music.call<void>( thisptr, track_type, music_kit_id, volume );
 	}
 

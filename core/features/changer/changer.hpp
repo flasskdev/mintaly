@@ -368,6 +368,9 @@ namespace features::changer {
 		void reset( );
 		void on_round_mvp( void* event );
 		void clear_mvp( );
+		// Returns false when deferring on this thread is unsafe; caller plays normally.
+		bool queue_mvp_music( void* context, int track, std::uint16_t kit, float volume,
+			void (*play)( void*, int, std::uint16_t, float ) );
 		[[nodiscard]] bool is_local_mvp( ) const;
 
 	private:
