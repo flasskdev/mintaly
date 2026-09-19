@@ -102,6 +102,8 @@ namespace rendering {
                         xui::layout::set_cursor( content_x - wx, body_y + k_header_h - wy );
                         if ( xui::begin_child( "##misc_main_left", col_w, body_h - k_header_h, true ) )
                         {
+                                xui::toggle( "Super Toss", m.m_projectile_trajectory.super_toss );
+                                xui::layout::spacing( 3.0f );
                                 xui::toggle( "Hit Logs", impacts.hit_log );
                                 if ( xui::begin_popup( "##hitlog_popup", 220.0f ) )
                                 {
@@ -574,6 +576,13 @@ namespace rendering {
                                 if ( xui::begin_popup( "##restore_smoke_col_misc", 220.0f ) )
                                 {
                                         xui::color_picker( "color##smoke_misc", m.m_smoke_and_fire_color.smoke_color );
+                                        xui::end_popup( );
+                                }
+                                xui::layout::spacing( 3.0f );
+                                xui::toggle( "Molotov Color", m.m_smoke_and_fire_color.custom_molotov );
+                                if ( xui::begin_popup( "##molotov_color_misc", 220.0f ) )
+                                {
+                                        xui::color_picker( "color##molotov_misc", m.m_smoke_and_fire_color.molotov_color );
                                         xui::end_popup( );
                                 }
 

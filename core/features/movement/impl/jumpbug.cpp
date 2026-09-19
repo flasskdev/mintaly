@@ -16,48 +16,88 @@ namespace features::movement {
     }
     void jumpbug::on_create_move(systems::input::usercmd* cmd, std::uint64_t original_buttons) {
         m_active_this_tick = false;
-        const bool fired_previous = m_fired_last_tick;
-        m_fired_last_tick = false;
         if (!cmd) return;
         constexpr auto jump = cstypes::command_buttons::in_jump;
         constexpr auto duck = cstypes::command_buttons::in_duck;
         constexpr auto controlled = jump | duck;
-        if (fired_previous && !(original_buttons & jump)) {
-            cmd->buttons.value &= ~jump;
-            cmd->buttons.value_changed |= jump;
-            cmd->buttons.value_scroll &= ~jump;
-        }
-        const auto& config = settings::g_movement.jumpbug;
-        const bool bound = config.bind.key != 0 && config.bind.active;
-        if (!bound && !config.value) return;
-        const auto local = systems::g_local.get();
-        const auto& pre = systems::g_prediction.pre();
-        if (!local.pawn || !local.is_alive || !pre.movement_valid || pre.pawn != local.pawn ||
-            (pre.flags & cstypes::entity_flags::on_ground)) return;
-        const auto move_type = memory::read<std::uint8_t>(local.pawn + SCHEMA("C_BaseEntity", "m_nActualMoveType"_hash));
-        if (move_type == cstypes::move_type::ladder || move_type == cstypes::move_type::noclip) return;
-        if (!finite(pre.networked_origin) || !finite(pre.networked_velocity) || pre.networked_velocity.z >= 0.0f) return;
-        if (!bound && pre.networked_velocity.z > -200.0f) return;
         const auto base = cmd->csgo_user_cmd.mutable_base();
         const auto moves = base ? base->mutable_subtick_moves() : nullptr;
+        const auto local = systems::g_local.get();
+        const auto& pre = systems::g_prediction.pre();
+        if (m_pawn != local.pawn || !local.is_alive) {
+            m_cycle = {}; m_owned_duck = false; m_fired_last_tick = false;
+            m_pawn = local.pawn;
+        }
+        // Release only input owned by this feature. Preserve a physical key
+        // held by the player and reserve events before mutating the command.
+        const auto release_owned = [&]() {
+            std::uint64_t mask = 0;
+            if (m_owned_duck && !(original_buttons & duck)) mask |= duck;
+            if (m_fired_last_tick && !(original_buttons & jump)) mask |= jump;
+            if (!mask) { m_owned_duck = false; m_fired_last_tick = false; return; }
+            if (!moves) return;
+            const int old_size = moves->m_current_size;
+            std::array<proto::subtick_move_step*, 2> events{};
+            int count = 0;
+            for (const auto button : {jump, duck}) {
+                if (!(mask & button)) continue;
+                auto* event = systems::g_input.acquire_subtick_step(moves);
+                if (!event) { moves->m_current_size = old_size; return; }
+                events[count++] = event;
+            }
+            for (int i = 0; i < old_size; ++i) {
+                if (auto* step = base->mutable_subtick_moves(i); step && (step->button() & mask)) {
+                    step->set_button(step->button() & ~mask);
+                    if (!step->button()) step->set_pressed(false);
+                }
+            }
+            count = 0;
+            for (const auto button : {jump, duck}) {
+                if (!(mask & button)) continue;
+                auto* event = events[count++]; *event = {};
+                event->set_button(button); event->set_pressed(false); event->set_when(0.0f);
+            }
+            cmd->buttons.value &= ~mask;
+            cmd->buttons.value_changed |= mask;
+            cmd->buttons.value_scroll &= ~mask;
+            m_owned_duck = false; m_fired_last_tick = false;
+        };
+        if (!local.pawn || !local.is_alive || !pre.movement_valid || pre.pawn != local.pawn) {
+            release_owned(); return;
+        }
+        const bool grounded = (pre.flags & cstypes::entity_flags::on_ground) != 0;
+        const bool can_attempt = m_cycle.available(grounded, pre.networked_velocity.z);
+        const auto& config = settings::g_movement.jumpbug;
+        const bool bound = config.bind.key != 0 && config.bind.active;
+        if ((!bound && !config.value) || grounded || !can_attempt) { release_owned(); return; }
+        const auto move_type = memory::read<std::uint8_t>(local.pawn + SCHEMA("C_BaseEntity", "m_nActualMoveType"_hash));
+        if (move_type == cstypes::move_type::ladder || move_type == cstypes::move_type::noclip) {
+            release_owned(); return;
+        }
+        if (!finite(pre.networked_origin) || !finite(pre.networked_velocity) || pre.networked_velocity.z >= 0.0f) {
+            release_owned(); return;
+        }
+        // Prepare the crouched hull early. Waiting until damage speed to crouch
+        // would leave too little time for the duck transition near the floor.
+        if (!bound && pre.networked_velocity.z > -200.0f) { release_owned(); return; }
         const auto movement = memory::read<std::uintptr_t>(local.pawn + SCHEMA("C_BasePlayerPawn", "m_pMovementServices"_hash));
-        if (!moves || !movement || !PATTERN(patterns::trace_hull) || !PATTERN(patterns::trace_filter_set_collision)) return;
+        if (!moves || !movement || !PATTERN(patterns::trace_hull) || !PATTERN(patterns::trace_filter_set_collision)) { release_owned(); return; }
         const auto pawn = memory::safe_read<std::uintptr_t>(movement + 56).value_or(0);
-        if (!pawn) return;
+        if (!pawn) { release_owned(); return; }
         auto mask = memory::read<std::uint64_t>(pawn + 0xd48);
         if (memory::read<std::uint32_t>(pawn + 0x3f8) & 0x10) mask |= 0x20;
         const auto gravity_var = CONVAR("sv_gravity");
         const auto normal_var = CONVAR("sv_standable_normal");
-        if (!gravity_var || !normal_var) return;
+        if (!gravity_var || !normal_var) { release_owned(); return; }
         const float gravity = gravity_var->get<float>() * pre.gravity_scale;
         const float standable = normal_var->get<float>();
         const auto vz = jumpbug_timing::movement_velocity_z(pre.networked_velocity.z, gravity, cstypes::tick_interval);
-        if (!vz || !std::isfinite(standable) || standable <= 0.0f || standable > 1.0f) return;
+        if (!vz || !std::isfinite(standable) || standable <= 0.0f || standable > 1.0f) { release_owned(); return; }
         const auto mins = pre.collision_mins;
         const auto maxs = pre.collision_maxs;
-        if (!finite(mins) || !finite(maxs) || maxs.x <= mins.x || maxs.y <= mins.y || maxs.z <= mins.z) return;
+        if (!finite(mins) || !finite(maxs) || maxs.x <= mins.x || maxs.y <= mins.y || maxs.z <= mins.z) { release_owned(); return; }
         const auto expansion = jumpbug_timing::airborne_unduck_expansion(maxs.z - mins.z, 72.0f);
-        if (!expansion) return;
+        if (!expansion) { release_owned(); return; }
         auto velocity = pre.networked_velocity;
         velocity.z = *vz;
         const auto travel = velocity * cstypes::tick_interval;
@@ -65,7 +105,7 @@ namespace features::movement {
         std::optional<float> release;
         // Keep crouching until the standing feet enter the ground categorization
         // window, instead of releasing at tick zero and landing normally.
-        if (pre.duck_amount > 0.0f && *expansion > 0.0f) {
+        if (pre.ducked && pre.duck_amount > 0.0f && *expansion > 0.0f) {
             auto standing_mins = mins;
             auto standing_maxs = maxs;
             standing_mins.z -= *expansion;
@@ -104,7 +144,11 @@ namespace features::movement {
         // Reserve all events before removing any existing jump/duck input.
         const int original_size = moves->m_current_size;
         std::array<proto::subtick_move_step*, 4> events{};
-        const int count = release ? 4 : 2;
+        // Automatic mode must not add a hop to a harmless ordinary jump.
+        // The 580-unit cutoff is a conservative client heuristic, not immunity.
+        const bool include_jump = settings::g_movement.jumpbug_include_jump_steps.value &&
+            (bound || *vz <= -580.0f);
+        const int count = release ? (include_jump ? 4 : 3) : 2;
         for (int i = 0; i < count; ++i) {
             events[i] = systems::g_input.acquire_subtick_step(moves);
             if (!events[i]) { moves->m_current_size = original_size; return; }
@@ -126,14 +170,18 @@ namespace features::movement {
         cmd->buttons.value = (cmd->buttons.value | duck) & ~jump;
         cmd->buttons.value_changed |= controlled;
         cmd->buttons.value_scroll &= ~controlled;
+        m_owned_duck = true;
         if (release) {
             if (*release == 0.0f) {
                 events[1]->set_button(0);
                 events[1]->set_pressed(false);
+                cmd->buttons.value &= ~duck;
             }
             event(2, duck, false, *release);
-            event(3, jump, true, *release + jumpbug_timing::event_gap);
-            m_fired_last_tick = true;
+            if (include_jump) event(3, jump, true, *release + jumpbug_timing::event_gap);
+            m_fired_last_tick = include_jump;
+            m_owned_duck = false;
+            m_cycle.fired();
         }
         m_active_this_tick = true;
     }

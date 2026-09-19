@@ -9,6 +9,7 @@
 #include <optional>
 #include <utility>
 #include <protection/game_addresses.hpp>
+#include "../throw_compensation.hpp"
 
 namespace features::misc {
 
@@ -264,7 +265,7 @@ namespace features::misc {
 			systems::g_prediction.simulate( cmd, local, [ & ]( ) { predicted_velocity = memory::read<math::vector3>( local.pawn + SCHEMA( "C_BaseEntity", "m_vecVelocity"_hash ) ); } );
 
 			const auto vel_contribution = predicted_velocity * k_velocity_inherit;
-			const auto throw_vel = std::clamp( this->m_throw_velocity, 15.0f, 1000.0f );
+			const auto throw_vel = std::clamp( this->m_throw_velocity * 0.9f, 15.0f, 1000.0f );
 			const auto throw_speed = ( this->m_delayed_strength * 0.7f + 0.3f ) * throw_vel;
 
 			math::vector3 desired_forward{};
@@ -325,11 +326,6 @@ namespace features::misc {
 		if ( pin_pulled || throw_time > 0.0f )
 		{
 			strength = std::clamp( memory::read<float>( weapon + SCHEMA( "C_BaseCSGrenade", "m_flThrowStrength"_hash ) ), 0.0f, 1.0f );
-
-			if ( std::abs( strength - 0.5f ) <= 0.1f )
-			{
-				strength = 0.5f;
-			}
 		}
 
 		auto angles = systems::g_input.get_view_angles( );
@@ -355,12 +351,27 @@ namespace features::misc {
 			};
 		}
 
+        if ( settings::g_misc.m_projectile_trajectory.super_toss.value )
+        {
+            math::vector3 desired{};
+            this->compute_desired_direction( desired );
+            const auto inherited = memory::read<math::vector3>( local_pawn + SCHEMA( "C_BaseEntity", "m_vecVelocity"_hash ) ) * k_velocity_inherit;
+            const float speed = ( strength * 0.7f + 0.3f ) * std::clamp( this->m_throw_velocity * 0.9f, 15.0f, 1000.0f );
+            if ( const auto solved = throw_compensation::solve(
+                { desired.x, desired.y, desired.z }, { inherited.x, inherited.y, inherited.z }, speed ) )
+            {
+                const auto pitch = -std::asin( std::clamp( solved->direction[2], -1.0f, 1.0f ) ) * 180.0f / std::numbers::pi_v<float>;
+                if ( throw_compensation::input_pitch( pitch ) )
+                    forward = { solved->direction[0], solved->direction[1], solved->direction[2] };
+            }
+        }
+
 		const auto hull_mins = math::vector3{ -k_hull_size, -k_hull_size, -k_hull_size };
 		const auto hull_maxs = math::vector3{ k_hull_size, k_hull_size, k_hull_size };
 		const auto trace = systems::g_tracing.trace_hull( eye_pos, eye_pos + forward * k_forward_offset, hull_mins, hull_maxs, local_pawn, grenade_collision_mask_v );
 		origin = trace.end_pos - forward * k_pull_back;
 
-		const auto throw_velocity = std::clamp( this->m_throw_velocity, 15.0f, 1000.0f );
+		const auto throw_velocity = std::clamp( this->m_throw_velocity * 0.9f, 15.0f, 1000.0f );
 		const auto throw_speed = ( strength * 0.7f + 0.3f ) * throw_velocity;
 		const auto player_velocity = memory::read<math::vector3>( local_pawn + SCHEMA( "C_BaseEntity", "m_vecVelocity"_hash ) );
 		velocity = forward * throw_speed + player_velocity * k_velocity_inherit;
@@ -868,12 +879,8 @@ namespace features::misc {
 		}
 
 		auto strength = std::clamp( memory::read<float>( weapon + SCHEMA( "C_BaseCSGrenade", "m_flThrowStrength"_hash ) ), 0.0f, 1.0f );
-		if ( std::abs( strength - 0.5f ) <= 0.1f )
-		{
-			strength = 0.5f;
-		}
 
-		const auto throw_vel = std::clamp( this->m_throw_velocity, 15.0f, 1000.0f );
+		const auto throw_vel = std::clamp( this->m_throw_velocity * 0.9f, 15.0f, 1000.0f );
 		const auto throw_speed = ( strength * 0.7f + 0.3f ) * throw_vel;
 
 		math::vector3 desired_forward{};
@@ -885,54 +892,40 @@ namespace features::misc {
 			return;
 		}
 
-		auto predicted_velocity = memory::read<math::vector3>( local.pawn + SCHEMA( "C_BaseEntity", "m_vecVelocity"_hash ) );
-		if ( predicted_velocity.length_sqr( ) < 1.0f )
-		{
-			return;
-		}
+        auto predicted_velocity = memory::read<math::vector3>( local.pawn + SCHEMA( "C_BaseEntity", "m_vecVelocity"_hash ) );
+        if ( settings::g_misc.m_projectile_trajectory.super_toss.value )
+        {
+            // Prediction includes this command's jump and strafe acceleration.
+            // Read grenade-stashed velocity when the engine has already selected
+            // its release sample, rather than compensating a different tick.
+            const bool predicted = systems::g_prediction.simulate( cmd, local, [&]() {
+                predicted_velocity = memory::read<math::vector3>( local.pawn + SCHEMA( "C_BaseEntity", "m_vecVelocity"_hash ) );
+                const auto stash_flag = SCHEMA( "C_CSPlayerPawn", "m_bGrenadeParametersStashed"_hash );
+                const auto stash_velocity = SCHEMA( "C_CSPlayerPawn", "m_vecStashedVelocity"_hash );
+                if ( stash_flag && stash_velocity && memory::read<bool>( local.pawn + stash_flag ) )
+                    predicted_velocity = memory::read<math::vector3>( local.pawn + stash_velocity );
+            } );
+            if ( !predicted ) {
+                static bool reported = false;
+                if ( !reported ) {
+                    logging::console::print( "[super toss] prediction unavailable; angle correction skipped" );
+                    reported = true;
+                }
+                return;
+            }
+        }
 
-		const auto vel_contribution = predicted_velocity * k_velocity_inherit;
-		const auto vel_along = desired_forward * vel_contribution.dot( desired_forward );
-		const auto vel_perp = vel_contribution - vel_along;
-		const auto perp_len_sq = vel_perp.length_sqr( );
-
-		if ( perp_len_sq >= throw_speed * throw_speed )
-		{
-			return;
-		}
-
-		const auto forward_component = std::sqrt( throw_speed * throw_speed - perp_len_sq );
-		const auto total_along_desired = vel_contribution.dot( desired_forward ) + forward_component;
-
-		if ( total_along_desired <= 0.0f )
-		{
-			return;
-		}
-
-		auto corrected = ( desired_forward * total_along_desired - vel_contribution ) * ( 1.0f / throw_speed );
-		auto len = corrected.length( );
-
-		if ( len < 0.001f )
-		{
-			return;
-		}
-
-		corrected = corrected * ( 1.0f / len );
-
-		auto corrected_pitch = -std::asin( std::clamp( corrected.z, -1.0f, 1.0f ) ) * ( 180.0f / std::numbers::pi_v<float> );
-		auto corrected_yaw = std::atan2( corrected.y, corrected.x ) * ( 180.0f / std::numbers::pi_v<float> );
-		auto input_pitch = corrected_pitch;
-
-		if ( corrected_pitch >= -10.0f )
-		{
-			input_pitch = ( corrected_pitch + 10.0f ) * 0.9f;
-		}
-		else
-		{
-			input_pitch = ( corrected_pitch + 10.0f ) * ( 9.0f / 8.0f );
-		}
-
-		input_pitch = std::clamp( input_pitch, -89.0f, 89.0f );
+        const auto inherited = predicted_velocity * k_velocity_inherit;
+        const auto solved = throw_compensation::solve(
+            { desired_forward.x, desired_forward.y, desired_forward.z },
+            { inherited.x, inherited.y, inherited.z }, throw_speed );
+        if ( !solved ) return;
+        const auto& corrected = solved->direction;
+        const float corrected_pitch = -std::asin( std::clamp( corrected[2], -1.0f, 1.0f ) ) * 180.0f / std::numbers::pi_v<float>;
+        const float corrected_yaw = std::atan2( corrected[1], corrected[0] ) * 180.0f / std::numbers::pi_v<float>;
+        const auto pitch = throw_compensation::input_pitch( corrected_pitch );
+        if ( !pitch ) return;
+        const float input_pitch = *pitch;
 
 		const auto view = base->mutable_viewangles( );
 		if ( !view ) return;
@@ -979,7 +972,8 @@ namespace features::misc {
 			angles.x += 360.0f;
 		}
 
-		angles.x -= ( 90.0f - std::abs( angles.x ) ) * 10.0f / 90.0f;
+        if ( !settings::g_misc.m_projectile_trajectory.super_toss.value )
+            angles.x -= ( 90.0f - std::abs( angles.x ) ) * 10.0f / 90.0f;
 
 		const auto pitch = angles.x * ( std::numbers::pi_v<float> / 180.0f );
 		const auto yaw = angles.y * ( std::numbers::pi_v<float> / 180.0f );
@@ -1132,7 +1126,7 @@ namespace features::misc {
 		math::vector3 origin{}, velocity{};
 		this->setup_throw( local.pawn, weapon, origin, velocity );
 
-		if ( settings::g_misc.m_projectile_trajectory.super_toss.value || settings::g_misc.m_projectile_trajectory.straight_throw.value )
+		if ( !settings::g_misc.m_projectile_trajectory.super_toss.value && settings::g_misc.m_projectile_trajectory.straight_throw.value )
 		{
 			const auto player_velocity = memory::read<math::vector3>( local.pawn + SCHEMA( "C_BaseEntity", "m_vecVelocity"_hash ) );
 			if ( player_velocity.length_sqr( ) >= 1.0f )
@@ -1146,7 +1140,7 @@ namespace features::misc {
 				const auto perp_len_sq = vel_perp.length_sqr( );
 
 				const auto strength = std::clamp( memory::read<float>( weapon + SCHEMA( "C_BaseCSGrenade", "m_flThrowStrength"_hash ) ), 0.0f, 1.0f );
-				const auto throw_vel = std::clamp( this->m_throw_velocity, 15.0f, 1000.0f );
+				const auto throw_vel = std::clamp( this->m_throw_velocity * 0.9f, 15.0f, 1000.0f );
 				const auto throw_speed = ( strength * 0.7f + 0.3f ) * throw_vel;
 
 				if ( perp_len_sq < throw_speed * throw_speed )

@@ -223,15 +223,18 @@ struct profile { std::string name; cosmetics values; };
 class profile_store {
     bool initialized_ = false, writable_ = false;
     int pending_load_ = -1;
-    nlohmann::json pending_values_;
+    nlohmann::json pending_values_, baseline_;
     std::filesystem::path path_;
-    bool persist(const std::vector<profile>& next) {
-        if (!writable_) return false;
+
+    void clear_pending() { pending_load_ = -1; pending_values_ = {}; }
+    bool persist(const std::vector<profile>& next, int active) {
+        if (!writable_) { status = "Storage unavailable: press Retry"; return false; }
         auto temp = path_; temp += L".tmp";
         try {
             auto list = nlohmann::json::array();
             for (const auto& p : next) list.push_back({{"name", p.name}, {"values", p.values.encode()}});
-            const auto bytes = nlohmann::json{{"version", 1}, {"profiles", list}}.dump(2);
+            // Additional metadata is backwards compatible with the version-1 reader.
+            const auto bytes = nlohmann::json{{"version", 1}, {"selected", active}, {"profiles", list}}.dump(2);
             if (bytes.size() > 8 * 1024 * 1024) throw std::runtime_error("Profiles exceed 8 MiB");
             std::filesystem::create_directories(path_.parent_path());
             {
@@ -241,8 +244,13 @@ class profile_store {
                 file.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
                 file.flush(); file.close();
             }
+            if (std::filesystem::exists(path_)) {
+                auto backup = path_; backup += L".bak";
+                if (!CopyFileW(path_.c_str(), backup.c_str(), FALSE))
+                    throw std::runtime_error("Cannot back up cosmetic profiles (error " + std::to_string(GetLastError()) + ")");
+            }
             if (!MoveFileExW(temp.c_str(), path_.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
-                throw std::runtime_error("Cannot replace cosmetic profiles file");
+                throw std::runtime_error("Cannot replace cosmetic profiles (error " + std::to_string(GetLastError()) + ")");
             status = "Saved locally";
             return true;
         } catch (const std::exception& e) {
@@ -264,6 +272,7 @@ public:
             if (!size || size >= 32768) throw std::runtime_error("LOCALAPPDATA unavailable");
             path_ = std::filesystem::path(base) / L"nemesis" / L"skins" / L"profiles.json";
             std::vector<profile> next;
+            int active = -1;
             if (std::filesystem::exists(path_)) {
                 if (std::filesystem::file_size(path_) > 8 * 1024 * 1024) throw std::runtime_error("Profiles exceed 8 MiB");
                 std::ifstream file(path_, std::ios::binary);
@@ -276,39 +285,57 @@ public:
                     if (name.empty() || name.size() > 64) throw std::runtime_error("Invalid profile name");
                     next.push_back({std::move(name), cosmetics::decode(p.at("values"))});
                 }
+                active = j.value("selected", -1);
             }
-            entries = std::move(next); selected = -1; writable_ = true;
-            status = "Ready";
+            const auto current = cosmetics::capture().encode();
+            entries = std::move(next);
+            selected = active >= 0 && active < static_cast<int>(entries.size()) ? active : -1;
+            // Opening the menu must not silently overwrite the current loadout.
+            baseline_ = selected >= 0 ? entries[selected].values.encode() : current;
+            writable_ = true; clear_pending();
+            status = selected >= 0 ? "Ready: Save updates selected config" : "Save creates a new config";
         } catch (const std::exception& e) {
             writable_ = false; status = e.what();
         }
     }
-    void create() {
-        if (entries.size() >= 5 || !writable_) return;
+    bool create() {
+        if (!writable_) { status = "Storage unavailable: press Retry"; return false; }
+        if (entries.size() >= 5) { status = "5 configs: select one to overwrite or delete one"; return false; }
         int suffix = 1;
         std::string name;
         do { name = "Config " + std::to_string(suffix++); }
-        while (std::any_of(entries.begin(), entries.end(), [&](const profile& p) { return p.name == name; }));
+        while (std::any_of(entries.begin(), entries.end(), [&](const profile& p) { return lower(p.name) == lower(name); }));
         auto next = entries;
         next.push_back({name, cosmetics::capture()});
-        if (persist(next)) { entries = std::move(next); selected = static_cast<int>(entries.size()) - 1; }
+        const int active = static_cast<int>(next.size()) - 1;
+        if (!persist(next, active)) return false;
+        entries = std::move(next); selected = active;
+        baseline_ = entries[selected].values.encode(); clear_pending();
+        return true;
     }
     void save() {
-        if (selected < 0 || selected >= static_cast<int>(entries.size())) return;
+        // A fresh install (or deleting the active profile) is a valid Save As,
+        // not a permanently disabled button and not an implicit overwrite.
+        if (selected < 0 || selected >= static_cast<int>(entries.size())) { create(); return; }
         auto next = entries; next[selected].values = cosmetics::capture();
-        if (persist(next)) entries = std::move(next);
+        if (persist(next, selected)) {
+            entries = std::move(next); baseline_ = entries[selected].values.encode(); clear_pending();
+        }
     }
     bool select(int index) {
         if (dialog_busy || index < 0 || index >= static_cast<int>(entries.size())) return false;
         const auto current = cosmetics::capture().encode();
-        const bool dirty = selected >= 0 && selected < static_cast<int>(entries.size()) && current != entries[selected].values.encode();
+        const bool dirty = !baseline_.is_null() && current != baseline_;
         if (dirty && (pending_load_ != index || pending_values_ != current)) {
             pending_load_ = index; pending_values_ = current;
             status = "Unsaved: select again to discard";
             return false;
         }
+        // Write selection metadata before applying; on an I/O error neither
+        // the current loadout nor the selected profile changes.
+        if (!persist(entries, index)) return false;
         entries[index].values.apply(); selected = index; status = "Loaded";
-        pending_load_ = -1; pending_values_ = {};
+        baseline_ = entries[index].values.encode(); clear_pending();
         return true;
     }
     bool rename(std::string name) {
@@ -322,16 +349,16 @@ public:
         for (int i = 0; i < static_cast<int>(entries.size()); ++i)
             if (i != selected && lower(entries[i].name) == lower(name)) { status = "Name already exists"; return false; }
         auto next = entries; next[selected].name = std::move(name);
-        if (!persist(next)) return false;
-        entries = std::move(next); return true;
+        if (!persist(next, selected)) return false;
+        entries = std::move(next); clear_pending(); return true;
     }
     void remove(int index) {
         if (index < 0 || index >= static_cast<int>(entries.size())) return;
         auto next = entries; next.erase(next.begin() + index);
-        if (!persist(next)) return;
-        entries = std::move(next);
-        if (selected == index) selected = -1;
-        else if (selected > index) --selected;
+        const int active = selected == index ? -1 : selected - (selected > index ? 1 : 0);
+        if (!persist(next, active)) return;
+        entries = std::move(next); selected = active; clear_pending();
+        if (selected < 0) { baseline_ = cosmetics::capture().encode(); status = "Deleted: Save creates a new config"; }
     }
 };
 inline profile_store profiles;
@@ -369,7 +396,7 @@ public:
         }
         const xui::rect create{r.x + 6.0f, r.y + 6.0f + profiles.entries.size() * 36.0f, r.w - 12.0f, 32.0f};
         if (input.mouse_clicked && input.in_rect(create) && profiles.entries.size() < 5) {
-            profiles.create(); m_closed = true;
+            m_closed = profiles.create();
         }
         return true;
     }
@@ -488,7 +515,7 @@ inline bool sidebar(const xui::rect& r, int category) {
     }
 
     if (button({selector.right() + 6.0f, selector.y, 52.0f, 32.0f}, profiles.ready() ? "Save" : "Retry", false,
-        !dialog_busy && (!profiles.ready() || profiles.selected >= 0))) {
+        !dialog_busy)) {
         if (profiles.ready()) profiles.save(); else profiles.load(true);
     }
 

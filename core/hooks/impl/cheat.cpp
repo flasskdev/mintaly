@@ -726,7 +726,6 @@ namespace hooks {
 			diag::set_exception_phase( "create_move: post-combat movement" );
 			features::combat::g_misc.duckpeek( ).on_create_move( current_cmd );
 			features::movement::g_test_strafer.on_create_move( current_cmd );
-			features::misc::g_projectile_trajectory.on_create_move( current_cmd );
 			if ( trace )
 			{
 				diag::step( "create_move: post-combat movement end" );
@@ -752,6 +751,9 @@ namespace hooks {
 				final_base->set_forwardmove( 0.0f );
 				final_base->set_leftmove( 0.0f );
 			}
+            // Predict the same movement that will actually be serialized,
+            // including the final base/analog-subtick normalization above.
+            features::misc::g_projectile_trajectory.on_create_move( current_cmd );
 			if ( trace )
 			{
 				diag::step( "create_move: final subtick end" );

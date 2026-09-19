@@ -72,6 +72,19 @@ namespace features::world {
 			return safe_material_hash_impl (material);
 		}
 
+        [[nodiscard]] bool is_inferno_primitive(std::uintptr_t mesh) {
+            // mesh + 0x18 is the scene object (also used by the skybox path).
+            // The owner-handle layout is shared with generate_primitives.
+            const auto object = memory::safe_read<std::uintptr_t>(mesh + 0x18).value_or(0);
+            if (!object) return false;
+            const auto handle = memory::safe_read<std::uint32_t>(object + 0xc0).value_or(0);
+            if (!handle || handle == 0xffffffffu) return false;
+            const auto owner = systems::g_entities.lookup(handle);
+            if (!owner) return false;
+            const auto name = systems::g_entities.get_schema_name(owner);
+            return name && fnv1a::runtime_hash(name) == "C_Inferno"_hash;
+        }
+
 		[[nodiscard]] std::filesystem::path find_skybox_directory () {
 			std::array<wchar_t, 32768> module_path {};
 			const auto length = GetModuleFileNameW (
@@ -426,6 +439,17 @@ namespace features::world {
 				continue;
 			}
 
+            const auto& fire = settings::g_misc.m_smoke_and_fire_color;
+            if (fire.custom_molotov.value && is_inferno_primitive(mesh)) {
+                if (const auto original = memory::safe_read<xdraw::color>(mesh + 0x50)) {
+                    const auto& color = fire.molotov_color.value;
+                    // Preserve the flame's opacity/fade. draw_scene_object's
+                    // existing scoped backup restores the original after draw.
+                    (void)memory::safe_write<xdraw::color>(mesh + 0x50,
+                        {color.r, color.g, color.b, original->a});
+                }
+                continue; // World/fullbright tint must not replace the fire color.
+            }
 			const auto material_hash = safe_material_hash (*material);
 			if (!material_hash) {
 				continue;
