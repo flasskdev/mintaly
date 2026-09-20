@@ -27,6 +27,31 @@ class LobbyCosmeticsChecks(unittest.TestCase):
             s = source(f'core/features/changer/impl/{path}.cpp').split(f'void {path}::on_lobby',1)[1]
             self.assertIn('preview.weapons', s)
             self.assertNotIn('get_by_index', s)
+    def test_attached_weapons_do_not_require_weapon_services(self):
+        s = source('core/features/changer/preview_scene.hpp')
+        refresh = s.split('inline void refresh()', 1)[1]
+        self.assertIn('collect_attached_weapons(p);', refresh)
+        self.assertLess(refresh.index('collect_attached_weapons(p);'),
+                        refresh.index('if (!p.steam_id && manager_offset && item_offset)'))
+        self.assertNotIn('if (!services)', refresh)
+        self.assertIn('add_weapon(p, systems::g_entities.lookup(h))', refresh)
+    def test_attachment_walk_is_scoped_and_bounded(self):
+        s = source('core/features/changer/preview_scene.hpp')
+        walk = s.split('inline void collect_attached_weapons', 1)[1].split('inline void refresh()', 1)[0]
+        for field in ('m_pGameSceneNode', 'm_pChild', 'm_pNextSibling', 'm_pParent', 'm_pOwner'):
+            self.assertIn(field, walk)
+        self.assertIn('i < 128', walk)
+        self.assertIn('std::find(visited.begin(), visited.end(), node)', walk)
+        self.assertIn('node + parent_offset).value_or(0) != parent', walk)
+        self.assertIn('owner + scene_offset).value_or(0) == node', walk)
+        self.assertIn('is_player(systems::g_entities.get_schema_name(owner))) continue;', walk)
+        self.assertNotIn('get_by_index', walk)
+    def test_weapon_candidates_are_validated_and_deduplicated(self):
+        s = source('core/features/changer/preview_scene.hpp')
+        add = s.split('inline void add_weapon', 1)[1].split('inline void collect_attached_weapons', 1)[0]
+        self.assertIn('is_weapon(systems::g_entities.get_schema_name(weapon))', add)
+        self.assertIn('std::find(p.weapons.begin(), p.weapons.end(), weapon)', add)
+        self.assertIn('s == "C_CSGO_PreviewWeapon"', s)
     def test_unknown_party_members_are_not_all_local(self):
         s = source('core/features/changer/preview_scene.hpp')
         self.assertIn('players.size() == 1', s)

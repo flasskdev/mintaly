@@ -72,6 +72,49 @@ namespace features::changer::preview_scene {
         const auto sid = steam::user::get_steam_id();
         return sid >= steam_base && p.steam_id == sid;
     }
+    inline bool is_weapon(const char* name) {
+        if (!name) return false;
+        const std::string_view s{name};
+        return s.starts_with("C_Weapon") || s == "C_AK47" || s == "C_DEagle"
+            || s == "C_Knife" || s == "C_CSWeaponBase" || s == "C_CSWeaponBaseGun"
+            || s == "C_CSGO_PreviewWeapon";
+    }
+    inline void add_weapon(player& p, std::uintptr_t weapon) {
+        if (weapon && is_weapon(systems::g_entities.get_schema_name(weapon)) &&
+            std::find(p.weapons.begin(), p.weapons.end(), weapon) == p.weapons.end())
+            p.weapons.push_back(weapon);
+    }
+    inline void collect_attached_weapons(player& p) {
+        const auto scene_offset = SCHEMA("C_BaseEntity", "m_pGameSceneNode"_hash);
+        const auto child_offset = SCHEMA("CGameSceneNode", "m_pChild"_hash);
+        const auto sibling_offset = SCHEMA("CGameSceneNode", "m_pNextSibling"_hash);
+        const auto parent_offset = SCHEMA("CGameSceneNode", "m_pParent"_hash);
+        const auto owner_offset = SCHEMA("CGameSceneNode", "m_pOwner"_hash);
+        if (!scene_offset || !child_offset || !sibling_offset || !parent_offset || !owner_offset) return;
+        const auto root = memory::safe_read<std::uintptr_t>(p.pawn + scene_offset).value_or(0);
+        if (!root) return;
+
+        // Preview weapons need not be in WeaponServices. Follow only this pawn's
+        // attachment tree, never unrelated inventory/inspect or party entities.
+        std::vector<std::pair<std::uintptr_t, std::uintptr_t>> pending;
+        std::vector<std::uintptr_t> visited{root};
+        const auto first = memory::safe_read<std::uintptr_t>(root + child_offset).value_or(0);
+        if (first) pending.emplace_back(first, root);
+        for (std::size_t i = 0; i < pending.size() && i < 128; ++i) {
+            const auto [node, parent] = pending[i];
+            if (!node || std::find(visited.begin(), visited.end(), node) != visited.end()) continue;
+            visited.push_back(node);
+            if (memory::safe_read<std::uintptr_t>(node + parent_offset).value_or(0) != parent) continue;
+            const auto sibling = memory::safe_read<std::uintptr_t>(node + sibling_offset).value_or(0);
+            if (sibling) pending.emplace_back(sibling, parent);
+            const auto owner = memory::safe_read<std::uintptr_t>(node + owner_offset).value_or(0);
+            if (owner && owner != p.pawn && is_player(systems::g_entities.get_schema_name(owner))) continue;
+            if (owner && memory::safe_read<std::uintptr_t>(owner + scene_offset).value_or(0) == node)
+                add_weapon(p, owner);
+            const auto child = memory::safe_read<std::uintptr_t>(node + child_offset).value_or(0);
+            if (child) pending.emplace_back(child, node);
+        }
+    }
     // Called only after the original game-thread frame callback. The entity range
     // is the range supported by entities::get_by_index (32 chunks * 512 slots).
     inline void refresh() {
@@ -98,10 +141,8 @@ namespace features::changer::preview_scene {
             p.pawn = entity; p.team = team(entity); p.steam_id = controller_id(entity);
             const auto services = service_offset
                 ? memory::safe_read<std::uintptr_t>(entity + service_offset).value_or(0) : 0;
-            const auto add_weapon = [&](std::uint32_t h) {
-                const auto weapon = systems::g_entities.lookup(h);
-                if (weapon && std::find(p.weapons.begin(), p.weapons.end(), weapon) == p.weapons.end())
-                    p.weapons.push_back(weapon);
+            const auto add_handle = [&](std::uint32_t h) {
+                add_weapon(p, systems::g_entities.lookup(h));
             };
             if (services && weapons_offset) {
                 const auto base = services + weapons_offset;
@@ -109,10 +150,13 @@ namespace features::changer::preview_scene {
                 const auto data = memory::safe_read<std::uintptr_t>(base + 8).value_or(0);
                 if (data && count > 0 && count <= 64)
                     for (int i = 0; i < count; ++i)
-                        add_weapon(memory::safe_read<std::uint32_t>(data + i * sizeof(std::uint32_t)).value_or(0));
+                        add_handle(memory::safe_read<std::uint32_t>(data + i * sizeof(std::uint32_t)).value_or(0));
             }
             if (services && active_offset)
-                add_weapon(memory::safe_read<std::uint32_t>(services + active_offset).value_or(0));
+                add_handle(memory::safe_read<std::uint32_t>(services + active_offset).value_or(0));
+            // Discover attachments before resolving identity: their economy items
+            // also identify controller-less lobby agents in a party.
+            collect_attached_weapons(p);
             if (!p.steam_id && manager_offset && item_offset) {
                 // All available economy items must agree. Conflicting identities
                 // are not enough evidence to apply another player's loadout.
