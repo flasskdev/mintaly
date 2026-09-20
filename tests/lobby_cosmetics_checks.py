@@ -44,9 +44,10 @@ class LobbyCosmeticsChecks(unittest.TestCase):
         dispatch = s.split('void cheat::process_lobby_music', 1)[1].split('void __fastcall cheat::play_music', 1)[0]
         bootstrap = dispatch.split('const bool refreshed', 1)[1]
         self.assertNotIn('.acknowledge(', bootstrap)
-        self.assertIn('PATTERN( patterns::update_bg_music ), nullptr', bootstrap)
+        self.assertIn('dispatch_lobby_music_guarded( stop, update, nullptr )', dispatch)
         self.assertNotIn('pending->value.name.c_str()', dispatch)
-        self.assertIn('bootstrap_attempts >= 3', dispatch)
+        self.assertNotIn('if ( bootstrap_attempts >= 3 ) return;', dispatch)
+        self.assertIn('bootstrap_attempts >= 3 ? 10 : 2', dispatch)
         self.assertIn('std::chrono::seconds( 2 )', dispatch)
         self.assertIn('[lobby-music] awaiting playback', bootstrap)
         playback = s.split('void __fastcall cheat::play_music', 1)[1].split('float __fastcall cheat::get_convar_value_float', 1)[0]
@@ -92,7 +93,10 @@ class LobbyCosmeticsChecks(unittest.TestCase):
         self.assertIn('players.size() == 1', s)
         self.assertIn('return sid >= steam_base && p.steam_id == sid;', s)
         self.assertIn('local_player_controller', s.split('players.size() == 1',1)[1])
-    def test_preview_runs_in_menu_and_match(self):
+    def test_preview_is_guarded_to_match_only(self):
+        reconcile = source('core/hooks/impl/cheat.cpp').split('void reconcile_preview_scene', 1)[1].split('// Isolated SEH frame', 1)[0]
+        self.assertLess(reconcile.index('local_player_controller'), reconcile.index('preview_scene::refresh'))
+        self.assertIn('value_or( 0 ) ) return;', reconcile)
         s = source('core/hooks/impl/cheat.cpp').split('void __fastcall cheat::frame_stage_notify',1)[1].split('// Process impacts',1)[0]
         self.assertEqual(s.count('detail::reconcile_preview_scene( );'), 2)
         self.assertNotIn('s_map_name.empty', s)

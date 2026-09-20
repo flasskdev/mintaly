@@ -27,6 +27,8 @@ namespace hooks {
 		void reconcile_preview_scene( )
 		{
 			if ( lifecycle::is_unloading( ) || !addresses::globals::schema_system ) return;
+			// Lobby models remain entirely engine-owned. Keep match intro/team previews.
+			if ( !memory::safe_read<std::uintptr_t>( addresses::globals::local_player_controller ).value_or( 0 ) ) return;
 			features::changer::preview_scene::refresh( );
 			features::changer::g_skin_sync.on_frame_stage_notify( );
 			features::changer::g_agents.on_lobby( );
@@ -2167,12 +2169,19 @@ namespace hooks {
 		// Clear any item-preview override and ask the engine for normal menu
 		// playback. A schema kit name is NOT a verified background sound event;
 		// do not install it as an override with null metadata and zero volume.
-		// Bound retries so a missing hook cannot repeatedly stop the user's music.
-		if ( bootstrap_attempts >= 3 ) return;
-		++bootstrap_attempts;
-		next_retry = now + std::chrono::seconds( 2 );
-		const bool refreshed = m_play_music.is_enabled( ) && detail::dispatch_lobby_music_guarded(
-			PATTERN( patterns::stop_item_preview_music ), PATTERN( patterns::update_bg_music ), nullptr );
+		// Do not permanently abandon a selection when the audio system is not
+		// ready during the first three frames/attempts. Back off instead, and
+		// do not spend attempts on unavailable hooks or signatures.
+		const auto stop = PATTERN( patterns::stop_item_preview_music );
+		const auto update = PATTERN( patterns::update_bg_music );
+		if ( !m_play_music.is_enabled( ) || !stop || !update )
+		{
+			next_retry = now + std::chrono::seconds( 2 );
+			return;
+		}
+		next_retry = now + std::chrono::seconds( bootstrap_attempts >= 3 ? 10 : 2 );
+		if ( bootstrap_attempts < 3 ) ++bootstrap_attempts;
+		const bool refreshed = detail::dispatch_lobby_music_guarded( stop, update, nullptr );
 		// Returning from update_bg_music is not evidence of playback. Only the
 		// play_music callback below may consume this bootstrap request, including
 		// when the engine invokes it on a different thread or asynchronously.

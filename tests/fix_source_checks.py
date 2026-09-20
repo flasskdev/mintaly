@@ -31,10 +31,24 @@ class SourceChecks(unittest.TestCase):
         k = s.index("g_knives.on_frame_stage_notify( );")
         self.assertGreater(k, s.rindex("m_frame_stage_notify.call<void>( thisptr, stage );"))
         self.assertEqual(s.count("g_knives.on_frame_stage_notify( );"), 1)
-    def test_sync_can_initialize_in_menu(self):
+    def test_sync_waits_for_match(self):
         s = text("core/features/changer/skin_sync.cpp").split("void skin_sync::on_present",1)[1].split("void skin_sync::on_frame_stage_notify",1)[0]
-        self.assertIn("this->initialize( );", s)
-        self.assertLess(s.index("lifecycle::is_unloading"), s.index("this->initialize"))
+        self.assertIn("systems::g_local.get( ).controller != 0", s)
+        self.assertLess(s.index("if ( !active )"), s.index("this->initialize"))
+        worker = text("core/features/changer/skin_sync.cpp").split("void skin_sync::worker_loop", 1)[1].split("bool skin_sync::perform_push", 1)[0]
+        self.assertLess(worker.index('!this->m_match_active.load()'), worker.index('this->perform_push()'))
+    def test_handle_generation_is_validated(self):
+        lookup = text("core/systems/impl/entities.cpp").split("entities::lookup", 1)[1].split("entities::get_by_type", 1)[0]
+        self.assertIn("current_handle != handle", lookup)
+        self.assertIn("entity + 0x10 ) != identity", lookup)
+    def test_hud_binding_matches_active_weapon(self):
+        helper = text("core/features/changer/hud_weapon.hpp")
+        self.assertIn('"m_hWeapon"_hash', helper)
+        self.assertIn('value_or(0xffffffffu) == active', helper)
+        self.assertIn('i < 128', helper)
+        for name in ('guns', 'knives'):
+            s = text(f"core/features/changer/impl/{name}.cpp").split(f"{name}::find_hud_model_weapon", 1)[1].split(f"void {name}::clear_hud_icon", 1)[0]
+            self.assertIn('return hud_weapon::find( pawn );', s)
     def test_cached_sync_users_are_refreshed(self):
         s = text("core/features/changer/skin_sync.cpp").split("void skin_sync::perform_users_update",1)[1]
         self.assertNotIn("!this->m_cache.contains( sid )", s)
