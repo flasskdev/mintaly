@@ -2147,6 +2147,19 @@ namespace hooks {
 		if ( pending->generation == attempted_generation && now < next_retry ) return;
 		attempted_generation = pending->generation;
 		next_retry = now + std::chrono::milliseconds( 250 );
+		// Re-select the active lobby track through the engine's own playback
+		// context. Updating background configuration alone may leave it playing
+		// the old kit until the next map transition. Do not replay across threads.
+		const auto source = detail::g_lobby_music_requests.source_for( GetCurrentThreadId( ) );
+		if ( source && m_play_music.is_enabled( ) )
+		{
+			const auto kit = pending->value.kit ? pending->value.kit : source->original_kit;
+			m_play_music.call<void>( reinterpret_cast<void*>( source->context ), 1, kit, source->volume );
+			detail::g_lobby_music_requests.acknowledge( *pending );
+			return;
+		}
+		// Before the first observed playback, ask the existing background path
+		// to initialize it. Its play_music callback captures the proper context.
 		if ( detail::dispatch_lobby_music_guarded( PATTERN( patterns::stop_item_preview_music ),
 			PATTERN( patterns::update_bg_music ), pending->value.name.c_str( ) ) )
 			detail::g_lobby_music_requests.acknowledge( *pending );
@@ -2176,13 +2189,14 @@ namespace hooks {
 		}
 		else if ( lobby_track )
 		{
+			detail::g_lobby_music_requests.observe( {
+				reinterpret_cast<std::uintptr_t>( thisptr ), GetCurrentThreadId( ), music_kit_id, volume } );
 			// Only actual lobby playback may use the listener's selected kit.
-			// Never turn an in-match victory track into the listener's music.
+			// Preserve the engine's volume, including a muted main menu.
 			const auto custom_kit = settings::g_changer.music.id;
 			if ( custom_kit > 0 && custom_kit < 0xffff )
 			{
 				music_kit_id = static_cast<std::uint16_t>( custom_kit );
-				if ( volume <= 0.01f ) volume = 0.7f;
 			}
 		}
 		else if ( !local.is_alive && local.observer_controller )

@@ -17,8 +17,28 @@ class LobbyCosmeticsChecks(unittest.TestCase):
                 self.assertNotIn(old, s)
     def test_all_supported_entity_slots(self):
         s = source('core/features/changer/preview_scene.hpp')
-        self.assertIn('i < 0x4000', s)
+        self.assertIn('i < systems::entities::entity_slot_count', s)
         self.assertIn('milliseconds(100)', s)
+        self.assertIn('entity_slot_count = 0x8000', source('core/systems/systems.hpp'))
+        lookup = source('core/systems/impl/entities.cpp').split('entities::get_by_index', 1)[1].split('entities::lookup', 1)[0]
+        self.assertIn('index < 0 || index >= entity_slot_count', lookup)
+        self.assertNotIn('m_cached_list_entries.size', lookup)
+    def test_detached_cinematic_pawns_share_preview_processing(self):
+        s = source('core/features/changer/preview_scene.hpp')
+        candidate = s.split('inline bool is_scene_candidate', 1)[1].split('inline void refresh()', 1)[0]
+        self.assertIn('"C_CSPlayerPawn"', candidate)
+        self.assertIn('if (ctrl && player_pawn(ctrl) == entity) continue;', s)
+        self.assertEqual(s.count('is_scene_candidate(systems::g_entities.get_schema_name(entity))'), 1)
+        self.assertIn('if (!is_scene_candidate(name)) continue;', s)
+    def test_lobby_music_replays_on_observed_thread(self):
+        s = source('core/hooks/impl/cheat.cpp')
+        dispatch = s.split('void cheat::process_lobby_music', 1)[1].split('void __fastcall cheat::play_music', 1)[0]
+        self.assertIn('source_for( GetCurrentThreadId( ) )', dispatch)
+        self.assertIn('pending->value.kit : source->original_kit', dispatch)
+        self.assertIn('1, kit, source->volume', dispatch)
+        playback = s.split('void __fastcall cheat::play_music', 1)[1].split('float __fastcall cheat::get_convar_value_float', 1)[0]
+        self.assertLess(playback.index('g_lobby_music_requests.observe'), playback.index('const auto custom_kit'))
+        self.assertNotIn('volume = 0.7f', playback)
     def test_weapons_are_not_guessed_from_arbitrary_entities(self):
         s = source('core/features/changer/preview_scene.hpp')
         self.assertIn('m_pWeaponServices', s)
