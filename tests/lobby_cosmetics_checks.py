@@ -62,6 +62,40 @@ class LobbyCosmeticsChecks(unittest.TestCase):
         self.assertEqual(s.count('detail::reconcile_preview_scene( );'), 2)
         self.assertNotIn('s_map_name.empty', s)
         self.assertIn('stage == 6 || stage == 7 || stage == 12', s)
+    def test_lobby_has_client_frame_dispatch_without_net_updates(self):
+        s = source('core/hooks/impl/cheat.cpp')
+        frame = s.split('void __fastcall cheat::read_frame_input', 1)[1].split('void __fastcall cheat::process_input_event', 1)[0]
+        self.assertLess(frame.index('m_read_frame_input.call<void>'), frame.index('process_lobby_music( );'))
+        self.assertIn('detail::reconcile_preview_scene( );', frame)
+        self.assertIn('local_player_controller', frame)
+        self.assertIn('lifecycle::is_unloading', frame)
+        present = s.split('HRESULT __fastcall cheat::present', 1)[1].split('HRESULT __fastcall cheat::resize_buffers', 1)[0]
+        self.assertNotIn('reconcile_preview_scene', present)
+        self.assertNotIn('process_lobby_music', present)
+    def test_cosmetics_use_player_pawn_instead_of_observer(self):
+        for name in ('guns', 'knives', 'gloves'):
+            s = source(f'core/features/changer/impl/{name}.cpp').split(f'void {name}::on_lobby', 1)[0]
+            self.assertIn('preview_scene::player_pawn( local_ctrl )', s)
+            self.assertIn('preview_scene::player_pawn( ctrl )', s)
+            self.assertIn('preview_scene::player_ready( local_pawn )', s)
+            self.assertNotIn('local.is_alive && local_pawn', s)
+            self.assertNotIn('is_in_cinematic( )', s)
+        helper = source('core/features/changer/preview_scene.hpp').split('inline std::uintptr_t player_pawn', 1)[1].split('inline bool player_ready', 1)[0]
+        self.assertLess(helper.index('m_hPlayerPawn'), helper.index('m_hPawn"_hash'))
+        self.assertIn('std::string_view{name} == "C_CSPlayerPawn"', helper)
+    def test_original_controller_declaring_class_and_owner_links(self):
+        s = source('core/features/changer/preview_scene.hpp')
+        self.assertIn('SCHEMA("C_CSPlayerPawn", "m_hOriginalController"_hash)', s)
+        self.assertIn('m_hOwnerEntity', s)
+        self.assertIn('if (systems::g_entities.lookup(handle) == pawn) return entry.ptr;', s)
+    def test_visible_sync_queries_precede_discovery_backlog(self):
+        s = source('core/features/changer/skin_sync.cpp')
+        self.assertLess(s.index('for (const auto id : ids_to_query) append(id);'),
+                        s.index('for (const auto id : this->m_pending_query_ids) append(id);'))
+        self.assertNotIn('// In lobby, query all known cheat users', s)
+    def test_music_selection_notifies_config_and_sync(self):
+        s = source('core/rendering/impl/menu/menu.skins.cpp').split('static inline void draw_music_tile', 1)[1].split('static void integer_input', 1)[0]
+        self.assertIn('notify_skin_changed( );', s)
     def test_preview_sync_uses_shared_identities(self):
         s = source('core/features/changer/skin_sync.cpp')
         self.assertIn('for ( const auto& preview : preview_scene::players )', s)

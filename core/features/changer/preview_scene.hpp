@@ -46,22 +46,77 @@ namespace features::changer::preview_scene {
         if (path.find("tm_") != path.npos || path.find("terrorist") != path.npos) return 2;
         return 0; // Never silently use CT settings for an unknown team.
     }
-    inline std::uint64_t controller_id(std::uintptr_t pawn) {
-        const auto sid_offset = SCHEMA("CBasePlayerController", "m_steamID"_hash);
-        if (!sid_offset) return 0;
+    inline bool is_controller(std::uintptr_t entity) {
+        const auto name = entity ? systems::g_entities.get_schema_name(entity) : nullptr;
+        return name && std::string_view{name} == "CCSPlayerController";
+    }
+    inline std::uintptr_t player_pawn(std::uintptr_t controller) {
+        if (!is_controller(controller)) return 0;
+        // During team selection/intro m_hPawn may be an observer. Only return an
+        // actual player pawn, and prefer the controller's persistent player link.
         for (const auto offset : {
+            SCHEMA("CCSPlayerController", "m_hPlayerPawn"_hash),
+            SCHEMA("CBasePlayerController", "m_hPawn"_hash)}) {
+            if (!offset) continue;
+            const auto handle = memory::safe_read<std::uint32_t>(controller + offset).value_or(0);
+            const auto pawn = systems::g_entities.lookup(handle);
+            const auto name = pawn ? systems::g_entities.get_schema_name(pawn) : nullptr;
+            if (name && std::string_view{name} == "C_CSPlayerPawn") return pawn;
+        }
+        return 0;
+    }
+    inline bool player_ready(std::uintptr_t pawn) {
+        if (!pawn) return false;
+        const auto offset = SCHEMA("C_BaseEntity", "m_pGameSceneNode"_hash);
+        const auto scene = offset ? memory::safe_read<std::uintptr_t>(pawn + offset).value_or(0) : 0;
+        if (!scene) return false;
+        const auto dormant = SCHEMA("CGameSceneNode", "m_bDormant"_hash);
+        return !dormant || !memory::safe_read<bool>(scene + dormant).value_or(true);
+    }
+    inline std::uintptr_t linked_controller(std::uintptr_t pawn) {
+        if (!pawn) return 0;
+        // Schema lookup examines declared fields, not inherited ones. Check the
+        // declaring pawn class as well as the older base-class location.
+        for (const auto offset : {
+            SCHEMA("C_CSPlayerPawn", "m_hOriginalController"_hash),
+            SCHEMA("C_CSPlayerPawnBase", "m_hOriginalController"_hash),
             SCHEMA("C_BasePlayerPawn", "m_hController"_hash),
-            SCHEMA("C_BasePlayerPawn", "m_hDefaultController"_hash),
-            SCHEMA("C_CSPlayerPawnBase", "m_hOriginalController"_hash)}) {
+            SCHEMA("C_BasePlayerPawn", "m_hDefaultController"_hash)}) {
             if (!offset) continue;
             const auto h = memory::safe_read<std::uint32_t>(pawn + offset).value_or(0);
             const auto ctrl = systems::g_entities.lookup(h);
-            const auto name = ctrl ? systems::g_entities.get_schema_name(ctrl) : nullptr;
-            if (!name || std::string_view{name}.find("PlayerController") == std::string_view::npos) continue;
-            const auto sid = memory::safe_read<std::uint64_t>(ctrl + sid_offset).value_or(0);
-            if (sid >= steam_base) return sid;
+            if (is_controller(ctrl)) return ctrl;
         }
         return 0;
+    }
+    inline std::uintptr_t controller(std::uintptr_t pawn) {
+        if (const auto ctrl = linked_controller(pawn)) return ctrl;
+        const auto owner_offset = SCHEMA("C_BaseEntity", "m_hOwnerEntity"_hash);
+        const auto owner_handle = owner_offset
+            ? memory::safe_read<std::uint32_t>(pawn + owner_offset).value_or(0) : 0;
+        const auto owner = systems::g_entities.lookup(owner_handle);
+        if (is_controller(owner)) return owner;
+        const auto owner_name = owner ? systems::g_entities.get_schema_name(owner) : nullptr;
+        if (owner_name && std::string_view{owner_name} == "C_CSPlayerPawn")
+            if (const auto ctrl = linked_controller(owner)) return ctrl;
+        // Reverse the controller link when the preview has no back-reference.
+        for (const auto& entry : systems::g_entities.get_by_type(systems::entities::type::player)) {
+            if (!is_controller(entry.ptr)) continue;
+            for (const auto offset : {
+                SCHEMA("CCSPlayerController", "m_hPlayerPawn"_hash),
+                SCHEMA("CBasePlayerController", "m_hPawn"_hash)}) {
+                if (!offset) continue;
+                const auto handle = memory::safe_read<std::uint32_t>(entry.ptr + offset).value_or(0);
+                if (systems::g_entities.lookup(handle) == pawn) return entry.ptr;
+            }
+        }
+        return 0;
+    }
+    inline std::uint64_t controller_id(std::uintptr_t pawn) {
+        const auto ctrl = controller(pawn);
+        const auto offset = SCHEMA("CBasePlayerController", "m_steamID"_hash);
+        const auto sid = ctrl && offset ? memory::safe_read<std::uint64_t>(ctrl + offset).value_or(0) : 0;
+        return sid >= steam_base ? sid : 0;
     }
     inline std::uint64_t item_owner(std::uintptr_t item) {
         const auto offset = SCHEMA("C_EconItemView", "m_iAccountID"_hash);
@@ -139,6 +194,12 @@ namespace features::changer::preview_scene {
             if (!entity || !is_player(systems::g_entities.get_schema_name(entity))) continue;
             player p{};
             p.pawn = entity; p.team = team(entity); p.steam_id = controller_id(entity);
+            if (p.team != 2 && p.team != 3) {
+                const auto ctrl = controller(entity);
+                const auto offset = SCHEMA("C_BaseEntity", "m_iTeamNum"_hash);
+                const auto side = ctrl && offset ? memory::safe_read<std::uint8_t>(ctrl + offset).value_or(0) : 0;
+                if (side == 2 || side == 3) p.team = side;
+            }
             const auto services = service_offset
                 ? memory::safe_read<std::uintptr_t>(entity + service_offset).value_or(0) : 0;
             const auto add_handle = [&](std::uint32_t h) {

@@ -46,8 +46,8 @@ namespace features::changer {
 		if ( !local.controller ) return;
 
 		const auto local_ctrl = local.controller;
-		const auto local_pawn = local.pawn;
-		const auto local_team = local_pawn ? memory::read<std::uint8_t>( local_pawn + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) ) : 0;
+		const auto local_pawn = preview_scene::player_pawn( local_ctrl );
+		const auto local_team = local_pawn ? preview_scene::team( local_pawn ) : 0;
 		const auto& active_skins = settings::g_changer.skins.for_team( local_team );
 
 		const auto hud_model = this->find_hud_model_weapon( local_pawn );
@@ -67,7 +67,7 @@ namespace features::changer {
 				!cosmetic_cache::reusable( entry.second.visual, visual_identity( weapon ) );
 		} );
 
-		if ( local.is_alive && local_pawn )
+		if ( preview_scene::player_ready( local_pawn ) )
 		{
 			const auto weapon_services = memory::read<std::uintptr_t>( local_pawn + SCHEMA( "C_BasePlayerPawn", "m_pWeaponServices"_hash ) );
 			if ( weapon_services )
@@ -211,14 +211,8 @@ namespace features::changer {
 			const auto& remote_skins = remote_skin_data ? remote_skin_data->skins : empty_skins;
 			// An empty profile (or pickup by a non-sync user) must restore our previous override.
 
-			const auto pawn_handle = memory::safe_read<std::uint32_t>( ctrl + SCHEMA( "CBasePlayerController", "m_hPawn"_hash ) ).value_or( 0 );
-			if ( !pawn_handle )
-			{
-				continue;
-			}
-
-			const auto pawn = systems::g_entities.lookup( pawn_handle );
-			if ( !pawn || pawn < 0x10000 )
+			const auto pawn = preview_scene::player_pawn( ctrl );
+			if ( !preview_scene::player_ready( pawn ) )
 			{
 				continue;
 			}

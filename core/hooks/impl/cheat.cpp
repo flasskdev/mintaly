@@ -38,7 +38,7 @@ namespace hooks {
 		// Isolated SEH frame: no std::string/optional destructors here (MSVC C2712).
 		bool dispatch_lobby_music_guarded( std::uintptr_t stop, std::uintptr_t update, const char* name )
 		{
-			if ( !stop || ( name && *name && !update ) ) return false;
+			if ( !stop || !update ) return false;
 			__try
 			{
 				const auto* p = reinterpret_cast<const std::uint8_t*>( stop );
@@ -52,8 +52,9 @@ namespace hooks {
 				memory::call<void>( stop );
 				if ( name && *name ) {
 					memory::call<void>( set_background, manager, name, static_cast<const char*>( nullptr ), 0.0f );
-					memory::call<void>( update, manager );
 				}
+				// Standard music also needs an update after stopping the override.
+				memory::call<void>( update, manager );
 				return true;
 			}
 			__except ( EXCEPTION_EXECUTE_HANDLER ) { return false; }
@@ -1604,6 +1605,14 @@ namespace hooks {
 	void __fastcall cheat::read_frame_input( std::uintptr_t a1, std::uint32_t a2 )
 	{
 		m_read_frame_input.call<void>( a1, a2 );
+		// The menu must not wait for a match's FrameStageNotify/net update to
+		// consume settings. Keep engine work on the client frame path, not Present.
+		if ( lifecycle::is_unloading( ) ||
+			memory::safe_read<std::uintptr_t>( addresses::globals::local_player_controller ).value_or( 0 ) ) return;
+		if ( m_was_connected ) do_level_shutdown( false );
+		m_seen_disconnected = true;
+		process_lobby_music( );
+		detail::reconcile_preview_scene( );
 	}
 
 	void __fastcall cheat::process_input_event( std::uintptr_t csgo_input, int slot, float frametime )

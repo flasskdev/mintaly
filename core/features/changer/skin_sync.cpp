@@ -307,20 +307,9 @@ namespace features::changer {
 					}
 				}
 			}
-			else
-			{
-				// In lobby, query all known cheat users
-				std::shared_lock lock( this->m_mutex );
-				for ( const auto sid : this->m_cheat_users )
-				{
-					if ( sid >= steam_id_base && sid != local_steam_id )
-					{
-						ids_to_query.push_back( sid );
-					}
-				}
 
-			}
-
+			// Global discovery remains in perform_users_update. Visible lobby/match
+			// players take priority over that backlog and the API's 256-user cap.
 			// Shared schema-resolved identities, including team-select/intro scenes.
 			for ( const auto& preview : preview_scene::players )
 			{
@@ -331,13 +320,14 @@ namespace features::changer {
 			if ( !ids_to_query.empty( ) )
 			{
 				std::lock_guard lock( this->m_query_mutex );
-				for ( const auto id : ids_to_query )
-				{
-					if ( std::find( this->m_pending_query_ids.begin( ), this->m_pending_query_ids.end( ), id ) == this->m_pending_query_ids.end( ) )
-					{
-						this->m_pending_query_ids.push_back( id );
-					}
-				}
+				std::vector<std::uint64_t> prioritized;
+				const auto append = [&](std::uint64_t id) {
+					if (std::find(prioritized.begin(), prioritized.end(), id) == prioritized.end())
+						prioritized.push_back(id);
+				};
+				for (const auto id : ids_to_query) append(id);
+				for (const auto id : this->m_pending_query_ids) append(id);
+				this->m_pending_query_ids = std::move(prioritized);
 			}
 		}
 		catch ( ... )
