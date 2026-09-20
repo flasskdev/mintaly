@@ -1585,7 +1585,6 @@ namespace features::combat {
         }
 
         features::misc::g_impacts.on_boom(tgt.hit.pawn, tgt.hit.hitgroup, tgt.hit.damage, tgt.hitchance, shared_ctx.inaccuracy, shared_ctx.spread, aim_angle, shoot_eye, tgt.hit.record->tick, g_shared.lc().get_skeleton(*tgt.hit.record), was_forced);
-        features::esp::player::g_chams.os().push(tgt.hit.pawn);
 
         const auto record_time = cstypes::tick_fraction::from_value(tgt.hit.record->simulation_time / cstypes::tick_interval);
 

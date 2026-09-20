@@ -136,6 +136,31 @@ namespace features::misc {
 			return result.empty( ) ? map_name : result;
 		}
 
+		inline const char* get_team_color_hex( std::uintptr_t controller )
+		{
+			if ( !controller )
+				return "#888888";
+
+			const auto team_num = memory::safe_read<int>( controller + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) ).value_or( 0 );
+			switch ( team_num )
+			{
+			case 2:  return "#DEA54B"; // Terrorists
+			case 3:  return "#5B99D6"; // Counter-Terrorists
+			default: return "#888888";
+			}
+		}
+
+		inline std::uintptr_t get_controller_by_slot( int slot )
+		{
+			if ( slot < 0 || slot >= 64 )
+				return 0;
+
+			auto controller = systems::g_entities.get_by_index( slot + 1 );
+			if ( !controller )
+				controller = systems::g_entities.get_by_index( slot );
+			return controller;
+		}
+
 	} // namespace
 
 	void vote_logs::on_vote_start( std::uintptr_t msg )
@@ -156,12 +181,16 @@ namespace features::misc {
 
 		const auto caller_slot = memory::safe_read<int>( msg + 0x6c ).value_or( -1 );
 		std::string caller_name = "server";
+		const char* caller_team_color = "#888888";
 
 		if ( caller_slot != 99 && caller_slot != 0x63 && caller_slot >= 0 && caller_slot < 64 )
 		{
 			const auto name = get_player_name_by_slot( caller_slot );
 			if ( !name.empty( ) )
 				caller_name = name;
+
+			const auto caller_controller = get_controller_by_slot( caller_slot );
+			caller_team_color = get_team_color_hex( caller_controller );
 		}
 
 		const auto disp_str = read_protobuf_string( msg + 0x48 );
@@ -283,8 +312,8 @@ namespace features::misc {
 		const auto b = tokens::col_accent.b;
 
 		const auto formatted = std::format(
-			"<font color='#{:02X}{:02X}{:02X}'>[<b> mintaly </b>]</font> <font color='#888888'>:</font> <font color='#38BDF8'>{} start vote for {}</font>",
-			r, g, b, caller_name, reason
+			"<font color='#{:02X}{:02X}{:02X}'>[<b> mintaly </b>]</font> <font color='#888888'>:</font> <font color='{}'>{}</font> <font color='#38BDF8'>start vote for {}</font>",
+			r, g, b, caller_team_color, caller_name, reason
 		);
 
 		detail::chat_print_raw( formatted.c_str( ) );
@@ -356,6 +385,8 @@ namespace features::misc {
 			this->m_voted_names.insert( player_name );
 		}
 
+		const auto team_color = get_team_color_hex( controller );
+
 		const auto r = tokens::col_accent.r;
 		const auto g = tokens::col_accent.g;
 		const auto b = tokens::col_accent.b;
@@ -364,8 +395,8 @@ namespace features::misc {
 		{
 			this->m_yes_votes++;
 			const auto formatted = std::format(
-				"<font color='#{:02X}{:02X}{:02X}'>[<b> mintaly </b>]</font> <font color='#888888'>:</font> {} <font color='#4ADE80'>vote yes</font>",
-				r, g, b, player_name
+				"<font color='#{:02X}{:02X}{:02X}'>[<b> mintaly </b>]</font> <font color='#888888'>:</font> <font color='{}'>\xE2\x97\x8F {}</font> <font color='#4ADE80'>vote yes</font>",
+				r, g, b, team_color, player_name
 			);
 			detail::chat_print_raw( formatted.c_str( ) );
 		}
@@ -373,8 +404,8 @@ namespace features::misc {
 		{
 			this->m_no_votes++;
 			const auto formatted = std::format(
-				"<font color='#{:02X}{:02X}{:02X}'>[<b> mintaly </b>]</font> <font color='#888888'>:</font> {} <font color='#FF5C80'>vote no</font>",
-				r, g, b, player_name
+				"<font color='#{:02X}{:02X}{:02X}'>[<b> mintaly </b>]</font> <font color='#888888'>:</font> <font color='{}'>\xE2\x97\x8F {}</font> <font color='#FF5C80'>vote no</font>",
+				r, g, b, team_color, player_name
 			);
 			detail::chat_print_raw( formatted.c_str( ) );
 		}
@@ -410,9 +441,13 @@ namespace features::misc {
 			const auto g = tokens::col_accent.g;
 			const auto b = tokens::col_accent.b;
 
+			const auto status_color = passed ? "#4ADE80" : "#FF5C80";
+			const auto status_text = passed ? "vote passed" : "vote failed";
+			const auto status_icon = passed ? "\xE2\x9C\x93" : "\xE2\x9C\x97";
+
 			const auto formatted = std::format(
-				"<font color='#{:02X}{:02X}{:02X}'>[<b> mintaly </b>]</font> <font color='#888888'>:</font> <font color='#38BDF8'>vote results</font> <font color='#4ADE80'>{} yes</font>, <font color='#FF5C80'>{} no</font>",
-				r, g, b, this->m_yes_votes, this->m_no_votes
+				"<font color='#{:02X}{:02X}{:02X}'>[<b> mintaly </b>]</font> <font color='#888888'>:</font> <font color='{}'>{} {}</font> <font color='#888888'>(</font><font color='#4ADE80'>{} yes</font> <font color='#888888'>/</font> <font color='#FF5C80'>{} no</font><font color='#888888'>)</font>",
+				r, g, b, status_color, status_text, status_icon, this->m_yes_votes, this->m_no_votes
 			);
 
 			detail::chat_print_raw( formatted.c_str( ) );

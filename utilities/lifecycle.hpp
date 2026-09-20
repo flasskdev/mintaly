@@ -16,7 +16,7 @@ inline bool is_unloading()
 }
 
 void print_expired_chat_notification();
-void shutdown_all_cheat_systems();
+bool shutdown_all_cheat_systems();
 void unload_and_exit( HMODULE module_handle = nullptr );
 void request_unload();
 void start_subscription_monitor( HMODULE module_handle );

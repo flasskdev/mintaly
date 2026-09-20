@@ -369,6 +369,12 @@ namespace features::misc {
 		{
 			this->add_hit_log( data );
 		}
+
+		// Trigger onshot chams after the hit is confirmed by the server.
+		if ( data.victim_pawn )
+		{
+			features::esp::player::g_chams.os( ).push( data.victim_pawn );
+		}
 	}
 
 	void impacts::on_bullet_impact( std::uintptr_t event )
