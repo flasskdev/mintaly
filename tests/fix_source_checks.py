@@ -66,14 +66,17 @@ class SourceChecks(unittest.TestCase):
         self.assertIn("cosmetic_attributes::matches( iv, *selected_skin )", s)
     def test_jumpbug_uses_swept_window_and_atomic_allocation(self):
         s = text("core/features/movement/impl/jumpbug.cpp")
-        self.assertIn("jumpbug_timing::find_contact_time", s)
-        self.assertIn("safe_release(*when + jumpbug_timing::event_gap)", s)
+        self.assertIn("jumpbug_timing::find_release_time", s)
+        self.assertIn("safe_at(t + jumpbug_timing::event_gap)", s)
         self.assertNotIn("std::round(result.fraction", s)
-        self.assertLess(s.index("steps[i] = systems::g_input.acquire_subtick_step"), s.index("step->set_button(step->button() & ~controlled)"))
-        self.assertIn("moves->m_current_size = old_size;", s)
+        self.assertLess(s.index("events[i] = systems::g_input.acquire_subtick_step"), s.index("step->set_button(step->button() & ~controlled)"))
+        self.assertIn("moves->m_current_size = original_size;", s)
+        self.assertIn("cmd->buttons.value = plan->final_buttons;", s)
     def test_jump_release_survives_disabling_feature(self):
         s = text("core/features/movement/impl/jumpbug.cpp")
-        self.assertLess(s.index("if (fired_previous &&"), s.index("const auto& config"))
-        self.assertIn("if (!cmd) { this->m_fired_last_tick = fired_previous; return; }", s)
+        self.assertLess(s.index("const auto release_owned"), s.index("const auto& config"))
+        self.assertIn("if (m_fired_last_tick && !(original_buttons & jump))", s)
+        self.assertIn("if ((!bound && !config.value) || grounded || !can_attempt) { release_owned(); return; }", s)
+        self.assertLess(s.index("if (!cmd) return;"), s.index("m_fired_last_tick = false"))
 
 if __name__ == "__main__": unittest.main(verbosity=2)

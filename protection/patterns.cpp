@@ -105,11 +105,6 @@ namespace patterns {
 		::protection::addresses::address_type::pattern,
 		"client.dll:>E8????????4885C0488D751C");
 
-	const ::protection::addresses::address_t& fps_max_cvar = ADDRESS_IMPL(
-		::protection::addresses::hash("engine2.dll:488D0D*????????E8????????488B0D????????0F57FF"),
-		::protection::addresses::address_type::pattern,
-		"engine2.dll:488D0D*????????E8????????488B0D????????0F57FF");
-
 	const ::protection::addresses::address_t& frame_input_ring_base = ADDRESS_IMPL(
 		::protection::addresses::hash("engine2.dll:488D05*????????0F1004C8"),
 		::protection::addresses::address_type::pattern,
@@ -194,11 +189,6 @@ namespace patterns {
 		::protection::addresses::hash("client.dll:448B42??488B12E9"),
 		::protection::addresses::address_type::pattern,
 		"client.dll:448B42??488B12E9");
-
-	const ::protection::addresses::address_t& get_convar_value_float = ADDRESS_IMPL(
-		::protection::addresses::hash("engine2.dll:40534883EC??488BD9E8????????4885C0"),
-		::protection::addresses::address_type::pattern,
-		"engine2.dll:40534883EC??488BD9E8????????4885C0");
 
 	const ::protection::addresses::address_t& get_glow_color = ADDRESS_IMPL(
 		::protection::addresses::hash("client.dll:>E8????????F30F10BE????????488BCF"),

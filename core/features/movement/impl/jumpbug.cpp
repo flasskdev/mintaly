@@ -6,6 +6,7 @@
 #include <cmath>
 #include "../movement.hpp"
 #include "../jumpbug_timing.hpp"
+#include "../jumpbug_command.hpp"
 #include <protection/game_addresses.hpp>
 
 namespace features::movement {
@@ -103,6 +104,7 @@ namespace features::movement {
         const auto travel = velocity * cstypes::tick_interval;
         const auto filter = systems::g_tracing.make_player_movement_filter(local.pawn, mask, 11);
         std::optional<float> release;
+        const bool include_jump = settings::g_movement.jumpbug_include_jump_steps.value;
         // Keep crouching until the standing feet enter the ground categorization
         // window, instead of releasing at tick zero and landing normally.
         if (pre.ducked && pre.duck_amount > 0.0f && *expansion > 0.0f) {
@@ -112,44 +114,39 @@ namespace features::movement {
             standing_maxs.z += *expansion;
             auto probe_mins = standing_mins;
             probe_mins.z -= 1.0f;
-            release = jumpbug_timing::find_contact_time([&](float t) -> std::optional<bool> {
+            const auto safe_at = [&](float t) {
+                const auto pos = pre.networked_origin + travel * t;
+                const auto clear = systems::g_tracing.trace_player_bbox(pos, pos,
+                    {standing_mins, standing_maxs}, filter, movement);
+                auto below = pos;
+                below.z -= 2.0f;
+                const auto support = systems::g_tracing.trace_player_bbox(pos, below,
+                    {standing_mins, standing_maxs}, filter, movement);
+                const auto crouched = systems::g_tracing.trace_player_bbox(pre.networked_origin, pos,
+                    {mins, maxs}, filter, movement);
+                return !clear.all_solid && std::isfinite(clear.fraction) && clear.fraction == 1.0f &&
+                    !support.all_solid && std::isfinite(support.fraction) && support.fraction > 0.0f &&
+                    support.fraction < 1.0f && finite(support.normal) && support.normal.z >= standable &&
+                    !crouched.all_solid && std::isfinite(crouched.fraction) && crouched.fraction == 1.0f;
+            };
+            release = jumpbug_timing::find_release_time([&](float t) -> std::optional<bool> {
                 const auto hit = systems::g_tracing.trace_player_bbox(pre.networked_origin,
                     pre.networked_origin + travel * t, {probe_mins, standing_maxs}, filter, movement);
-                if (hit.all_solid || !std::isfinite(hit.fraction) || !finite(hit.normal)) return std::nullopt;
-                if (hit.fraction >= 1.0f) return false;
+                if (hit.all_solid || !std::isfinite(hit.fraction) || hit.fraction < 0.0f ||
+                    hit.fraction > 1.0f || !finite(hit.normal)) return std::nullopt;
+                if (hit.fraction == 1.0f) return false;
                 if (hit.normal.z < standable) return std::nullopt;
                 return true;
+            }, [&](float t) {
+                return safe_at(t) && (!include_jump || safe_at(t + jumpbug_timing::event_gap));
             });
-            if (release) {
-                for (float t : {*release, *release + jumpbug_timing::event_gap}) {
-                    const auto pos = pre.networked_origin + travel * t;
-                    const auto clear = systems::g_tracing.trace_player_bbox(pos, pos,
-                        {standing_mins, standing_maxs}, filter, movement);
-                    auto below = pos;
-                    below.z -= 2.0f;
-                    const auto support = systems::g_tracing.trace_player_bbox(pos, below,
-                        {standing_mins, standing_maxs}, filter, movement);
-                    const auto crouched = systems::g_tracing.trace_player_bbox(pre.networked_origin, pos,
-                        {mins, maxs}, filter, movement);
-                    if (clear.all_solid || !std::isfinite(clear.fraction) || clear.fraction < 1.0f ||
-                        support.all_solid || !std::isfinite(support.fraction) || support.fraction <= 0.0f ||
-                        support.fraction >= 1.0f || !finite(support.normal) || support.normal.z < standable ||
-                        crouched.all_solid || !std::isfinite(crouched.fraction) || crouched.fraction < 1.0f) {
-                        release.reset();
-                        break;
-                    }
-                }
-            }
         }
+        const auto plan = jumpbug_command::make(cmd->buttons.value, jump, duck, release, include_jump);
+        if (!plan) { release_owned(); return; }
         // Reserve all events before removing any existing jump/duck input.
         const int original_size = moves->m_current_size;
         std::array<proto::subtick_move_step*, 4> events{};
-        // Automatic mode must not add a hop to a harmless ordinary jump.
-        // The 580-unit cutoff is a conservative client heuristic, not immunity.
-        const bool include_jump = settings::g_movement.jumpbug_include_jump_steps.value &&
-            (bound || *vz <= -580.0f);
-        const int count = release ? (include_jump ? 4 : 3) : 2;
-        for (int i = 0; i < count; ++i) {
+        for (int i = 0; i < plan->count; ++i) {
             events[i] = systems::g_input.acquire_subtick_step(moves);
             if (!events[i]) { moves->m_current_size = original_size; return; }
         }
@@ -159,30 +156,18 @@ namespace features::movement {
                 if (!step->button()) step->set_pressed(false);
             }
         }
-        const auto event = [&](int i, std::uint64_t button, bool pressed, float when) {
+        for (int i = 0; i < plan->count; ++i) {
             *events[i] = {};
-            events[i]->set_button(button);
-            events[i]->set_pressed(pressed);
-            events[i]->set_when(when);
-        };
-        event(0, jump, false, 0.0f);
-        event(1, duck, true, 0.0f);
-        cmd->buttons.value = (cmd->buttons.value | duck) & ~jump;
+            events[i]->set_button(plan->events[i].button);
+            events[i]->set_pressed(plan->events[i].pressed);
+            events[i]->set_when(plan->events[i].when);
+        }
+        cmd->buttons.value = plan->final_buttons;
         cmd->buttons.value_changed |= controlled;
         cmd->buttons.value_scroll &= ~controlled;
-        m_owned_duck = true;
-        if (release) {
-            if (*release == 0.0f) {
-                events[1]->set_button(0);
-                events[1]->set_pressed(false);
-                cmd->buttons.value &= ~duck;
-            }
-            event(2, duck, false, *release);
-            if (include_jump) event(3, jump, true, *release + jumpbug_timing::event_gap);
-            m_fired_last_tick = include_jump;
-            m_owned_duck = false;
-            m_cycle.fired();
-        }
+        m_owned_duck = plan->owns_duck;
+        m_fired_last_tick = plan->owns_jump;
+        if (release) m_cycle.fired();
         m_active_this_tick = true;
     }
 }

@@ -85,4 +85,20 @@ int main()
     // Already in the window must release immediately; no duplicate crouch press.
     const auto immediate = find_contact_time([](float) -> std::optional<bool> { return true; });
     assert(immediate && *immediate == 0.0f);
+
+    // Inside the expanded probe, but actual standing hull is still clear and
+    // supported: release now rather than rejecting an all-solid probe forever.
+    int probes = 0;
+    const auto already_supported = find_release_time([&](float) -> std::optional<bool> {
+        ++probes;
+        return std::nullopt;
+    }, [](float t) { return t == 0.0f; });
+    assert(already_supported && *already_supported == 0.0f && probes == 0);
+    assert(!find_release_time([](float) -> std::optional<bool> { return std::nullopt; },
+        [](float) { return false; }));
+    assert(!find_release_time([](float t) -> std::optional<bool> { return t >= 0.5f; },
+        [](float) { return false; })); // blocked head / unsupported landing
+    const auto later = find_release_time([](float t) -> std::optional<bool> { return t >= 0.5f; },
+        [](float t) { return t >= 0.5f && t < 0.51f; });
+    assert(later && *later >= 0.5f && *later < 0.51f);
 }

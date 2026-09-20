@@ -52,4 +52,15 @@ namespace features::movement::jumpbug_timing {
         }
         return high;
     }
+
+    // A stationary expanded probe can start inside the floor even though the
+    // actual standing hull is clear and supported. Check that valid immediate
+    // release before using the swept probe, which must reject solid traces.
+    template <typename Probe, typename SafeRelease>
+    [[nodiscard]] std::optional<float> find_release_time(Probe&& reached, SafeRelease&& safe_release) {
+        if (safe_release(0.0f)) return 0.0f;
+        const auto when = find_contact_time(reached);
+        if (!when || !safe_release(*when)) return std::nullopt;
+        return when;
+    }
 }
