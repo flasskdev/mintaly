@@ -1964,11 +1964,6 @@ namespace settings {
                 xui::setting disable_game_logs{ true,{}, "disable game logs", "misc" };
                 xui::setting vote_kick_self{ false,{}, "vote kick self", "misc" };
                 xui::setting auto_accept{ false,{}, "auto accept", "misc" };
-                struct fps_limit
-                {
-                        xui::setting enabled{ false,{}, "fps limit", "misc" };
-                        config::val<int> value{ 400, "misc", "fps limit value" };
-                } m_fps_limit{};
                 config::val<int> menu_key{ VK_INSERT, "misc", "menu key" };
                 config::val<int> menu_palette{ 0, "interface", "color palette" };
                 xui::setting tooltips{ true, {}, "tooltips", "interface" };

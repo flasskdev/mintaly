@@ -1,19 +1,24 @@
 #include <core/features/movement/jumpbug_cycle.hpp>
 #include <cassert>
+#include <limits>
 
 int main() {
     features::movement::jumpbug_cycle cycle;
     assert(cycle.available(false, -700));
     cycle.fired();
-    assert(!cycle.available(true, 0)); // one transient ground sample cannot re-arm
-    assert(!cycle.available(false, 300));
-    for (int i = 0; i < 100; ++i) assert(!cycle.available(false, -700));
-    assert(!cycle.available(true, 250)); // ground bit during synthetic jump
     assert(!cycle.available(true, 0));
-    assert(cycle.available(true, 0)); // settled on the ground
-    assert(cycle.available(false, -700)); // next independent fall
+    assert(!cycle.available(false, 300));
+    assert(!cycle.available(false, 0));
+    assert(cycle.available(false, -700)); // descent after hop can need another jumpbug
     cycle.fired();
-    assert(!cycle.available(false, -700));
+    assert(cycle.available(false, -800)); // missed/unconfirmed jump must not lock the fall
+    cycle.fired();
+    assert(!cycle.available(true, 250));
+    assert(!cycle.available(true, 0));
+    assert(cycle.available(true, 0));
+    assert(cycle.available(false, -700));
+    cycle.fired();
+    assert(!cycle.available(false, std::numeric_limits<float>::quiet_NaN()));
     cycle = {};
-    assert(cycle.available(false, -700)); // pawn reset
+    assert(cycle.available(false, -700));
 }

@@ -231,8 +231,7 @@ namespace hooks {
 			{ &m_calculate_viewmodel, &calculate_viewmodel, "calculate_viewmodel", PATTERN (patterns::calculate_viewmodel) },
 			{ &m_spec_cmds_handler, &spec_cmds_handler, "spec_cmds_handler", PATTERN (patterns::spec_cmds_handler) },
 			{ &m_collect_attached_entities, &collect_attached_entities, "collect_attached_entities", PATTERN (patterns::collect_attached_entities) },
-			{ &m_play_music, &play_music, "play_music", PATTERN (patterns::play_music) },
-			{ &m_get_convar_value_float, &get_convar_value_float, "get_convar_value_float", PATTERN (patterns::get_convar_value_float) }
+			{ &m_play_music, &play_music, "play_music", PATTERN (patterns::play_music) }
 		};
 
 		auto unavailable_hooks = 0u;
@@ -310,7 +309,6 @@ namespace hooks {
 		m_spec_cmds_handler.reset( );
 		m_collect_attached_entities.reset( );
 		m_play_music.reset( );
-		m_get_convar_value_float.reset( );
 		detail::reset_fullbright_shadows( );
 	}
 
@@ -2250,41 +2248,6 @@ namespace hooks {
 			diag::writef( diag::level::info, "[lobby-music] callback dispatched generation=%llu kit=%u volume=%.3f thread=%lu",
 				static_cast<unsigned long long>( pending_lobby->generation ), static_cast<unsigned>( music_kit_id ), volume, GetCurrentThreadId( ) );
 		}
-	}
-
-	float __fastcall cheat::get_convar_value_float( std::uintptr_t convar, std::uintptr_t a2 )
-	{
-		static const auto fps_max_cvar = PATTERN( patterns::fps_max_cvar );
-
-		if ( settings::g_misc.m_fps_limit.enabled.value && fps_max_cvar && ( convar == fps_max_cvar || convar == ( fps_max_cvar + 0x20 ) ) )
-		{
-			const auto ret_addr = reinterpret_cast< std::uintptr_t >( _ReturnAddress( ) );
-			if ( ret_addr )
-			{
-				const auto b0 = memory::safe_read< std::uint8_t >( ret_addr ).value_or( 0 );
-				const auto b1 = memory::safe_read< std::uint8_t >( ret_addr + 1 ).value_or( 0 );
-				const auto b2 = memory::safe_read< std::uint8_t >( ret_addr + 2 ).value_or( 0 );
-				const auto b7 = memory::safe_read< std::uint8_t >( ret_addr + 7 ).value_or( 0 );
-				const auto b8 = memory::safe_read< std::uint8_t >( ret_addr + 8 ).value_or( 0 );
-				const auto b9 = memory::safe_read< std::uint8_t >( ret_addr + 9 ).value_or( 0 );
-
-				// CalculateFrameSleep in engine2.dll queries fps_max to sleep the render thread.
-				// Pattern at return address: 48 8B 0D ?? ?? ?? ?? 0F 57 FF
-				if ( b0 == 0x48 && b1 == 0x8B && b2 == 0x0D &&
-				     b7 == 0x0F && b8 == 0x57 && b9 == 0xFF )
-				{
-					// Returning 0.0f ensures CalculateFrameSleep does not throttle or sleep the render loop.
-					// This guarantees the display and input remain completely smooth (uncapped / full monitor Hz).
-					return 0.0f;
-				}
-			}
-
-			// For all other queries (console command "fps_max", game engine checks, server queries, telemetry):
-			// return the configured limit so the game considers this FPS limit active.
-			return static_cast< float >( settings::g_misc.m_fps_limit.value.value );
-		}
-
-		return m_get_convar_value_float.call<float>( convar, a2 );
 	}
 
 } // namespace hooks
