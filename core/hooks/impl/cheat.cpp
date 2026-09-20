@@ -2143,26 +2143,45 @@ namespace hooks {
 		if ( !pending ) return;
 		static auto next_retry = std::chrono::steady_clock::time_point{};
 		static std::uint64_t attempted_generation{};
+		static unsigned bootstrap_attempts{};
 		const auto now = std::chrono::steady_clock::now( );
-		if ( pending->generation == attempted_generation && now < next_retry ) return;
-		attempted_generation = pending->generation;
-		next_retry = now + std::chrono::milliseconds( 250 );
-		// Re-select the active lobby track through the engine's own playback
-		// context. Updating background configuration alone may leave it playing
-		// the old kit until the next map transition. Do not replay across threads.
+		if ( pending->generation != attempted_generation )
+		{
+			attempted_generation = pending->generation;
+			bootstrap_attempts = 0;
+			next_retry = {};
+		}
+		if ( now < next_retry ) return;
+		// Re-select the active lobby track only on its observed engine thread.
 		const auto source = detail::g_lobby_music_requests.source_for( GetCurrentThreadId( ) );
 		if ( source && m_play_music.is_enabled( ) )
 		{
 			const auto kit = pending->value.kit ? pending->value.kit : source->original_kit;
 			m_play_music.call<void>( reinterpret_cast<void*>( source->context ), 1, kit, source->volume );
 			detail::g_lobby_music_requests.acknowledge( *pending );
+			diag::writef( diag::level::info, "[lobby-music] replay dispatched generation=%llu kit=%u volume=%.3f",
+				static_cast<unsigned long long>( pending->generation ), static_cast<unsigned>( kit ), source->volume );
 			return;
 		}
-		// Before the first observed playback, ask the existing background path
-		// to initialize it. Its play_music callback captures the proper context.
-		if ( detail::dispatch_lobby_music_guarded( PATTERN( patterns::stop_item_preview_music ),
-			PATTERN( patterns::update_bg_music ), pending->value.name.c_str( ) ) )
-			detail::g_lobby_music_requests.acknowledge( *pending );
+		// A late injection has not observed the original lobby playback yet.
+		// Clear any item-preview override and ask the engine for normal menu
+		// playback. A schema kit name is NOT a verified background sound event;
+		// do not install it as an override with null metadata and zero volume.
+		// Bound retries so a missing hook cannot repeatedly stop the user's music.
+		if ( bootstrap_attempts >= 3 ) return;
+		++bootstrap_attempts;
+		next_retry = now + std::chrono::seconds( 2 );
+		const bool refreshed = m_play_music.is_enabled( ) && detail::dispatch_lobby_music_guarded(
+			PATTERN( patterns::stop_item_preview_music ), PATTERN( patterns::update_bg_music ), nullptr );
+		// Returning from update_bg_music is not evidence of playback. Only the
+		// play_music callback below may consume this bootstrap request, including
+		// when the engine invokes it on a different thread or asynchronously.
+		const auto waiting = detail::g_lobby_music_requests.next( );
+		if ( waiting && waiting->generation == pending->generation )
+			diag::writef( diag::level::warning,
+				"[lobby-music] awaiting playback generation=%llu kit=%u attempt=%u hook=%d refresh=%d thread=%lu",
+				static_cast<unsigned long long>( pending->generation ), static_cast<unsigned>( pending->value.kit ),
+				bootstrap_attempts, static_cast<int>( m_play_music.is_enabled( ) ), static_cast<int>( refreshed ), GetCurrentThreadId( ) );
 	}
 
 	void __fastcall cheat::play_music( void* thisptr, int track_type, std::uint16_t music_kit_id, float volume )
@@ -2176,6 +2195,8 @@ namespace hooks {
 		}
 
 		const auto local = systems::g_local.get( );
+		const auto pending_lobby = lobby_track && thisptr
+			? detail::g_lobby_music_requests.next( ) : std::optional<lobby_music::request>{};
 
 		if ( track_type == 11 && local.controller )
 		{
@@ -2191,9 +2212,9 @@ namespace hooks {
 		{
 			detail::g_lobby_music_requests.observe( {
 				reinterpret_cast<std::uintptr_t>( thisptr ), GetCurrentThreadId( ), music_kit_id, volume } );
-			// Only actual lobby playback may use the listener's selected kit.
-			// Preserve the engine's volume, including a muted main menu.
-			const auto custom_kit = settings::g_changer.music.id;
+			// Use the exact queued selection when completing a request. Kit zero
+			// leaves the engine's original kit intact; preserve mute/volume too.
+			const auto custom_kit = pending_lobby ? pending_lobby->value.kit : settings::g_changer.music.id;
 			if ( custom_kit > 0 && custom_kit < 0xffff )
 			{
 				music_kit_id = static_cast<std::uint16_t>( custom_kit );
@@ -2212,6 +2233,14 @@ namespace hooks {
 			}
 		}
 		m_play_music.call<void>( thisptr, track_type, music_kit_id, volume );
+		if ( pending_lobby )
+		{
+			// Generation checking preserves a newer menu edit or level reset
+			// while the engine is executing/re-entering the original callback.
+			detail::g_lobby_music_requests.acknowledge( *pending_lobby );
+			diag::writef( diag::level::info, "[lobby-music] callback dispatched generation=%llu kit=%u volume=%.3f thread=%lu",
+				static_cast<unsigned long long>( pending_lobby->generation ), static_cast<unsigned>( music_kit_id ), volume, GetCurrentThreadId( ) );
+		}
 	}
 
 	float __fastcall cheat::get_convar_value_float( std::uintptr_t convar, std::uintptr_t a2 )
