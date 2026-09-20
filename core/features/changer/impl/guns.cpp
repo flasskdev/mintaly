@@ -1,6 +1,7 @@
 #include <pch/pch.hpp>
 #include "../preview_scene.hpp"
 #include "../preview_item.hpp"
+#include "../hud_weapon.hpp"
 #include <utilities/memory/memory.hpp>
 #include <utilities/addresses/addresses.hpp>
 #include <core/systems/systems.hpp>
@@ -485,43 +486,7 @@ namespace features::changer {
 
 	std::uintptr_t guns::find_hud_model_weapon( std::uintptr_t pawn )
 	{
-		if ( !pawn ) return 0;
-		const auto arms_handle = memory::safe_read<std::uint32_t>( pawn + SCHEMA( "C_CSPlayerPawn", "m_hHudModelArms"_hash ) ).value_or( 0 );
-		if ( !arms_handle )
-		{
-			return 0;
-		}
-
-		const auto arms = systems::g_entities.lookup( arms_handle );
-		if ( !arms )
-		{
-			return 0;
-		}
-
-		const auto arms_scene_node = memory::safe_read<std::uintptr_t>( arms + SCHEMA( "C_BaseEntity", "m_pGameSceneNode"_hash ) ).value_or( 0 );
-		if ( !arms_scene_node )
-		{
-			return 0;
-		}
-
-		auto child = memory::safe_read<std::uintptr_t>( arms_scene_node + SCHEMA( "CGameSceneNode", "m_pChild"_hash ) ).value_or( 0 );
-
-		while ( child && child > 0x10000 )
-		{
-			const auto owner = memory::safe_read<std::uintptr_t>( child + SCHEMA( "CGameSceneNode", "m_pOwner"_hash ) ).value_or( 0 );
-			if ( owner && owner > 0x10000 )
-			{
-				const auto name = systems::g_entities.get_schema_name( owner );
-				if ( name && fnv1a::runtime_hash( name ) == "C_CS2HudModelWeapon"_hash )
-				{
-					return owner;
-				}
-			}
-
-			child = memory::safe_read<std::uintptr_t>( child + SCHEMA( "CGameSceneNode", "m_pNextSibling"_hash ) ).value_or( 0 );
-		}
-
-		return 0;
+		return hud_weapon::find( pawn );
 	}
 
 	void guns::clear_hud_icon( std::uintptr_t iv )

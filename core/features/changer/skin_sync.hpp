@@ -57,6 +57,7 @@ namespace features::changer {
 		mutable remote_player_skin m_bot_preview{};
 
 		std::atomic<bool> m_running{ false };
+		std::atomic<bool> m_match_active{ false }; // Published by on_present from the local snapshot.
 		std::atomic<bool> m_push_pending{ true };
 		std::atomic<bool> m_initialized{ false };
 		std::atomic<std::uint64_t> m_last_local_steam_id{ 0 };

@@ -236,11 +236,17 @@ namespace systems {
 				return 0;
 			}
 
-			const auto entity = *reinterpret_cast<const std::uintptr_t*>( list_entry + ( static_cast< std::uintptr_t >( handle & 0x1ff ) * 112 ) );
+			const auto identity = list_entry + ( static_cast< std::uintptr_t >( handle & 0x1ff ) * 112 );
+			// CEntityIdentity stores the full handle at +0x10. Index-only lookup
+			// lets stale inventory handles target a new weapon in a recycled slot.
+			const auto current_handle = *reinterpret_cast<const std::uint32_t*>( identity + 0x10 );
+			if ( current_handle != handle ) return 0;
+			const auto entity = *reinterpret_cast<const std::uintptr_t*>( identity );
 			if ( !entity || entity == 0xffffffffffffffff || entity < 0x10000 )
 			{
 				return 0;
 			}
+			if ( *reinterpret_cast<const std::uintptr_t*>( entity + 0x10 ) != identity ) return 0;
 
 			return entity;
 		}

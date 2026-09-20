@@ -205,7 +205,19 @@ namespace features::changer {
 
 	void skin_sync::on_present( )
 	{
-		if ( lifecycle::is_unloading( ) ) return;
+		const bool active = !lifecycle::is_unloading( ) && systems::g_local.get( ).controller != 0;
+		const bool was_active = this->m_match_active.exchange( active );
+		if ( !active )
+		{
+			if ( was_active )
+			{
+				this->m_local_team = 0;
+				std::lock_guard lock( this->m_query_mutex );
+				this->m_pending_query_ids.clear( );
+			}
+			return;
+		}
+		if ( !was_active ) this->m_push_pending = true;
 		if ( !this->m_initialized.load( ) ) this->initialize( );
 		if ( !this->m_initialized.load( ) || !this->m_running.load( ) )
 			return;
@@ -240,6 +252,7 @@ namespace features::changer {
 
 	void skin_sync::on_frame_stage_notify( )
 	{
+		if ( lifecycle::is_unloading( ) || !systems::g_local.get( ).controller ) return;
 		if ( !this->m_initialized.load( ) )
 		{
 			this->initialize( );
@@ -418,6 +431,12 @@ namespace features::changer {
 		auto next_push = std::chrono::steady_clock::now();
 		unsigned failures = 0;
 		while (this->m_running.load()) {
+			// Do not push, pull or discover users while sitting in the lobby.
+			// An already dispatched request may finish during a map transition.
+			if (!this->m_match_active.load()) {
+				std::this_thread::sleep_for(std::chrono::milliseconds(250));
+				continue;
+			}
 			const auto now = std::chrono::steady_clock::now();
 			const bool heartbeat_due = now - this->m_last_push_time >= std::chrono::seconds(10);
 			if (now >= next_push && (this->m_push_pending.load() || heartbeat_due)) {
