@@ -47,11 +47,11 @@ namespace features::changer {
 		if ( !local.controller ) return;
 
 		const auto local_ctrl = local.controller;
-		const auto local_pawn = local.pawn;
+		const auto local_pawn = preview_scene::player_pawn( local_ctrl );
 
-		if ( local.is_alive && local_pawn && !systems::g_local.is_in_cinematic( ) )
+		if ( preview_scene::player_ready( local_pawn ) )
 		{
-			const auto local_team = memory::read<std::uint8_t>( local_pawn + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) );
+			const auto local_team = preview_scene::team( local_pawn );
 			if ( local_team == 2 || local_team == 3 )
 			{
 				if ( this->m_tracked_pawn != local_pawn )
@@ -149,29 +149,8 @@ namespace features::changer {
 				continue;
 			}
 
-			const auto pawn_handle = memory::safe_read<std::uint32_t>( ctrl + SCHEMA( "CBasePlayerController", "m_hPawn"_hash ) ).value_or( 0 );
-			if ( !pawn_handle )
-			{
-				continue;
-			}
-
-			const auto pawn = systems::g_entities.lookup( pawn_handle );
-			if ( !pawn || pawn < 0x10000 )
-			{
-				continue;
-			}
-
-			const auto health = memory::safe_read<int>( pawn + SCHEMA( "C_BaseEntity", "m_iHealth"_hash ) ).value_or( 0 );
-			const auto life_state = memory::safe_read<std::uint8_t>( pawn + SCHEMA( "C_BaseEntity", "m_lifeState"_hash ) ).value_or( 1 );
-			if ( health <= 0 || life_state != 0 )
-			{
-				continue;
-			}
-
-			const auto scene = memory::safe_read<std::uintptr_t>( pawn + SCHEMA( "C_BaseEntity", "m_pGameSceneNode"_hash ) ).value_or( 0 );
-			const auto dormant_offset = SCHEMA( "CGameSceneNode", "m_bDormant"_hash );
-			const auto dormant = !scene || ( dormant_offset && memory::safe_read<bool>( scene + dormant_offset ).value_or( true ) );
-			if ( dormant )
+			const auto pawn = preview_scene::player_pawn( ctrl );
+			if ( !preview_scene::player_ready( pawn ) )
 			{
 				continue;
 			}

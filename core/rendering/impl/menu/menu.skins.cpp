@@ -1641,6 +1641,7 @@ namespace rendering {
 					settings::g_changer.music.id = kit->id;
 					hooks::cheat::trigger_lobby_music( static_cast< std::uint16_t >( kit->id ) );
 				}
+				notify_skin_changed( );
 			}
 		}
 
