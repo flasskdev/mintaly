@@ -86,4 +86,29 @@ int main() {
     assert(q.source_for(8)->volume == 0.25f);
     q.reset();
     assert(!q.source_for(8)); // Never reuse an old map's audio context.
+
+    // Late injection: refresh can return without invoking playback. Republishing
+    // the same setting or observing a source must not consume the request.
+    q.submit({6, "late"});
+    const auto late = *q.next();
+    q.submit({6, "late"});
+    assert(q.next()->generation == late.generation);
+    q.observe({300, 9, 2, 0.4f});
+    assert(!q.source_for(7)); // Game-frame thread cannot replay this source.
+    assert(q.next()->generation == late.generation);
+    // The actual playback callback on thread 9 can finish the captured request.
+    q.acknowledge(late);
+    assert(!q.next());
+    q.submit({0, ""});
+    const auto restore = *q.next();
+    assert(restore.value.kit == 0);
+    assert(q.source_for(9)->original_kit == 2);
+    q.submit({7, "newer"});
+    q.acknowledge(restore);
+    assert(q.next()->value.kit == 7); // Old callback does not lose a newer edit.
+    const auto before_reset = *q.next();
+    q.reset();
+    q.submit({7, "newer"});
+    q.acknowledge(before_reset);
+    assert(q.next()); // Nor may an old-map callback acknowledge the new map.
 }

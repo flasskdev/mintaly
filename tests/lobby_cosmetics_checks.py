@@ -39,6 +39,21 @@ class LobbyCosmeticsChecks(unittest.TestCase):
         playback = s.split('void __fastcall cheat::play_music', 1)[1].split('float __fastcall cheat::get_convar_value_float', 1)[0]
         self.assertLess(playback.index('g_lobby_music_requests.observe'), playback.index('const auto custom_kit'))
         self.assertNotIn('volume = 0.7f', playback)
+    def test_lobby_bootstrap_waits_for_playback(self):
+        s = source('core/hooks/impl/cheat.cpp')
+        dispatch = s.split('void cheat::process_lobby_music', 1)[1].split('void __fastcall cheat::play_music', 1)[0]
+        bootstrap = dispatch.split('const bool refreshed', 1)[1]
+        self.assertNotIn('.acknowledge(', bootstrap)
+        self.assertIn('PATTERN( patterns::update_bg_music ), nullptr', bootstrap)
+        self.assertNotIn('pending->value.name.c_str()', dispatch)
+        self.assertIn('bootstrap_attempts >= 3', dispatch)
+        self.assertIn('std::chrono::seconds( 2 )', dispatch)
+        self.assertIn('[lobby-music] awaiting playback', bootstrap)
+        playback = s.split('void __fastcall cheat::play_music', 1)[1].split('float __fastcall cheat::get_convar_value_float', 1)[0]
+        self.assertIn('lobby_track && thisptr', playback)
+        self.assertIn('pending_lobby ? pending_lobby->value.kit', playback)
+        original = playback.rindex('m_play_music.call<void>( thisptr, track_type, music_kit_id, volume );')
+        self.assertGreater(playback.index('acknowledge( *pending_lobby )'), original)
     def test_weapons_are_not_guessed_from_arbitrary_entities(self):
         s = source('core/features/changer/preview_scene.hpp')
         self.assertIn('m_pWeaponServices', s)
