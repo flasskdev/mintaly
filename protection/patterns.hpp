@@ -24,6 +24,7 @@ namespace patterns {
 	extern const ::protection::addresses::address_t& entity_list;
 	extern const ::protection::addresses::address_t& filesystem_close;
 	extern const ::protection::addresses::address_t& find_hud_element;
+	extern const ::protection::addresses::address_t& fps_max_cvar;
 	extern const ::protection::addresses::address_t& frame_input_ring_base;
 	extern const ::protection::addresses::address_t& frame_input_ring_idx;
 	extern const ::protection::addresses::address_t& frame_stage_notify;
@@ -41,6 +42,7 @@ namespace patterns {
 	extern const ::protection::addresses::address_t& generate_primitives;
 	extern const ::protection::addresses::address_t& get_aim_punch;
 	extern const ::protection::addresses::address_t& get_bone_index;
+	extern const ::protection::addresses::address_t& get_convar_value_float;
 	extern const ::protection::addresses::address_t& get_glow_color;
 	extern const ::protection::addresses::address_t& get_inaccuracy;
 	extern const ::protection::addresses::address_t& get_interp_amount;

@@ -255,6 +255,13 @@ namespace rendering {
 
 		inline static auto& skin_map( ) { return settings::g_changer.skins.edit_team( skin_workspace::team ); }
 
+		inline static void notify_skin_changed( )
+		{
+			features::changer::g_knives.invalidate( );
+			features::changer::g_guns.invalidate( );
+			features::changer::g_skin_sync.trigger_push( );
+		}
+
 		enum class skins_page : int
 		{
 			grid,
@@ -700,6 +707,7 @@ namespace rendering {
 					else if ( i == 5 )
 					{
 						skin_map( ).erase( this->m_def );
+						notify_skin_changed( );
 
 						this->m_closing = true;
 
@@ -1280,6 +1288,7 @@ namespace rendering {
 						a.seed = 0;
 						a.stattrak = false;
 					}
+					notify_skin_changed( );
 				}
 				else
 				{
@@ -1404,6 +1413,7 @@ namespace rendering {
 					sel_idx = entry_idx;
 					target = 0; // custom agent overrides official agent
 				}
+				notify_skin_changed( );
 			}
 		}
 
@@ -1509,6 +1519,7 @@ namespace rendering {
 					else
 						ca.selected_t = -1;
 				}
+				notify_skin_changed( );
 			}
 		}
 
@@ -1681,11 +1692,14 @@ namespace rendering {
 				const auto preset = skin_options::wear_preset( index, low, high );
 				const auto label = std::format( "{}{}", skin_options::wear_short[index], index == tier ? " *" : "" );
 				xui::push_style_color( xui::style_col::text, preset ? tokens::col_text : tokens::col_text_dim.alpha( 95 ) );
-				if ( xui::button( label, width ) && preset ) skin.wear = *preset;
+				if ( xui::button( label, width ) && preset ) { skin.wear = *preset; notify_skin_changed( ); }
 				xui::pop_style_color( );
 			}
 			xui::layout::new_line( );
-			if ( low < high ) xui::slider_float( "Wear", skin.wear, low, high, "%.6f" );
+			if ( low < high )
+			{
+				if ( xui::slider_float( "Wear", skin.wear, low, high, "%.6f" ) ) notify_skin_changed( );
+			}
 			else xui::text( std::format( "Fixed wear: {:.6f}", low ), tokens::col_text_dim );
 			integer_input( "Pattern seed (0-1000)", skin.seed, 0, 1000 );
 
@@ -1695,10 +1709,10 @@ namespace rendering {
 			{
 				xui::text_input( "Name tag", skin.name_tag, 80, "Custom name (20 characters)" );
 				skin.name_tag = skin_options::normalize_name_tag( skin.name_tag );
-				if ( !skin.name_tag.empty( ) && xui::button( "Clear name tag", 155.0f ) ) skin.name_tag.clear( );
+				if ( !skin.name_tag.empty( ) && xui::button( "Clear name tag", 155.0f ) ) { skin.name_tag.clear( ); notify_skin_changed( ); }
 				if ( !features::changer::name_tag::offsets( ) )
 					xui::text( "Native name tags unavailable on this game build", tokens::col_text_dim );
-				if ( xui::button( skin.stattrak ? "StatTrak: ON" : "StatTrak: OFF", 155.0f ) ) skin.stattrak = !skin.stattrak;
+				if ( xui::button( skin.stattrak ? "StatTrak: ON" : "StatTrak: OFF", 155.0f ) ) { skin.stattrak = !skin.stattrak; notify_skin_changed( ); }
 				if ( skin.stattrak ) integer_input( "StatTrak count", skin.stattrak_count, 0, std::numeric_limits<int>::max( ) );
 			}
 			else
@@ -1859,6 +1873,7 @@ namespace rendering {
 					}
 
 					skin_map( ).erase( skins_ui.browsing_def );
+					notify_skin_changed( );
 					request_page( skins_page::grid );
 					return;
 				}
@@ -1925,6 +1940,7 @@ namespace rendering {
 						if ( browsing_def && browsing_def->category == features::changer::econ_item_system::item_category::glove ) selected.stattrak = false;
 						skin_map( )[ skins_ui.browsing_def ] = selected;
 					}
+					notify_skin_changed( );
 				}
 
 				if ( auto win = xui::layout::current_window( ) )

@@ -212,6 +212,7 @@ struct cosmetics {
         c.skins = skins; c.agents = agents; c.custom_agents = custom; c.music = music;
         // Keep captured originals: changers need them to restore items removed by this profile.
         features::changer::g_guns.invalidate();
+        features::changer::g_knives.invalidate();
         features::changer::g_skin_sync.trigger_push();
         hooks::cheat::trigger_lobby_music(static_cast<std::uint16_t>(c.music.id));
         hover = {}; focused_weapon = {};

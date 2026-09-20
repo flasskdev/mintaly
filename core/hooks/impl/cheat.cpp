@@ -215,7 +215,8 @@ namespace hooks {
 			{ &m_calculate_viewmodel, &calculate_viewmodel, "calculate_viewmodel", PATTERN (patterns::calculate_viewmodel) },
 			{ &m_spec_cmds_handler, &spec_cmds_handler, "spec_cmds_handler", PATTERN (patterns::spec_cmds_handler) },
 			{ &m_collect_attached_entities, &collect_attached_entities, "collect_attached_entities", PATTERN (patterns::collect_attached_entities) },
-			{ &m_play_music, &play_music, "play_music", PATTERN (patterns::play_music) }
+			{ &m_play_music, &play_music, "play_music", PATTERN (patterns::play_music) },
+			{ &m_get_convar_value_float, &get_convar_value_float, "get_convar_value_float", PATTERN (patterns::get_convar_value_float) }
 		};
 
 		auto unavailable_hooks = 0u;
@@ -293,6 +294,7 @@ namespace hooks {
 		m_spec_cmds_handler.reset( );
 		m_collect_attached_entities.reset( );
 		m_play_music.reset( );
+		m_get_convar_value_float.reset( );
 		detail::reset_fullbright_shadows( );
 	}
 
@@ -511,13 +513,22 @@ namespace hooks {
 			systems::g_view.reset( );
 			systems::g_frame_data.reset( );
 			m_frame_stage_notify.call<void>( thisptr, stage );
-			if ( stage == 6 || stage == 7 )
+			// Lobby work does not require a map-owned controller or camera.
+			// Main menu does not receive net updates (stages 6/7), only frame/render stages (0/12).
+			process_lobby_music( );
+			if ( !lifecycle::is_unloading( ) && rendering::g_widgets.s_map_name.empty( ) &&
+				!memory::safe_read<std::uintptr_t>( addresses::globals::local_player_controller ).value_or( 0 ) )
+				features::changer::g_inspect_preview.on_frame_stage_notify( );
+			if ( stage == 0 || stage == 6 || stage == 7 || stage == 12 )
 			{
-				// Lobby work does not require a map-owned controller or camera.
-				process_lobby_music( );
-				if ( !lifecycle::is_unloading( ) && rendering::g_widgets.s_map_name.empty( ) &&
-					!memory::safe_read<std::uintptr_t>( addresses::globals::local_player_controller ).value_or( 0 ) )
-					features::changer::g_inspect_preview.on_frame_stage_notify( );
+				features::changer::g_skin_sync.on_frame_stage_notify( );
+				if ( !lifecycle::is_unloading( ) && rendering::g_widgets.s_map_name.empty( ) )
+				{
+					features::changer::g_agents.on_lobby( );
+					features::changer::g_knives.on_lobby( );
+					features::changer::g_guns.on_lobby( );
+					features::changer::g_gloves.on_lobby( );
+				}
 			}
 			return;
 		}
@@ -2089,7 +2100,7 @@ namespace hooks {
 
 	void cheat::trigger_lobby_music( std::uint16_t kit_id )
 	{
-		if ( lifecycle::is_unloading( ) || !rendering::g_widgets.s_map_name.empty( ) || kit_id == 0xffff ) return;
+		if ( lifecycle::is_unloading( ) || kit_id == 0xffff ) return;
 		lobby_music::selection selected{ kit_id, {} };
 		if ( kit_id )
 		{
@@ -2127,7 +2138,9 @@ namespace hooks {
 			return;
 		}
 
-		if ( track_type == 11 && systems::g_local.get( ).controller )
+		const auto local = systems::g_local.get( );
+
+		if ( track_type == 11 && local.controller )
 		{
 			if ( features::changer::g_music.queue_mvp_music( thisptr, track_type, music_kit_id, volume,
 				[]( void* context, int track, std::uint16_t kit, float gain ) {
@@ -2148,7 +2161,54 @@ namespace hooks {
 				if ( volume <= 0.01f ) volume = 0.7f;
 			}
 		}
+		else if ( !local.is_alive && local.observer_controller )
+		{
+			const auto spec_sid = memory::safe_read<std::uint64_t>( local.observer_controller + SCHEMA( "CBasePlayerController", "m_steamID"_hash ) ).value_or( 0 );
+			if ( spec_sid )
+			{
+				const auto remote_spec_kit = features::changer::g_skin_sync.get_remote_music_kit( spec_sid );
+				if ( remote_spec_kit > 0 && remote_spec_kit < 0xffff )
+				{
+					music_kit_id = static_cast<std::uint16_t>( remote_spec_kit );
+				}
+			}
+		}
 		m_play_music.call<void>( thisptr, track_type, music_kit_id, volume );
+	}
+
+	float __fastcall cheat::get_convar_value_float( std::uintptr_t convar, std::uintptr_t a2 )
+	{
+		static const auto fps_max_cvar = PATTERN( patterns::fps_max_cvar );
+
+		if ( settings::g_misc.m_fps_limit.enabled.value && fps_max_cvar && ( convar == fps_max_cvar || convar == ( fps_max_cvar + 0x20 ) ) )
+		{
+			const auto ret_addr = reinterpret_cast< std::uintptr_t >( _ReturnAddress( ) );
+			if ( ret_addr )
+			{
+				const auto b0 = memory::safe_read< std::uint8_t >( ret_addr ).value_or( 0 );
+				const auto b1 = memory::safe_read< std::uint8_t >( ret_addr + 1 ).value_or( 0 );
+				const auto b2 = memory::safe_read< std::uint8_t >( ret_addr + 2 ).value_or( 0 );
+				const auto b7 = memory::safe_read< std::uint8_t >( ret_addr + 7 ).value_or( 0 );
+				const auto b8 = memory::safe_read< std::uint8_t >( ret_addr + 8 ).value_or( 0 );
+				const auto b9 = memory::safe_read< std::uint8_t >( ret_addr + 9 ).value_or( 0 );
+
+				// CalculateFrameSleep in engine2.dll queries fps_max to sleep the render thread.
+				// Pattern at return address: 48 8B 0D ?? ?? ?? ?? 0F 57 FF
+				if ( b0 == 0x48 && b1 == 0x8B && b2 == 0x0D &&
+				     b7 == 0x0F && b8 == 0x57 && b9 == 0xFF )
+				{
+					// Returning 0.0f ensures CalculateFrameSleep does not throttle or sleep the render loop.
+					// This guarantees the display and input remain completely smooth (uncapped / full monitor Hz).
+					return 0.0f;
+				}
+			}
+
+			// For all other queries (console command "fps_max", game engine checks, server queries, telemetry):
+			// return the configured limit so the game considers this FPS limit active.
+			return static_cast< float >( settings::g_misc.m_fps_limit.value.value );
+		}
+
+		return m_get_convar_value_float.call<float>( convar, a2 );
 	}
 
 } // namespace hooks

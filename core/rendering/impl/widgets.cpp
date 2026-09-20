@@ -76,8 +76,15 @@ namespace rendering {
 		static auto smoothed_fps{ 0.0f };
 		if ( smoothed_fps == 0.0f ) smoothed_fps = framerate;
 		smoothed_fps += ( framerate - smoothed_fps ) * std::min( 2.0f * xdraw::delta_time( ), 1.0f );
-		char fps_val[ 8 ]{};
-		std::snprintf( fps_val, sizeof( fps_val ), "%.0f", smoothed_fps );
+		char fps_val[ 24 ]{};
+		if ( settings::g_misc.m_fps_limit.enabled.value )
+		{
+			std::snprintf( fps_val, sizeof( fps_val ), "%.0f (%d)", smoothed_fps, settings::g_misc.m_fps_limit.value.value );
+		}
+		else
+		{
+			std::snprintf( fps_val, sizeof( fps_val ), "%.0f", smoothed_fps );
+		}
 
 		// ── ping (game scoreboard ping: CCSPlayerController::m_iPing) ───────
 		auto ping{ 0 };
@@ -1438,6 +1445,19 @@ namespace rendering {
 					for ( const auto& player : systems::g_entities.get_by_type( systems::entities::type::player ) )
 					{
 						if ( !player.ptr || player.ptr == view_controller || player.ptr == local_controller || s_cached_count >= 32 )
+						{
+							continue;
+						}
+
+						// Skip disconnected / kicked players whose controller entity still lingers.
+						const auto connected_state = memory::safe_read<int>( player.ptr + SCHEMA( "CBasePlayerController", "m_iConnected"_hash ) ).value_or( -1 );
+						if ( connected_state != 0 )
+						{
+							continue;
+						}
+
+						const auto disconnect_reason = memory::safe_read<int>( player.ptr + SCHEMA( "CCSPlayerController", "m_eNetworkDisconnectionReason"_hash ) ).value_or( 0 );
+						if ( disconnect_reason != 0 )
 						{
 							continue;
 						}

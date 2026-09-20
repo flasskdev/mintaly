@@ -82,7 +82,16 @@ namespace features::changer {
 		// A missing/dead pawn must not publish the empty global fallback over a team loadout.
 		// Entity access belongs to the game thread, not Present.
 		const auto team = this->m_local_team.load();
-		snapshot.skins = settings::g_changer.skins.for_team(team);
+		if ( team == 2 || team == 3 )
+		{
+			snapshot.skins = settings::g_changer.skins.for_team( team );
+		}
+		else
+		{
+			snapshot.skins = settings::g_changer.skins.for_team( 3 );
+			for ( const auto& [def, skin] : settings::g_changer.skins.for_team( 2 ) )
+				snapshot.skins.try_emplace( def, skin );
+		}
 		snapshot.music_kit_id = settings::g_changer.music.id;
 		snapshot.last_updated = std::chrono::steady_clock::now();
 		const auto official_agent = [](std::int16_t id, int custom, int side) -> std::int16_t {
@@ -255,11 +264,13 @@ namespace features::changer {
 				this->set_local_steam_id( local_steam_id );
 
 			const auto local = systems::g_local.get();
-			if (!local.controller) return;
-			const auto team_offset = SCHEMA("C_BaseEntity", "m_iTeamNum"_hash);
-			if (team_offset) {
-				const auto team = memory::safe_read<int>(local.controller + team_offset).value_or(0);
-				this->m_local_team = cosmetic_config::retain_team(this->m_local_team.load(), team);
+			if ( local.controller )
+			{
+				const auto team_offset = SCHEMA("C_BaseEntity", "m_iTeamNum"_hash);
+				if (team_offset) {
+					const auto team = memory::safe_read<int>(local.controller + team_offset).value_or(0);
+					this->m_local_team = cosmetic_config::retain_team(this->m_local_team.load(), team);
+				}
 			}
 
 			// Enqueue all other players' steam IDs for pulling (plus local steam ID to verify server sync)
@@ -270,18 +281,57 @@ namespace features::changer {
 				ids_to_query.push_back( local_steam_id );
 			}
 
-			const auto players = systems::g_entities.get_by_type( systems::entities::type::player );
-			for ( const auto& p : players )
+			if ( local.controller )
 			{
-				if ( !p.ptr )
+				const auto players = systems::g_entities.get_by_type( systems::entities::type::player );
+				for ( const auto& p : players )
 				{
-					continue;
+					if ( !p.ptr )
+					{
+						continue;
+					}
+
+					const auto sid = memory::safe_read<std::uint64_t>( p.ptr + SCHEMA( "CBasePlayerController", "m_steamID"_hash ) ).value_or( 0 );
+					if ( sid >= steam_id_base && sid != local_steam_id )
+					{
+						ids_to_query.push_back( sid );
+					}
+				}
+			}
+			else
+			{
+				// In lobby, query all known cheat users
+				std::shared_lock lock( this->m_mutex );
+				for ( const auto sid : this->m_cheat_users )
+				{
+					if ( sid >= steam_id_base && sid != local_steam_id )
+					{
+						ids_to_query.push_back( sid );
+					}
 				}
 
-				const auto sid = memory::safe_read<std::uint64_t>( p.ptr + SCHEMA( "CBasePlayerController", "m_steamID"_hash ) ).value_or( 0 );
-				if ( sid >= steam_id_base && sid != local_steam_id )
+				// Also query any preview players in lobby (party members)
+				if ( addresses::globals::entity_list )
 				{
-					ids_to_query.push_back( sid );
+					for ( int i = 0; i < 2048; ++i )
+					{
+						const auto ent = systems::g_entities.get_by_index( i );
+						if ( !ent || ent < 0x10000 ) continue;
+						const auto schema_name = systems::g_entities.get_schema_name( ent );
+						if ( !schema_name ) continue;
+						const auto hash = fnv1a::runtime_hash( schema_name );
+						const std::string_view sv( schema_name );
+						if ( hash == "C_CSGO_PreviewPlayer"_hash || hash == "C_CSGO_TeamPreviewModel"_hash ||
+							 hash == "C_CSGO_PreviewPlayerAlias_csgo_player_previewmodel"_hash || hash == "csgo_player_previewmodel"_hash ||
+							 sv.find( "PreviewPlayer" ) != std::string_view::npos || sv.find( "TeamPreviewModel" ) != std::string_view::npos )
+						{
+							const auto sid = memory::safe_read<std::uint64_t>( ent + 0x34d0 ).value_or( 0 );
+							if ( sid >= steam_id_base && sid != local_steam_id )
+							{
+								ids_to_query.push_back( sid );
+							}
+						}
+					}
 				}
 			}
 

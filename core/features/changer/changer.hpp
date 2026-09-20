@@ -240,6 +240,7 @@ namespace features::changer {
 	{
 	public:
 		void on_frame_stage_notify( );
+		void on_lobby( );
 		void reset( );
 
 	private:
@@ -258,6 +259,7 @@ namespace features::changer {
 	{
 	public:
 		void on_frame_stage_notify( );
+		void on_lobby( );
 		void reset( );
 
 	private:
@@ -298,6 +300,7 @@ namespace features::changer {
 	{
 	public:
 		void on_frame_stage_notify( );
+		void on_lobby( );
 		void reset( ); // Level teardown, on the game thread.
 		void invalidate( ) { m_invalidate_pending.store( true ); }
 
@@ -342,7 +345,9 @@ namespace features::changer {
 	{
 	public:
 		void on_frame_stage_notify( );
+		void on_lobby( );
 		void reset( );
+		void invalidate( ) { m_invalidate_pending.store( true ); }
 
 	private:
 		struct original_state
@@ -380,6 +385,13 @@ namespace features::changer {
 		std::uint32_t m_last_active_handle{};
 		std::uintptr_t m_tracked_pawn{};
 		bool m_overridden{};
+		std::atomic<bool> m_invalidate_pending{ false };
+		std::uintptr_t m_last_hud_model{};
+		float m_last_round_start_time{};
+		std::int16_t m_last_knife_def{};
+		int m_last_paint_kit{};
+		int m_last_seed{};
+		float m_last_wear{};
 		std::uintptr_t m_pending_hud_iv{};
 		std::chrono::steady_clock::time_point m_hud_clear_time{};
 	};

@@ -7,6 +7,7 @@
 #include <core/features/features.hpp>
 #include <core/settings.hpp>
 #include <protection/game_addresses.hpp>
+#include <protection/patterns.hpp>
 
 namespace features::changer {
 namespace {
@@ -85,6 +86,36 @@ namespace {
 			if ( kit_mvps_offset )
 				memory::write<std::int32_t>( controller + kit_mvps_offset, this->m_original_music_kit_mvps );
 		}
+
+		const auto all_players = systems::g_entities.get_by_type( systems::entities::type::player );
+		for ( const auto& p : all_players )
+		{
+			const auto ctrl = p.ptr;
+			if ( !ctrl || ctrl == controller )
+			{
+				continue;
+			}
+
+			const auto sid = memory::safe_read<std::uint64_t>( ctrl + SCHEMA( "CBasePlayerController", "m_steamID"_hash ) ).value_or( 0 );
+			constexpr std::uint64_t steam_id_base = 76561197960265728ull;
+			if ( sid < steam_id_base && !g_skin_sync.m_bot_sync_test.load( ) )
+			{
+				continue;
+			}
+
+			const auto remote_kit = g_skin_sync.get_remote_music_kit( sid );
+			if ( remote_kit > 0 && remote_kit < 0xffff )
+			{
+				const auto remote_target = static_cast<std::uint16_t>( remote_kit );
+				if ( kit_id_offset && memory::safe_read<std::int32_t>( ctrl + kit_id_offset ).value_or( 0 ) != remote_target )
+					memory::safe_write<std::int32_t>( ctrl + kit_id_offset, remote_target );
+				if ( mvp_no_music_offset && memory::safe_read<bool>( ctrl + mvp_no_music_offset ).value_or( true ) )
+					memory::safe_write<bool>( ctrl + mvp_no_music_offset, false );
+				const auto r_inv_services = inv_services_offset ? memory::safe_read<std::uintptr_t>( ctrl + inv_services_offset ).value_or( 0 ) : 0;
+				if ( r_inv_services && music_id_offset && memory::safe_read<std::uint16_t>( r_inv_services + music_id_offset ).value_or( 0 ) != remote_target )
+					memory::safe_write<std::uint16_t>( r_inv_services + music_id_offset, remote_target );
+			}
+		}
 	}
 
 	void music::reset( )
@@ -156,7 +187,28 @@ namespace {
 		if ( !event ) return;
 		// Do not clear here: an engine listener can request playback BEFORE this
 		// listener runs. That pending request must survive until the next frame.
-		const auto mvp_controller = systems::events::get_controller( event, "userid" );
+		auto mvp_controller = systems::events::get_controller( event, "userid" );
+		if ( !mvp_controller )
+		{
+			const auto fn = PATTERN( patterns::game_event_get_int );
+			if ( fn )
+			{
+				const auto userid = memory::call<int>( fn, event, "userid", -1 );
+				if ( userid >= 0 )
+				{
+					const auto players = systems::g_entities.get_by_type( systems::entities::type::player );
+					for ( const auto& p : players )
+					{
+						if ( !p.ptr ) continue;
+						if ( static_cast<int>( p.index ) == userid || static_cast<int>( p.index ) == ( userid & 0xFF ) )
+						{
+							mvp_controller = p.ptr;
+							break;
+						}
+					}
+				}
+			}
+		}
 		const auto local_controller = systems::g_local.get( ).controller;
 		const bool local_winner = mvp_controller && mvp_controller == local_controller;
 		int target_id = 0;

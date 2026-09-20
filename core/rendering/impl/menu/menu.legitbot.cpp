@@ -62,7 +62,7 @@ namespace rendering {
 				if ( !ow.override_group.value )
 				{
 					bool has_bind = false;
-					for ( const auto s : { &ow.cfg.aimbot, &ow.cfg.rcs, &ow.cfg.standalone_rcs, &ow.cfg.triggerbot, &ow.cfg.trigger_head_only, &ow.cfg.give_me_your_seed, &ow.cfg.autowall, &ow.cfg.smoke_check, &ow.cfg.scope_check, &ow.cfg.flash_check, &ow.cfg.ground_check, &ow.cfg.visualize_fov } )
+					for ( const auto s : { &ow.cfg.aimbot, &ow.cfg.rcs, &ow.cfg.standalone_rcs, &ow.cfg.triggerbot, &ow.cfg.trigger_head_only, &ow.cfg.give_me_your_seed, &ow.cfg.autowall, &ow.cfg.smoke_check, &ow.cfg.scope_check, &ow.cfg.auto_scope, &ow.cfg.flash_check, &ow.cfg.ground_check, &ow.cfg.visualize_fov } )
 					{
 						if ( s->bind.key != 0 ) { has_bind = true; break; }
 					}
@@ -225,12 +225,13 @@ namespace rendering {
 			draw_animated_item( "lb_scope_check_anim", is_sniper, 24.0f, 3.0f, [ & ]() {
 				xui::toggle( "Check Scope", wg.scope_check );
 			} );
+			draw_animated_item( "lb_auto_scope_anim", is_sniper, 24.0f, 3.0f, [ & ]() {
+				xui::toggle( "Auto Scope", wg.auto_scope );
+			} );
 			xui::toggle( "Flash Check", wg.flash_check );
 			xui::layout::spacing( 3.0f );
 			xui::toggle( "Only On Ground", wg.ground_check );
 			xui::layout::spacing( 3.0f );
-			xui::toggle("Auto scope", wg.auto_scope);
-			xui::layout::spacing(3.0f);
 			xui::toggle( "Triggerbot", wg.triggerbot );
 			xui::layout::spacing( 3.0f );
 			xui::toggle( "Trigger Head Only", wg.trigger_head_only );

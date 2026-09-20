@@ -125,6 +125,13 @@ namespace rendering {
                                 xui::layout::spacing( 3.0f );
                                 xui::toggle( "Vote Logs", impacts.vote_log );
                                 xui::layout::spacing( 6.0f );
+                                xui::toggle( "FPS Limit", m.m_fps_limit.enabled );
+                                if ( xui::begin_popup( "##fps_limit_popup", 220.0f ) )
+                                {
+                                        xui::slider_int( "max fps##limit", m.m_fps_limit.value, 1, 400, "%d" );
+                                        xui::end_popup( );
+                                }
+                                xui::layout::spacing( 6.0f );
                                 xui::toggle( "Disable Game Logs", m.disable_game_logs );
                                 xui::layout::spacing( 6.0f );
                                 xui::toggle( "Preserve Killfeed", m.preserve_killfeed );

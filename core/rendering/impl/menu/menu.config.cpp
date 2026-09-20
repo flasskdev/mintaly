@@ -119,6 +119,7 @@ namespace rendering {
 
 			// Preserve captured originals so removed cosmetics can be restored on the game thread.
 			features::changer::g_guns.invalidate( );
+			features::changer::g_knives.invalidate( );
 			features::changer::g_skin_sync.trigger_push( );
 			settings::finalize_binds( );
 			settings::g_world.update_active( rendering::g_widgets.s_map_name );
@@ -227,15 +228,13 @@ namespace rendering {
 					config::registry::load( wname );
 					// Do not discard originals or call engine restoration from the menu thread.
 					features::changer::g_guns.invalidate( );
+					features::changer::g_knives.invalidate( );
 					features::changer::g_skin_sync.trigger_push( );
 					settings::finalize_binds( );
 					settings::g_world.update_active( rendering::g_widgets.s_map_name );
 					rendering::g_menu.apply_theme_preset( settings::g_misc.menu_palette.value );
 					xui::tooltips::set_enabled( settings::g_misc.tooltips.value );
-					if ( rendering::g_widgets.s_map_name.empty( ) )
-					{
-						hooks::cheat::trigger_lobby_music( static_cast< std::uint16_t >( settings::g_changer.music.id ) );
-					}
+					hooks::cheat::trigger_lobby_music( static_cast< std::uint16_t >( settings::g_changer.music.id ) );
 				}
 				else if ( is_hovered && !popup_hovered && input.rmb_clicked && !xui::ctx( ).overlay_blocking( ) )
 				{

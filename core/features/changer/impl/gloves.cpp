@@ -391,6 +391,11 @@ namespace features::changer {
 		}
 	}
 
+	void gloves::on_lobby( )
+	{
+		// Preview player models in the lobby / main menu have hands/gloves integrated in their model.
+	}
+
 	void gloves::reset( )
 	{
 		this->m_original = {};

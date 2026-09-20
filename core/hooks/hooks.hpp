@@ -69,6 +69,7 @@ namespace hooks {
 		static void __fastcall play_music( void* thisptr, int track_type, std::uint16_t music_kit_id, float volume );
 		static void trigger_lobby_music( std::uint16_t kit_id );
 		static void process_lobby_music( );
+		static float __fastcall get_convar_value_float( std::uintptr_t convar, std::uintptr_t a2 );
 
 	private:
 		inline static hooking::jmp m_present{};
@@ -126,6 +127,7 @@ namespace hooks {
 		inline static hooking::jmp m_set_info{};
 		inline static hooking::jmp m_collect_attached_entities{};
 		inline static hooking::jmp m_play_music{};
+		inline static hooking::jmp m_get_convar_value_float{};
 	};
 
 	class utility

@@ -208,7 +208,7 @@ namespace features::misc {
 				this->m_toss_angles = systems::g_input.get_view_angles( );
 				this->m_toss_angles_locked = false;
 			}
-			else if ( pin_pulled || throw_time > 0.0f || this->m_toss_angles_locked )
+			else if ( pin_pulled || throw_time > 0.0f )
 			{
 				if ( !this->m_toss_angles_locked )
 				{
@@ -342,7 +342,10 @@ namespace features::misc {
 
 		auto angles = systems::g_input.get_view_angles( );
 		math::helpers::normalize_angle( angles.x );
-		angles.x -= ( 90.0f - std::abs( angles.x ) ) * 10.0f / 90.0f;
+		if ( !settings::g_misc.m_projectile_trajectory.super_toss.value )
+		{
+			angles.x -= ( 90.0f - std::abs( angles.x ) ) * 10.0f / 90.0f;
+		}
 
 		const auto game_scene_node = memory::read<std::uintptr_t>( local_pawn + SCHEMA( "C_BaseEntity", "m_pGameSceneNode"_hash ) );
 		const auto origin_pos = game_scene_node ? memory::read<math::vector3>( game_scene_node + SCHEMA( "CGameSceneNode", "m_vecAbsOrigin"_hash ) ) : systems::g_frame_data.origin( );
@@ -964,6 +967,21 @@ namespace features::misc {
 				angles->set_z( 0.0f );
 			}
 		}
+
+		if ( local.pawn )
+		{
+			const auto stash_flag = SCHEMA( "C_CSPlayerPawn", "m_bGrenadeParametersStashed"_hash );
+			const auto stash_angles = SCHEMA( "C_CSPlayerPawn", "m_angStashedShootAngles"_hash );
+			if ( stash_flag && stash_angles && memory::read<bool>( local.pawn + stash_flag ) )
+			{
+				memory::write<math::vector3>( local.pawn + stash_angles, { input_pitch, corrected_yaw, 0.0f } );
+			}
+			const auto stash_history = SCHEMA( "C_CSPlayerPawn", "m_angShootAngleHistory"_hash );
+			if ( stash_history )
+			{
+				memory::write<math::vector3>( local.pawn + stash_history, { input_pitch, corrected_yaw, 0.0f } );
+			}
+		}
 	}
 
 	void projectile_trajectory::compute_desired_direction( math::vector3& desired_forward ) const
@@ -980,7 +998,10 @@ namespace features::misc {
 			angles.x += 360.0f;
 		}
 
-		angles.x -= ( 90.0f - std::abs( angles.x ) ) * 10.0f / 90.0f;
+		if ( !settings::g_misc.m_projectile_trajectory.super_toss.value )
+		{
+			angles.x -= ( 90.0f - std::abs( angles.x ) ) * 10.0f / 90.0f;
+		}
 
 		const auto pitch = angles.x * ( std::numbers::pi_v<float> / 180.0f );
 		const auto yaw = angles.y * ( std::numbers::pi_v<float> / 180.0f );
