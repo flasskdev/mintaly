@@ -71,8 +71,19 @@ class Wiring(unittest.TestCase):
         self.assertIn('original_buttons & jump', s)
         self.assertIn('original_buttons & duck', s)
         self.assertIn('pre.ducked &&', s)
-        self.assertIn('if (include_jump) event(3', s)
-        self.assertIn('cmd->buttons.value &= ~duck', s)
+        self.assertIn('jumpbug_command::make', s)
+        self.assertIn('cmd->buttons.value = plan->final_buttons', s)
+        self.assertIn('m_owned_duck = plan->owns_duck', s)
+        self.assertIn('m_fired_last_tick = plan->owns_jump', s)
+
+    def test_fps_limit_is_removed_from_runtime_sources(self):
+        for directory in ('core', 'protection', 'utilities'):
+            for path in (ROOT / directory).rglob('*'):
+                if path.suffix not in ('.hpp', '.cpp', '.h'):
+                    continue
+                content = path.read_text(encoding='utf-8')
+                for removed in ('m_fps_limit', 'fps_max_cvar', 'get_convar_value_float', 'FPS Limit'):
+                    self.assertNotIn(removed, content, str(path))
 
     def test_molotov_is_wired_and_scoped(self):
         menu = source('core/rendering/impl/menu/menu.misc.cpp')

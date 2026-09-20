@@ -1,5 +1,6 @@
 #include <core/features/movement/jumpbug_command.hpp>
 #include <cassert>
+#include <initializer_list>
 #include <limits>
 
 int main() {
