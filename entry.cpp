@@ -470,10 +470,12 @@ void print_expired_chat_notification()
 	diag::write( diag::level::info, "subscription expired" );
 }
 
-void shutdown_all_cheat_systems()
+bool shutdown_all_cheat_systems()
 {
 	features::misc::g_impacts.shutdown_audio( );
-	features::changer::g_skin_sync.shutdown( );
+	if ( !features::changer::g_skin_sync.shutdown( ) ) return false;
+	if ( !config::registry::flush_pending_save() )
+		diag::write( diag::level::warning, "StatTrak: unload config save failed" );
 
 #if defined( DEV )
 	features::esp::player::g_chams.bt().shutdown();
@@ -485,13 +487,18 @@ void shutdown_all_cheat_systems()
 	hooks::utility::shutdown();
 	hooks::cheat::shutdown();
 #endif
+	return true;
 }
 
 void unload_and_exit( HMODULE module_handle )
 {
 	g_is_unloading.store( true, std::memory_order_release );
 	Sleep( 500 );
-	shutdown_all_cheat_systems();
+	if ( !shutdown_all_cheat_systems() )
+	{
+		diag::write( diag::level::error, "unload cancelled: background worker is still running" );
+		return;
+	}
 	g_has_shutdown.store( true, std::memory_order_release );
 
 	if ( module_handle )

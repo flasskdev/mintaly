@@ -305,6 +305,13 @@ namespace features::changer {
 		void invalidate( ) { m_invalidate_pending.store( true ); }
 
 	private:
+		struct skin_selection {
+			settings::changer::applied_skin skin{};
+			std::uint32_t account_id{};
+		};
+		std::optional<skin_selection> select_skin( std::uintptr_t weapon, std::uintptr_t iv,
+			std::uint32_t handle, std::uint16_t definition, std::uint32_t holder_account,
+			const settings::changer::skin_map_field::map_type& skins );
 		struct original_weapon {
 			std::uintptr_t weapon{};
 			std::uint16_t def_index{};
@@ -315,6 +322,7 @@ namespace features::changer {
 			bool initialized{}, disallow_soc{};
 			cosmetic_attributes::snapshot attributes{};
 			std::optional<name_tag::snapshot> custom_name{};
+			std::optional<skin_selection> cosmetic{};
 		};
 		bool capture_original( std::uintptr_t weapon, std::uintptr_t iv, std::uint32_t handle );
 		bool restore( std::uintptr_t weapon, std::uintptr_t iv, std::uint32_t handle, std::uint32_t active_handle, std::uintptr_t pawn );
@@ -335,6 +343,7 @@ namespace features::changer {
 		struct applied_weapon {
             cosmetic_cache::identity visual{};
             settings::changer::applied_skin skin{};
+            cosmetic_cache::identity hud{};
         };
         std::unordered_map<std::uint32_t, applied_weapon> m_applied_weapons{};
 		std::uintptr_t m_pending_hud_iv{};

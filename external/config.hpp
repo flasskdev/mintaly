@@ -19,6 +19,7 @@
 #include "xdraw/xui/xui.hpp"
 
 namespace config {
+	namespace registry { inline bool flush_pending_save(); }
 
 	enum class field_type : std::uint8_t
 	{
@@ -830,6 +831,7 @@ namespace config {
 
 	inline bool from_json(const nlohmann::json& root)
 	{
+		if (!registry::flush_pending_save()) return false;
 		if (!root.contains("version") || !root.contains("fields"))
 		{
 			return false;
@@ -961,6 +963,7 @@ namespace config {
 
 	inline bool from_json_delta(const nlohmann::json& root)
 	{
+		if (!registry::flush_pending_save()) return false;
 		if (!root.contains("f"))
 		{
 			return false;
@@ -1061,6 +1064,16 @@ namespace config {
 		inline const std::filesystem::path k_config_dir{ L"C:\\mintaly\\configs" };
 		inline std::wstring g_active_config{ L"default" };
 		inline std::recursive_mutex g_io_mutex;
+		inline std::optional<std::wstring> g_pending_save;
+		inline bool flush_pending_save();
+
+		// No serialization, compression or disk I/O in player_death.
+		inline void request_save_active()
+		{
+			std::lock_guard lock(g_io_mutex);
+			if (g_active_config.empty()) g_active_config = L"default";
+			g_pending_save = g_active_config;
+		}
 
 		inline std::filesystem::path get_file_path(std::wstring_view name)
 		{
@@ -1081,6 +1094,7 @@ namespace config {
 				std::filesystem::create_directories(k_config_dir, ec);
 				if (ec) return false;
 				const std::wstring saved_name{name};
+				if (g_pending_save && *g_pending_save != saved_name && !flush_pending_save()) return false;
 				const auto file_path = get_file_path(saved_name);
 				auto temporary = file_path;
 				temporary += L".tmp";
@@ -1103,14 +1117,26 @@ namespace config {
 					return false;
 				}
 				g_active_config = saved_name;
+				if (g_pending_save && *g_pending_save == saved_name) g_pending_save.reset();
 				return true;
 			}
 			catch (...) { return false; }
 		}
 
+		inline bool flush_pending_save()
+		{
+			std::lock_guard lock(g_io_mutex);
+			if (!g_pending_save) return true;
+			// Copy: save() clears the pending name after a successful write.
+			const auto name = *g_pending_save;
+			return save(name);
+		}
+
 		inline bool load(std::wstring_view name)
 		{
 			std::lock_guard lock(g_io_mutex);
+			// Persist the old profile before replacing its live settings.
+			if (!flush_pending_save()) return false;
 			const auto file_path = get_file_path(name);
 			std::ifstream file(file_path, std::ios::binary | std::ios::ate);
 			if (!file.is_open())
@@ -1159,8 +1185,12 @@ namespace config {
 
 		inline bool remove(std::wstring_view name)
 		{
+			std::lock_guard lock(g_io_mutex);
 			std::error_code ec;
-			return std::filesystem::remove(get_file_path(name), ec);
+			const bool removed = std::filesystem::remove(get_file_path(name), ec);
+			if (removed && g_pending_save && get_file_path(*g_pending_save) == get_file_path(name))
+				g_pending_save.reset(); // Do not recreate an explicitly deleted profile.
+			return removed;
 		}
 
 		inline std::vector<std::wstring> list()

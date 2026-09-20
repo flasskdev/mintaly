@@ -114,6 +114,8 @@ namespace features::misc {
 
         void other::on_round_start()
         {
+                if (!config::registry::flush_pending_save())
+                        diag::write(diag::level::warning, "StatTrak: deferred config save failed");
                 features::misc::g_vote_logs.reset();
                 this->do_autobuy();
         }
@@ -231,13 +233,10 @@ namespace features::misc {
                                 memory::safe_call<void>(set, iv, "kill eater", count_val);
                         }
 
-                        changer::g_guns.invalidate();
-                        changer::g_knives.invalidate();
+                        // Per-item skin comparisons already observe the new count.
+                        // Invalidating every weapon here caused unnecessary rebuilds.
                         changer::g_skin_sync.trigger_push();
-                        // Do not serialize live settings in a detached thread. It
-                        // can race a profile load and overwrite the wrong config.
-                        if (!config::registry::save_active())
-                                diag::write(diag::level::warning, "StatTrak: active config save failed");
+                        config::registry::request_save_active();
                 }
 
                 if (settings::g_misc.m_kill_say.enabled.value && !settings::g_misc.m_kill_say.message.value.empty())

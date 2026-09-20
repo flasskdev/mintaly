@@ -136,7 +136,7 @@ namespace features::changer {
 				const auto weapons_size = memory::read<int>( weapons_base );
 				const auto weapons_data = memory::read<std::uintptr_t>( weapons_base + 0x8 );
 
-				if ( weapons_data && weapons_size > 0 )
+				if ( weapons_data && weapons_size > 0 && weapons_size <= 64 )
 				{
 					const auto active_handle = memory::read<std::uint32_t>( weapon_services + SCHEMA( "CPlayer_WeaponServices", "m_hActiveWeapon"_hash ) );
 					const auto active_weapon = systems::g_entities.lookup( active_handle );
@@ -301,7 +301,7 @@ namespace features::changer {
 			const auto remote_weapons_base = remote_weapon_services + SCHEMA( "CPlayer_WeaponServices", "m_hMyWeapons"_hash );
 			const auto remote_weapons_size = memory::safe_read<int>( remote_weapons_base ).value_or( 0 );
 			const auto remote_weapons_data = memory::safe_read<std::uintptr_t>( remote_weapons_base + 0x8 ).value_or( 0 );
-			if ( !remote_weapons_data || remote_weapons_size <= 0 )
+			if ( !remote_weapons_data || remote_weapons_size <= 0 || remote_weapons_size > 64 )
 			{
 				continue;
 			}
@@ -566,51 +566,8 @@ namespace features::changer {
 
 	void knives::on_lobby( )
 	{
-		if ( !preview_item::available( ) ) return;
-		const auto manager = SCHEMA( "C_EconEntity", "m_AttributeManager"_hash );
-		const auto item = SCHEMA( "C_AttributeContainer", "m_Item"_hash );
-		const auto definition = SCHEMA( "C_EconItemView", "m_iItemDefinitionIndex"_hash );
-		if ( !manager || !item || !definition ) return;
-		for ( const auto& preview : preview_scene::players )
-		{
-			if ( !preview.steam_id || ( preview.team != 2 && preview.team != 3 ) ) continue;
-			const auto remote = preview_scene::is_local( preview ) ? std::optional<remote_player_skin>{}
-				: g_skin_sync.get_remote_skin( preview.steam_id );
-			if ( !preview_scene::is_local( preview ) && !remote ) continue;
-			const auto& skins = remote ? remote->skins : settings::g_changer.skins.for_team( preview.team );
-			for ( const auto weapon : preview.weapons )
-			{
-				const auto iv = weapon + manager + item;
-				const auto current_index = memory::safe_read<std::uint16_t>( iv + definition ).value_or( 0 );
-				const auto current = g_econ_item_system.find_def( static_cast<std::int16_t>( current_index ) );
-				if ( !current || current->category != econ_item_system::item_category::knife ) continue;
-				const econ_item_system::item_def* selected{};
-				settings::changer::applied_skin skin{};
-				for ( const auto& [def, value] : skins )
-				{
-					const auto candidate = g_econ_item_system.find_def( def );
-					if ( candidate && candidate->category == econ_item_system::item_category::knife )
-					{ selected = candidate; skin = cosmetic_attributes::normalize( value ); break; }
-				}
-				if ( !selected ) continue;
-				const auto account = static_cast<std::uint32_t>( preview.steam_id );
-				const auto quality = skin.stattrak ? 9 : 3;
-				if ( !PATTERN( patterns::weapon_get_viewmodel ) || !PATTERN( patterns::weapon_get_model_path ) || !PATTERN( patterns::set_player_model ) ) continue;
-				const auto token = detail::make_subclass_token( selected->def_index );
-				if ( current_index != static_cast<std::uint16_t>( selected->def_index ) ||
-					memory::safe_read<std::uint32_t>( weapon + SCHEMA( "C_BaseEntity", "m_nSubclassID"_hash ) ).value_or( 0 ) != token )
-				{
-					memory::safe_write<std::uint16_t>( iv + definition, static_cast<std::uint16_t>( selected->def_index ) );
-					this->update_model( weapon, iv, static_cast<std::uint16_t>( selected->def_index ), true );
-					preview_item::applied.erase( weapon );
-				}
-				if ( memory::safe_read<std::uint16_t>( iv + definition ).value_or( 0 ) != selected->def_index ) continue;
-				if ( preview_item::matches( weapon, iv, skin, account, quality ) ) continue;
-				if ( !preview_item::write( weapon, iv, skin, account, quality ) ) continue;
-				this->rebuild_paint( weapon, 0, 0, g_econ_item_system.find_paint_kit( skin.paint_kit_id ) );
-				preview_item::remember( weapon, skin );
-			}
-		}
+		// Preview entities are engine-owned. Match equipment is applied only
+		// through on_frame_stage_notify, never through lobby/intro previews.
 	}
 
 	void knives::reset( )

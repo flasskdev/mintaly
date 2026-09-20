@@ -1545,6 +1545,8 @@ namespace hooks {
 		m_was_connected = false;
 
 		diag::exception_scope exception_scope{ "level shutdown: invalidate snapshots" };
+		if ( !config::registry::flush_pending_save() )
+			diag::write( diag::level::warning, "StatTrak: level shutdown config save failed" );
 		diag::step( release_engine_resources
 			? "level shutdown: pre-engine cleanup"
 			: "level shutdown: cache-only cleanup" );

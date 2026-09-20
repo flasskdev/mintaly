@@ -25,7 +25,7 @@ namespace features::changer {
 	class skin_sync {
 	public:
 		void initialize( );
-		void shutdown( );
+		[[nodiscard]] bool shutdown( );
 		// Called only on the render/menu thread; publishes settings for the worker.
 		void on_present( );
 		void on_frame_stage_notify( );
@@ -56,6 +56,9 @@ namespace features::changer {
 		std::unordered_set<std::uint64_t> m_cheat_users{};
 		mutable remote_player_skin m_bot_preview{};
 
+		std::mutex m_worker_mutex{};
+		void* m_worker_handle{}; // HANDLE, closed only after the worker exits.
+		bool m_stopping{}; // Protected by m_worker_mutex; shutdown is terminal.
 		std::atomic<bool> m_running{ false };
 		std::atomic<bool> m_match_active{ false }; // Published by on_present from the local snapshot.
 		std::atomic<bool> m_push_pending{ true };

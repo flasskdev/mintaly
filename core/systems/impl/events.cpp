@@ -147,7 +147,12 @@ namespace systems {
 			// Debug IDs can be reused after removal; listener addresses cannot.
 			if ( &entry->listener == self && entry->registered && entry->handler )
 			{
+				const auto started = std::chrono::steady_clock::now( );
 				entry->handler( event );
+				const auto elapsed = std::chrono::duration<double, std::milli>(
+					std::chrono::steady_clock::now( ) - started ).count( );
+				if ( elapsed >= 5.0 )
+					diag::writef( diag::level::warning, "slow game event: %s elapsed_ms=%.3f", entry->name.c_str( ), elapsed );
 				break;
 			}
 		}

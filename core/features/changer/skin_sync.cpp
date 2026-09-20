@@ -36,6 +36,8 @@ namespace features::changer {
 
 	void skin_sync::initialize( )
 	{
+		std::lock_guard worker_lock( this->m_worker_mutex );
+		if ( this->m_stopping || lifecycle::is_unloading( ) ) return;
 		if ( this->m_initialized.exchange( true ) )
 		{
 			return;
@@ -63,13 +65,26 @@ namespace features::changer {
 			this->m_initialized = false;
 			return;
 		}
-		CloseHandle(worker);
-		diag::write(diag::level::info, "[skin-sync] worker started build=sync-fix-20260914");
+		this->m_worker_handle = worker;
+		diag::write(diag::level::info, "[skin-sync] worker started build=sync-review-20260921");
 	}
 
-	void skin_sync::shutdown( )
+	bool skin_sync::shutdown( )
 	{
+		// Only call from the explicit unload thread, never from DllMain.
+		std::lock_guard worker_lock( this->m_worker_mutex );
+		this->m_stopping = true;
 		this->m_running = false;
+		if ( !this->m_worker_handle ) return true;
+		const auto status = WaitForSingleObject( this->m_worker_handle, 30000 );
+		if ( status != WAIT_OBJECT_0 )
+		{
+			diag::writef( diag::level::error, "[skin-sync] worker not stopped status=%lu; unload must be cancelled", status );
+			return false;
+		}
+		CloseHandle( this->m_worker_handle );
+		this->m_worker_handle = nullptr;
+		return true;
 	}
 
 	void skin_sync::trigger_push( )
@@ -460,11 +475,11 @@ namespace features::changer {
 				}
 			}
 			try {
-				if (now - this->m_last_pull_time >= std::chrono::seconds(2)) {
+				if (this->m_running.load() && this->m_match_active.load() && now - this->m_last_pull_time >= std::chrono::seconds(2)) {
 					this->perform_pull();
 					this->m_last_pull_time = std::chrono::steady_clock::now();
 				}
-				if (now - this->m_last_users_time >= std::chrono::seconds(3)) {
+				if (this->m_running.load() && this->m_match_active.load() && now - this->m_last_users_time >= std::chrono::seconds(3)) {
 					this->perform_users_update();
 					this->m_last_users_time = std::chrono::steady_clock::now();
 				}
@@ -568,7 +583,8 @@ namespace features::changer {
 				return;
 			}
 
-			std::unique_lock lock( this->m_mutex );
+			// Decode and allocate privately, not while game/render readers wait.
+			std::unordered_map<std::uint64_t, remote_player_skin> updates;
 			for ( const auto& [id_str, user_data] : resp[ "users" ].items( ) )
 			{
 				try
@@ -591,13 +607,23 @@ namespace features::changer {
 						player.skins = settings::changer::skin_map_field::decode_map(user_data["skins"]);
 					}
 
-					if (!this->m_cache.contains(sid))
-						diag::writef(diag::level::info, "[skin-sync] remote profile steam_id=%llu skins=%zu", static_cast<unsigned long long>(sid), player.skins.size());
-					this->m_cache[ sid ] = std::move( player );
-					this->m_cheat_users.insert( sid );
+					updates.emplace( sid, std::move( player ) );
 				}
 				catch (const std::exception&) { diag::write(diag::level::warning, "[skin-sync] invalid remote response"); }
 			}
+			std::vector<std::pair<std::uint64_t, std::size_t>> discovered;
+			discovered.reserve( updates.size( ) );
+			{
+				std::unique_lock lock( this->m_mutex );
+				for ( auto& [sid, player] : updates )
+				{
+					if ( !this->m_cache.contains( sid ) ) discovered.emplace_back( sid, player.skins.size( ) );
+					this->m_cache.insert_or_assign( sid, std::move( player ) );
+					this->m_cheat_users.insert( sid );
+				}
+			}
+			for ( const auto& [sid, count] : discovered )
+				diag::writef( diag::level::info, "[skin-sync] remote profile steam_id=%llu skins=%zu", static_cast<unsigned long long>( sid ), count );
 		}
 		catch (const std::exception&) { diag::write(diag::level::warning, "[skin-sync] invalid remote response"); }
 	}

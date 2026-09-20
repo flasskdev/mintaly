@@ -30,6 +30,36 @@ namespace features::changer {
 		}
 	}
 
+	std::optional<guns::skin_selection> guns::select_skin( std::uintptr_t weapon, std::uintptr_t iv,
+		std::uint32_t handle, std::uint16_t definition, std::uint32_t holder_account,
+		const settings::changer::skin_map_field::map_type& skins )
+	{
+		const auto saved = this->m_original_weapons.find( handle );
+		if ( saved != this->m_original_weapons.end( ) )
+		{
+			const auto item = memory::safe_read<std::uint64_t>( iv + SCHEMA( "C_EconItemView", "m_iItemID"_hash ) );
+			const auto& original = saved->second;
+			const bool same_item = original.weapon == weapon && original.def_index == definition &&
+				systems::g_entities.lookup( handle ) == weapon && item &&
+				( *item == gun_faux_item_id || *item == original.item_id );
+			if ( !same_item )
+			{
+				this->m_original_weapons.erase( saved );
+				this->m_applied_weapons.erase( handle );
+			}
+			else if ( original.cosmetic && original.cosmetic->account_id != holder_account )
+			{
+				// A pickup does not turn this physical item into the holder's loadout.
+				// Keep the last successfully applied source until the entity expires
+				// or returns to that source account. Do not consult the HTTP echo.
+				return original.cosmetic;
+			}
+		}
+		const auto selected = skins.find( definition );
+		if ( selected == skins.end( ) ) return std::nullopt;
+		return skin_selection{ cosmetic_attributes::normalize( selected->second ), holder_account };
+	}
+
 	void guns::on_frame_stage_notify( )
 	{
 		this->process_hud_clear( );
@@ -78,7 +108,7 @@ namespace features::changer {
 				const auto weapons_size = memory::read<int>( weapons_base );
 				const auto weapons_data = memory::read<std::uintptr_t>( weapons_base + 0x8 );
 
-				if ( weapons_data && weapons_size > 0 )
+				if ( weapons_data && weapons_size > 0 && weapons_size <= 64 )
 				{
 					auto steam_id = steam::user::get_steam_id( );
 					if ( !steam_id && local_ctrl )
@@ -119,14 +149,16 @@ namespace features::changer {
 							continue;
 						}
 
-						const auto skin_it = active_skins.find( current_def_index );
-						if ( skin_it == active_skins.end( ) )
+						const auto selected = this->select_skin( weapon, iv, handle, current_def_index, account_id, active_skins );
+						if ( !selected )
 						{
 							this->restore( weapon, iv, handle, active_handle, local_pawn );
 							continue;
 						}
 
-						const auto skin = cosmetic_attributes::normalize(skin_it->second);
+						const auto& skin = selected->skin;
+						const auto skin_account = selected->account_id;
+						const auto hud_visual = handle == active_handle ? visual_identity( hud_model ) : cosmetic_cache::identity{};
 						const auto applied_it = this->m_applied_weapons.find( handle );
 
 						const auto current_pk = memory::safe_read<int>( weapon + SCHEMA( "C_EconEntity", "m_nFallbackPaintKit"_hash ) ).value_or( -1 );
@@ -135,14 +167,17 @@ namespace features::changer {
 
 						if ( applied_it != this->m_applied_weapons.end( ) 
 							&& applied_it->second.visual.weapon == weapon 
-							&& applied_it->second.skin == skin 
+							&& applied_it->second.skin == skin
+							&& applied_it->second.hud == hud_visual
 							&& current_pk == skin.paint_kit_id 
 							&& current_id_high == 0xf0000000 
 							&& current_seed == skin.seed
 							&& memory::read<float>( weapon + SCHEMA( "C_EconEntity", "m_flFallbackWear"_hash ) ) == skin.wear
 							&& memory::read<int>( weapon + SCHEMA( "C_EconEntity", "m_nFallbackStatTrak"_hash ) ) == ( skin.stattrak ? skin.stattrak_count : -1 )
 							&& memory::read<int>( iv + SCHEMA( "C_EconItemView", "m_iEntityQuality"_hash ) ) == ( skin.stattrak ? 9 : 0 )
-							&& memory::read<std::uint32_t>( iv + SCHEMA( "C_EconItemView", "m_iAccountID"_hash ) ) == account_id
+							&& memory::read<std::uint32_t>( iv + SCHEMA( "C_EconItemView", "m_iAccountID"_hash ) ) == skin_account
+							&& memory::safe_read<bool>( iv + SCHEMA( "C_EconItemView", "m_bDisallowSOC"_hash ) ).value_or( false )
+							&& memory::safe_read<bool>( iv + SCHEMA( "C_EconItemView", "m_bInitialized"_hash ) ).value_or( false )
 							&& name_tag::matches( iv, skin.name_tag )
 							&& cosmetic_attributes::matches( iv, skin ) )
 						{
@@ -155,8 +190,8 @@ namespace features::changer {
 							continue;
 						}
 
-						if (this->apply( weapon, iv, handle, active_handle, local_pawn, &skin, account_id ))
-							this->m_applied_weapons[ handle ] = { visual_identity( weapon ), skin };
+						if (this->apply( weapon, iv, handle, active_handle, local_pawn, &skin, skin_account ))
+							this->m_applied_weapons[ handle ] = { visual_identity( weapon ), skin, hud_visual };
 					}
 
 					if ( active_handle != this->m_last_active_handle )
@@ -171,12 +206,12 @@ namespace features::changer {
 
 							if ( def && def->category == econ_item_system::item_category::gun )
 							{
-								const auto skin_it = active_skins.find( def_index );
-								if ( skin_it != active_skins.end( ) )
+								const auto selected = this->select_skin( active_weapon, iv, active_handle, def_index, account_id, active_skins );
+								if ( selected )
 								{
-									const auto skin = cosmetic_attributes::normalize( skin_it->second );
-									if ( this->apply( active_weapon, iv, active_handle, active_handle, local_pawn, &skin, account_id ) )
-										this->m_applied_weapons[ active_handle ] = { visual_identity( active_weapon ), skin };
+									// The inventory pass already applied/retried this weapon.
+									// Do not rebuild its materials twice on a weapon switch.
+									this->update_view_model( local_pawn, g_econ_item_system.find_paint_kit( selected->skin.paint_kit_id ) );
 								}
 								else
 								{
@@ -230,13 +265,14 @@ namespace features::changer {
 			const auto remote_weapons_base = remote_weapon_services + SCHEMA( "CPlayer_WeaponServices", "m_hMyWeapons"_hash );
 			const auto remote_weapons_size = memory::safe_read<int>( remote_weapons_base ).value_or( 0 );
 			const auto remote_weapons_data = memory::safe_read<std::uintptr_t>( remote_weapons_base + 0x8 ).value_or( 0 );
-			if ( !remote_weapons_data || remote_weapons_size <= 0 )
+			if ( !remote_weapons_data || remote_weapons_size <= 0 || remote_weapons_size > 64 )
 			{
 				continue;
 			}
 
 			const auto remote_active_handle = memory::safe_read<std::uint32_t>( remote_weapon_services + SCHEMA( "CPlayer_WeaponServices", "m_hActiveWeapon"_hash ) ).value_or( 0 );
 			const auto remote_account_id = static_cast< std::uint32_t >( sid & 0xffffffff );
+			const auto remote_hud = this->find_hud_model_weapon( pawn );
 
 			for ( auto i = 0; i < remote_weapons_size; ++i )
 			{
@@ -260,14 +296,16 @@ namespace features::changer {
 					continue;
 				}
 
-				const auto skin_it = remote_skins.find( current_def_index );
-				if ( skin_it == remote_skins.end( ) )
+				const auto selected = this->select_skin( weapon, iv, handle, current_def_index, remote_account_id, remote_skins );
+				if ( !selected )
 				{
 					this->restore( weapon, iv, handle, remote_active_handle, pawn );
 					continue;
 				}
 
-				const auto skin = cosmetic_attributes::normalize( skin_it->second );
+				const auto& skin = selected->skin;
+				const auto skin_account = selected->account_id;
+				const auto hud_visual = handle == remote_active_handle ? visual_identity( remote_hud ) : cosmetic_cache::identity{};
 				const auto applied_it = this->m_applied_weapons.find( handle );
 
 				const auto current_pk = memory::safe_read<int>( weapon + SCHEMA( "C_EconEntity", "m_nFallbackPaintKit"_hash ) ).value_or( -1 );
@@ -276,14 +314,17 @@ namespace features::changer {
 
 				if ( applied_it != this->m_applied_weapons.end( ) 
 					&& applied_it->second.visual.weapon == weapon 
-					&& applied_it->second.skin == skin 
+					&& applied_it->second.skin == skin
+					&& applied_it->second.hud == hud_visual
 					&& current_pk == skin.paint_kit_id 
 					&& current_id_high == 0xf0000000 
 					&& current_seed == skin.seed
 					&& memory::read<float>( weapon + SCHEMA( "C_EconEntity", "m_flFallbackWear"_hash ) ) == skin.wear
 					&& memory::read<int>( weapon + SCHEMA( "C_EconEntity", "m_nFallbackStatTrak"_hash ) ) == ( skin.stattrak ? skin.stattrak_count : -1 )
 					&& memory::read<int>( iv + SCHEMA( "C_EconItemView", "m_iEntityQuality"_hash ) ) == ( skin.stattrak ? 9 : 0 )
-					&& memory::read<std::uint32_t>( iv + SCHEMA( "C_EconItemView", "m_iAccountID"_hash ) ) == remote_account_id
+					&& memory::read<std::uint32_t>( iv + SCHEMA( "C_EconItemView", "m_iAccountID"_hash ) ) == skin_account
+					&& memory::safe_read<bool>( iv + SCHEMA( "C_EconItemView", "m_bDisallowSOC"_hash ) ).value_or( false )
+					&& memory::safe_read<bool>( iv + SCHEMA( "C_EconItemView", "m_bInitialized"_hash ) ).value_or( false )
 					&& name_tag::matches( iv, skin.name_tag )
 					&& cosmetic_attributes::matches( iv, skin ) )
 				{
@@ -296,9 +337,9 @@ namespace features::changer {
 					continue;
 				}
 
-				if ( this->apply( weapon, iv, handle, remote_active_handle, pawn, &skin, remote_account_id ) )
+				if ( this->apply( weapon, iv, handle, remote_active_handle, pawn, &skin, skin_account ) )
 				{
-					this->m_applied_weapons[ handle ] = { visual_identity( weapon ), skin };
+					this->m_applied_weapons[ handle ] = { visual_identity( weapon ), skin, hud_visual };
 				}
 			}
 		}
@@ -337,6 +378,9 @@ namespace features::changer {
 
 		this->rebuild_paint( weapon, handle, active_handle, pawn, pk );
 		this->schedule_hud_clear( iv );
+		const auto original = this->m_original_weapons.find( handle );
+		if ( original == this->m_original_weapons.end( ) ) return false;
+		original->second.cosmetic = skin_selection{ *skin, account_id };
 		return true;
 	}
 

@@ -373,27 +373,8 @@ namespace features::changer {
 
 	void gloves::on_lobby( )
 	{
-		const auto offset = SCHEMA( "C_CSPlayerPawn", "m_EconGloves"_hash );
-		if ( !offset ) return;
-		for ( const auto& preview : preview_scene::players )
-		{
-			if ( !preview.steam_id || ( preview.team != 2 && preview.team != 3 ) ) continue;
-			const auto remote = preview_scene::is_local( preview ) ? std::optional<remote_player_skin>{}
-				: g_skin_sync.get_remote_skin( preview.steam_id );
-			if ( !preview_scene::is_local( preview ) && !remote ) continue;
-			const auto& skins = remote ? remote->skins : settings::g_changer.skins.for_team( preview.team );
-			for ( const auto& [def, value] : skins )
-			{
-				const auto selected = g_econ_item_system.find_def( def );
-				if ( !selected || selected->category != econ_item_system::item_category::glove ) continue;
-				const auto iv = preview.pawn + offset;
-				const auto skin = cosmetic_attributes::normalize( value );
-				if ( memory::safe_read<std::uint16_t>( iv + SCHEMA( "C_EconItemView", "m_iItemDefinitionIndex"_hash ) ).value_or( 0 ) != def ||
-					!this->paint_attributes_match( iv, skin ) )
-					this->apply( preview.pawn, iv, preview.team, *selected, skin, static_cast<std::uint32_t>( preview.steam_id ) );
-				break;
-			}
-		}
+		// Preview entities are engine-owned. Match equipment is applied only
+		// through on_frame_stage_notify, never through lobby/intro previews.
 	}
 
 	void gloves::reset( )
