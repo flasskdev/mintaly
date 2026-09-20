@@ -448,12 +448,14 @@ namespace features::changer {
 		this->m_overridden = false;
 	}
 
-	void knives::update_model( std::uintptr_t weapon, std::uintptr_t iv, std::uint16_t def_index )
+	void knives::update_model( std::uintptr_t weapon, std::uintptr_t iv, std::uint16_t def_index, bool lobby )
 	{
 		const auto token = detail::make_subclass_token( static_cast< std::int16_t >( def_index ) );
 
 		memory::write<std::uint32_t>( weapon + SCHEMA( "C_BaseEntity", "m_nSubclassID"_hash ), token );
-		memory::call<void>( PATTERN (patterns::weapon_get_viewmodel), weapon );
+		// Skip viewmodel binding in lobby — it forces default knife animations/position.
+		if ( !lobby )
+			memory::call<void>( PATTERN (patterns::weapon_get_viewmodel), weapon );
 
 		const char* target_model = memory::call<const char*>( PATTERN (patterns::weapon_get_model_path), iv );
 		if ( !target_model || !*target_model )
@@ -632,7 +634,7 @@ namespace features::changer {
 					memory::safe_read<std::uint32_t>( weapon + SCHEMA( "C_BaseEntity", "m_nSubclassID"_hash ) ).value_or( 0 ) != token )
 				{
 					memory::safe_write<std::uint16_t>( iv + definition, static_cast<std::uint16_t>( selected->def_index ) );
-					this->update_model( weapon, iv, static_cast<std::uint16_t>( selected->def_index ) );
+					this->update_model( weapon, iv, static_cast<std::uint16_t>( selected->def_index ), true );
 					preview_item::applied.erase( weapon );
 				}
 				if ( memory::safe_read<std::uint16_t>( iv + definition ).value_or( 0 ) != selected->def_index ) continue;
