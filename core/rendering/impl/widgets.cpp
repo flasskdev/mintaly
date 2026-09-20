@@ -77,14 +77,7 @@ namespace rendering {
 		if ( smoothed_fps == 0.0f ) smoothed_fps = framerate;
 		smoothed_fps += ( framerate - smoothed_fps ) * std::min( 2.0f * xdraw::delta_time( ), 1.0f );
 		char fps_val[ 24 ]{};
-		if ( settings::g_misc.m_fps_limit.enabled.value )
-		{
-			std::snprintf( fps_val, sizeof( fps_val ), "%.0f (%d)", smoothed_fps, settings::g_misc.m_fps_limit.value.value );
-		}
-		else
-		{
-			std::snprintf( fps_val, sizeof( fps_val ), "%.0f", smoothed_fps );
-		}
+		std::snprintf( fps_val, sizeof( fps_val ), "%.0f", smoothed_fps );
 
 		// ── ping (game scoreboard ping: CCSPlayerController::m_iPing) ───────
 		auto ping{ 0 };

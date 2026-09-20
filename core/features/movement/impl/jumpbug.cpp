@@ -3,6 +3,8 @@
 #include <core/systems/systems.hpp>
 #include <core/settings.hpp>
 #include <array>
+#include <utilities/diag.hpp>
+#include <chrono>
 #include <cmath>
 #include "../movement.hpp"
 #include "../jumpbug_timing.hpp"
@@ -63,13 +65,37 @@ namespace features::movement {
             cmd->buttons.value_scroll &= ~mask;
             m_owned_duck = false; m_fired_last_tick = false;
         };
+        const auto& config = settings::g_movement.jumpbug;
+        const bool bound = config.bind.key != 0 && config.bind.active;
+        float probe_fraction = -1.0f, support_fraction = -1.0f;
+        bool probe_solid = false, support_solid = false;
+        int probe_calls = 0;
+        // Diagnostic only: do not fake immunity by writing health/fall velocity.
+        // One status per 250 ms, plus actual release attempts. Remove after
+        // reproducing, or define MINTALY_JUMPBUG_DIAGNOSTICS=0 in the build.
+        const auto report = [&](const char* reason, float when = -1.0f) {
+#if !defined(MINTALY_JUMPBUG_DIAGNOSTICS) || MINTALY_JUMPBUG_DIAGNOSTICS
+            if ((!bound && !config.value) || !local.is_alive) return;
+            static auto next_report = std::chrono::steady_clock::time_point{};
+            const auto now = std::chrono::steady_clock::now();
+            if (when < 0.0f && now < next_report) return;
+            next_report = now + std::chrono::milliseconds(250);
+            diag::writef(diag::level::info,
+                "[jumpbug] reason=%s valid=%d flags=%u vz=%.3f ducked=%d duck=%.3f hull=%.3f release=%.6f probes=%d probe=%.6f probe_solid=%d support=%.6f support_solid=%d jump=%d",
+                reason, static_cast<int>(pre.movement_valid), static_cast<unsigned>(pre.flags),
+                pre.networked_velocity.z, static_cast<int>(pre.ducked), pre.duck_amount,
+                pre.collision_maxs.z - pre.collision_mins.z, when, probe_calls,
+                probe_fraction, static_cast<int>(probe_solid), support_fraction,
+                static_cast<int>(support_solid), static_cast<int>(settings::g_movement.jumpbug_include_jump_steps.value));
+#else
+            (void)reason; (void)when;
+#endif
+        };
         if (!local.pawn || !local.is_alive || !pre.movement_valid || pre.pawn != local.pawn) {
-            release_owned(); return;
+            report("invalid_prestate"); release_owned(); return;
         }
         const bool grounded = (pre.flags & cstypes::entity_flags::on_ground) != 0;
         const bool can_attempt = m_cycle.available(grounded, pre.networked_velocity.z);
-        const auto& config = settings::g_movement.jumpbug;
-        const bool bound = config.bind.key != 0 && config.bind.active;
         if ((!bound && !config.value) || grounded || !can_attempt) { release_owned(); return; }
         const auto move_type = memory::read<std::uint8_t>(local.pawn + SCHEMA("C_BaseEntity", "m_nActualMoveType"_hash));
         if (move_type == cstypes::move_type::ladder || move_type == cstypes::move_type::noclip) {
@@ -82,23 +108,23 @@ namespace features::movement {
         // would leave too little time for the duck transition near the floor.
         if (!bound && pre.networked_velocity.z > -200.0f) { release_owned(); return; }
         const auto movement = memory::read<std::uintptr_t>(local.pawn + SCHEMA("C_BasePlayerPawn", "m_pMovementServices"_hash));
-        if (!moves || !movement || !PATTERN(patterns::trace_hull) || !PATTERN(patterns::trace_filter_set_collision)) { release_owned(); return; }
+        if (!moves || !movement || !PATTERN(patterns::trace_hull) || !PATTERN(patterns::trace_filter_set_collision)) { report("missing_trace_dependency"); release_owned(); return; }
         const auto pawn = memory::safe_read<std::uintptr_t>(movement + 56).value_or(0);
-        if (!pawn) { release_owned(); return; }
+        if (!pawn) { report("missing_movement_pawn"); release_owned(); return; }
         auto mask = memory::read<std::uint64_t>(pawn + 0xd48);
         if (memory::read<std::uint32_t>(pawn + 0x3f8) & 0x10) mask |= 0x20;
         const auto gravity_var = CONVAR("sv_gravity");
         const auto normal_var = CONVAR("sv_standable_normal");
-        if (!gravity_var || !normal_var) { release_owned(); return; }
+        if (!gravity_var || !normal_var) { report("missing_convar"); release_owned(); return; }
         const float gravity = gravity_var->get<float>() * pre.gravity_scale;
         const float standable = normal_var->get<float>();
         const auto vz = jumpbug_timing::movement_velocity_z(pre.networked_velocity.z, gravity, cstypes::tick_interval);
-        if (!vz || !std::isfinite(standable) || standable <= 0.0f || standable > 1.0f) { release_owned(); return; }
+        if (!vz || !std::isfinite(standable) || standable <= 0.0f || standable > 1.0f) { report("invalid_gravity_or_normal"); release_owned(); return; }
         const auto mins = pre.collision_mins;
         const auto maxs = pre.collision_maxs;
-        if (!finite(mins) || !finite(maxs) || maxs.x <= mins.x || maxs.y <= mins.y || maxs.z <= mins.z) { release_owned(); return; }
+        if (!finite(mins) || !finite(maxs) || maxs.x <= mins.x || maxs.y <= mins.y || maxs.z <= mins.z) { report("invalid_hull"); release_owned(); return; }
         const auto expansion = jumpbug_timing::airborne_unduck_expansion(maxs.z - mins.z, 72.0f);
-        if (!expansion) { release_owned(); return; }
+        if (!expansion) { report("invalid_unduck_expansion"); release_owned(); return; }
         auto velocity = pre.networked_velocity;
         velocity.z = *vz;
         const auto travel = velocity * cstypes::tick_interval;
@@ -122,6 +148,8 @@ namespace features::movement {
                 below.z -= 2.0f;
                 const auto support = systems::g_tracing.trace_player_bbox(pos, below,
                     {standing_mins, standing_maxs}, filter, movement);
+                support_fraction = support.fraction;
+                support_solid = support.all_solid;
                 const auto crouched = systems::g_tracing.trace_player_bbox(pre.networked_origin, pos,
                     {mins, maxs}, filter, movement);
                 return !clear.all_solid && std::isfinite(clear.fraction) && clear.fraction == 1.0f &&
@@ -132,6 +160,7 @@ namespace features::movement {
             release = jumpbug_timing::find_release_time([&](float t) -> std::optional<bool> {
                 const auto hit = systems::g_tracing.trace_player_bbox(pre.networked_origin,
                     pre.networked_origin + travel * t, {probe_mins, standing_maxs}, filter, movement);
+                ++probe_calls; probe_fraction = hit.fraction; probe_solid = hit.all_solid;
                 if (hit.all_solid || !std::isfinite(hit.fraction) || hit.fraction < 0.0f ||
                     hit.fraction > 1.0f || !finite(hit.normal)) return std::nullopt;
                 if (hit.fraction == 1.0f) return false;
@@ -148,7 +177,7 @@ namespace features::movement {
         std::array<proto::subtick_move_step*, 4> events{};
         for (int i = 0; i < plan->count; ++i) {
             events[i] = systems::g_input.acquire_subtick_step(moves);
-            if (!events[i]) { moves->m_current_size = original_size; return; }
+            if (!events[i]) { report("subtick_allocation_failed"); moves->m_current_size = original_size; return; }
         }
         for (int i = 0; i < original_size; ++i) {
             if (const auto step = base->mutable_subtick_moves(i); step && (step->button() & controlled)) {
@@ -167,6 +196,8 @@ namespace features::movement {
         cmd->buttons.value_scroll &= ~controlled;
         m_owned_duck = plan->owns_duck;
         m_fired_last_tick = plan->owns_jump;
+        report(release ? "release" : (pre.ducked ? "prepare_no_window" : "prepare_crouch"),
+            release.value_or(-1.0f));
         if (release) m_cycle.fired();
         m_active_this_tick = true;
     }

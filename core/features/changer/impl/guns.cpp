@@ -51,7 +51,8 @@ namespace features::changer {
 		const auto local_team = local_pawn ? preview_scene::team( local_pawn ) : 0;
 		const auto& active_skins = settings::g_changer.skins.for_team( local_team );
 
-		const auto hud_model = this->find_hud_model_weapon( local_pawn );
+        const bool has_local_work = !active_skins.empty() || !this->m_original_weapons.empty();
+        const auto hud_model = has_local_work ? this->find_hud_model_weapon(local_pawn) : 0;
 		const auto rules = memory::safe_read<std::uintptr_t>( addresses::globals::game_rules ).value_or( 0 );
 		const auto round_offset = SCHEMA( "C_CSGameRules", "m_fRoundStartTime"_hash );
 		const auto round_time = rules && round_offset ? memory::safe_read<float>( rules + round_offset ).value_or( 0.0f ) : 0.0f;
@@ -68,7 +69,7 @@ namespace features::changer {
 				!cosmetic_cache::reusable( entry.second.visual, visual_identity( weapon ) );
 		} );
 
-		if ( preview_scene::player_ready( local_pawn ) )
+		if ( has_local_work && preview_scene::player_ready( local_pawn ) )
 		{
 			const auto weapon_services = memory::read<std::uintptr_t>( local_pawn + SCHEMA( "C_BasePlayerPawn", "m_pWeaponServices"_hash ) );
 			if ( weapon_services )
@@ -211,6 +212,8 @@ namespace features::changer {
 			const settings::changer::skin_map_field::map_type empty_skins{};
 			const auto& remote_skins = remote_skin_data ? remote_skin_data->skins : empty_skins;
 			// An empty profile (or pickup by a non-sync user) must restore our previous override.
+            // Skip weapon traversal only when no original state needs restoring.
+            if (remote_skins.empty() && this->m_original_weapons.empty()) continue;
 
 			const auto pawn = preview_scene::player_pawn( ctrl );
 			if ( !preview_scene::player_ready( pawn ) )

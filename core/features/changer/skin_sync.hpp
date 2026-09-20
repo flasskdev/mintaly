@@ -65,6 +65,8 @@ namespace features::changer {
 		std::string m_local_payload{}; // Protected by m_mutex.
 		std::uint64_t m_payload_steam_id{};
 		std::chrono::steady_clock::time_point m_last_snapshot_time{}; // Producer thread only.
+        std::chrono::steady_clock::time_point m_next_query_time{}; // Game thread only.
+        std::uintptr_t m_query_controller{}; // Game thread only.
 		std::chrono::steady_clock::time_point m_last_push_time{};
 		std::chrono::steady_clock::time_point m_last_pull_time{};
 		std::chrono::steady_clock::time_point m_last_users_time{};

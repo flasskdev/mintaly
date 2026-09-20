@@ -295,6 +295,16 @@ namespace features::changer {
 					{ this->m_local_team = preview.team; break; }
 			}
 
+            // The worker polls at 250 ms. Rebuilding/deduplicating the same ID
+            // queue several times per frame only adds allocation and lock cost.
+            const auto query_now = std::chrono::steady_clock::now();
+            if (this->m_query_controller != local.controller) {
+                this->m_query_controller = local.controller;
+                this->m_next_query_time = {};
+            }
+            if (query_now < this->m_next_query_time) return;
+            this->m_next_query_time = query_now + std::chrono::milliseconds(250);
+
 			// Enqueue all other players' steam IDs for pulling (plus local steam ID to verify server sync)
 			std::vector<std::uint64_t> ids_to_query{};
 

@@ -1,5 +1,6 @@
 #pragma once
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <string_view>
@@ -22,6 +23,15 @@ namespace features::changer::preview_scene {
     inline std::vector<int> slots;
     inline std::vector<player> players;
     inline std::chrono::steady_clock::time_point next_scan{};
+    inline std::chrono::steady_clock::time_point fallback_scan{};
+    inline std::atomic<std::uint64_t> scene_revision{1};
+    inline std::atomic<bool> lifecycle_observed{false};
+    inline std::uint64_t scanned_revision{}; // Game-thread owned.
+
+    inline void set_lifecycle_observed(bool enabled) {
+        lifecycle_observed.store(enabled, std::memory_order_relaxed);
+        scene_revision.fetch_add(1, std::memory_order_relaxed);
+    }
 
     inline bool is_player(const char* name) {
         if (!name) return false;
@@ -30,7 +40,11 @@ namespace features::changer::preview_scene {
             || s.find("player_preview") != s.npos || s.find("preview_player") != s.npos
             || s == "csgo_previewplayer";
     }
-    inline void reset() { players.clear(); slots.clear(); next_scan = {}; }
+    inline void reset() {
+        players.clear(); slots.clear(); next_scan = {}; fallback_scan = {};
+        scanned_revision = 0;
+        scene_revision.fetch_add(1, std::memory_order_relaxed);
+    }
     inline int team(std::uintptr_t pawn) {
         const auto offset = SCHEMA("C_BaseEntity", "m_iTeamNum"_hash);
         const int value = offset ? memory::safe_read<std::uint8_t>(pawn + offset).value_or(0) : 0;
@@ -174,19 +188,33 @@ namespace features::changer::preview_scene {
         return is_player(name) || (name && std::string_view{name} == "C_CSPlayerPawn");
     }
 
+    // Called while the entity is still valid. Only topology changes affecting
+    // preview/pawn candidates invalidate discovery, not projectiles or weapons.
+    inline void on_entity_changed(std::uintptr_t entity) {
+        if (entity && is_scene_candidate(systems::g_entities.get_schema_name(entity)))
+            scene_revision.fetch_add(1, std::memory_order_relaxed);
+    }
+
     // Called only after the original game-thread frame callback. Scan the full
     // handle index range, including client-only entities beyond gameplay slots.
     inline void refresh() {
         players.clear();
         if (!addresses::globals::entity_list || !addresses::globals::schema_system) return;
         const auto now = std::chrono::steady_clock::now();
-        if (now >= next_scan) {
+        const auto revision = scene_revision.load(std::memory_order_relaxed);
+        if (now >= next_scan && (revision != scanned_revision || now >= fallback_scan)) {
             slots.clear();
             for (int i = 0; i < systems::entities::entity_slot_count; ++i) {
                 const auto entity = systems::g_entities.get_by_index(i);
                 if (entity && is_scene_candidate(systems::g_entities.get_schema_name(entity))) slots.push_back(i);
             }
+            // Preserve changes reported during the scan for the next pass.
+            scanned_revision = revision;
             next_scan = now + std::chrono::milliseconds(100);
+            // A slow fallback covers late schema initialization/missed callbacks.
+            // Keep the old polling rate when entity lifecycle hooks are absent.
+            fallback_scan = now + std::chrono::milliseconds(
+                lifecycle_observed.load(std::memory_order_relaxed) ? 1000 : 100);
         }
         const auto service_offset = SCHEMA("C_BasePlayerPawn", "m_pWeaponServices"_hash);
         const auto weapons_offset = SCHEMA("CPlayer_WeaponServices", "m_hMyWeapons"_hash);

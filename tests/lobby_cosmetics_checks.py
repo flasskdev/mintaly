@@ -28,7 +28,8 @@ class LobbyCosmeticsChecks(unittest.TestCase):
         candidate = s.split('inline bool is_scene_candidate', 1)[1].split('inline void refresh()', 1)[0]
         self.assertIn('"C_CSPlayerPawn"', candidate)
         self.assertIn('if (ctrl && player_pawn(ctrl) == entity) continue;', s)
-        self.assertEqual(s.count('is_scene_candidate(systems::g_entities.get_schema_name(entity))'), 1)
+        refresh = s.split('inline void refresh()', 1)[1]
+        self.assertEqual(refresh.count('is_scene_candidate(systems::g_entities.get_schema_name(entity))'), 1)
         self.assertIn('if (!is_scene_candidate(name)) continue;', s)
     def test_lobby_music_replays_on_observed_thread(self):
         s = source('core/hooks/impl/cheat.cpp')

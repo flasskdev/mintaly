@@ -30,7 +30,6 @@ namespace hooks {
 			// Lobby models remain entirely engine-owned. Keep match intro/team previews.
 			if ( !memory::safe_read<std::uintptr_t>( addresses::globals::local_player_controller ).value_or( 0 ) ) return;
 			features::changer::preview_scene::refresh( );
-			features::changer::g_skin_sync.on_frame_stage_notify( );
 			features::changer::g_agents.on_lobby( );
 			features::changer::g_knives.on_lobby( );
 			features::changer::g_guns.on_lobby( );
@@ -244,6 +243,8 @@ namespace hooks {
 
 		features::changer::g_inspect_preview.set_available(m_frame_stage_notify.is_enabled());
 		systems::g_model_preview.set_capture_available(preview_ready && m_frame_stage_notify.is_enabled());
+        features::changer::preview_scene::set_lifecycle_observed(
+            m_add_entity.is_enabled() && m_remove_entity.is_enabled());
 
 		if (unavailable_hooks) {
 			logging::console::print (
@@ -604,8 +605,8 @@ namespace hooks {
 			return;
 		}
 
-		// Team selection and intro/outro use the same preview classes as the menu.
-		if ( stage == 0 || stage == 6 || stage == 7 || stage == 12 )
+		// Resolve team/intro previews once, after updates and before rendering.
+		if ( stage == 12 )
 			detail::reconcile_preview_scene( );
 
 		if ( stage == 6 || stage == 7 || stage == 12 )
@@ -855,6 +856,7 @@ namespace hooks {
 		systems::g_entities.on_add_entity( entity, handle );
 
 		m_add_entity.call<void>( thisptr, entity, handle );
+        features::changer::preview_scene::on_entity_changed(entity);
 	}
 
 	void __fastcall cheat::remove_entity( std::uintptr_t thisptr, std::uintptr_t entity, std::uint32_t handle )
@@ -865,6 +867,7 @@ namespace hooks {
 			return;
 		}
 
+        features::changer::preview_scene::on_entity_changed(entity);
 		systems::g_entities.on_remove_entity( entity, handle );
 
 		m_remove_entity.call<void>( thisptr, entity, handle );
@@ -2125,14 +2128,9 @@ namespace hooks {
 	void cheat::trigger_lobby_music( std::uint16_t kit_id )
 	{
 		if ( lifecycle::is_unloading( ) || kit_id == 0xffff ) return;
-		lobby_music::selection selected{ kit_id, {} };
-		if ( kit_id )
-		{
-			const auto kit = features::changer::g_econ_item_system.find_music_kit( kit_id );
-			if ( !kit || kit->name.empty( ) ) return;
-			selected.name = kit->name; // Copy while still on the menu/settings thread.
-		}
-		detail::g_lobby_music_requests.submit( std::move( selected ) );
+        // Playback consumes the numeric kit ID, not the localized economy name.
+        // A not-yet-loaded UI catalog must not silently discard the selection.
+        detail::g_lobby_music_requests.submit( { kit_id, {} } );
 	}
 
 	void cheat::process_lobby_music( )
@@ -2174,6 +2172,11 @@ namespace hooks {
 		const auto update = PATTERN( patterns::update_bg_music );
 		if ( !m_play_music.is_enabled( ) || !stop || !update )
 		{
+            diag::writef(diag::level::info,
+                "[lobby-music] blocked generation=%llu hook=%d stop=%d update=%d",
+                static_cast<unsigned long long>(pending->generation),
+                static_cast<int>(m_play_music.is_enabled()),
+                static_cast<int>(stop != 0), static_cast<int>(update != 0));
 			next_retry = now + std::chrono::seconds( 2 );
 			return;
 		}
