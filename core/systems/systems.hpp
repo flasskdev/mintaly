@@ -201,6 +201,10 @@ namespace systems {
 		void force_update( );
 		void reset( );
 
+		// Handles use 15 index bits. Client-only preview entities may occupy
+		// slots outside the smaller gameplay cache's range.
+		static constexpr int entity_slot_count = 0x8000;
+
 		[[nodiscard]] bool exists( std::uintptr_t entity ) const;
 		[[nodiscard]] const char* get_schema_name( std::uintptr_t entity ) const;
 		[[nodiscard]] std::uintptr_t get_by_index( int index );

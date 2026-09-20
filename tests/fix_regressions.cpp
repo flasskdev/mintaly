@@ -65,4 +65,25 @@ int main() {
     assert(q.next()); // Old map completion cannot consume a new request.
     q.acknowledge(*reentry);
     assert(!q.next());
+
+    // Playback must stay on the observed engine thread and keep its volume.
+    assert(!q.source_for(7));
+    q.observe({100, 7, 2, 0.0f});
+    assert(!q.source_for(0));
+    assert(!q.source_for(8));
+    const auto playback = q.source_for(7);
+    assert(playback && playback->context == 100);
+    assert(playback->original_kit == 2 && playback->volume == 0.0f);
+    q.submit({5, "third"});
+    q.acknowledge(*q.next());
+    assert(q.source_for(7)); // Consuming settings does not discard playback.
+    q.observe({0, 7, 9, 1.0f});
+    q.observe({200, 0, 9, 1.0f});
+    assert(q.source_for(7)->context == 100); // Ignore incomplete observations.
+    q.observe({200, 8, 3, 0.25f});
+    assert(!q.source_for(7));
+    assert(q.source_for(8)->original_kit == 3);
+    assert(q.source_for(8)->volume == 0.25f);
+    q.reset();
+    assert(!q.source_for(8)); // Never reuse an old map's audio context.
 }

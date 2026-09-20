@@ -170,17 +170,21 @@ namespace features::changer::preview_scene {
             if (child) pending.emplace_back(child, node);
         }
     }
-    // Called only after the original game-thread frame callback. The entity range
-    // is the range supported by entities::get_by_index (32 chunks * 512 slots).
+    inline bool is_scene_candidate(const char* name) {
+        return is_player(name) || (name && std::string_view{name} == "C_CSPlayerPawn");
+    }
+
+    // Called only after the original game-thread frame callback. Scan the full
+    // handle index range, including client-only entities beyond gameplay slots.
     inline void refresh() {
         players.clear();
         if (!addresses::globals::entity_list || !addresses::globals::schema_system) return;
         const auto now = std::chrono::steady_clock::now();
         if (now >= next_scan) {
             slots.clear();
-            for (int i = 0; i < 0x4000; ++i) {
+            for (int i = 0; i < systems::entities::entity_slot_count; ++i) {
                 const auto entity = systems::g_entities.get_by_index(i);
-                if (entity && is_player(systems::g_entities.get_schema_name(entity))) slots.push_back(i);
+                if (entity && is_scene_candidate(systems::g_entities.get_schema_name(entity))) slots.push_back(i);
             }
             next_scan = now + std::chrono::milliseconds(100);
         }
@@ -191,7 +195,15 @@ namespace features::changer::preview_scene {
         const auto item_offset = SCHEMA("C_AttributeContainer", "m_Item"_hash);
         for (const int index : slots) {
             const auto entity = systems::g_entities.get_by_index(index);
-            if (!entity || !is_player(systems::g_entities.get_schema_name(entity))) continue;
+            const auto name = entity ? systems::g_entities.get_schema_name(entity) : nullptr;
+            if (!is_scene_candidate(name)) continue;
+            // Detached cinematic pawns need the same identity/attachment path
+            // as UI previews. The controller's regular pawn already has its own
+            // changer path; do not let two writers alternate its item identity.
+            if (!is_player(name)) {
+                const auto ctrl = controller(entity);
+                if (ctrl && player_pawn(ctrl) == entity) continue;
+            }
             player p{};
             p.pawn = entity; p.team = team(entity); p.steam_id = controller_id(entity);
             if (p.team != 2 && p.team != 3) {

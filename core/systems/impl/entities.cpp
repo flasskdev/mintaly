@@ -197,16 +197,16 @@ namespace systems {
 			this->m_cached_list_entries.fill( 0 );
 		}
 
-		const auto chunk_index = index >> 9;
-		if ( chunk_index < 0 || chunk_index >= static_cast<int>( this->m_cached_list_entries.size( ) ) )
+		if ( index < 0 || index >= entity_slot_count )
 		{
 			return 0;
 		}
 
-		this->m_cached_list_entries[ chunk_index ] = memory::safe_read<std::uintptr_t>(
+		// Do not limit lookup to the gameplay cache's 32 chunks. Like lookup(),
+		// indexed discovery must cover all 15 handle-index bits for UI entities.
+		const auto chunk_index = index >> 9;
+		const auto list_entry = memory::safe_read<std::uintptr_t>(
 			entity_list + ( static_cast<std::uintptr_t>( chunk_index ) * 8 ) + 0x10 ).value_or( 0 );
-
-		const auto list_entry = this->m_cached_list_entries[ chunk_index ];
 		if ( !list_entry )
 		{
 			return 0;
