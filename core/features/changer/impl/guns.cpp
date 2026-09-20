@@ -1,4 +1,6 @@
 #include <pch/pch.hpp>
+#include "../preview_scene.hpp"
+#include "../preview_item.hpp"
 #include <utilities/memory/memory.hpp>
 #include <utilities/addresses/addresses.hpp>
 #include <core/systems/systems.hpp>
@@ -45,7 +47,7 @@ namespace features::changer {
 
 		const auto local_ctrl = local.controller;
 		const auto local_pawn = local.pawn;
-		const auto local_team = local_pawn ? memory::read<int>( local_pawn + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) ) : 0;
+		const auto local_team = local_pawn ? memory::read<std::uint8_t>( local_pawn + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) ) : 0;
 		const auto& active_skins = settings::g_changer.skins.for_team( local_team );
 
 		const auto hud_model = this->find_hud_model_weapon( local_pawn );
@@ -65,7 +67,7 @@ namespace features::changer {
 				!cosmetic_cache::reusable( entry.second.visual, visual_identity( weapon ) );
 		} );
 
-		if ( local.is_alive && local_pawn && !systems::g_local.is_in_cinematic( ) )
+		if ( local.is_alive && local_pawn )
 		{
 			const auto weapon_services = memory::read<std::uintptr_t>( local_pawn + SCHEMA( "C_BasePlayerPawn", "m_pWeaponServices"_hash ) );
 			if ( weapon_services )
@@ -550,153 +552,39 @@ namespace features::changer {
 
 	void guns::on_lobby( )
 	{
-		if ( !addresses::globals::entity_list ) return;
-
-		const auto local_steam_id = steam::user::get_steam_id( );
-		std::unordered_set<std::uintptr_t> processed_weapons{};
-
-		auto apply_gun_to_weapon = [&]( std::uintptr_t weapon, int team, std::uint64_t sid ) {
-			if ( !weapon || weapon < 0x10000 ) return;
-			if ( processed_weapons.contains( weapon ) ) return;
-			processed_weapons.insert( weapon );
-
-			const auto iv = weapon + SCHEMA( "C_EconEntity", "m_AttributeManager"_hash ) + SCHEMA( "C_AttributeContainer", "m_Item"_hash );
-			const auto current_def_index = memory::safe_read<std::uint16_t>( iv + SCHEMA( "C_EconItemView", "m_iItemDefinitionIndex"_hash ) ).value_or( 0 );
-			const auto current_def = g_econ_item_system.find_def( static_cast< std::int16_t >( current_def_index ) );
-			if ( !current_def || current_def->category != econ_item_system::item_category::gun ) return;
-
-			const settings::changer::applied_skin* skin{ nullptr };
-			settings::changer::applied_skin remote_skin_holder{};
-
-			constexpr std::uint64_t steam_id_base = 76561197960265728ull;
-			const bool is_local = ( sid < steam_id_base || ( local_steam_id != 0 && sid == local_steam_id ) );
-
-			if ( is_local )
+		if ( !preview_item::available( ) ) return;
+		const auto manager = SCHEMA( "C_EconEntity", "m_AttributeManager"_hash );
+		const auto item = SCHEMA( "C_AttributeContainer", "m_Item"_hash );
+		const auto definition = SCHEMA( "C_EconItemView", "m_iItemDefinitionIndex"_hash );
+		if ( !manager || !item || !definition ) return;
+		for ( const auto& preview : preview_scene::players )
+		{
+			if ( !preview.steam_id || ( preview.team != 2 && preview.team != 3 ) ) continue;
+			const auto remote = preview_scene::is_local( preview ) ? std::optional<remote_player_skin>{}
+				: g_skin_sync.get_remote_skin( preview.steam_id );
+			if ( !preview_scene::is_local( preview ) && !remote ) continue;
+			const auto& skins = remote ? remote->skins : settings::g_changer.skins.for_team( preview.team );
+			for ( const auto weapon : preview.weapons )
 			{
-				const auto& skins = settings::g_changer.skins.for_team( team );
-				const auto it = skins.find( current_def_index );
-				if ( it != skins.end( ) )
-				{
-					skin = &it->second;
-				}
-			}
-			else
-			{
-				const auto remote_skin_data = g_skin_sync.get_remote_skin( sid );
-				if ( remote_skin_data )
-				{
-					const auto it = remote_skin_data->skins.find( current_def_index );
-					if ( it != remote_skin_data->skins.end( ) )
-					{
-						remote_skin_holder = cosmetic_attributes::normalize( it->second );
-						skin = &remote_skin_holder;
-					}
-				}
-			}
+				const auto iv = weapon + manager + item;
+				const auto current_index = memory::safe_read<std::uint16_t>( iv + definition ).value_or( 0 );
+				const auto current = g_econ_item_system.find_def( static_cast<std::int16_t>( current_index ) );
+				if ( !current || current->category != econ_item_system::item_category::gun ) continue;
+				const auto it = skins.find( current_index );
+				if ( it == skins.end( ) ) continue;
+				const auto skin = cosmetic_attributes::normalize( it->second );
+				const auto account = static_cast<std::uint32_t>( preview.steam_id );
+				const auto quality = skin.stattrak ? 9 : 0;
 
-			if ( !skin ) return;
-
-			const auto current_pk = memory::safe_read<int>( weapon + SCHEMA( "C_EconEntity", "m_nFallbackPaintKit"_hash ) ).value_or( 0 );
-			const auto current_seed = memory::safe_read<int>( weapon + SCHEMA( "C_EconEntity", "m_nFallbackSeed"_hash ) ).value_or( 0 );
-			const auto current_wear = memory::safe_read<float>( weapon + SCHEMA( "C_EconEntity", "m_flFallbackWear"_hash ) ).value_or( 0.0f );
-
-			if ( current_pk == skin->paint_kit_id && current_seed == skin->seed && current_wear == skin->wear )
-			{
-				return;
-			}
-
-			memory::safe_write<int>( weapon + SCHEMA( "C_EconEntity", "m_nFallbackPaintKit"_hash ), skin->paint_kit_id );
-			memory::safe_write<int>( weapon + SCHEMA( "C_EconEntity", "m_nFallbackSeed"_hash ), skin->seed );
-			memory::safe_write<float>( weapon + SCHEMA( "C_EconEntity", "m_flFallbackWear"_hash ), skin->wear );
-			memory::safe_write<int>( weapon + SCHEMA( "C_EconEntity", "m_nFallbackStatTrak"_hash ), skin->stattrak ? skin->stattrak_count : -1 );
-
-			std::ignore = cosmetic_attributes::apply( iv, *skin );
-			std::ignore = name_tag::apply( iv, skin->name_tag );
-
-			const auto pk = g_econ_item_system.find_paint_kit( skin->paint_kit_id );
-			const auto is_legacy = pk && pk->legacy_model;
-			const auto mesh_group = is_legacy ? std::uint64_t{ 2 } : std::uint64_t{ 1 };
-			const auto weapon_scene_node = memory::safe_read<std::uintptr_t>( weapon + SCHEMA( "C_BaseEntity", "m_pGameSceneNode"_hash ) ).value_or( 0 );
-			if ( weapon_scene_node && PATTERN( patterns::weapon_set_mesh_group_mask ) )
-			{
-				memory::call<void>( PATTERN( patterns::weapon_set_mesh_group_mask ), weapon_scene_node, mesh_group );
-			}
-			if ( PATTERN( patterns::weapon_update_composite_material ) )
-			{
+				if ( preview_item::matches( weapon, iv, skin, account, quality ) ) continue;
+				if ( !preview_item::write( weapon, iv, skin, account, quality ) ) continue;
+				const auto pk = g_econ_item_system.find_paint_kit( skin.paint_kit_id );
+				const auto node = preview_item::identity( weapon ).scene;
+				memory::call<void>( PATTERN( patterns::weapon_set_mesh_group_mask ), node, pk && pk->legacy_model ? std::uint64_t{2} : std::uint64_t{1} );
 				memory::call<void>( PATTERN( patterns::weapon_update_composite_material ), weapon + 0x608, true );
-			}
-			memory::call_vfunc<void>( weapon, 10, 1 );
-			if ( PATTERN( patterns::weapon_update_skin ) )
-			{
+				memory::call_vfunc<void>( weapon, 10, 1 );
 				memory::call<void>( PATTERN( patterns::weapon_update_skin ), weapon, true );
-			}
-		};
-
-		for ( int i = 0; i < 2048; ++i )
-		{
-			const auto ent = systems::g_entities.get_by_index( i );
-			if ( !ent || ent < 0x10000 ) continue;
-
-			const auto schema_name = systems::g_entities.get_schema_name( ent );
-			if ( !schema_name ) continue;
-
-			const auto hash = fnv1a::runtime_hash( schema_name );
-			const std::string_view sv( schema_name );
-			const bool is_preview = ( hash == "C_CSGO_PreviewPlayer"_hash || hash == "C_CSGO_TeamPreviewModel"_hash ||
-				hash == "C_CSGO_PreviewPlayerAlias_csgo_player_previewmodel"_hash || hash == "csgo_player_previewmodel"_hash ||
-				sv.find( "PreviewPlayer" ) != std::string_view::npos || sv.find( "TeamPreviewModel" ) != std::string_view::npos );
-
-			if ( !is_preview ) continue;
-
-			const auto sid = memory::safe_read<std::uint64_t>( ent + 0x34d0 ).value_or( 0 );
-			int team = memory::safe_read<int>( ent + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) ).value_or( 0 );
-			if ( team != 2 && team != 3 )
-			{
-				const auto gsn = memory::safe_read<std::uintptr_t>( ent + SCHEMA( "C_BaseEntity", "m_pGameSceneNode"_hash ) ).value_or( 0 );
-				if ( gsn )
-				{
-					const auto model_state = gsn + SCHEMA( "CSkeletonInstance", "m_modelState"_hash );
-					const auto model_name_ptr = memory::safe_read<std::uintptr_t>( model_state + SCHEMA( "CModelState", "m_ModelName"_hash ) ).value_or( 0 );
-					if ( model_name_ptr )
-					{
-						const auto cur_model = memory::read_string( model_name_ptr );
-						if ( cur_model.find( "ctm_" ) != std::string::npos || cur_model.find( "counter" ) != std::string::npos )
-							team = 3;
-						else if ( cur_model.find( "tm_" ) != std::string::npos || cur_model.find( "terrorist" ) != std::string::npos )
-							team = 2;
-					}
-				}
-			}
-			if ( team != 2 && team != 3 ) team = 3;
-
-			for ( const auto offset : { 0x3480, 0x3498 } )
-			{
-				const auto count = memory::safe_read<int>( ent + offset ).value_or( 0 );
-				const auto data = memory::safe_read<std::uintptr_t>( ent + offset + 0x8 ).value_or( 0 );
-				if ( data && count > 0 && count < 64 )
-				{
-					for ( int j = 0; j < count; ++j )
-					{
-						const auto handle = memory::safe_read<std::uint32_t>( data + j * sizeof( std::uint32_t ) ).value_or( 0 );
-						if ( !handle || handle == 0xffffffff ) continue;
-						const auto weapon = systems::g_entities.lookup( handle );
-						if ( weapon ) apply_gun_to_weapon( weapon, team, sid );
-					}
-				}
-			}
-		}
-
-		for ( int i = 0; i < 2048; ++i )
-		{
-			const auto ent = systems::g_entities.get_by_index( i );
-			if ( !ent || ent < 0x10000 || processed_weapons.contains( ent ) ) continue;
-
-			const auto iv = ent + SCHEMA( "C_EconEntity", "m_AttributeManager"_hash ) + SCHEMA( "C_AttributeContainer", "m_Item"_hash );
-			const auto current_def_index = memory::safe_read<std::uint16_t>( iv + SCHEMA( "C_EconItemView", "m_iItemDefinitionIndex"_hash ) ).value_or( 0 );
-			const auto current_def = g_econ_item_system.find_def( static_cast< std::int16_t >( current_def_index ) );
-			if ( current_def && current_def->category == econ_item_system::item_category::gun )
-			{
-				apply_gun_to_weapon( ent, 3, local_steam_id );
+				preview_item::remember( weapon, skin );
 			}
 		}
 	}

@@ -3,6 +3,7 @@
 
 #include "skin_sync.hpp"
 #include "changer.hpp"
+#include "preview_scene.hpp"
 #include <core/features/features.hpp>
 #include <utilities/steam/steam.hpp>
 #include <utilities/lifecycle.hpp>
@@ -268,9 +269,17 @@ namespace features::changer {
 			{
 				const auto team_offset = SCHEMA("C_BaseEntity", "m_iTeamNum"_hash);
 				if (team_offset) {
-					const auto team = memory::safe_read<int>(local.controller + team_offset).value_or(0);
+					const auto team = memory::safe_read<std::uint8_t>(local.controller + team_offset).value_or(0);
 					this->m_local_team = cosmetic_config::retain_team(this->m_local_team.load(), team);
 				}
+			}
+
+			if ( !local.controller )
+			{
+				this->m_local_team = 0;
+				for ( const auto& preview : preview_scene::players )
+					if ( preview_scene::is_local( preview ) && ( preview.team == 2 || preview.team == 3 ) )
+					{ this->m_local_team = preview.team; break; }
 			}
 
 			// Enqueue all other players' steam IDs for pulling (plus local steam ID to verify server sync)
@@ -310,29 +319,13 @@ namespace features::changer {
 					}
 				}
 
-				// Also query any preview players in lobby (party members)
-				if ( addresses::globals::entity_list )
-				{
-					for ( int i = 0; i < 2048; ++i )
-					{
-						const auto ent = systems::g_entities.get_by_index( i );
-						if ( !ent || ent < 0x10000 ) continue;
-						const auto schema_name = systems::g_entities.get_schema_name( ent );
-						if ( !schema_name ) continue;
-						const auto hash = fnv1a::runtime_hash( schema_name );
-						const std::string_view sv( schema_name );
-						if ( hash == "C_CSGO_PreviewPlayer"_hash || hash == "C_CSGO_TeamPreviewModel"_hash ||
-							 hash == "C_CSGO_PreviewPlayerAlias_csgo_player_previewmodel"_hash || hash == "csgo_player_previewmodel"_hash ||
-							 sv.find( "PreviewPlayer" ) != std::string_view::npos || sv.find( "TeamPreviewModel" ) != std::string_view::npos )
-						{
-							const auto sid = memory::safe_read<std::uint64_t>( ent + 0x34d0 ).value_or( 0 );
-							if ( sid >= steam_id_base && sid != local_steam_id )
-							{
-								ids_to_query.push_back( sid );
-							}
-						}
-					}
-				}
+			}
+
+			// Shared schema-resolved identities, including team-select/intro scenes.
+			for ( const auto& preview : preview_scene::players )
+			{
+				if ( preview.steam_id >= steam_id_base && preview.steam_id != local_steam_id )
+					ids_to_query.push_back( preview.steam_id );
 			}
 
 			if ( !ids_to_query.empty( ) )

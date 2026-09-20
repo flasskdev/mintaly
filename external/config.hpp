@@ -12,6 +12,7 @@
 #include <optional>
 #include <array>
 #include <unordered_map>
+#include <mutex>
 
 #include "nlohmann/json.hpp"
 #include "lz4/lz4.h"
@@ -1059,6 +1060,7 @@ namespace config {
 
 		inline const std::filesystem::path k_config_dir{ L"C:\\mintaly\\configs" };
 		inline std::wstring g_active_config{ L"default" };
+		inline std::recursive_mutex g_io_mutex;
 
 		inline std::filesystem::path get_file_path(std::wstring_view name)
 		{
@@ -1072,30 +1074,43 @@ namespace config {
 
 		inline bool save(std::wstring_view name)
 		{
-			std::error_code ec;
-			std::filesystem::create_directories(k_config_dir, ec);
-			if (ec)
+			std::lock_guard lock(g_io_mutex);
+			try
 			{
-				return false;
+				std::error_code ec;
+				std::filesystem::create_directories(k_config_dir, ec);
+				if (ec) return false;
+				const std::wstring saved_name{name};
+				const auto file_path = get_file_path(saved_name);
+				auto temporary = file_path;
+				temporary += L".tmp";
+				const auto compressed = compress::deflate(to_json().dump(-1));
+				if (compressed.empty()) return false;
+				{
+					std::ofstream file(temporary, std::ios::binary | std::ios::trunc);
+					if (!file.is_open()) return false;
+					file.write(reinterpret_cast<const char*>(compressed.data()), compressed.size());
+					file.flush();
+					if (!file.good()) return false;
+					file.close();
+					if (file.fail()) return false;
+				}
+				// A failed write/rename leaves the previous .cfg intact.
+				if (!MoveFileExW(temporary.c_str(), file_path.c_str(),
+					MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+				{
+					std::filesystem::remove(temporary, ec);
+					return false;
+				}
+				g_active_config = saved_name;
+				return true;
 			}
-
-			g_active_config = name;
-			const auto file_path = get_file_path(name);
-			std::ofstream file(file_path, std::ios::binary);
-			if (!file.is_open())
-			{
-				return false;
-			}
-
-			const auto json_str = to_json().dump(-1);
-			const auto compressed = compress::deflate(json_str);
-
-			file.write(reinterpret_cast<const char*>(compressed.data()), compressed.size());
-			return file.good();
+			catch (...) { return false; }
 		}
 
 		inline bool load(std::wstring_view name)
 		{
+			std::lock_guard lock(g_io_mutex);
 			const auto file_path = get_file_path(name);
 			std::ifstream file(file_path, std::ios::binary | std::ios::ate);
 			if (!file.is_open())
@@ -1172,6 +1187,7 @@ namespace config {
 
 		inline bool save_active()
 		{
+			std::lock_guard lock(g_io_mutex);
 			if (g_active_config.empty())
 			{
 				const auto configs = list();

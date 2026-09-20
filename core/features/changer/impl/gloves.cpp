@@ -1,4 +1,5 @@
 #include <pch/pch.hpp>
+#include "../preview_scene.hpp"
 #include <utilities/memory/memory.hpp>
 #include <utilities/addresses/addresses.hpp>
 #include <core/systems/systems.hpp>
@@ -50,7 +51,7 @@ namespace features::changer {
 
 		if ( local.is_alive && local_pawn && !systems::g_local.is_in_cinematic( ) )
 		{
-			const auto local_team = memory::read<int>( local_pawn + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) );
+			const auto local_team = memory::read<std::uint8_t>( local_pawn + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) );
 			if ( local_team == 2 || local_team == 3 )
 			{
 				if ( this->m_tracked_pawn != local_pawn )
@@ -175,7 +176,7 @@ namespace features::changer {
 				continue;
 			}
 
-			const auto remote_team = memory::safe_read<int>( pawn + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) ).value_or( 0 );
+			const auto remote_team = memory::safe_read<std::uint8_t>( pawn + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) ).value_or( 0 );
 			if ( remote_team != 2 && remote_team != 3 )
 			{
 				continue;
@@ -393,7 +394,27 @@ namespace features::changer {
 
 	void gloves::on_lobby( )
 	{
-		// Preview player models in the lobby / main menu have hands/gloves integrated in their model.
+		const auto offset = SCHEMA( "C_CSPlayerPawn", "m_EconGloves"_hash );
+		if ( !offset ) return;
+		for ( const auto& preview : preview_scene::players )
+		{
+			if ( !preview.steam_id || ( preview.team != 2 && preview.team != 3 ) ) continue;
+			const auto remote = preview_scene::is_local( preview ) ? std::optional<remote_player_skin>{}
+				: g_skin_sync.get_remote_skin( preview.steam_id );
+			if ( !preview_scene::is_local( preview ) && !remote ) continue;
+			const auto& skins = remote ? remote->skins : settings::g_changer.skins.for_team( preview.team );
+			for ( const auto& [def, value] : skins )
+			{
+				const auto selected = g_econ_item_system.find_def( def );
+				if ( !selected || selected->category != econ_item_system::item_category::glove ) continue;
+				const auto iv = preview.pawn + offset;
+				const auto skin = cosmetic_attributes::normalize( value );
+				if ( memory::safe_read<std::uint16_t>( iv + SCHEMA( "C_EconItemView", "m_iItemDefinitionIndex"_hash ) ).value_or( 0 ) != def ||
+					!this->paint_attributes_match( iv, skin ) )
+					this->apply( preview.pawn, iv, preview.team, *selected, skin, static_cast<std::uint32_t>( preview.steam_id ) );
+				break;
+			}
+		}
 	}
 
 	void gloves::reset( )

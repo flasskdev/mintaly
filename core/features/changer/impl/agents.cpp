@@ -1,4 +1,5 @@
 #include <pch/pch.hpp>
+#include "../preview_scene.hpp"
 #include <utilities/memory/memory.hpp>
 #include <utilities/addresses/addresses.hpp>
 #include <core/systems/systems.hpp>
@@ -158,9 +159,9 @@ namespace {
 		if ( local_pawn && local_class && fnv1a::runtime_hash( local_class ) == "C_CSPlayerPawn"_hash )
 		{
 			const auto apply_local = [&]() {
-				auto team = memory::safe_read<int>( local_pawn + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) ).value_or( 0 );
+				auto team = memory::safe_read<std::uint8_t>( local_pawn + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) ).value_or( 0 );
 				if ( team != 2 && team != 3 )
-					team = memory::safe_read<int>( local_ctrl + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) ).value_or( 0 );
+					team = memory::safe_read<std::uint8_t>( local_ctrl + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) ).value_or( 0 );
 				if ( team != 2 && team != 3 )
 					team = local.team;
 				if ( team != 2 && team != 3 )
@@ -364,9 +365,9 @@ namespace {
 			const auto remote_class = systems::g_entities.get_schema_name( pawn );
 			if ( !remote_class || fnv1a::runtime_hash( remote_class ) != "C_CSPlayerPawn"_hash ) continue;
 
-			auto remote_team = memory::safe_read<int>( pawn + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) ).value_or( 0 );
+			auto remote_team = memory::safe_read<std::uint8_t>( pawn + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) ).value_or( 0 );
 			if ( remote_team != 2 && remote_team != 3 )
-				remote_team = memory::safe_read<int>( ctrl + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) ).value_or( 0 );
+				remote_team = memory::safe_read<std::uint8_t>( ctrl + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) ).value_or( 0 );
 			if ( remote_team != 2 && remote_team != 3 )
 			{
 				continue;
@@ -457,66 +458,17 @@ namespace {
 			}
 		}
 
-		// Preview player weapons vectors at +0x3480 and +0x3498
-		for ( const auto offset : { 0x3480, 0x3498 } )
-		{
-			const auto count = memory::safe_read<int>( pawn + offset ).value_or( 0 );
-			const auto data = memory::safe_read<std::uintptr_t>( pawn + offset + 0x8 ).value_or( 0 );
-			if ( data && count > 0 && count < 64 )
-			{
-				for ( int i = 0; i < count; ++i )
-				{
-					const auto handle = memory::safe_read<std::uint32_t>( data + i * sizeof( std::uint32_t ) ).value_or( 0 );
-					if ( !handle || handle == 0xffffffff ) continue;
-					const auto weapon = systems::g_entities.lookup( handle );
-					if ( !weapon ) continue;
-					const auto owner_off = SCHEMA( "C_BaseEntity", "m_hOwnerEntity"_hash );
-					if ( !owner_off ) continue;
-					const auto saved_owner = memory::read<std::uint32_t>( weapon + owner_off );
-					memory::write<std::uint32_t>( weapon + owner_off, 0xffffffff );
-					memory::write<std::uint32_t>( weapon + owner_off, saved_owner );
-				}
-			}
-		}
 	}
 
 	void agents::on_lobby( )
 	{
-		if ( !addresses::globals::entity_list ) return;
-
-		const auto local_steam_id = steam::user::get_steam_id( );
-
-		for ( int i = 0; i < 2048; ++i )
+		for ( const auto& preview : preview_scene::players )
 		{
-			const auto ent = systems::g_entities.get_by_index( i );
-			if ( !ent || ent < 0x10000 ) continue;
-
-			const auto schema_name = systems::g_entities.get_schema_name( ent );
-			if ( !schema_name || !is_preview_player( schema_name ) ) continue;
-
-			const auto sid = memory::safe_read<std::uint64_t>( ent + 0x34d0 ).value_or( 0 );
-			constexpr std::uint64_t steam_id_base = 76561197960265728ull;
-			const bool is_local = ( sid < steam_id_base || ( local_steam_id != 0 && sid == local_steam_id ) );
-
-			int team = memory::safe_read<int>( ent + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) ).value_or( 0 );
-			if ( team != 2 && team != 3 )
-			{
-				const auto gsn = memory::safe_read<std::uintptr_t>( ent + SCHEMA( "C_BaseEntity", "m_pGameSceneNode"_hash ) ).value_or( 0 );
-				if ( gsn )
-				{
-					const auto model_state = gsn + SCHEMA( "CSkeletonInstance", "m_modelState"_hash );
-					const auto model_name_ptr = memory::safe_read<std::uintptr_t>( model_state + SCHEMA( "CModelState", "m_ModelName"_hash ) ).value_or( 0 );
-					if ( model_name_ptr )
-					{
-						const auto cur_model = memory::read_string( model_name_ptr );
-						if ( cur_model.find( "ctm_" ) != std::string::npos || cur_model.find( "counter" ) != std::string::npos )
-							team = 3;
-						else if ( cur_model.find( "tm_" ) != std::string::npos || cur_model.find( "terrorist" ) != std::string::npos )
-							team = 2;
-					}
-				}
-			}
-			if ( team != 2 && team != 3 ) team = 3;
+			const auto ent = preview.pawn;
+			const auto sid = preview.steam_id;
+			const auto team = preview.team;
+			if ( !sid || ( team != 2 && team != 3 ) ) continue;
+			const bool is_local = preview_scene::is_local( preview );
 
 			std::string target_model;
 			if ( is_local )

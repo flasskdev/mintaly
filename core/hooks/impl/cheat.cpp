@@ -15,12 +15,25 @@
 #include <utilities/loader_session.hpp>
 #include <utilities/steam/steam.hpp>
 #include <utilities/lobby_music_queue.hpp>
+#include <core/features/changer/preview_scene.hpp>
+#include <core/features/changer/preview_item.hpp>
 #include "../hooks.hpp"
 
 namespace hooks {
 
 	namespace detail {
 		inline lobby_music::queue g_lobby_music_requests;
+
+		void reconcile_preview_scene( )
+		{
+			if ( lifecycle::is_unloading( ) || !addresses::globals::schema_system ) return;
+			features::changer::preview_scene::refresh( );
+			features::changer::g_skin_sync.on_frame_stage_notify( );
+			features::changer::g_agents.on_lobby( );
+			features::changer::g_knives.on_lobby( );
+			features::changer::g_guns.on_lobby( );
+			features::changer::g_gloves.on_lobby( );
+		}
 
 		// Isolated SEH frame: no std::string/optional destructors here (MSVC C2712).
 		bool dispatch_lobby_music_guarded( std::uintptr_t stop, std::uintptr_t update, const char* name )
@@ -322,7 +335,7 @@ namespace hooks {
 		rendering::g_context.on_present( thisptr );
 		features::misc::g_auto_accept.run( );
 
-		if ( rendering::g_widgets.s_map_name.empty( ) )
+		if ( !memory::safe_read<std::uintptr_t>( addresses::globals::local_player_controller ).value_or( 0 ) )
 		{
 			const auto configured = settings::g_changer.music.id;
 			// Retrying publication is cheap and does not restart a successfully
@@ -516,20 +529,16 @@ namespace hooks {
 			// Lobby work does not require a map-owned controller or camera.
 			// Main menu does not receive net updates (stages 6/7), only frame/render stages (0/12).
 			process_lobby_music( );
-			if ( !lifecycle::is_unloading( ) && rendering::g_widgets.s_map_name.empty( ) &&
+			if ( !lifecycle::is_unloading( ) &&
 				!memory::safe_read<std::uintptr_t>( addresses::globals::local_player_controller ).value_or( 0 ) )
 				features::changer::g_inspect_preview.on_frame_stage_notify( );
 			if ( stage == 0 || stage == 6 || stage == 7 || stage == 12 )
 			{
-				features::changer::g_skin_sync.on_frame_stage_notify( );
-				if ( !lifecycle::is_unloading( ) && rendering::g_widgets.s_map_name.empty( ) )
-				{
-					features::changer::g_agents.on_lobby( );
-					features::changer::g_knives.on_lobby( );
-					features::changer::g_guns.on_lobby( );
-					features::changer::g_gloves.on_lobby( );
-				}
+				// Menu background levels may have a non-empty map name.
+				if ( !memory::safe_read<std::uintptr_t>( addresses::globals::local_player_controller ).value_or( 0 ) )
+					detail::reconcile_preview_scene( );
 			}
+
 			return;
 		}
 
@@ -594,7 +603,11 @@ namespace hooks {
 			return;
 		}
 
-		if ( stage == 6 || stage == 12 )
+		// Team selection and intro/outro use the same preview classes as the menu.
+		if ( stage == 0 || stage == 6 || stage == 7 || stage == 12 )
+			detail::reconcile_preview_scene( );
+
+		if ( stage == 6 || stage == 7 || stage == 12 )
 		{
 			// Apply after network data, independently of the listener's camera/alive state.
 			features::changer::g_knives.on_frame_stage_notify( );
@@ -1532,6 +1545,8 @@ namespace hooks {
 			? "level shutdown: pre-engine cleanup"
 			: "level shutdown: cache-only cleanup" );
 
+		features::changer::preview_scene::reset( );
+		features::changer::preview_item::reset( );
 		// Stop publishing the old level before entering engine destructors.
 		systems::g_local.reset( );
 		systems::g_view.reset( );
@@ -2113,7 +2128,7 @@ namespace hooks {
 
 	void cheat::process_lobby_music( )
 	{
-		if ( lifecycle::is_unloading( ) || !rendering::g_widgets.s_map_name.empty( ) ||
+		if ( lifecycle::is_unloading( ) ||
 			memory::safe_read<std::uintptr_t>( addresses::globals::local_player_controller ).value_or( 0 ) ) return;
 		const auto pending = detail::g_lobby_music_requests.next( );
 		if ( !pending ) return;
@@ -2130,7 +2145,7 @@ namespace hooks {
 
 	void __fastcall cheat::play_music( void* thisptr, int track_type, std::uint16_t music_kit_id, float volume )
 	{
-		const bool lobby_track = track_type == 1 && rendering::g_widgets.s_map_name.empty( ) &&
+		const bool lobby_track = track_type == 1 &&
 			!memory::safe_read<std::uintptr_t>( addresses::globals::local_player_controller ).value_or( 0 );
 		if ( lifecycle::is_unloading( ) || ( is_level_shutting_down( ) && !lobby_track ) )
 		{

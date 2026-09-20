@@ -16,17 +16,28 @@ namespace systems {
 			return;
 		}
 
+		const auto publish_controller_only = [&] {
+			snapshot s{};
+			s.controller = local_player_controller;
+			const auto team_offset = SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash );
+			s.team = team_offset ? memory::safe_read<std::uint8_t>( local_player_controller + team_offset ).value_or( 0 ) : 0;
+			s.view_team = s.team;
+			this->reset( );
+			std::unique_lock lock( this->m_mtx );
+			this->m_snapshot = s;
+		};
+
 		const auto pawn_handle = memory::safe_read<std::uint32_t>( local_player_controller + SCHEMA( "CBasePlayerController", "m_hPawn"_hash ) ).value_or( 0 );
 		if ( !pawn_handle || pawn_handle == 0xffffffff )
 		{
-			this->reset( );
+			publish_controller_only( );
 			return;
 		}
 
 		const auto pawn = g_entities.lookup( pawn_handle );
 		if ( !pawn )
 		{
-			this->reset( );
+			publish_controller_only( );
 			return;
 		}
 

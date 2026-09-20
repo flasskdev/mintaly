@@ -1,4 +1,6 @@
 #include <pch/pch.hpp>
+#include "../preview_scene.hpp"
+#include "../preview_item.hpp"
 #include <utilities/memory/memory.hpp>
 #include <utilities/addresses/addresses.hpp>
 #include <core/systems/systems.hpp>
@@ -74,16 +76,16 @@ namespace features::changer {
 		}
 
 		const auto local = systems::g_local.get( );
-		if ( !local.is_alive || systems::g_local.is_in_cinematic( ) || !local.pawn || !local.controller )
+		if ( !local.controller )
 		{
 			return;
 		}
 
 		const auto local_ctrl = local.controller;
 		const auto local_pawn = local.pawn;
-		const auto local_team = memory::read<int>( local_pawn + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) );
+		const auto local_team = local_pawn ? memory::read<std::uint8_t>( local_pawn + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) ) : 0;
 
-		if ( true )
+		if ( local.is_alive && local_pawn )
 		{
 			const auto weapon_services = memory::read<std::uintptr_t>( local_pawn + SCHEMA( "C_BasePlayerPawn", "m_pWeaponServices"_hash ) );
 			if ( weapon_services )
@@ -183,7 +185,7 @@ namespace features::changer {
 							break;
 						}
 
-						if ( !this->m_overridden )
+						if ( !this->m_original.captured )
 						{
 							this->capture_original( weapon, iv );
 						}
@@ -195,7 +197,7 @@ namespace features::changer {
 						const auto current_subclass = memory::read<std::uint32_t>( weapon + SCHEMA( "C_BaseEntity", "m_nSubclassID"_hash ) );
 						const auto current_pk = memory::read<int>( weapon + SCHEMA( "C_EconEntity", "m_nFallbackPaintKit"_hash ) );
 
-						if ( this->m_overridden && current_def_index == static_cast<std::uint16_t>( selected_knife_def->def_index )
+						if ( this->m_overridden && preview_item::matches( weapon, iv, *selected_skin, static_cast<std::uint32_t>(steam::user::get_steam_id()), selected_skin->stattrak ? 9 : 3 ) && current_def_index == static_cast<std::uint16_t>( selected_knife_def->def_index )
 							&& cosmetic_attributes::matches( iv, *selected_skin )
 							&& current_subclass == target_token && current_pk == selected_skin->paint_kit_id
 							&& memory::read<int>(weapon + SCHEMA("C_EconEntity", "m_nFallbackSeed"_hash)) == selected_skin->seed
@@ -339,7 +341,8 @@ namespace features::changer {
 				const auto current_subclass = memory::safe_read<std::uint32_t>( weapon + SCHEMA( "C_BaseEntity", "m_nSubclassID"_hash ) ).value_or( 0 );
 				const auto current_pk = memory::safe_read<int>( weapon + SCHEMA( "C_EconEntity", "m_nFallbackPaintKit"_hash ) ).value_or( 0 );
 
-				if ( current_def_index == static_cast<std::uint16_t>( remote_knife_def->def_index ) &&
+				if ( preview_item::matches( weapon, iv, remote_knife_skin, remote_account_id, remote_knife_skin.stattrak ? 9 : 3 ) &&
+					current_def_index == static_cast<std::uint16_t>( remote_knife_def->def_index ) &&
 					current_subclass == target_token && current_pk == remote_knife_skin.paint_kit_id &&
 					cosmetic_attributes::matches( iv, remote_knife_skin ) && name_tag::matches( iv, remote_knife_skin.name_tag ) )
 				{
@@ -379,11 +382,16 @@ namespace features::changer {
 	void knives::apply( std::uintptr_t weapon, std::uintptr_t iv, const econ_item_system::item_def* def, const settings::changer::applied_skin* skin, std::uint32_t account_id, std::uintptr_t active_weapon, std::uintptr_t pawn )
 	{
 		this->m_pending_hud_iv = 0;
-        if (!cosmetic_attributes::available()) return;
+        if (!skin || !def || !preview_item::available() || !preview_item::identity(weapon).ready()) return;
+        if (!PATTERN(patterns::weapon_get_viewmodel) || !PATTERN(patterns::weapon_get_model_path) || !PATTERN(patterns::set_player_model)) return;
         if (!skin->name_tag.empty() && !name_tag::offsets()) return;
         const auto model_changed =
             memory::read<std::uint16_t>(iv + SCHEMA("C_EconItemView", "m_iItemDefinitionIndex"_hash)) != static_cast<std::uint16_t>(def->def_index)
             || memory::read<std::uint32_t>(weapon + SCHEMA("C_BaseEntity", "m_nSubclassID"_hash)) != detail::make_subclass_token(def->def_index);
+        if (model_changed) {
+            memory::write<std::uint16_t>(iv + SCHEMA("C_EconItemView", "m_iItemDefinitionIndex"_hash), static_cast<std::uint16_t>(def->def_index));
+            this->update_model(weapon, iv, static_cast<std::uint16_t>(def->def_index));
+        }
         memory::write<std::uint64_t>(iv + SCHEMA("C_EconItemView", "m_iItemID"_hash), 0xf000000000000010ull);
         memory::write<bool>(iv + SCHEMA("C_EconItemView", "m_bDisallowSOC"_hash), true);
         memory::write<int>(iv + SCHEMA("C_EconItemView", "m_iEntityQuality"_hash), skin->stattrak ? 9 : 3);
@@ -401,14 +409,13 @@ namespace features::changer {
 
 		const auto pk = g_econ_item_system.find_paint_kit( skin->paint_kit_id );
 
-		if (model_changed)
-            this->update_model( weapon, iv, static_cast< std::uint16_t >( def->def_index ) );
         if (!cosmetic_attributes::apply(iv, *skin)) return;
         // Subclass/model changes may rebuild the item view; set its name afterwards.
         if (!name_tag::apply(iv, skin->name_tag)) return;
 		this->rebuild_paint( weapon, active_weapon, pawn, pk );
 		this->schedule_hud_clear( iv );
 
+		preview_item::remember( weapon, *skin );
 		// A remote knife update must not mark the local original as overridden.
 		if ( pawn == systems::g_local.get( ).pawn ) this->m_overridden = true;
 	}
@@ -596,176 +603,49 @@ namespace features::changer {
 
 	void knives::on_lobby( )
 	{
-		if ( !addresses::globals::entity_list ) return;
-
-		const auto local_steam_id = steam::user::get_steam_id( );
-		std::unordered_set<std::uintptr_t> processed_weapons{};
-
-		auto apply_knife_to_weapon = [&]( std::uintptr_t weapon, int team, std::uint64_t sid ) {
-			if ( !weapon || weapon < 0x10000 ) return;
-			if ( processed_weapons.contains( weapon ) ) return;
-			processed_weapons.insert( weapon );
-
-			const auto iv = weapon + SCHEMA( "C_EconEntity", "m_AttributeManager"_hash ) + SCHEMA( "C_AttributeContainer", "m_Item"_hash );
-			const auto current_def_index = memory::safe_read<std::uint16_t>( iv + SCHEMA( "C_EconItemView", "m_iItemDefinitionIndex"_hash ) ).value_or( 0 );
-			const auto current_def = g_econ_item_system.find_def( static_cast< std::int16_t >( current_def_index ) );
-			const auto schema_name = systems::g_entities.get_schema_name( weapon );
-
-			bool is_knife = ( current_def && current_def->category == econ_item_system::item_category::knife );
-			if ( !is_knife && schema_name )
-			{
-				const std::string_view sname( schema_name );
-				if ( sname.find( "Knife" ) != std::string_view::npos || sname.find( "knife" ) != std::string_view::npos || sname.find( "bayonet" ) != std::string_view::npos )
-					is_knife = true;
-			}
-			if ( !is_knife ) return;
-
-			const settings::changer::applied_skin* selected_skin{ nullptr };
-			const econ_item_system::item_def* selected_knife_def{ nullptr };
-			settings::changer::applied_skin remote_skin_holder{};
-
-			constexpr std::uint64_t steam_id_base = 76561197960265728ull;
-			const bool is_local = ( sid < steam_id_base || ( local_steam_id != 0 && sid == local_steam_id ) );
-
-			if ( is_local )
-			{
-				for ( const auto& [def_idx, skin] : settings::g_changer.skins.for_team( team ) )
-				{
-					const auto def = g_econ_item_system.find_def( def_idx );
-					if ( !def || def->category != econ_item_system::item_category::knife )
-						continue;
-
-					selected_skin = &skin;
-					selected_knife_def = def;
-					break;
-				}
-			}
-			else
-			{
-				const auto remote_skin_data = g_skin_sync.get_remote_skin( sid );
-				if ( remote_skin_data )
-				{
-					for ( const auto& [def_idx, skin] : remote_skin_data->skins )
-					{
-						const auto def = g_econ_item_system.find_def( def_idx );
-						if ( def && def->category == econ_item_system::item_category::knife )
-						{
-							remote_skin_holder = cosmetic_attributes::normalize( skin );
-							selected_skin = &remote_skin_holder;
-							selected_knife_def = def;
-							break;
-						}
-					}
-				}
-			}
-
-			if ( !selected_knife_def ) return;
-
-			const auto target_token = detail::make_subclass_token( selected_knife_def->def_index );
-			const auto current_subclass = memory::safe_read<std::uint32_t>( weapon + SCHEMA( "C_BaseEntity", "m_nSubclassID"_hash ) ).value_or( 0 );
-			const auto current_pk = memory::safe_read<int>( weapon + SCHEMA( "C_EconEntity", "m_nFallbackPaintKit"_hash ) ).value_or( 0 );
-			const auto current_seed = memory::safe_read<int>( weapon + SCHEMA( "C_EconEntity", "m_nFallbackSeed"_hash ) ).value_or( 0 );
-			const auto wanted_pk = selected_skin ? selected_skin->paint_kit_id : 0;
-			const auto wanted_seed = selected_skin ? selected_skin->seed : 0;
-
-			if ( current_subclass == target_token && current_def_index == static_cast<std::uint16_t>( selected_knife_def->def_index ) &&
-				 current_pk == wanted_pk && current_seed == wanted_seed )
-			{
-				return;
-			}
-
-			this->update_model( weapon, iv, static_cast< std::uint16_t >( selected_knife_def->def_index ) );
-
-			if ( selected_skin )
-			{
-				memory::safe_write<int>( weapon + SCHEMA( "C_EconEntity", "m_nFallbackPaintKit"_hash ), selected_skin->paint_kit_id );
-				memory::safe_write<int>( weapon + SCHEMA( "C_EconEntity", "m_nFallbackSeed"_hash ), selected_skin->seed );
-				memory::safe_write<float>( weapon + SCHEMA( "C_EconEntity", "m_flFallbackWear"_hash ), selected_skin->wear );
-				memory::safe_write<int>( weapon + SCHEMA( "C_EconEntity", "m_nFallbackStatTrak"_hash ), selected_skin->stattrak ? selected_skin->stattrak_count : -1 );
-
-				std::ignore = cosmetic_attributes::apply( iv, *selected_skin );
-				std::ignore = name_tag::apply( iv, selected_skin->name_tag );
-			}
-
-			memory::safe_write<std::uint16_t>( iv + SCHEMA( "C_EconItemView", "m_iItemDefinitionIndex"_hash ), static_cast< std::uint16_t >( selected_knife_def->def_index ) );
-
-			const auto pk = selected_skin ? g_econ_item_system.find_paint_kit( selected_skin->paint_kit_id ) : nullptr;
-			this->rebuild_paint( weapon, 0, 0, pk );
-		};
-
-		for ( int i = 0; i < 2048; ++i )
+		if ( !preview_item::available( ) ) return;
+		const auto manager = SCHEMA( "C_EconEntity", "m_AttributeManager"_hash );
+		const auto item = SCHEMA( "C_AttributeContainer", "m_Item"_hash );
+		const auto definition = SCHEMA( "C_EconItemView", "m_iItemDefinitionIndex"_hash );
+		if ( !manager || !item || !definition ) return;
+		for ( const auto& preview : preview_scene::players )
 		{
-			const auto ent = systems::g_entities.get_by_index( i );
-			if ( !ent || ent < 0x10000 ) continue;
-
-			const auto schema_name = systems::g_entities.get_schema_name( ent );
-			if ( !schema_name ) continue;
-
-			const auto hash = fnv1a::runtime_hash( schema_name );
-			const std::string_view sv( schema_name );
-			const bool is_preview = ( hash == "C_CSGO_PreviewPlayer"_hash || hash == "C_CSGO_TeamPreviewModel"_hash ||
-				hash == "C_CSGO_PreviewPlayerAlias_csgo_player_previewmodel"_hash || hash == "csgo_player_previewmodel"_hash ||
-				sv.find( "PreviewPlayer" ) != std::string_view::npos || sv.find( "TeamPreviewModel" ) != std::string_view::npos );
-
-			if ( !is_preview ) continue;
-
-			const auto sid = memory::safe_read<std::uint64_t>( ent + 0x34d0 ).value_or( 0 );
-			int team = memory::safe_read<int>( ent + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) ).value_or( 0 );
-			if ( team != 2 && team != 3 )
+			if ( !preview.steam_id || ( preview.team != 2 && preview.team != 3 ) ) continue;
+			const auto remote = preview_scene::is_local( preview ) ? std::optional<remote_player_skin>{}
+				: g_skin_sync.get_remote_skin( preview.steam_id );
+			if ( !preview_scene::is_local( preview ) && !remote ) continue;
+			const auto& skins = remote ? remote->skins : settings::g_changer.skins.for_team( preview.team );
+			for ( const auto weapon : preview.weapons )
 			{
-				const auto gsn = memory::safe_read<std::uintptr_t>( ent + SCHEMA( "C_BaseEntity", "m_pGameSceneNode"_hash ) ).value_or( 0 );
-				if ( gsn )
+				const auto iv = weapon + manager + item;
+				const auto current_index = memory::safe_read<std::uint16_t>( iv + definition ).value_or( 0 );
+				const auto current = g_econ_item_system.find_def( static_cast<std::int16_t>( current_index ) );
+				if ( !current || current->category != econ_item_system::item_category::knife ) continue;
+				const econ_item_system::item_def* selected{};
+				settings::changer::applied_skin skin{};
+				for ( const auto& [def, value] : skins )
 				{
-					const auto model_state = gsn + SCHEMA( "CSkeletonInstance", "m_modelState"_hash );
-					const auto model_name_ptr = memory::safe_read<std::uintptr_t>( model_state + SCHEMA( "CModelState", "m_ModelName"_hash ) ).value_or( 0 );
-					if ( model_name_ptr )
-					{
-						const auto cur_model = memory::read_string( model_name_ptr );
-						if ( cur_model.find( "ctm_" ) != std::string::npos || cur_model.find( "counter" ) != std::string::npos )
-							team = 3;
-						else if ( cur_model.find( "tm_" ) != std::string::npos || cur_model.find( "terrorist" ) != std::string::npos )
-							team = 2;
-					}
+					const auto candidate = g_econ_item_system.find_def( def );
+					if ( candidate && candidate->category == econ_item_system::item_category::knife )
+					{ selected = candidate; skin = cosmetic_attributes::normalize( value ); break; }
 				}
-			}
-			if ( team != 2 && team != 3 ) team = 3;
-
-			for ( const auto offset : { 0x3480, 0x3498 } )
-			{
-				const auto count = memory::safe_read<int>( ent + offset ).value_or( 0 );
-				const auto data = memory::safe_read<std::uintptr_t>( ent + offset + 0x8 ).value_or( 0 );
-				if ( data && count > 0 && count < 64 )
+				if ( !selected ) continue;
+				const auto account = static_cast<std::uint32_t>( preview.steam_id );
+				const auto quality = skin.stattrak ? 9 : 3;
+				if ( !PATTERN( patterns::weapon_get_viewmodel ) || !PATTERN( patterns::weapon_get_model_path ) || !PATTERN( patterns::set_player_model ) ) continue;
+				const auto token = detail::make_subclass_token( selected->def_index );
+				if ( current_index != static_cast<std::uint16_t>( selected->def_index ) ||
+					memory::safe_read<std::uint32_t>( weapon + SCHEMA( "C_BaseEntity", "m_nSubclassID"_hash ) ).value_or( 0 ) != token )
 				{
-					for ( int j = 0; j < count; ++j )
-					{
-						const auto handle = memory::safe_read<std::uint32_t>( data + j * sizeof( std::uint32_t ) ).value_or( 0 );
-						if ( !handle || handle == 0xffffffff ) continue;
-						const auto weapon = systems::g_entities.lookup( handle );
-						if ( weapon ) apply_knife_to_weapon( weapon, team, sid );
-					}
+					memory::safe_write<std::uint16_t>( iv + definition, static_cast<std::uint16_t>( selected->def_index ) );
+					this->update_model( weapon, iv, static_cast<std::uint16_t>( selected->def_index ) );
+					preview_item::applied.erase( weapon );
 				}
-			}
-		}
-
-		for ( int i = 0; i < 2048; ++i )
-		{
-			const auto ent = systems::g_entities.get_by_index( i );
-			if ( !ent || ent < 0x10000 || processed_weapons.contains( ent ) ) continue;
-
-			const auto schema_name = systems::g_entities.get_schema_name( ent );
-			if ( !schema_name ) continue;
-
-			const auto iv = ent + SCHEMA( "C_EconEntity", "m_AttributeManager"_hash ) + SCHEMA( "C_AttributeContainer", "m_Item"_hash );
-			const auto current_def_index = memory::safe_read<std::uint16_t>( iv + SCHEMA( "C_EconItemView", "m_iItemDefinitionIndex"_hash ) ).value_or( 0 );
-			const auto current_def = g_econ_item_system.find_def( static_cast< std::int16_t >( current_def_index ) );
-			const std::string_view sname( schema_name );
-			bool is_knife = ( current_def && current_def->category == econ_item_system::item_category::knife );
-			if ( !is_knife && ( sname.find( "Knife" ) != std::string_view::npos || sname.find( "knife" ) != std::string_view::npos || sname.find( "bayonet" ) != std::string_view::npos ) )
-				is_knife = true;
-
-			if ( is_knife )
-			{
-				apply_knife_to_weapon( ent, 3, local_steam_id );
+				if ( memory::safe_read<std::uint16_t>( iv + definition ).value_or( 0 ) != selected->def_index ) continue;
+				if ( preview_item::matches( weapon, iv, skin, account, quality ) ) continue;
+				if ( !preview_item::write( weapon, iv, skin, account, quality ) ) continue;
+				this->rebuild_paint( weapon, 0, 0, g_econ_item_system.find_paint_kit( skin.paint_kit_id ) );
+				preview_item::remember( weapon, skin );
 			}
 		}
 	}

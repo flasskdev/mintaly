@@ -203,10 +203,8 @@ namespace systems {
 			return 0;
 		}
 
-		if ( !this->m_cached_list_entries[ chunk_index ] )
-		{
-			this->m_cached_list_entries[ chunk_index ] = memory::safe_read<std::uintptr_t>( entity_list + ( static_cast< std::uintptr_t >( chunk_index ) * 8 ) + 0x10 ).value_or( 0 );
-		}
+		this->m_cached_list_entries[ chunk_index ] = memory::safe_read<std::uintptr_t>(
+			entity_list + ( static_cast<std::uintptr_t>( chunk_index ) * 8 ) + 0x10 ).value_or( 0 );
 
 		const auto list_entry = this->m_cached_list_entries[ chunk_index ];
 		if ( !list_entry )

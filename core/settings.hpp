@@ -1527,6 +1527,14 @@ namespace settings {
                                 return selected ? *selected : data;
                         }
 
+                        // Mutate the effective loadout without creating a team override.
+                        map_type& for_team(int team)
+                        {
+                                if (team != 2 && team != 3) return data;
+                                auto& selected = teams[team == 3 ? 0 : 1];
+                                return selected ? *selected : data;
+                        }
+
                         map_type& edit_team(int team)
                         {
                                 if (team != 2 && team != 3) return data;

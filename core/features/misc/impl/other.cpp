@@ -153,7 +153,7 @@ namespace features::misc {
                         return;
                 }
 
-                const auto victim_team = memory::read<int>(victim_pawn + SCHEMA("C_BaseEntity", "m_iTeamNum"_hash));
+                const auto victim_team = memory::read<std::uint8_t>(victim_pawn + SCHEMA("C_BaseEntity", "m_iTeamNum"_hash));
                 if (!local.is_this_other_team(victim_team))
                 {
                         return;
@@ -180,25 +180,31 @@ namespace features::misc {
                         return;
                 }
 
+                std::lock_guard config_lock(config::registry::g_io_mutex);
+                const auto team_offset = SCHEMA("C_BaseEntity", "m_iTeamNum"_hash);
+                const int kill_team = team_offset
+                        ? memory::safe_read<std::uint8_t>(local.controller + team_offset).value_or(0) : local.team;
+                if (kill_team != 2 && kill_team != 3) return;
+                auto& active_skins = settings::g_changer.skins.for_team(kill_team);
                 settings::changer::applied_skin* target_skin{ nullptr };
                 if (def->category == changer::econ_item_system::item_category::gun)
                 {
-                        const auto it = settings::g_changer.skins.data.find(def_index);
-                        if (it != settings::g_changer.skins.data.end())
+                        const auto it = active_skins.find(def_index);
+                        if (it != active_skins.end())
                         {
                                 target_skin = &it->second;
                         }
                 }
                 else if (def->category == changer::econ_item_system::item_category::knife)
                 {
-                        const auto it = settings::g_changer.skins.data.find(def_index);
-                        if (it != settings::g_changer.skins.data.end())
+                        const auto it = active_skins.find(def_index);
+                        if (it != active_skins.end())
                         {
                                 target_skin = &it->second;
                         }
                         else
                         {
-                                for (auto& [k_def, k_skin] : settings::g_changer.skins.data)
+                                for (auto& [k_def, k_skin] : active_skins)
                                 {
                                         const auto kdef = changer::g_econ_item_system.find_def(k_def);
                                         if (kdef && kdef->category == changer::econ_item_system::item_category::knife)
@@ -212,7 +218,8 @@ namespace features::misc {
 
                 if (target_skin && target_skin->stattrak)
                 {
-                        target_skin->stattrak_count++;
+                        if (target_skin->stattrak_count < (std::numeric_limits<int>::max)())
+                                ++target_skin->stattrak_count;
 
                         memory::write<int>(active_weapon + SCHEMA("C_EconEntity", "m_nFallbackStatTrak"_hash), target_skin->stattrak_count);
 
@@ -224,9 +231,13 @@ namespace features::misc {
                                 memory::safe_call<void>(set, iv, "kill eater", count_val);
                         }
 
-                        std::thread([]() {
-                                config::registry::save_active();
-                        }).detach();
+                        changer::g_guns.invalidate();
+                        changer::g_knives.invalidate();
+                        changer::g_skin_sync.trigger_push();
+                        // Do not serialize live settings in a detached thread. It
+                        // can race a profile load and overwrite the wrong config.
+                        if (!config::registry::save_active())
+                                diag::write(diag::level::warning, "StatTrak: active config save failed");
                 }
 
                 if (settings::g_misc.m_kill_say.enabled.value && !settings::g_misc.m_kill_say.message.value.empty())
@@ -286,7 +297,7 @@ namespace features::misc {
                                 continue;
                         }
 
-                        const auto team = memory::read<int>(pawn + SCHEMA("C_BaseEntity", "m_iTeamNum"_hash));
+                        const auto team = memory::read<std::uint8_t>(pawn + SCHEMA("C_BaseEntity", "m_iTeamNum"_hash));
                         if (!local.is_this_other_team(team))
                         {
                                 continue;
