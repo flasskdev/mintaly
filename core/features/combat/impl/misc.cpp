@@ -56,7 +56,8 @@ namespace features::combat {
         if ((is_knife || is_revolver || is_grenade) && is_secondary_attack) return;
 
         if (ctx.weapon_type == cstypes::weapon_type::grenade) {
-            if (memory::read<float>(ctx.weapon + SCHEMA("C_BaseCSGrenade", "m_fThrowTime"_hash)) > 0.0f)
+            if (memory::read<bool>(ctx.weapon + SCHEMA("C_BaseCSGrenade", "m_bPinPulled"_hash)) ||
+                memory::read<float>(ctx.weapon + SCHEMA("C_BaseCSGrenade", "m_fThrowTime"_hash)) > 0.0f)
                 return;
         }
 

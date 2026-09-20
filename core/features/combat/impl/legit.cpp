@@ -41,7 +41,19 @@ namespace features::combat {
         }
 
         // Read the actual scoped state. Never synthesize IN_ATTACK2.
-        if (config.scope_check.value)
+        // ВАЖНО: Для Auto Scope эта проверка должна быть гибкой. 
+        // Если auto_scope включен, мы НЕ должны требовать is_scoped==true на входе, 
+        // иначе логика никогда не запустится. 
+        // Однако в оригинальном коде scope_check используется как фильтр "не стрелять без скопа".
+        // Мы изменим поведение ниже в on_create_move, поэтому здесь оставляем базовую проверку,
+        // но учтем, что если auto_scope активен, внешний вызов может обходить этот check или 
+        // этот check должен пропускать этап, если мы сами управляем скопом.
+
+        // Чтобы не ломать существующую архитектуру проверок, сделаем так:
+        // Если config.auto_scope.value == true, то проверка scope_check игнорируется в этом методе,
+        // потому что управление состоянием берет на себя on_create_move.
+
+        if (config.scope_check.value && !config.auto_scope.value)
         {
             const auto offset = SCHEMA("C_CSPlayerPawn", "m_bIsScoped"_hash);
             if (!offset)
@@ -91,6 +103,7 @@ namespace features::combat {
     {
         this->m_smoke_centers.clear();
         this->m_smoke_data_ready = false;
+
         if (!config.smoke_check.value)
             return;
 
@@ -99,6 +112,7 @@ namespace features::combat {
         const auto scene_offset = SCHEMA("C_BaseEntity", "m_pGameSceneNode"_hash);
         const auto origin_offset = SCHEMA("CGameSceneNode", "m_vecAbsOrigin"_hash);
         const auto detonation_offset = SCHEMA("C_SmokeGrenadeProjectile", "m_vSmokeDetonationPos"_hash);
+
         if (!effect_offset || !tick_offset || !scene_offset || !origin_offset)
             return;
 
@@ -114,6 +128,7 @@ namespace features::combat {
 
             const auto active = memory::safe_read<bool>(projectile.ptr + effect_offset);
             const auto start_tick = memory::safe_read<int>(projectile.ptr + tick_offset);
+
             if (!active || !start_tick)
                 continue;
             if (!*active && *start_tick <= 0)
@@ -128,6 +143,7 @@ namespace features::combat {
             std::optional<math::vector3> center{};
             if (detonation_offset)
                 center = memory::safe_read<math::vector3>(projectile.ptr + detonation_offset);
+
             if (!center)
             {
                 const auto scene = memory::safe_read<std::uintptr_t>(projectile.ptr + scene_offset);
@@ -135,11 +151,13 @@ namespace features::combat {
                     continue;
                 center = memory::safe_read<math::vector3>(*scene + origin_offset);
             }
+
             if (!center || !std::isfinite(center->x) || !std::isfinite(center->y) || !std::isfinite(center->z))
                 continue;
 
             this->m_smoke_centers.push_back(*center);
         }
+
         this->m_smoke_data_ready = true;
     }
 
@@ -157,8 +175,8 @@ namespace features::combat {
         {
             // Пересечение линии видимости со сферой смока на всей траектории
             if (legit_checks::segment_intersects_sphere(
-                {start.x, start.y, start.z}, {end.x, end.y, end.z},
-                {center.x, center.y, center.z}, k_smoke_radius))
+                { start.x, start.y, start.z }, { end.x, end.y, end.z },
+                { center.x, center.y, center.z }, k_smoke_radius))
                 return true;
 
             // Нахождение стрелка внутри облака
@@ -169,12 +187,14 @@ namespace features::combat {
             if ((end - center).length_sqr() <= k_smoke_radius * k_smoke_radius)
                 return true;
         }
+
         return false;
     }
 
     void legit::on_create_move(systems::input::usercmd* cmd)
     {
         this->m_target = {};
+
         if (!cmd || !settings::g_combat.m_legitbot.enabled.value)
         {
             this->reset_trigger();
@@ -213,6 +233,7 @@ namespace features::combat {
 
         const auto view_angles = systems::g_input.get_view_angles();
         const auto local = systems::g_local.get();
+
         if (!local.is_alive || !local.pawn || !local.controller)
         {
             this->reset_trigger();
@@ -224,8 +245,8 @@ namespace features::combat {
             this->reset_trigger();
             return;
         }
-        const auto aim_punch = g_shared.get_aim_punch(local.pawn);
 
+        const auto aim_punch = g_shared.get_aim_punch(local.pawn);
         this->m_cached_view_angles = view_angles;
         this->m_cached_aim_punch = aim_punch;
 
@@ -238,6 +259,92 @@ namespace features::combat {
 
             if (!config.triggerbot.value)
                 this->reset_trigger();
+
+            // --- AUTO SCOPE LOGIC START ---
+            // Определяем, нужно ли нам сейчас войти в скоп
+            bool should_auto_scope = false;
+            bool is_already_scoped = false;
+
+            // Читаем реальное состояние скопа
+            const auto scoped_offset = SCHEMA("C_CSPlayerPawn", "m_bIsScoped"_hash);
+            if (scoped_offset) {
+                const auto scoped_val = memory::safe_read<bool>(local.pawn + scoped_offset);
+                if (scoped_val && *scoped_val) {
+                    is_already_scoped = true;
+                }
+            }
+
+            // Активируем авто-скоуп, если:
+            // 1. Функция включена в конфиге
+            // 2. Оружие имеет оптику (снайперки, скауты, иногда диглы в некоторых модах, но тут строго sniper/scout/galil/ar если они имеют zoom? Нет, только те у кого есть m_zoomLevel > 1 или аналог. 
+            // Безопаснее всего: проверять наличие второй атаки у оружия или тип.
+            // Для простоты: считаем, что если config.auto_scope.value == true, то пользователь знает какое оружие использует.
+            // Но добавим защиту: только если оружие реально может заскопиться (check via item definition or type).
+
+            const bool can_scope_weapon = (ctx.weapon_type == cstypes::weapon_type::sniper ||
+                ctx.item_def_idx == cstypes::item_definition_index::weapon_awp ||
+                ctx.item_def_idx == cstypes::item_definition_index::weapon_ssg_08 ||
+                ctx.item_def_idx == cstypes::item_definition_index::weapon_g3sg1 ||
+                ctx.item_def_idx == cstypes::item_definition_index::weapon_sg_553 ||
+                ctx.item_def_idx == cstypes::item_definition_index::weapon_aug ||
+                ctx.item_def_idx == cstypes::item_definition_index::weapon_scar_20);
+
+            if (config.auto_scope.value && can_scope_weapon && !is_already_scoped)
+            {
+                // Ищем цель предварительно, чтобы понять, стоит ли вообще открывать скоп
+                // Используем обычный FOV для поиска, так как скопа еще нет
+
+                // Обновляем данные перед поиском
+                this->refresh_smokes(config);
+
+                auto shoot_position = g_shared.get_interpolated_shoot_position(local.pawn, false);
+                ctx.spread = g_shared.get_spread();
+                ctx.inaccuracy = g_shared.get_inaccuracy(true);
+
+                systems::g_prediction.simulate(cmd, local, [&]
+                    {
+                        shoot_position = g_shared.get_interpolated_shoot_position(local.pawn, false);
+                        ctx.spread = g_shared.get_spread();
+                        ctx.inaccuracy = g_shared.get_inaccuracy(true);
+                    });
+
+                auto detection_angles = view_angles;
+                if (config.rcs.value && aim_punch.length_sqr() > 0.0001f)
+                {
+                    detection_angles.x += aim_punch.x;
+                    detection_angles.y += aim_punch.y;
+                    math::helpers::normalize_angles(detection_angles);
+                }
+
+                // Поиск цели в режиме hipfire (без скопа)
+                // Важно: используем исходный config.fov, так как эффективный fov зависит от зума
+                this->m_target = this->find_target(shoot_position, detection_angles, config, local);
+
+                if (this->m_target.has_target())
+                {
+                    // Цель есть, но мы не в скопе -> Форсим открытие скопа
+                    cmd->buttons.value |= cstypes::command_buttons::in_second_attack;
+                    cmd->buttons.value_changed |= cstypes::command_buttons::in_second_attack;
+
+                    // Блокируем выстрел в этом тике, так как мы только начали анимацию
+                    // Возвращаем void, чтобы apply_triggerbot не выполнился или выполнил пустую работу
+                    // Но wait... если мы вернемся сейчас, aimbot не сработает? 
+                    // Aimbot обычно работает независимо. Если auto_scope включен, мы хотим сначала заскопиться.
+                    // Поэтому прерываем обработку этого тика для стрельбы, но позволяем движениям пройти.
+
+                    // Сбрасываем триггер статус, чтобы не было залипания
+                    this->reset_trigger();
+                    return;
+                }
+                else
+                {
+                    // Цели нет -> Не открываем скоп автоматически (экономия времени реакции и скрытность)
+                    // Или можно держать открытым, если настройка требует? Обычно нет.
+                    // Просто идем дальше по обычному коду.
+                }
+            }
+            // --- AUTO SCOPE LOGIC END ---
+
 
             if (!this->local_checks_pass(config, local))
             {
@@ -254,7 +361,6 @@ namespace features::combat {
             }
 
             this->m_target = {};
-
             if (!g_shared.can_shoot(cmd, local.controller, false))
             {
                 this->reset_trigger();
@@ -267,10 +373,10 @@ namespace features::combat {
             if (smoke_failure && !reported_smoke_failure)
                 logging::console::print_raw("[legit] Smoke snapshot unavailable: automatic targeting is blocked. Check schemas, entity reads and lifetime settings.\n");
             reported_smoke_failure = smoke_failure;
+
             auto shoot_position = g_shared.get_interpolated_shoot_position(local.pawn, false);
             ctx.spread = g_shared.get_spread();
             ctx.inaccuracy = g_shared.get_inaccuracy(true);
-
             systems::g_prediction.simulate(cmd, local, [&]
                 {
                     shoot_position = g_shared.get_interpolated_shoot_position(local.pawn, false);
@@ -288,7 +394,6 @@ namespace features::combat {
 
             // --- ЛОГИКА ПЛАВНОГО FOV ---
             float new_target_fov = static_cast<float>(config.fov.value);
-
             const int cur_weapon_type = static_cast<int>(ctx.weapon_type);
             const int cur_item_def = static_cast<int>(ctx.item_def_idx);
 
@@ -315,14 +420,16 @@ namespace features::combat {
             // --- ЛОГИКА ЗУМА (ПРИЦЕЛИВАНИЯ) ---
             float target_zoom_mult = 1.0f;
 
-            // Проверяем, находится ли игрок в прицеле
-            const auto scoped_offset = SCHEMA("C_CSPlayerPawn", "m_bIsScoped"_hash);
-            const bool is_scoped = scoped_offset ? memory::read<bool>(local.pawn + scoped_offset) : false;
+            // Повторная проверка состояния скопа для расчета FOV визуала
+            // Здесь уже могло измениться состояние, если был вызван выше, но в этом тике оно фиксировано при входе в функцию
+            // Лучше использовать локальную переменную is_already_scoped определенную выше, но она была в блоке if.
+            // Переопределим безопасно:
+            const auto scoped_offset_final = SCHEMA("C_CSPlayerPawn", "m_bIsScoped"_hash);
+            const bool is_scoped_final = scoped_offset_final ? memory::read<bool>(local.pawn + scoped_offset_final) : false;
 
-            if (is_scoped)
+            if (is_scoped_final)
             {
                 int zoom_level = 1;
-
                 // Способ 1: Чтение m_zoomLevel из C_CSWeaponBaseGun
                 if (ctx.weapon)
                 {
@@ -336,7 +443,6 @@ namespace features::combat {
                         }
                     }
                 }
-
                 // Способ 2: Проверка угла обзора через CPlayer_CameraServices (m_iFOV)
                 if (zoom_level < 2)
                 {
@@ -390,7 +496,6 @@ namespace features::combat {
                 // Создаем временную копию конфига с эффективным FOV
                 auto temp_config = config;
                 temp_config.fov.value = effective_fov;
-
                 this->m_target = this->find_target(shoot_position, detection_angles, temp_config, local);
                 if (this->m_target.has_target())
                 {
@@ -399,7 +504,6 @@ namespace features::combat {
             }
 
             const auto is_revolver = (ctx.item_def_idx == cstypes::item_definition_index::weapon_r8_revolver);
-
             // R8 Revolver handling for legitbot
             if (is_revolver)
             {
@@ -413,7 +517,6 @@ namespace features::combat {
                         cmd->buttons.value |= cstypes::command_buttons::in_second_attack;
                         cmd->buttons.value_changed |= (cstypes::command_buttons::in_attack | cstypes::command_buttons::in_second_attack);
                         cmd->buttons.value_scroll &= ~cstypes::command_buttons::in_attack;
-
                         const auto history_index = cmd->csgo_user_cmd.input_history_size() - 1;
                         if (history_index >= 0)
                         {
@@ -430,7 +533,6 @@ namespace features::combat {
                         const auto cur_clip = memory::read<int>(ctx.weapon + SCHEMA("C_BasePlayerWeapon", "m_iClip1"_hash));
                         const auto next_primary = memory::read<int>(ctx.weapon + SCHEMA("C_BasePlayerWeapon", "m_nNextPrimaryAttackTick"_hash));
                         const auto tick_base = memory::read<int>(local.controller + SCHEMA("CBasePlayerController", "m_nTickBase"_hash));
-
                         if (cur_clip < this->m_revolver_cock_clip || (this->m_revolver_cock_clip > 0 && next_primary > tick_base + 5))
                         {
                             // Shot successfully fired
@@ -453,7 +555,6 @@ namespace features::combat {
                             cmd->buttons.value |= cstypes::command_buttons::in_attack;
                             cmd->buttons.value_changed |= cstypes::command_buttons::in_attack;
                             cmd->buttons.value_scroll |= cstypes::command_buttons::in_attack;
-
                             const auto history_index = cmd->csgo_user_cmd.input_history_size() - 1;
                             if (history_index >= 0)
                                 cmd->csgo_user_cmd.set_attack1_start_history_index(history_index);
@@ -469,11 +570,9 @@ namespace features::combat {
                                 this->m_revolver_cock_ticks = 1;
                                 this->m_revolver_cock_clip = memory::read<int>(ctx.weapon + SCHEMA("C_BasePlayerWeapon", "m_iClip1"_hash));
                                 this->m_trigger_release_time = ctx.current_time + 0.40f;
-
                                 cmd->buttons.value |= cstypes::command_buttons::in_attack;
                                 cmd->buttons.value_changed |= cstypes::command_buttons::in_attack;
                                 cmd->buttons.value_scroll |= cstypes::command_buttons::in_attack;
-
                                 const auto history_index = cmd->csgo_user_cmd.input_history_size() - 1;
                                 if (history_index >= 0)
                                     cmd->csgo_user_cmd.set_attack1_start_history_index(history_index);
@@ -495,7 +594,6 @@ namespace features::combat {
                 // Создаем временную копию конфига с эффективным FOV
                 auto temp_config = config;
                 temp_config.fov.value = effective_fov;
-
                 this->apply_triggerbot(cmd, shoot_position, view_angles, aim_punch, temp_config, local);
             }
         }
@@ -509,7 +607,6 @@ namespace features::combat {
                 g_last_weapon_type = -2;
                 g_last_item_def_idx = -1;
             }
-
             // Плавная интерполяция текущего FOV к 0
             const float interpolation_speed = 0.15f;
             g_current_fov += (g_target_fov - g_current_fov) * interpolation_speed;
@@ -547,7 +644,6 @@ namespace features::combat {
                     // Зум скопа
                     const auto scoped_offset = SCHEMA("C_CSPlayerPawn", "m_bIsScoped"_hash);
                     const bool is_scoped = (local.pawn && scoped_offset) ? memory::read<bool>(local.pawn + scoped_offset) : false;
-
                     if (is_scoped)
                     {
                         int zoom_level = 1;
@@ -563,7 +659,6 @@ namespace features::combat {
                                 }
                             }
                         }
-
                         if (zoom_level < 2 && local.pawn)
                         {
                             const auto cam_services_offset = SCHEMA("C_BasePlayerPawn", "m_pCameraServices"_hash);
@@ -617,11 +712,9 @@ namespace features::combat {
                 // Плавное изменение радиуса при переключении на другое оружие
                 const float fov_lerp_speed = 10.0f;
                 g_render_fov += (desired_fov - g_render_fov) * std::min(fov_lerp_speed * dt, 1.0f);
-
                 // Плавное изменение множителя зума
                 const float zoom_lerp_speed = 8.0f;
                 g_render_zoom_mult += (desired_zoom_mult - g_render_zoom_mult) * std::min(zoom_lerp_speed * dt, 1.0f);
-
                 // Плавный переход цвета
                 const float col_lerp_speed = 10.0f;
                 g_render_color.r = static_cast<std::uint8_t>(g_render_color.r + (desired_color.r - g_render_color.r) * std::min(col_lerp_speed * dt, 1.0f));
@@ -652,7 +745,6 @@ namespace features::combat {
             {
                 xdraw::color draw_col = g_render_color;
                 draw_col.a = static_cast<std::uint8_t>(static_cast<float>(draw_col.a) * g_render_alpha);
-
                 this->draw_fov(draw_list, this->m_cached_view_angles, this->m_cached_aim_punch, effective_fov, draw_col, g_render_rcs);
             }
         }
@@ -671,7 +763,6 @@ namespace features::combat {
             this->m_remainder_x = 0.0f;
             this->m_remainder_y = 0.0f;
             this->m_old_punch = {};
-
             // Сбрасываем FOV и множители зума при смерти
             g_current_fov = 0.0f;
             g_target_fov = 0.0f;
@@ -694,7 +785,6 @@ namespace features::combat {
             {
                 continue;
             }
-
             if (!memory::read<bool>(p.ptr + SCHEMA("CCSPlayerController", "m_bPawnIsAlive"_hash)))
             {
                 continue;
@@ -744,6 +834,7 @@ namespace features::combat {
 
             const auto aim = math::helpers::calculate_angle(shoot_position, point.position);
             const auto fov = math::helpers::angle_distance(view_angles, aim);
+
             const auto can_kill = point.damage >= static_cast<float>(health);
             const auto best_can_kill = best.has_target() && best.best_point.damage >= static_cast<float>(best.health);
 
@@ -884,7 +975,6 @@ namespace features::combat {
         {
             auto delta = aim_angle - view_angles;
             math::helpers::normalize_angles(delta);
-
             const auto delta_length = std::sqrtf(delta.x * delta.x + delta.y * delta.y);
             if (delta_length < 0.001f)
             {
@@ -897,7 +987,6 @@ namespace features::combat {
             const auto distance_factor = std::clamp(delta_length / 10.0f, 0.0f, 1.0f);
             const auto ease = 1.0f - std::powf(distance_factor, 2.0f);
             auto smooth_factor = (0.3f + ease * 0.7f) / base_smooth;
-
             smooth_factor *= random::normal_clamped(1.0f, 0.06f, 0.85f, 1.15f);
 
             const auto x_bias = random::normal_clamped(1.0f, 0.02f, 0.95f, 1.05f);
@@ -919,7 +1008,6 @@ namespace features::combat {
 
         auto want_x = aim_angle.x - view_angles.x;
         auto want_y = aim_angle.y - view_angles.y;
-
         want_x += this->m_remainder_x;
         want_y += this->m_remainder_y;
 
@@ -957,6 +1045,7 @@ namespace features::combat {
             this->reset_trigger();
             return;
         }
+
         // Do not set IN_ATTACK here. A held shot must pass target, smoke,
         // head-only, penetration and hitchance checks again below.
 
@@ -977,7 +1066,6 @@ namespace features::combat {
             const auto tick_base = memory::read<std::int32_t>(local.controller + SCHEMA("CBasePlayerController", "m_nTickBase"_hash));
             seed = g_shared.get_spread_seed(corrected_angles, tick_base);
             spread = g_shared.calculate_spread(seed, ctx.inaccuracy, ctx.spread, ctx.recoil_index, ctx.item_def_idx, ctx.num_bullets);
-
             math::vector3 forward{}, left{}, up{};
             math::helpers::angle_vectors_left(corrected_angles, &forward, &left, &up);
             bullet_dir = (forward + left * spread.x + up * spread.y).normalized();
@@ -1001,7 +1089,6 @@ namespace features::combat {
                 {
                     return out;
                 }
-
                 out[0] = records[0];
                 if (count > 2)
                 {
@@ -1031,36 +1118,30 @@ namespace features::combat {
             {
                 continue;
             }
-
             if (!memory::read<bool>(p.ptr + SCHEMA("CCSPlayerController", "m_bPawnIsAlive"_hash)))
             {
                 continue;
             }
-
             const auto pawn_handle = memory::read<std::uint32_t>(p.ptr + SCHEMA("CBasePlayerController", "m_hPawn"_hash));
             const auto pawn = systems::g_entities.lookup(pawn_handle);
             if (!pawn || pawn == local.pawn)
             {
                 continue;
             }
-
             if (continuing_hold && !is_cocking && pawn != this->m_trigger_pending_pawn)
             {
                 continue;
             }
-
             const auto team = memory::read<std::int32_t>(pawn + SCHEMA("C_BaseEntity", "m_iTeamNum"_hash));
             if (!local.is_this_other_team(team))
             {
                 continue;
             }
-
             const auto health = memory::read<std::int32_t>(pawn + SCHEMA("C_BaseEntity", "m_iHealth"_hash));
             if (health <= 0)
             {
                 continue;
             }
-
             if (memory::read<bool>(pawn + SCHEMA("C_CSPlayerPawn", "m_bGunGameImmunity"_hash)))
             {
                 continue;
@@ -1092,29 +1173,24 @@ namespace features::combat {
                         {
                             continue;
                         }
-
                         const auto& bone = skeleton[hb.bone];
                         if (bone.position.length_sqr() < 1.0f)
                         {
                             continue;
                         }
-
                         const auto capsule_start = bone.rotation.rotate_vector(hb.mins) + bone.position;
                         const auto capsule_end = bone.rotation.rotate_vector(hb.maxs) + bone.position;
                         const auto radius = hb.radius > 0.0f ? hb.radius * 0.9f : 1.8f;
-
                         auto fraction{ 1.0f };
                         if (!g_shared.ray_vs_capsule(shoot_position, bullet_dir * ctx.range, capsule_start, capsule_end, radius, fraction))
                         {
                             continue;
                         }
-
                         const auto hitgroup = systems::g_hitboxes.hitgroup_from_hitbox(hb.index);
                         if (config.trigger_head_only.value && hitgroup != 1)
                         {
                             continue;
                         }
-
                         const auto hit_point = shoot_position + bullet_dir * ctx.range * fraction;
                         if (this->smoke_blocks(shoot_position, hit_point, config))
                         {
@@ -1122,23 +1198,19 @@ namespace features::combat {
                         }
                         const auto pen_ctx = g_shared.pen().prepare_target(pawn, rec);
                         shared::penetration::result candidate_pen{};
-
                         if (!g_shared.pen().run(shoot_position, hit_point, pen_ctx, local.pawn, local.team, candidate_pen))
                         {
                             continue;
                         }
-
                         // ИСПРАВЛЕНИЕ: Если autowall выключен и произошло проникновение - пропускаем эту цель
                         if (!config.autowall.value && candidate_pen.penetrated)
                         {
                             continue;
                         }
-
                         if (candidate_pen.penetrated && candidate_pen.damage < static_cast<float>(config.min_damage.value))
                         {
                             continue;
                         }
-
                         if (!found || candidate_pen.damage > pen.damage)
                         {
                             hit_pawn = pawn;
@@ -1153,20 +1225,17 @@ namespace features::combat {
                 {
                     const systems::hitboxes::entry* closest_hb{ nullptr };
                     auto closest_fov{ FLT_MAX };
-
                     for (const auto& entry : hitbox_set)
                     {
                         if (entry.bone < 0 || entry.bone >= 28)
                         {
                             continue;
                         }
-
                         const auto& bone = skeleton[entry.bone];
                         if (bone.position.length_sqr() < 1.0f)
                         {
                             continue;
                         }
-
                         if (config.trigger_head_only.value && systems::g_hitboxes.hitgroup_from_hitbox(entry.index) != 1)
                         {
                             continue;
@@ -1180,34 +1249,28 @@ namespace features::combat {
                         }
                         const auto aim = math::helpers::calculate_angle(shoot_position, center);
                         const auto fov = math::helpers::angle_distance(corrected_angles, aim);
-
                         if (fov > 2.0f)
                         {
                             continue;
                         }
-
                         if (fov < closest_fov)
                         {
                             closest_fov = fov;
                             closest_hb = &entry;
                         }
                     }
-
                     if (!closest_hb)
                     {
                         continue;
                     }
-
                     const auto& bone = skeleton[closest_hb->bone];
                     const auto target_point = bone.rotation.rotate_vector((closest_hb->mins + closest_hb->maxs) * 0.5f) + bone.position;
                     const auto pen_ctx = g_shared.pen().prepare_target(pawn, rec);
                     shared::penetration::result candidate_pen{};
-
                     if (!g_shared.pen().run(shoot_position, target_point, pen_ctx, local.pawn, local.team, candidate_pen))
                     {
                         continue;
                     }
-
                     const auto visible = !candidate_pen.penetrated;
                     if (!visible)
                     {
@@ -1220,7 +1283,6 @@ namespace features::combat {
                             continue;
                         }
                     }
-
                     if (!found || candidate_pen.damage > pen.damage)
                     {
                         hit_pawn = pawn;
@@ -1269,7 +1331,6 @@ namespace features::combat {
             const auto skeleton = g_shared.lc().get_skeleton(*hit_record);
             const auto game_scene_node = memory::read<std::uintptr_t>(hit_pawn + SCHEMA("C_BaseEntity", "m_pGameSceneNode"_hash));
             const auto hitbox_set = systems::g_hitboxes.query(game_scene_node);
-
             const systems::hitboxes::entry* best_hb{ nullptr };
             for (const auto& entry : hitbox_set)
             {
@@ -1279,7 +1340,6 @@ namespace features::combat {
                     break;
                 }
             }
-
             if (!best_hb || best_hb->bone < 0 || best_hb->bone >= 28)
             {
                 this->reset_trigger();
@@ -1289,7 +1349,6 @@ namespace features::combat {
                 hit_record->apply();
                 const auto hc = g_shared.calculate_hitchance(shoot_position, corrected_angles, *best_hb, skeleton[best_hb->bone], ctx.inaccuracy, ctx.spread);
                 hit_record->restore();
-
                 const auto min_hc = static_cast<float>(config.trigger_hitchance.value) / 100.0f;
                 if (hc < min_hc && !g_shared.is_max_accuracy(ctx.inaccuracy))
                 {
@@ -1308,7 +1367,6 @@ namespace features::combat {
                 this->m_trigger_pending_pawn = hit_pawn;
                 this->m_trigger_delay_start = ctx.current_time;
             }
-
             const auto elapsed_ms = (ctx.current_time - this->m_trigger_delay_start) * 1000.0f;
             if (elapsed_ms < delay_ms)
             {
@@ -1321,6 +1379,7 @@ namespace features::combat {
         {
             g_shared.last_shoot_tick() = memory::read<std::int32_t>(local.controller + SCHEMA("CBasePlayerController", "m_nTickBase"_hash));
         }
+
         const auto record_time = cstypes::tick_fraction::from_value(hit_record->simulation_time / cstypes::tick_interval);
         const auto input_history_size = cmd->csgo_user_cmd.input_history_size();
         const auto history_angles = seed_mode ? corrected_angles : math::vector3{ view_angles.x - aim_punch.x, view_angles.y - aim_punch.y, 0.0f };
@@ -1332,16 +1391,13 @@ namespace features::combat {
             {
                 continue;
             }
-
             if (const auto angles = entry->mutable_view_angles())
             {
                 angles->set_x(history_angles.x);
                 angles->set_y(history_angles.y);
             }
-
             entry->set_render_tick_count(record_time.tick + 1);
             entry->set_render_tick_fraction(0.0f);
-
             if (entry->has_sv_interp0())
             {
                 const auto interp = entry->mutable_sv_interp0();
@@ -1349,7 +1405,6 @@ namespace features::combat {
                 interp->set_dst_tick(-1);
                 interp->set_frac(0.0f);
             }
-
             if (entry->has_sv_interp1())
             {
                 const auto interp = entry->mutable_sv_interp1();
@@ -1357,7 +1412,6 @@ namespace features::combat {
                 interp->set_dst_tick(-1);
                 interp->set_frac(0.0f);
             }
-
             if (entry->has_cl_interp())
             {
                 const auto interp = entry->mutable_cl_interp();
@@ -1366,7 +1420,6 @@ namespace features::combat {
         }
 
         const auto attack_button = quick_revolver ? cstypes::command_buttons::in_second_attack : cstypes::command_buttons::in_attack;
-
         cmd->buttons.value |= attack_button;
         cmd->buttons.value_changed |= attack_button;
 
@@ -1415,7 +1468,6 @@ namespace features::combat {
         {
             return;
         }
-
         const auto factor = this->compute_rcs_factor(rand_min, rand_max);
         aim_angle.x -= aim_punch.x * factor;
         aim_angle.y -= aim_punch.y * factor;
@@ -1435,7 +1487,6 @@ namespace features::combat {
                 aim_punch.y * scale * factor,
                 0.0f
             };
-
             if (apply)
             {
                 auto new_angles = view_angles;
@@ -1444,7 +1495,6 @@ namespace features::combat {
                 math::helpers::normalize_angles(new_angles);
                 systems::g_input.set_view_angles(new_angles);
             }
-
             this->m_old_punch = punch_scaled;
         }
         else
@@ -1467,7 +1517,6 @@ namespace features::combat {
         const auto [screen_w, screen_h] = xdraw::viewport_size();
         const auto sw = static_cast<float>(screen_w);
         const auto sh = static_cast<float>(screen_h);
-
         const auto camera_fov_rad = math::helpers::deg_to_rad(systems::g_view.fov());
         const auto aimbot_fov_rad = math::helpers::deg_to_rad(fov_degrees);
         const auto radius = std::tanf(aimbot_fov_rad) / std::tanf(camera_fov_rad * 0.5f) * (sw * 0.5f);
@@ -1479,12 +1528,10 @@ namespace features::combat {
         {
             const auto punch_magnitude = aim_punch.length_sqr();
             const auto current_time = g_shared.ctx().current_time;
-
             if (punch_magnitude > 0.5f)
             {
                 this->m_last_significant_punch_time = current_time;
             }
-
             const auto time_since = current_time - this->m_last_significant_punch_time;
             if (time_since < 0.3f && punch_magnitude > 0.01f)
             {
@@ -1492,15 +1539,12 @@ namespace features::combat {
                 corrected.x -= aim_punch.x;
                 corrected.y -= aim_punch.y;
                 math::helpers::normalize_angles(corrected);
-
                 math::vector3 center_dir{}, corrected_dir{};
                 math::helpers::angle_vectors_left(view_angles, &center_dir);
                 math::helpers::angle_vectors_left(corrected, &corrected_dir);
-
                 const auto render_origin = systems::g_frame_data.origin();
                 const auto cs = systems::g_view.project(render_origin + center_dir * 1000.0f);
                 const auto ns = systems::g_view.project(render_origin + corrected_dir * 1000.0f);
-
                 if (systems::g_view.projection_valid(cs) && systems::g_view.projection_valid(ns))
                 {
                     offset_x = (cs.x - ns.x) * 0.5f;
@@ -1511,7 +1555,6 @@ namespace features::combat {
 
         const auto cx = sw * 0.5f + offset_x;
         const auto cy = sh * 0.5f + offset_y;
-
         draw_list.circle(cx, cy, radius, color, 1.5f, 64);
     }
 

@@ -228,8 +228,9 @@ namespace rendering {
 			xui::toggle( "Flash Check", wg.flash_check );
 			xui::layout::spacing( 3.0f );
 			xui::toggle( "Only On Ground", wg.ground_check );
-			xui::layout::spacing( 8.0f );
-
+			xui::layout::spacing( 3.0f );
+			xui::toggle("Auto scope", wg.auto_scope);
+			xui::layout::spacing(3.0f);
 			xui::toggle( "Triggerbot", wg.triggerbot );
 			xui::layout::spacing( 3.0f );
 			xui::toggle( "Trigger Head Only", wg.trigger_head_only );

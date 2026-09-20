@@ -196,12 +196,19 @@ namespace features::misc {
 			// Compensate velocity without stopping movement or delaying the release.
 			this->m_delay_release = false;
 			this->m_delay_ticks = 0;
-			if ( this->m_toss_weapon != ctx.weapon || holding_attack || ( !pin_pulled && throw_time <= 0.0f ) )
+
+			if ( this->m_toss_weapon != ctx.weapon )
 			{
 				this->m_toss_angles_locked = false;
+				this->m_toss_weapon = ctx.weapon;
 			}
-			this->m_toss_weapon = ctx.weapon;
-			if ( !holding_attack && ( pin_pulled || throw_time > 0.0f ) )
+
+			if ( holding_attack )
+			{
+				this->m_toss_angles = systems::g_input.get_view_angles( );
+				this->m_toss_angles_locked = false;
+			}
+			else if ( pin_pulled || throw_time > 0.0f || this->m_toss_angles_locked )
 			{
 				if ( !this->m_toss_angles_locked )
 				{
@@ -210,6 +217,11 @@ namespace features::misc {
 				}
 				this->correct_throw_angles( cmd, local, ctx.weapon );
 			}
+			else
+			{
+				this->m_toss_angles_locked = false;
+			}
+
 			this->m_should_preview = pin_pulled && throw_time <= 0.0f;
 			return;
 		}
@@ -896,23 +908,19 @@ namespace features::misc {
         if ( settings::g_misc.m_projectile_trajectory.super_toss.value )
         {
             // Prediction includes this command's jump and strafe acceleration.
-            // Read grenade-stashed velocity when the engine has already selected
-            // its release sample, rather than compensating a different tick.
-            const bool predicted = systems::g_prediction.simulate( cmd, local, [&]() {
+            // When prediction is available, simulate movement for this command;
+            // otherwise fall back safely to current velocity instead of aborting.
+            systems::g_prediction.simulate( cmd, local, [&]() {
                 predicted_velocity = memory::read<math::vector3>( local.pawn + SCHEMA( "C_BaseEntity", "m_vecVelocity"_hash ) );
                 const auto stash_flag = SCHEMA( "C_CSPlayerPawn", "m_bGrenadeParametersStashed"_hash );
                 const auto stash_velocity = SCHEMA( "C_CSPlayerPawn", "m_vecStashedVelocity"_hash );
                 if ( stash_flag && stash_velocity && memory::read<bool>( local.pawn + stash_flag ) )
-                    predicted_velocity = memory::read<math::vector3>( local.pawn + stash_velocity );
-            } );
-            if ( !predicted ) {
-                static bool reported = false;
-                if ( !reported ) {
-                    logging::console::print( "[super toss] prediction unavailable; angle correction skipped" );
-                    reported = true;
+                {
+                    const auto sv = memory::read<math::vector3>( local.pawn + stash_velocity );
+                    if ( sv.length_sqr( ) > 0.001f )
+                        predicted_velocity = sv;
                 }
-                return;
-            }
+            } );
         }
 
         const auto inherited = predicted_velocity * k_velocity_inherit;
@@ -972,8 +980,7 @@ namespace features::misc {
 			angles.x += 360.0f;
 		}
 
-        if ( !settings::g_misc.m_projectile_trajectory.super_toss.value )
-            angles.x -= ( 90.0f - std::abs( angles.x ) ) * 10.0f / 90.0f;
+		angles.x -= ( 90.0f - std::abs( angles.x ) ) * 10.0f / 90.0f;
 
 		const auto pitch = angles.x * ( std::numbers::pi_v<float> / 180.0f );
 		const auto yaw = angles.y * ( std::numbers::pi_v<float> / 180.0f );

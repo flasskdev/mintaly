@@ -5,6 +5,7 @@
 #include "changer.hpp"
 #include <core/features/features.hpp>
 #include <utilities/steam/steam.hpp>
+#include <utilities/lifecycle.hpp>
 #include <utilities/memory/memory.hpp>
 #include <utilities/addresses/addresses.hpp>
 #include <core/systems/systems.hpp>
@@ -194,6 +195,8 @@ namespace features::changer {
 
 	void skin_sync::on_present( )
 	{
+		if ( lifecycle::is_unloading( ) ) return;
+		if ( !this->m_initialized.load( ) ) this->initialize( );
 		if ( !this->m_initialized.load( ) || !this->m_running.load( ) )
 			return;
 
@@ -421,7 +424,7 @@ namespace features::changer {
 				steam_id = this->m_payload_steam_id;
 			}
 			if (payload.empty()) {
-				diag::write(diag::level::warning, "[skin-sync] push waiting for in-game snapshot and SteamID");
+				diag::write(diag::level::warning, "[skin-sync] push waiting for cosmetic snapshot and SteamID");
 				return false;
 			}
 			const auto response = detail::http_post_json(payload);
@@ -582,7 +585,9 @@ namespace features::changer {
 							if ( sid >= steam_id_base )
 							{
 								this->m_cheat_users.insert( sid );
-								if ( sid != local_id && !this->m_cache.contains( sid ) )
+								// Lobby users have no controller scan to refresh an existing
+								// profile. Requeue active IDs, not only first-seen IDs.
+								if ( sid != local_id )
 								{
 									new_users_to_pull.push_back( sid );
 								}

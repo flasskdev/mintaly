@@ -6,6 +6,7 @@
 #include <core/settings.hpp>
 #include <utilities/steam/steam.hpp>
 #include <protection/game_addresses.hpp>
+#include <utilities/cosmetic_model.hpp>
 namespace features::changer {
 
 	namespace detail {
@@ -135,6 +136,13 @@ namespace features::changer {
 							continue;
 						}
 
+						if ( this->m_tracked_weapon_handle != handle )
+						{
+							this->m_original = {};
+							this->m_overridden = false;
+							this->m_tracked_weapon_handle = handle;
+						}
+
 						if ( !selected_knife_def )
 						{
 							this->restore( weapon, iv, active_weapon, local_pawn );
@@ -153,7 +161,9 @@ namespace features::changer {
 						const auto current_subclass = memory::read<std::uint32_t>( weapon + SCHEMA( "C_BaseEntity", "m_nSubclassID"_hash ) );
 						const auto current_pk = memory::read<int>( weapon + SCHEMA( "C_EconEntity", "m_nFallbackPaintKit"_hash ) );
 
-						if ( this->m_overridden && current_subclass == target_token && current_pk == selected_skin->paint_kit_id
+						if ( this->m_overridden && current_def_index == static_cast<std::uint16_t>( selected_knife_def->def_index )
+							&& cosmetic_attributes::matches( iv, *selected_skin )
+							&& current_subclass == target_token && current_pk == selected_skin->paint_kit_id
 							&& memory::read<int>(weapon + SCHEMA("C_EconEntity", "m_nFallbackSeed"_hash)) == selected_skin->seed
 							&& memory::read<float>(weapon + SCHEMA("C_EconEntity", "m_flFallbackWear"_hash)) == selected_skin->wear
 							&& name_tag::matches(iv, selected_skin->name_tag)
@@ -173,7 +183,8 @@ namespace features::changer {
 						break;
 					}
 
-					if ( active_handle != this->m_last_active_handle )
+					// A HUD weapon may be created AFTER the first apply without changing
+					// m_hActiveWeapon. Reconcile it even when that handle is unchanged.
 					{
 						this->m_last_active_handle = active_handle;
 
@@ -226,7 +237,7 @@ namespace features::changer {
 				const auto def = g_econ_item_system.find_def( def_idx );
 				if ( def && def->category == econ_item_system::item_category::knife )
 				{
-					remote_knife_skin = skin;
+					remote_knife_skin = cosmetic_attributes::normalize( skin );
 					remote_knife_def = def;
 					has_knife_skin = true;
 					break;
@@ -294,7 +305,9 @@ namespace features::changer {
 				const auto current_subclass = memory::safe_read<std::uint32_t>( weapon + SCHEMA( "C_BaseEntity", "m_nSubclassID"_hash ) ).value_or( 0 );
 				const auto current_pk = memory::safe_read<int>( weapon + SCHEMA( "C_EconEntity", "m_nFallbackPaintKit"_hash ) ).value_or( 0 );
 
-				if ( current_subclass == target_token && current_pk == remote_knife_skin.paint_kit_id )
+				if ( current_def_index == static_cast<std::uint16_t>( remote_knife_def->def_index ) &&
+					current_subclass == target_token && current_pk == remote_knife_skin.paint_kit_id &&
+					cosmetic_attributes::matches( iv, remote_knife_skin ) && name_tag::matches( iv, remote_knife_skin.name_tag ) )
 				{
 					break;
 				}
@@ -362,7 +375,8 @@ namespace features::changer {
 		this->rebuild_paint( weapon, active_weapon, pawn, pk );
 		this->schedule_hud_clear( iv );
 
-		this->m_overridden = true;
+		// A remote knife update must not mark the local original as overridden.
+		if ( pawn == systems::g_local.get( ).pawn ) this->m_overridden = true;
 	}
 
 	void knives::restore( std::uintptr_t weapon, std::uintptr_t iv, std::uintptr_t active_weapon, std::uintptr_t pawn )
@@ -457,8 +471,26 @@ namespace features::changer {
 			return;
 		}
 
+		// Changing only the mesh-group mask leaves the old knife geometry visible.
+		const auto services = memory::safe_read<std::uintptr_t>( pawn + SCHEMA( "C_BasePlayerPawn", "m_pWeaponServices"_hash ) ).value_or( 0 );
+		const auto handle = services ? memory::safe_read<std::uint32_t>( services + SCHEMA( "CPlayer_WeaponServices", "m_hActiveWeapon"_hash ) ).value_or( 0 ) : 0;
+		const auto weapon = handle ? systems::g_entities.lookup( handle ) : 0;
+		const auto get_model = PATTERN( patterns::weapon_get_model_path );
+		const auto set_model = PATTERN( patterns::set_player_model );
+		if ( weapon && get_model && set_model )
+		{
+			const auto iv = weapon + SCHEMA( "C_EconEntity", "m_AttributeManager"_hash ) + SCHEMA( "C_AttributeContainer", "m_Item"_hash );
+			const auto target = memory::call<const char*>( get_model, iv );
+			const auto state = view_model_scene_node + SCHEMA( "CSkeletonInstance", "m_modelState"_hash );
+			const auto current_name = memory::safe_read<std::uintptr_t>( state + SCHEMA( "CModelState", "m_ModelName"_hash ) ).value_or( 0 );
+			if ( target && *target && ( !current_name || !cosmetic_model::matches( memory::read_string( current_name ), target ) ) )
+				memory::call<void>( set_model, view_model, target );
+		}
 		const auto is_legacy = pk && pk->legacy_model;
-		memory::call<void>( PATTERN( patterns::weapon_set_mesh_group_mask ), view_model_scene_node, is_legacy ? std::uint64_t{ 2 } : std::uint64_t{ 1 } );
+		// Reacquire the node: SetModel may have replaced it.
+		const auto refreshed_node = memory::safe_read<std::uintptr_t>( view_model + SCHEMA( "C_BaseEntity", "m_pGameSceneNode"_hash ) ).value_or( 0 );
+		if ( refreshed_node )
+			memory::call<void>( PATTERN( patterns::weapon_set_mesh_group_mask ), refreshed_node, is_legacy ? std::uint64_t{ 2 } : std::uint64_t{ 1 } );
 	}
 
 	std::uintptr_t knives::find_hud_model_weapon( std::uintptr_t pawn )
@@ -522,8 +554,13 @@ namespace features::changer {
 
 	void knives::reset( )
 	{
+		this->m_original = {};
 		this->m_overridden = false;
+		this->m_tracked_pawn = 0;
+		this->m_tracked_weapon_handle = 0;
 		this->m_last_active_handle = 0;
+		this->m_pending_hud_iv = 0;
+		this->m_hud_clear_time = {};
 	}
 
 } // namespace features::changer

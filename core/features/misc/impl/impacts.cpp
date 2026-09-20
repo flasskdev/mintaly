@@ -811,17 +811,16 @@ namespace features::misc {
 
 	impacts::hit_data impacts::parse_event( std::uintptr_t event )
 	{
-		auto attacker = systems::events::get_controller( reinterpret_cast< void* >( event ), "attacker" );
-		if ( !attacker )
-		{
-			attacker = systems::events::get_pawn( reinterpret_cast< void* >( event ), "attacker" );
-		}
+		const auto attacker = systems::events::get_controller( reinterpret_cast< void* >( event ), "attacker" );
 
 		const auto victim = systems::events::get_controller( reinterpret_cast< void* >( event ), "userid" );
 
 		const auto local = systems::g_local.get( );
 
-		if ( !local.is_valid( ) || !detail::is_local_player( attacker, local ) || detail::is_local_player( victim, local ) )
+		const auto actual_local = memory::safe_read<std::uintptr_t>( addresses::globals::local_player_controller ).value_or( 0 );
+		// Fail closed during transitions and never compare an attacker controller
+		// with a pawn (including the player currently being spectated).
+		if ( !event_key::local_attacker( actual_local, local.controller, attacker, victim ) )
 		{
 			return {};
 		}

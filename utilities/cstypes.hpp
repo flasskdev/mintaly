@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <utilities/event_key.hpp>
 #include <cstdint>
 #include <span>
 #include <string_view>
@@ -484,7 +485,7 @@ namespace cstypes {
 			: hash( h ), unk( 0xFFFFFFFF ), str( s ) {}
 
 		constexpr event_hash( const char* s )
-			: hash( 0 ), unk( 0xFFFFFFFF ), str( s ) {}
+			: hash( event_key::hash( s ) ), unk( 0xFFFFFFFF ), str( s ) {}
 	};
 	static_assert( sizeof( event_hash ) == 0x10 );
 

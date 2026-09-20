@@ -68,6 +68,7 @@ namespace hooks {
 		static int __fastcall collect_attached_entities( std::uintptr_t entity, std::uintptr_t out_vec );
 		static void __fastcall play_music( void* thisptr, int track_type, std::uint16_t music_kit_id, float volume );
 		static void trigger_lobby_music( std::uint16_t kit_id );
+		static void process_lobby_music( );
 
 	private:
 		inline static hooking::jmp m_present{};

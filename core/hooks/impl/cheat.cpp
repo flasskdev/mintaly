@@ -14,11 +14,38 @@
 #include <utilities/lifecycle.hpp>
 #include <utilities/loader_session.hpp>
 #include <utilities/steam/steam.hpp>
+#include <utilities/lobby_music_queue.hpp>
 #include "../hooks.hpp"
 
 namespace hooks {
 
 	namespace detail {
+		inline lobby_music::queue g_lobby_music_requests;
+
+		// Isolated SEH frame: no std::string/optional destructors here (MSVC C2712).
+		bool dispatch_lobby_music_guarded( std::uintptr_t stop, std::uintptr_t update, const char* name )
+		{
+			if ( !stop || ( name && *name && !update ) ) return false;
+			__try
+			{
+				const auto* p = reinterpret_cast<const std::uint8_t*>( stop );
+				// These offsets come from stop_item_preview_music's existing signature.
+				// Never decode an unrelated instruction after a game update.
+				if ( p[4] != 0xe8 || p[24] != 0xe9 ) return false;
+				const auto get_manager = stop + 9 + *reinterpret_cast<const std::int32_t*>( p + 5 );
+				const auto set_background = stop + 29 + *reinterpret_cast<const std::int32_t*>( p + 25 );
+				void* manager = memory::call<void*>( get_manager );
+				if ( !manager ) return false;
+				memory::call<void>( stop );
+				if ( name && *name ) {
+					memory::call<void>( set_background, manager, name, static_cast<const char*>( nullptr ), 0.0f );
+					memory::call<void>( update, manager );
+				}
+				return true;
+			}
+			__except ( EXCEPTION_EXECUTE_HANDLER ) { return false; }
+		}
+
 		struct viewmodel_anim_state
 		{
 			bool initialized{ false };
@@ -293,19 +320,13 @@ namespace hooks {
 		rendering::g_context.on_present( thisptr );
 		features::misc::g_auto_accept.run( );
 
-		static std::uint16_t s_last_active_lobby_kit{ 0 };
 		if ( rendering::g_widgets.s_map_name.empty( ) )
 		{
-			const auto current_kit = static_cast< std::uint16_t >( settings::g_changer.music.id );
-			if ( current_kit != s_last_active_lobby_kit )
-			{
-				s_last_active_lobby_kit = current_kit;
-				trigger_lobby_music( current_kit );
-			}
-		}
-		else
-		{
-			s_last_active_lobby_kit = 0;
+			const auto configured = settings::g_changer.music.id;
+			// Retrying publication is cheap and does not restart a successfully
+			// dispatched selection. Missing definitions are retried next frame.
+			trigger_lobby_music( configured > 0 && configured < 0xffff
+				? static_cast<std::uint16_t>( configured ) : 0 );
 		}
 
 		if ( !m_wnd_proc.is_enabled( ) && rendering::g_context.get_window( ) )
@@ -490,6 +511,14 @@ namespace hooks {
 			systems::g_view.reset( );
 			systems::g_frame_data.reset( );
 			m_frame_stage_notify.call<void>( thisptr, stage );
+			if ( stage == 6 || stage == 7 )
+			{
+				// Lobby work does not require a map-owned controller or camera.
+				process_lobby_music( );
+				if ( !lifecycle::is_unloading( ) && rendering::g_widgets.s_map_name.empty( ) &&
+					!memory::safe_read<std::uintptr_t>( addresses::globals::local_player_controller ).value_or( 0 ) )
+					features::changer::g_inspect_preview.on_frame_stage_notify( );
+			}
 			return;
 		}
 
@@ -514,8 +543,6 @@ namespace hooks {
 			// Weapon cosmetics are applied after the original callback below.
 			if ( stage == 7 )
 			{
-				features::changer::g_knives.on_frame_stage_notify( );
-
 				features::world::g_scene.on_frame_stage_notify( );
 				features::world::g_smoke.on_frame_stage_notify( );
 				features::misc::g_other.on_frame_stage_notify( );
@@ -559,6 +586,7 @@ namespace hooks {
 		if ( stage == 6 || stage == 12 )
 		{
 			// Apply after network data, independently of the listener's camera/alive state.
+			features::changer::g_knives.on_frame_stage_notify( );
 			features::changer::g_agents.on_frame_stage_notify( );
 			features::changer::g_gloves.on_frame_stage_notify( );
 			features::changer::g_guns.on_frame_stage_notify( );
@@ -1527,6 +1555,7 @@ namespace hooks {
 		features::changer::g_gloves.reset( );
 		features::changer::g_agents.reset( );
 		features::changer::g_music.reset( );
+		detail::g_lobby_music_requests.reset( );
 		systems::g_entities.reset( );
 		features::combat::g_shared.lc( ).clear( );
 		detail::g_vm_anim.initialized = false;
@@ -2058,83 +2087,46 @@ namespace hooks {
 		return m_collect_attached_entities.call<int>( entity, out_vec );
 	}
 
-	static void* s_last_music_thisptr{ nullptr };
-
 	void cheat::trigger_lobby_music( std::uint16_t kit_id )
 	{
-		if ( lifecycle::is_unloading( ) )
-			return;
-
-		if ( !rendering::g_widgets.s_map_name.empty( ) )
-			return;
-
-		const auto fn_stop = PATTERN( patterns::stop_item_preview_music );
-		if ( fn_stop )
+		if ( lifecycle::is_unloading( ) || !rendering::g_widgets.s_map_name.empty( ) || kit_id == 0xffff ) return;
+		lobby_music::selection selected{ kit_id, {} };
+		if ( kit_id )
 		{
-			using stop_fn_t = void( __fastcall* )( );
-			using get_mgr_fn_t = void*( __fastcall* )( );
-			using set_bg_fn_t = void( __fastcall* )( void*, const char*, const char*, float );
-			using update_bg_fn_t = void( __fastcall* )( void* );
-
-			const auto p = reinterpret_cast< const std::uint8_t* >( fn_stop );
-			const auto disp_mgr = *reinterpret_cast< const std::int32_t* >( p + 5 );
-			const auto fn_get_mgr = reinterpret_cast< get_mgr_fn_t >( const_cast< std::uint8_t* >( p + 9 + disp_mgr ) );
-
-			const auto disp_set = *reinterpret_cast< const std::int32_t* >( p + 25 );
-			const auto fn_set_bg = reinterpret_cast< set_bg_fn_t >( const_cast< std::uint8_t* >( p + 29 + disp_set ) );
-			const auto fn_update_bg = reinterpret_cast< update_bg_fn_t >( PATTERN( patterns::update_bg_music ) );
-
-			// Stop any currently playing preview/background music
-			reinterpret_cast< stop_fn_t >( const_cast< std::uint8_t* >( p ) )( );
-
-			if ( kit_id == 0 )
-			{
-				if ( addresses::globals::source2engine_to_client && PATTERN( patterns::engine_client_cmd ) )
-				{
-					memory::call<void>( PATTERN( patterns::engine_client_cmd ), addresses::globals::source2engine_to_client, 0, "stopsound", 0x7ffef001 );
-				}
-			}
-			else
-			{
-				const auto kit = features::changer::g_econ_item_system.find_music_kit( kit_id );
-				if ( kit && !kit->name.empty( ) )
-				{
-					void* mgr = fn_get_mgr( );
-					if ( mgr )
-					{
-						fn_set_bg( mgr, kit->name.c_str( ), nullptr, 0.0f );
-						if ( fn_update_bg )
-						{
-							fn_update_bg( mgr );
-						}
-					}
-
-					// Trigger lobby music (track 1) immediately via game's play_music
-					if ( m_play_music.is_valid( ) )
-					{
-						m_play_music.call<void>( s_last_music_thisptr, 1, kit_id, 0.7f );
-					}
-
-					// Also play directly via engine client sound command for instant start
-					if ( addresses::globals::source2engine_to_client && PATTERN( patterns::engine_client_cmd ) )
-					{
-						const std::string cmd = "playvol Music.Background." + kit->name + " 0.7";
-						memory::call<void>( PATTERN( patterns::engine_client_cmd ), addresses::globals::source2engine_to_client, 0, cmd.c_str( ), 0x7ffef001 );
-					}
-				}
-			}
+			const auto kit = features::changer::g_econ_item_system.find_music_kit( kit_id );
+			if ( !kit || kit->name.empty( ) ) return;
+			selected.name = kit->name; // Copy while still on the menu/settings thread.
 		}
+		detail::g_lobby_music_requests.submit( std::move( selected ) );
+	}
+
+	void cheat::process_lobby_music( )
+	{
+		if ( lifecycle::is_unloading( ) || !rendering::g_widgets.s_map_name.empty( ) ||
+			memory::safe_read<std::uintptr_t>( addresses::globals::local_player_controller ).value_or( 0 ) ) return;
+		const auto pending = detail::g_lobby_music_requests.next( );
+		if ( !pending ) return;
+		static auto next_retry = std::chrono::steady_clock::time_point{};
+		static std::uint64_t attempted_generation{};
+		const auto now = std::chrono::steady_clock::now( );
+		if ( pending->generation == attempted_generation && now < next_retry ) return;
+		attempted_generation = pending->generation;
+		next_retry = now + std::chrono::milliseconds( 250 );
+		if ( detail::dispatch_lobby_music_guarded( PATTERN( patterns::stop_item_preview_music ),
+			PATTERN( patterns::update_bg_music ), pending->value.name.c_str( ) ) )
+			detail::g_lobby_music_requests.acknowledge( *pending );
 	}
 
 	void __fastcall cheat::play_music( void* thisptr, int track_type, std::uint16_t music_kit_id, float volume )
 	{
-		if ( lifecycle::is_unloading( ) || is_level_shutting_down( ) )
+		const bool lobby_track = track_type == 1 && rendering::g_widgets.s_map_name.empty( ) &&
+			!memory::safe_read<std::uintptr_t>( addresses::globals::local_player_controller ).value_or( 0 );
+		if ( lifecycle::is_unloading( ) || ( is_level_shutting_down( ) && !lobby_track ) )
 		{
 			m_play_music.call<void>( thisptr, track_type, music_kit_id, volume );
 			return;
 		}
 
-		if ( thisptr ) s_last_music_thisptr = thisptr;
 		if ( track_type == 11 && systems::g_local.get( ).controller )
 		{
 			if ( features::changer::g_music.queue_mvp_music( thisptr, track_type, music_kit_id, volume,
@@ -2145,7 +2137,7 @@ namespace hooks {
 			const auto winner_kit = features::changer::get_current_mvp_kit_id( );
 			if ( winner_kit > 0 && winner_kit < 0xffff ) music_kit_id = static_cast<std::uint16_t>( winner_kit );
 		}
-		else if ( track_type == 1 && rendering::g_widgets.s_map_name.empty( ) && !systems::g_local.get( ).controller )
+		else if ( lobby_track )
 		{
 			// Only actual lobby playback may use the listener's selected kit.
 			// Never turn an in-match victory track into the listener's music.

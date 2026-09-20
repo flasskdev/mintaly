@@ -376,6 +376,7 @@ namespace features::changer {
 		void process_hud_clear( );
 
 		original_state m_original{};
+		std::uint32_t m_tracked_weapon_handle{};
 		std::uint32_t m_last_active_handle{};
 		std::uintptr_t m_tracked_pawn{};
 		bool m_overridden{};

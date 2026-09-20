@@ -225,6 +225,7 @@ namespace settings {
                                 xui::setting scope_check{ false,{}, "scope check", "legitbot" };
                                 xui::setting flash_check{ false,{}, "flash check", "legitbot" };
                                 xui::setting ground_check{ false,{}, "ground check", "legitbot" };
+                                xui::setting auto_scope{ false,{}, "auto scope", "legitbot" };
                                 // Approximate smoke geometry, not the engine's voxel visibility.
                                 config::val<float> smoke_radius{ 160.0f };
                                 config::val<float> smoke_lifetime{ 20.0f };
@@ -248,6 +249,7 @@ namespace settings {
                                         this->scope_check.category = s;
                                         this->flash_check.category = s;
                                         this->ground_check.category = s;
+                                        this->auto_scope.category = s;
 
                                         this->fov.reg(s, "fov");
                                         this->smooth.reg(s, "smooth");
@@ -299,6 +301,8 @@ namespace settings {
                                         this->flash_check.bind = other.flash_check.bind;
                                         this->ground_check.value = other.ground_check.value;
                                         this->ground_check.bind = other.ground_check.bind;
+                                        this->auto_scope.value = other.auto_scope.value;
+                                        this->auto_scope.bind = other.auto_scope.bind;
                                         this->smoke_radius.value = other.smoke_radius.value;
                                         this->smoke_lifetime.value = other.smoke_lifetime.value;
                                         this->visualize_fov.value = other.visualize_fov.value;
