@@ -981,6 +981,7 @@ namespace rendering {
             return;
         }
         const auto& chosen = this->m_search_entries[this->m_search_visible_indices[index]];
+        if (safe_mode::active() && chosen.tab == 0) return;
         this->m_tab = std::clamp(chosen.tab, 0, 6);
         if (this->m_tab == static_cast<int>(tab::visuals))
         {
@@ -1016,6 +1017,7 @@ namespace rendering {
         for (std::size_t i = 0; i < this->m_search_entries.size(); ++i)
         {
             const auto& it = this->m_search_entries[i];
+            if (safe_mode::active() && it.tab == 0) continue;
             if (query_lower.empty() || it.name_lower.find(query_lower) != std::string::npos || it.category_lower.find(query_lower) != std::string::npos)
             {
                 this->m_search_visible_indices.emplace_back(i);
@@ -1269,13 +1271,13 @@ namespace rendering {
             const auto pop_footer_y = wy + wh - 64.0f;
             const xui::rect pop_profile_rect{ wx + 8.0f, pop_footer_y + 8.0f, sb_full_w - 16.0f, 48.0f };
             const float pop_main_w = pop_profile_rect.w;
-            const float pop_main_h = 176.0f;
+            const float pop_main_h = 261.0f;
             const float pop_main_x = pop_profile_rect.x;
             const float pop_target_main_y = pop_profile_rect.y - pop_main_h - 6.0f;
             const xui::rect pop_main_rect{ pop_main_x, pop_target_main_y, pop_main_w, pop_main_h };
             const bool pop_sub_open = (this->m_user_subtab == 1 || this->m_user_subtab == 2);
             const float pop_sub_w = (this->m_user_subtab == 1) ? 230.0f : 240.0f;
-            const float pop_sub_h = (this->m_user_subtab == 1) ? 385.0f : 375.0f;
+            const float pop_sub_h = (this->m_user_subtab == 1) ? 385.0f : 405.0f;
             const float pop_sub_x = pop_main_x + pop_main_w + 6.0f;
             const float pop_target_sub_y = std::clamp(pop_target_main_y + pop_main_h - pop_sub_h, wy + 10.0f, wy + wh - pop_sub_h - 10.0f);
             const xui::rect pop_sub_rect{ pop_sub_x, pop_target_sub_y, pop_sub_w, pop_sub_h };
@@ -1424,6 +1426,10 @@ namespace rendering {
 
     void menu::draw_side_bar(float h)
     {
+        if (safe_mode::active() && this->m_tab == 0) {
+            this->m_tab = 1;
+            this->m_subtab = 0;
+        }
         auto& dl = xui::draw::current();
         auto& ctx = xui::ctx();
         const auto& input = ctx.input;
@@ -1444,6 +1450,10 @@ namespace rendering {
         const auto [tw, th] = xdraw::measure_text("mintaly");
         dl.text(badge_x + badge_size + 13.0f, badge_y + (badge_size - th) * 0.5f, "mintaly", tokens::col_text);
         xdraw::pop_font();
+        xdraw::push_font(g_fonts.inter_medium[fonts::size::petite]);
+        const auto mode_color = safe_mode::active() ? xdraw::color{155, 158, 166, 255} : xdraw::color{244, 151, 188, 255};
+        dl.text(sb_x + 20.0f, sb_y + 65.0f, safe_mode::active() ? "SAFE MODE" : "UNSAFE MODE", mode_color);
+        xdraw::pop_font();
         dl.line(sb_x + 1.0f, sb_y + 82.0f, sb_x + sb_w, sb_y + 82.0f, tokens::col_border);
         constexpr std::array<const char*, 7> names{ { "Ragebot", "Legitbot", "Movement", "Visuals", "Skins", "Misc", "Configs" } };
         float curr_y = sb_y + 98.0f;
@@ -1451,6 +1461,7 @@ namespace rendering {
         const auto expand_anim = xui::ease::smoothstep(raw_expand);
         for (int i = 0; i < static_cast<int>(names.size()); ++i)
         {
+            if (i == 0 && safe_mode::active()) continue;
             const xui::rect button{ sb_x + 10.0f, curr_y, sb_w - 20.0f, 37.0f };
             const bool hovered = input.in_rect(button) && !ctx.overlay_blocking();
             const bool active = this->m_tab == i;
@@ -2066,7 +2077,7 @@ namespace rendering {
         const xui::rect profile_rect{ sb_x + 8.0f, footer_y + 8.0f, sb_w - 16.0f, 48.0f };
         // Main popup geometry: perfectly aligned on top of the Steam profile button
         const float main_w = profile_rect.w;
-        const float main_h = 222.0f;
+        const float main_h = 261.0f;
         const float main_x = profile_rect.x;
         const float target_main_y = profile_rect.y - main_h - 6.0f;
         const float main_y = target_main_y + (1.0f - anim) * 6.0f;
@@ -2378,6 +2389,34 @@ namespace rendering {
             const float knob_x = knob_min_x + (knob_max_x - knob_min_x) * sw_anim;
             const auto knob_col = xui::lerp(tokens::col_text_dim.alpha(main_alpha), tokens::col_dark.alpha(main_alpha), sw_anim);
             top_dl.circle_filled(knob_x, sw_y + sw_h * 0.5f, knob_r, knob_col);
+        }
+        item_y += item_h + 3.0f;
+        {
+            const xui::rect row{main_x + 6.0f, item_y, main_w - 12.0f, item_h};
+            const bool hovered = input.in_rect(row);
+            if (this->m_user_popup_open && hovered && input.mouse_clicked) {
+                this->m_binding_menu_key = false;
+                safe_mode::enabled.store(!safe_mode::active(), std::memory_order_relaxed);
+                // Also clears held/toggled binds and stale editing overlays.
+                xui::binds::reset_runtime();
+                if (safe_mode::active() && this->m_tab == 0) {
+                    this->m_tab = 1;
+                    this->m_subtab = 0;
+                }
+                this->close_search();
+                input.mouse_clicked = false;
+            }
+            const auto hover = xui::anim::lerp(xui::fnv1a("usr_safe_hover"), hovered ? 1.0f : 0.0f, 14.0f);
+            const auto color = (safe_mode::active() ? xdraw::color{155, 158, 166, 255} : xdraw::color{244, 151, 188, 255}).alpha(main_alpha);
+            top_dl.rect_filled(row.x, row.y, row.w, row.h, color.alpha(static_cast<std::uint8_t>(20.0f * hover * anim)), xdraw::corner_radius{6.0f});
+            xdraw::push_font(g_fonts.inter_medium[fonts::size::petite]);
+            top_dl.text(row.x + 10.0f, row.y + 11.0f, "Safe mode", color);
+            xdraw::pop_font();
+            const auto amount = xui::anim::lerp(xui::fnv1a("usr_safe_switch"), safe_mode::active() ? 1.0f : 0.0f, 14.0f);
+            const auto sx = row.right() - 34.0f;
+            const auto sy = row.y + 10.0f;
+            top_dl.rect_filled(sx, sy, 28.0f, 16.0f, xui::lerp(tokens::col_elevated.alpha(main_alpha), color, amount), xdraw::corner_radius{8.0f});
+            top_dl.circle_filled(sx + 7.5f + 13.0f * amount, sy + 8.0f, 5.0f, tokens::col_text.alpha(main_alpha));
         }
         // ─────────────────────────────────────────────────────────────
         // 2. DRAW SUB-WINDOW (Theme or Watermark)

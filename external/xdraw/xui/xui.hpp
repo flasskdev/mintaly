@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../xdraw.hpp"
+#include <utilities/safe_mode.hpp>
 
 #include <array>
 #include <functional>
@@ -331,7 +332,10 @@ namespace xui {
 
 		setting( bool v = {}, bind_info b = {}, std::string n = {}, std::string c = {} );
 
-		explicit operator bool( ) const noexcept { return this->value; }
+		[[nodiscard]] bool blocked() const noexcept {
+			return safe_mode::active() && safe_mode::restricted(this->category, this->name);
+		}
+		explicit operator bool( ) const noexcept { return !this->blocked() && this->value; }
 	};
 
 	namespace binds {
@@ -605,6 +609,7 @@ namespace xui {
 	bool checkbox( std::string_view label, setting& s );
 	bool toggle( std::string_view label, setting& s, std::string_view description = {} );
 	void section_header( std::string_view label );
+	void locked_control( std::string_view label );
 
 	bool slider_float( std::string_view label, float& v, float v_min, float v_max, std::string_view fmt = "%.2f" );
 	bool slider_int( std::string_view label, int& v, int v_min, int v_max, std::string_view fmt = "%d" );

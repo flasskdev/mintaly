@@ -192,7 +192,7 @@ namespace features::changer {
 						if ( applied_it != this->m_applied_weapons.end( ) 
 							&& applied_it->second.visual.weapon == weapon 
 							&& applied_it->second.skin == skin
-							&& applied_it->second.hud == hud_visual
+							&& cosmetic_cache::hud_reusable(applied_it->second.hud, hud_visual, handle == active_handle)
 							&& current_pk == skin.paint_kit_id 
 							&& current_id_high == 0xf0000000 
 							&& current_seed == skin.seed
@@ -205,6 +205,9 @@ namespace features::changer {
 							&& name_tag::matches( iv, skin.name_tag )
 							&& cosmetic_attributes::matches( iv, skin ) )
 						{
+							// The engine can reset the HUD mesh without changing its entity/model identity.
+							if (handle == active_handle)
+								this->update_view_model(local_pawn, g_econ_item_system.find_paint_kit(skin.paint_kit_id));
 							continue;
 						}
 
@@ -363,7 +366,8 @@ namespace features::changer {
 				if ( applied_it != this->m_applied_weapons.end( ) 
 					&& applied_it->second.visual.weapon == weapon 
 					&& applied_it->second.skin == skin
-					&& applied_it->second.hud == hud_visual
+					&& cosmetic_cache::hud_reusable(applied_it->second.hud, hud_visual,
+						handle == remote_active_handle && remote_hud != 0)
 					&& current_pk == skin.paint_kit_id 
 					&& current_id_high == 0xf0000000 
 					&& current_seed == skin.seed
@@ -424,7 +428,7 @@ namespace features::changer {
 
 		const auto pk = g_econ_item_system.find_paint_kit( skin->paint_kit_id );
 
-		this->rebuild_paint( weapon, handle, active_handle, pawn, pk );
+		if (!this->rebuild_paint( weapon, handle, active_handle, pawn, pk )) return false;
 		this->schedule_hud_clear( iv );
 		const auto original = this->m_original_weapons.find( handle );
 		if ( original == this->m_original_weapons.end( ) ) return false;
@@ -512,33 +516,28 @@ namespace features::changer {
 			 !write( iv, SCHEMA( "C_EconItemView", "m_iItemIDHigh"_hash ), saved.id_high ) ||
 			 !write( iv, SCHEMA( "C_EconItemView", "m_iItemIDLow"_hash ), saved.id_low ) ||
 			 !write( iv, SCHEMA( "C_EconItemView", "m_iItemID"_hash ), saved.item_id ) ) return false;
-		this->rebuild_paint( weapon, handle, active_handle, pawn, g_econ_item_system.find_paint_kit( saved.paint_kit ) );
+		if (!this->rebuild_paint( weapon, handle, active_handle, pawn, g_econ_item_system.find_paint_kit( saved.paint_kit ) )) return false;
 		this->schedule_hud_clear( iv );
 		this->m_applied_weapons.erase( handle );
 		this->m_original_weapons.erase( it );
 		return true;
 	}
 
-	void guns::rebuild_paint( std::uintptr_t weapon, std::uint32_t handle, std::uint32_t active_handle, std::uintptr_t pawn, const econ_item_system::paint_kit* pk )
+	bool guns::rebuild_paint( std::uintptr_t weapon, std::uint32_t handle, std::uint32_t active_handle, std::uintptr_t pawn, const econ_item_system::paint_kit* pk )
 	{
-		if ( !weapon || weapon < 0x10000 )
-		{
-			return;
-		}
+		if ( !weapon || weapon < 0x10000 || !visual_identity(weapon).ready() ) return false;
 
 		const auto subclass_ptr = memory::safe_read<std::uintptr_t>( weapon + SCHEMA( "C_BaseEntity", "m_nSubclassID"_hash ) + 0x8 ).value_or( 0 );
-		if ( !subclass_ptr )
-		{
-			return;
-		}
+		if ( !subclass_ptr ) return false;
+		const auto mesh_pattern = PATTERN(patterns::weapon_set_mesh_group_mask);
+		if (!mesh_pattern || !PATTERN(patterns::weapon_update_skin) ||
+			!PATTERN(patterns::weapon_update_composite_material)) return false;
+		const bool needs_hud = handle == active_handle &&
+			(pawn == systems::g_local.get().pawn || this->find_hud_model_weapon(pawn) != 0);
+		if (needs_hud && !visual_identity(this->find_hud_model_weapon(pawn)).ready()) return false;
 
 		const auto is_legacy = pk && pk->legacy_model;
 		const auto mesh_group = is_legacy ? std::uint64_t{ 2 } : std::uint64_t{ 1 };
-
-		if ( handle == active_handle )
-		{
-			this->update_view_model( pawn, pk );
-		}
 
 		const auto weapon_scene_node = memory::safe_read<std::uintptr_t>( weapon + SCHEMA( "C_BaseEntity", "m_pGameSceneNode"_hash ) ).value_or( 0 );
 		if ( weapon_scene_node && PATTERN( patterns::weapon_set_mesh_group_mask ) )
@@ -558,25 +557,19 @@ namespace features::changer {
 			memory::call<void>( PATTERN( patterns::weapon_update_skin ), weapon, true );
 		}
 
-
+		// Material rebuilding may recreate/reset the first-person scene. Apply its
+		// mesh last, and only cache success when the bound HUD model is ready.
+		return !needs_hud || this->update_view_model(pawn, pk);
 	}
 
-	void guns::update_view_model( std::uintptr_t pawn, const econ_item_system::paint_kit* pk )
+	bool guns::update_view_model( std::uintptr_t pawn, const econ_item_system::paint_kit* pk )
 	{
-		const auto view_model = this->find_hud_model_weapon( pawn );
-		if ( !view_model )
-		{
-			return;
-		}
-
-		const auto view_model_scene_node = memory::safe_read<std::uintptr_t>( view_model + SCHEMA( "C_BaseEntity", "m_pGameSceneNode"_hash ) ).value_or( 0 );
-		if ( !view_model_scene_node )
-		{
-			return;
-		}
-
+		const auto visual = visual_identity(this->find_hud_model_weapon(pawn));
+		const auto mesh_pattern = PATTERN(patterns::weapon_set_mesh_group_mask);
+		if (!visual.ready() || !mesh_pattern) return false;
 		const auto is_legacy = pk && pk->legacy_model;
-		memory::call<void>( PATTERN( patterns::weapon_set_mesh_group_mask ), view_model_scene_node, is_legacy ? std::uint64_t{ 2 } : std::uint64_t{ 1 } );
+		memory::call<void>(mesh_pattern, visual.scene, is_legacy ? std::uint64_t{2} : std::uint64_t{1});
+		return true;
 	}
 
 	std::uintptr_t guns::find_hud_model_weapon( std::uintptr_t pawn )

@@ -319,7 +319,10 @@ namespace rendering {
                                 xui::layout::spacing( 3.0f );
                                 xui::toggle( "Remove Visual Recoil", rem.recoil );
                                 xui::layout::spacing( 3.0f );
-                                xui::slider_float( "Flash Alpha", rem.flash_alpha, 0.0f, 100.0f, "%.0f%%" );
+                                if (safe_mode::active())
+                                        xui::locked_control("Flash Alpha");
+                                else
+                                        xui::slider_float( "Flash Alpha", rem.flash_alpha, 0.0f, 100.0f, "%.0f%%" );
 
                                 xui::layout::spacing( 8.0f );
                                 xui::toggle( "Remove Skybox Fog", rem.skybox_fog );

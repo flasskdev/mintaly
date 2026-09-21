@@ -13,4 +13,7 @@ struct identity {
 inline constexpr bool reusable(const identity& saved, const identity& current) {
     return saved.ready() && current.ready() && saved == current;
 }
+inline constexpr bool hud_reusable(const identity& saved, const identity& current, bool required) {
+    return required ? reusable(saved, current) : saved == current;
+}
 }

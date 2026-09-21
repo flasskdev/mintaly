@@ -383,6 +383,13 @@ namespace config {
 				{
 					auto s = static_cast<xui::setting*>(f.ptr);
                     json_to_bind(nullptr, s->bind);
+                    // Do not publish a forbidden true value, even during profile loading.
+                    if (s->blocked()) {
+                        s->value = false;
+                        if (j.is_object() && j.contains("b")) json_to_bind(j["b"], s->bind);
+                        s->bind.active = false;
+                        break;
+                    }
 
 					if (j.is_object())
 					{

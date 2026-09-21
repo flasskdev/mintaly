@@ -838,6 +838,10 @@ namespace xui {
 				return;
 			}
 
+			if (s->blocked()) {
+				s->value = false;
+				s->bind.active = false;
+			}
 			auto& reg = get_bind_registry( );
 
 			for ( const auto existing : reg.settings )
@@ -874,6 +878,11 @@ namespace xui {
 
 			for ( auto* s : reg.settings )
 			{
+				if (s && s->blocked()) {
+					s->value = false;
+					s->bind.active = false;
+					continue;
+				}
 				if ( !s || s->bind.key <= 0 || s->bind.key >= 256 )
 				{
 					continue;
@@ -980,6 +989,11 @@ namespace xui {
             reg.prime_keys = true;
             for (auto* s : reg.settings) {
                 if (!s) continue;
+                if (s->blocked()) {
+                    s->value = false;
+                    s->bind.active = false;
+                    continue;
+                }
                 s->bind.active = s->bind.key != 0 && s->bind.mode == bind_mode::toggle && s->value;
                 if (s->bind.key != 0 && s->bind.mode != bind_mode::toggle) {
                     s->value = s->bind.mode == bind_mode::hold_off;
@@ -4023,6 +4037,12 @@ namespace xui {
 
 	bool checkbox( std::string_view label, setting& s )
 	{
+		if (s.blocked()) {
+			s.value = false;
+			s.bind.active = false;
+			locked_control(label);
+			return false;
+		}
 		auto win = layout::current_window( );
 		if ( !win )
 		{
@@ -4234,8 +4254,42 @@ namespace xui {
         dl.text(abs.x, abs.y + (abs.h - text_h) * 0.5f, label, st.text);
     }
 
+    void locked_control(std::string_view label)
+    {
+        auto* win = layout::current_window();
+        if (!win) return;
+        const auto id = make_id(label);
+        overlays::close(id + 200);
+        auto& reg = binds::get_bind_registry();
+        if (reg.listening_setting == id + 300) reg.listening_setting = 0;
+        const auto row = layout::item(layout::avail().first, 30.0f);
+        win->last_item_is_toggle = false;
+        auto& c = get_ctx();
+        const bool hovered = !c.overlay_blocking() && c.input.in_rect(win->bounds) && c.input.in_rect(row);
+        const auto amount = anim::lerp(id + 98, hovered ? 1.0f : 0.0f, 12.0f);
+        auto& dl = draw::current();
+        dl.rect_filled(row.x, row.y, row.w, row.h,
+            c.style.text_dim.alpha(static_cast<std::uint8_t>(8.0f + 12.0f * amount)), xdraw::corner_radius{5.0f});
+        const auto display = parse_label(label).first;
+        const auto text_h = xdraw::measure_text(display).second;
+        dl.text(row.x + 6.0f, row.y + (row.h - text_h) * 0.5f,
+            truncate(display, std::max(0.0f, row.w - 72.0f)), c.style.text_dim);
+        const auto [badge_w, badge_h] = xdraw::measure_text("SAFE");
+        const auto badge_x = row.right() - badge_w - 10.0f;
+        dl.rect(badge_x - 5.0f, row.y + 6.0f, badge_w + 10.0f, 18.0f,
+            c.style.text_dim, xdraw::corner_radius{4.0f});
+        dl.text(badge_x, row.y + (row.h - badge_h) * 0.5f, "SAFE", c.style.text_dim);
+        if (hovered) set_hovered_tooltip(label, "Unavailable in SAFE MODE. Change the mode in the profile menu.");
+    }
+
     bool toggle(std::string_view label, setting& s, std::string_view description)
     {
+        if (s.blocked()) {
+            s.value = false;
+            s.bind.active = false;
+            locked_control(label);
+            return false;
+        }
         auto* win = layout::current_window();
         if (!win) return false;
         binds::register_setting(&s);
