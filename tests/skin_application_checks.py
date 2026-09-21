@@ -1,0 +1,73 @@
+"""Source-wiring regressions only: not a C++ compilation or CS2 runtime test."""
+from pathlib import Path
+import unittest
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def source(path):
+    return (ROOT / path).read_text(encoding="utf-8")
+
+
+def between(text, start, end):
+    return text.split(start, 1)[1].split(end, 1)[0]
+
+
+class SkinApplicationChecks(unittest.TestCase):
+    def test_missing_hud_does_not_block_item_writes(self):
+        guns = source("core/features/changer/impl/guns.cpp")
+        apply = between(guns, "bool guns::apply(", "bool guns::capture_original(")
+        self.assertNotIn("find_hud_model_weapon", apply)
+        self.assertIn("cosmetic_attributes::apply( iv, *skin )", apply)
+        self.assertLess(apply.index("this->rebuild_paint"), apply.index("original->second.cosmetic ="))
+
+    def test_world_rebuild_precedes_optional_hud_work(self):
+        guns = source("core/features/changer/impl/guns.cpp")
+        rebuild = between(guns, "bool guns::rebuild_paint(", "bool guns::update_view_model(")
+        self.assertLess(rebuild.index("entity_guard::rebuild_materials"), rebuild.index("this->update_view_model"))
+        hud_work = rebuild.split("if ( needs_hud", 1)[1]
+        self.assertNotIn("return false", hud_work)
+        self.assertIn('report_skin_failure( "hud-pending"', hud_work)
+        self.assertIn("entity_guard::current( *entity )", hud_work)
+
+    def test_hud_retry_only_completes_after_success(self):
+        guns = source("core/features/changer/impl/guns.cpp")
+        render = between(guns, "void guns::on_render_start(", "std::uintptr_t guns::find_hud_model_weapon(")
+        failure = between(render, "if (!this->update_view_model", "// Engine callbacks")
+        self.assertIn("return;", failure)
+        self.assertNotIn("hud_refresh_pending = false", failure)
+        self.assertIn("current->second.hud_refresh_pending = false", render)
+        self.assertIn("local.observer_pawn", render)
+        self.assertIn("bool hud_refresh_pending{true}", source("core/features/changer/changer.hpp"))
+
+    def test_hud_lookup_resolves_inherited_field_without_guessing_handles(self):
+        hud = source("core/features/changer/hud_weapon.hpp")
+        resolver = between(hud, "inline std::uint32_t weapon_handle_offset()", "// Multiple HUD")
+        self.assertIn('SCHEMA("C_CS2HudModelWeapon", "m_hWeapon"_hash)', resolver)
+        self.assertIn('SCHEMA("C_CS2HudModelBase", "m_hWeapon"_hash)', resolver)
+        self.assertIn("const auto weapon_offset = weapon_handle_offset();", hud)
+        self.assertIn("value_or(0xffffffffu) == active", hud)
+        self.assertIn("i < 128", hud)
+
+    def test_attribute_readback_uses_runtime_schema(self):
+        attrs = source("core/features/changer/cosmetic_attributes.hpp")
+        capture = between(attrs, "inline bool capture(", "inline bool matches(")
+        for field in ("m_AttributeList", "m_Attributes", "m_iAttributeDefinitionIndex", "m_flValue"):
+            self.assertIn(field, capture)
+        for old_offset in ("item_view + 0x210", "item_view + 0x218", "attribute + 0x30", "attribute + 0x34"):
+            self.assertNotIn(old_offset, capture)
+        self.assertIn("*count > 16384", capture)
+        self.assertIn("(*count && !*data)", capture)
+        self.assertIn("actual == saved", attrs)
+        self.assertIn("return matches(item_view, skin)", attrs)
+
+    def test_failures_have_rate_limited_diagnostics(self):
+        guns = source("core/features/changer/impl/guns.cpp")
+        self.assertIn("std::chrono::seconds( 5 )", guns)
+        for reason in ("attribute-dependencies", "original-snapshot", "attribute-readback", "world-material-rebuild", "hud-pending"):
+            self.assertIn('"' + reason + '"', guns)
+        self.assertIn("[skin-apply] reason=", guns)
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)

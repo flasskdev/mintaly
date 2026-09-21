@@ -39,18 +39,26 @@ namespace features::changer::cosmetic_attributes {
 
     [[nodiscard]] inline bool capture(std::uintptr_t item_view, snapshot& out) {
         out = {};
-        // Same build-dependent local-attribute layout already used in gloves.cpp.
-        const auto count = memory::safe_read<int>(item_view + 0x210);
-        const auto data = memory::safe_read<std::uintptr_t>(item_view + 0x218);
+        // Resolve fields from the running build, as weapon_attributes::capture does.
+        const auto list_offset = SCHEMA("C_EconItemView", "m_AttributeList"_hash);
+        const auto vector_offset = SCHEMA("CAttributeList", "m_Attributes"_hash);
+        const auto definition_offset = SCHEMA("CEconItemAttribute", "m_iAttributeDefinitionIndex"_hash);
+        const auto value_offset = SCHEMA("CEconItemAttribute", "m_flValue"_hash);
+        if (!item_view || !list_offset || !vector_offset || !definition_offset || !value_offset)
+            return false;
+        const auto vector = item_view + list_offset + vector_offset;
+        const auto count = memory::safe_read<int>(vector);
+        const auto data = memory::safe_read<std::uintptr_t>(vector + 0x8);
         if (!count || !data || *count < 0 || *count > 16384 || (*count && !*data))
             return false;
+        // CUtlVector and attribute stride remain build-dependent, shared with weapon_attributes.hpp.
         for (int i = 0; i < *count; ++i) {
             const auto attribute = *data + static_cast<std::uintptr_t>(i) * 0x48;
-            const auto index = memory::safe_read<std::uint16_t>(attribute + 0x30);
+            const auto index = memory::safe_read<std::uint16_t>(attribute + definition_offset);
             if (!index) return false;
             for (std::size_t slot = 0; slot < indices.size(); ++slot) {
                 if (*index != indices[slot] || out[slot].present) continue;
-                const auto bits = memory::safe_read<std::uint32_t>(attribute + 0x34);
+                const auto bits = memory::safe_read<std::uint32_t>(attribute + value_offset);
                 if (!bits) return false;
                 out[slot] = { *bits, true };
                 break;

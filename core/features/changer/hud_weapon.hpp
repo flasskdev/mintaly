@@ -6,6 +6,12 @@
 #include "entity_guard.hpp"
 
 namespace features::changer::hud_weapon {
+    inline std::uint32_t weapon_handle_offset() {
+        // schemas::lookup searches declared fields only, not inherited fields.
+        const auto direct = SCHEMA("C_CS2HudModelWeapon", "m_hWeapon"_hash);
+        return direct ? direct : SCHEMA("C_CS2HudModelBase", "m_hWeapon"_hash);
+    }
+
     // Multiple HUD children can coexist during a weapon switch. Never select
     // the first child by class alone, or overwrite a holstered weapon's model.
     inline std::uintptr_t find(std::uintptr_t pawn) {
@@ -13,7 +19,7 @@ namespace features::changer::hud_weapon {
         const auto services_offset = SCHEMA("C_BasePlayerPawn", "m_pWeaponServices"_hash);
         const auto active_offset = SCHEMA("CPlayer_WeaponServices", "m_hActiveWeapon"_hash);
         const auto arms_offset = SCHEMA("C_CSPlayerPawn", "m_hHudModelArms"_hash);
-        const auto weapon_offset = SCHEMA("C_CS2HudModelWeapon", "m_hWeapon"_hash);
+        const auto weapon_offset = weapon_handle_offset();
         const auto scene_offset = SCHEMA("C_BaseEntity", "m_pGameSceneNode"_hash);
         const auto child_offset = SCHEMA("CGameSceneNode", "m_pChild"_hash);
         const auto sibling_offset = SCHEMA("CGameSceneNode", "m_pNextSibling"_hash);
