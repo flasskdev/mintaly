@@ -293,6 +293,8 @@ namespace features::changer {
 		original_state m_original{};
 		std::array<attribute_state, 3> m_original_attributes{};
 		std::uintptr_t m_tracked_pawn{};
+		cosmetic_cache::identity m_glove_visual{};
+		cosmetic_cache::identity m_arms_visual{};
 		bool m_overridden{};
 	};
 

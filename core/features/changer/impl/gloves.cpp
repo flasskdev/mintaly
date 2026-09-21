@@ -54,6 +54,17 @@ namespace features::changer {
 		};
 		inline static std::unordered_map<std::uintptr_t, remote_glove_state> s_remote_gloves;
 
+		cosmetic_cache::identity glove_visual( std::uintptr_t entity )
+		{
+			cosmetic_cache::identity result{};
+			result.weapon = entity;
+			if ( !entity ) return result;
+			result.scene = memory::safe_read<std::uintptr_t>( entity + SCHEMA( "C_BaseEntity", "m_pGameSceneNode"_hash ) ).value_or( 0 );
+			if ( result.scene )
+				result.model = memory::safe_read<std::uintptr_t>( result.scene + SCHEMA( "CSkeletonInstance", "m_modelState"_hash ) + SCHEMA( "CModelState", "m_hModel"_hash ) ).value_or( 0 );
+			return result;
+		}
+
 	} // namespace detail
 
 	void gloves::on_frame_stage_notify( )
@@ -104,10 +115,16 @@ namespace features::changer {
 					const auto current_def = memory::read<std::uint16_t>( item_view + SCHEMA( "C_EconItemView", "m_iItemDefinitionIndex"_hash ) );
 					const auto current_id = memory::read<std::uint64_t>( item_view + SCHEMA( "C_EconItemView", "m_iItemID"_hash ) );
 					const auto needs_reapply = memory::read<bool>( local_pawn + SCHEMA( "C_CSPlayerPawn", "m_bNeedToReApplyGloves"_hash ) );
+					const auto arms_handle = memory::safe_read<std::uint32_t>( local_pawn + SCHEMA( "C_CSPlayerPawn", "m_hHudModelArms"_hash ) ).value_or( 0 );
+					const auto arms_visual = detail::glove_visual( systems::g_entities.lookup( arms_handle ) );
+					const auto pawn_visual = detail::glove_visual( local_pawn );
 
 					if ( !( current_def == static_cast< std::uint16_t >( selected_glove_def->def_index ) &&
 						current_id == detail::faux_item_id &&
 						this->paint_attributes_match( item_view, *selected_skin ) &&
+						this->m_glove_visual == pawn_visual && this->m_arms_visual == arms_visual &&
+						memory::safe_read<bool>( item_view + SCHEMA( "C_EconItemView", "m_bInitialized"_hash ) ).value_or( false ) &&
+						memory::safe_read<bool>( item_view + SCHEMA( "C_EconItemView", "m_bDisallowSOC"_hash ) ).value_or( false ) &&
 						!needs_reapply ) )
 					{
 						auto steam_id = steam::user::get_steam_id( );
@@ -116,6 +133,9 @@ namespace features::changer {
 							steam_id = memory::read<std::uint64_t>( local_ctrl + SCHEMA( "CBasePlayerController", "m_steamID"_hash ) );
 						}
 						this->apply( local_pawn, item_view, local_team, *selected_glove_def, *selected_skin, static_cast< std::uint32_t >( steam_id ) );
+						// Keep the pre-refresh identity so a newly created arms model is retried.
+						this->m_glove_visual = pawn_visual;
+						this->m_arms_visual = arms_visual;
 					}
 				}
 			}
@@ -456,6 +476,8 @@ namespace features::changer {
 		this->m_original = {};
 		this->m_original_attributes = {};
 		this->m_tracked_pawn = 0;
+		this->m_glove_visual = {};
+		this->m_arms_visual = {};
 		this->m_overridden = false;
 		detail::s_remote_gloves.clear( );
 	}

@@ -106,8 +106,17 @@ namespace features::changer::hud_weapon {
             SCHEMA("C_BaseEntity", "m_pGameSceneNode"_hash)).value_or(0);
         if (!scene) return false;
         const auto name = memory::safe_read<std::uintptr_t>(scene + state + name_offset).value_or(0);
-        if (!name || !cosmetic_model::matches(memory::read_string(name), target)) {
-            if (!entity_guard::set_model(*hud, target.c_str())) return false;
+        const bool changed_model = !name || !cosmetic_model::matches(memory::read_string(name), target);
+        if (changed_model && !entity_guard::set_model(*hud, target.c_str())) return false;
+        if (!entity_guard::current(*player) || !entity_guard::current(*weapon) ||
+            active_handle() != handle || find(pawn) != hud->entity) return false;
+        if (!entity_guard::set_mesh(*hud, mesh)) return false;
+        if (bind || model_mismatch || changed_model) {
+            // Refresh through the real econ weapon AFTER HUD binding/SetModel.
+            // C_CS2HudModelWeapon is not an econ entity; never write an item view into it.
+            const auto skin = PATTERN(patterns::weapon_update_skin);
+            if (!skin) return false;
+            memory::call<void>(skin, weapon->entity, true);
         }
         if (!entity_guard::current(*player) || !entity_guard::current(*weapon) ||
             active_handle() != handle || find(pawn) != hud->entity) return false;
