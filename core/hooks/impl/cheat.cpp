@@ -1803,6 +1803,16 @@ namespace hooks {
 			return;
 		}
 
+		if (safe_mode::active())
+		{
+			// Undo a previous partial-alpha override before the engine draws the flash.
+			const auto pawn = systems::g_local.get().view_pawn();
+			const auto offset = SCHEMA("C_CSPlayerPawnBase", "m_flFlashMaxAlpha"_hash);
+			if (pawn && offset) memory::safe_write<float>(pawn + offset, 255.0f);
+			m_draw_flash_effect.call<void>(a1, a2, a3, a4, a5);
+			return;
+		}
+
 		if ( settings::g_misc.m_removals.flash_alpha.value < 100.0f && settings::g_misc.m_removals.flash_alpha.value != 0.0f )
 		{
 			const auto view_pawn = systems::g_local.get( ).view_pawn( );
