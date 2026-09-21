@@ -2,6 +2,7 @@
 #include "../preview_scene.hpp"
 #include "../preview_item.hpp"
 #include "../hud_weapon.hpp"
+#include <utilities/cosmetic_model.hpp>
 #include <utilities/memory/memory.hpp>
 #include <utilities/addresses/addresses.hpp>
 #include <core/systems/systems.hpp>
@@ -564,13 +565,47 @@ namespace features::changer {
 
 	bool guns::update_view_model( std::uintptr_t pawn, const econ_item_system::paint_kit* pk )
 	{
-		const auto visual = visual_identity(this->find_hud_model_weapon(pawn));
+		const auto hud = this->find_hud_model_weapon(pawn);
+		auto visual = visual_identity(hud);
 		const auto mesh_pattern = PATTERN(patterns::weapon_set_mesh_group_mask);
-		if (!visual.ready() || !mesh_pattern) return false;
+		const auto get_model = PATTERN(patterns::weapon_get_model_path);
+		const auto set_model = PATTERN(patterns::set_player_model);
+		if (!visual.ready() || !mesh_pattern || !get_model || !set_model) return false;
+		const auto services = memory::safe_read<std::uintptr_t>(pawn + SCHEMA("C_BasePlayerPawn", "m_pWeaponServices"_hash)).value_or(0);
+		const auto active = services ? memory::safe_read<std::uint32_t>(services + SCHEMA("CPlayer_WeaponServices", "m_hActiveWeapon"_hash)).value_or(0) : 0;
+		const auto weapon = systems::g_entities.lookup(active);
+		if (!weapon) return false;
+		const auto iv = weapon + SCHEMA("C_EconEntity", "m_AttributeManager"_hash) + SCHEMA("C_AttributeContainer", "m_Item"_hash);
+		const auto target = memory::call<const char*>(get_model, iv);
+		if (!target || !*target) return false;
+		const auto state_offset = SCHEMA("CSkeletonInstance", "m_modelState"_hash);
+		const auto name_offset = SCHEMA("CModelState", "m_ModelName"_hash);
+		if (!state_offset || !name_offset) return false;
+		const auto current_name = memory::safe_read<std::uintptr_t>(visual.scene + state_offset + name_offset).value_or(0);
+		if (!current_name || !cosmetic_model::matches(memory::read_string(current_name), target)) {
+			// Use the same engine model update as the knife changer; a mesh mask alone
+			// cannot repair a stale first-person model after a loadout/config change.
+			memory::call<void>(set_model, hud, target);
+			visual = visual_identity(hud);
+			if (!visual.ready()) return false;
+		}
+		if (this->find_hud_model_weapon(pawn) != hud) return false;
 		const auto is_legacy = pk && pk->legacy_model;
 		memory::call<void>(mesh_pattern, visual.scene, is_legacy ? std::uint64_t{2} : std::uint64_t{1});
 		return true;
 	}
+
+	void guns::on_render_start( )
+	{
+		const auto pawn = preview_scene::player_pawn(systems::g_local.get().controller);
+		if (!preview_scene::player_ready(pawn)) return;
+		const auto services = memory::safe_read<std::uintptr_t>(pawn + SCHEMA("C_BasePlayerPawn", "m_pWeaponServices"_hash)).value_or(0);
+		if (!services) return;
+		const auto handle = memory::safe_read<std::uint32_t>(services + SCHEMA("CPlayer_WeaponServices", "m_hActiveWeapon"_hash)).value_or(0);
+		auto found = this->m_applied_weapons.find(handle);
+		if (found == this->m_applied_weapons.end() || !found->second.hud_refresh_pending) return;
+		const auto weapon = systems::g_entities.lookup(handle);
+		if (!cosmetic_cache::reusable(found->second.visual, visual
 
 	std::uintptr_t guns::find_hud_model_weapon( std::uintptr_t pawn )
 	{

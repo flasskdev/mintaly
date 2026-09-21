@@ -1450,20 +1450,22 @@ namespace rendering {
         const auto [tw, th] = xdraw::measure_text("mintaly");
         dl.text(badge_x + badge_size + 13.0f, badge_y + (badge_size - th) * 0.5f, "mintaly", tokens::col_text);
         xdraw::pop_font();
-        xdraw::push_font(g_fonts.inter_medium[fonts::size::petite]);
-        const auto mode_color = safe_mode::active() ? xdraw::color{155, 158, 166, 255} : xdraw::color{244, 151, 188, 255};
-        dl.text(sb_x + 20.0f, sb_y + 65.0f, safe_mode::active() ? "SAFE MODE" : "UNSAFE MODE", mode_color);
-        xdraw::pop_font();
         dl.line(sb_x + 1.0f, sb_y + 82.0f, sb_x + sb_w, sb_y + 82.0f, tokens::col_border);
         constexpr std::array<const char*, 7> names{ { "Ragebot", "Legitbot", "Movement", "Visuals", "Skins", "Misc", "Configs" } };
         float curr_y = sb_y + 98.0f;
         const auto raw_expand = xui::anim::lerp(xui::fnv1a("visuals_sidebar_expand"), this->m_visuals_expanded ? 1.0f : 0.0f, 8.0f);
         const auto expand_anim = xui::ease::smoothstep(raw_expand);
+        const float rage_target = safe_mode::active() ? 0.0f : 1.0f;
+        const float rage_reveal = xui::ease::smoothstep(xui::anim::lerp(
+            xui::fnv1a("rage_sidebar_reveal"), rage_target, 12.0f, rage_target));
         for (int i = 0; i < static_cast<int>(names.size()); ++i)
         {
-            if (i == 0 && safe_mode::active()) continue;
-            const xui::rect button{ sb_x + 10.0f, curr_y, sb_w - 20.0f, 37.0f };
-            const bool hovered = input.in_rect(button) && !ctx.overlay_blocking();
+            const float reveal = i == 0 ? rage_reveal : 1.0f;
+            if (i == 0 && reveal < 0.001f) continue;
+            if (i == 0) dl.push_clip(sb_x, curr_y, sb_w, 42.0f * reveal);
+            const xui::rect button{ sb_x + 10.0f - (1.0f - reveal) * 12.0f, curr_y, sb_w - 20.0f, 37.0f };
+            const bool hovered = (i != 0 || (!safe_mode::active() && reveal > 0.98f)) &&
+                input.in_rect(button) && !ctx.overlay_blocking();
             const bool active = this->m_tab == i;
             if (!this->m_search_open && hovered && input.mouse_clicked)
             {
@@ -1504,7 +1506,7 @@ namespace rendering {
                 dl.rect_filled(button.x - 2.0f, button.y + 6.0f, 7.0f, 25.0f, tokens::col_accent.alpha(28), xdraw::corner_radius{ 3.5f });
                 dl.rect_filled(button.x, button.y + 8.0f, 3.0f, 21.0f, tokens::col_accent, xdraw::corner_radius{ 1.5f });
             }
-            const auto icon_color = active ? tokens::col_accent : xui::lerp(tokens::col_text_dim, tokens::col_text, amount);
+            const auto icon_color = xui::alpha_mod(active ? tokens::col_accent : xui::lerp(tokens::col_text_dim, tokens::col_text, amount), reveal);
             const auto cx = button.x + 22.0f;
             const auto cy = button.y + button.h * 0.5f;
             switch (i)
@@ -1567,7 +1569,7 @@ namespace rendering {
             xdraw::push_font(g_fonts.inter_medium[fonts::size::petite]);
             const auto text_h = xdraw::measure_text(names[i]).second;
             dl.text(button.x + 43.0f, button.y + (button.h - text_h) * 0.5f,
-                names[i], active ? tokens::col_text : icon_color);
+                names[i], active ? xui::alpha_mod(tokens::col_text, reveal) : icon_color);
             if (i == 3)
             {
                 const auto ch_x = button.x + button.w - 14.0f;
@@ -1583,10 +1585,11 @@ namespace rendering {
                 dl.line(p2_x, p2_y, p3_x, p3_y, ch_color, 1.2f);
             }
             xdraw::pop_font();
+            if (i == 0) dl.pop_clip();
             const float sub_area_y = curr_y + 42.0f;
             const float total_sub_h = 64.0f;
             const float current_sub_h = total_sub_h * expand_anim;
-            curr_y += 42.0f;
+            curr_y += 42.0f * reveal;
             if (i == 3)
             {
                 if (expand_anim > 0.001f)
@@ -1763,6 +1766,7 @@ namespace rendering {
     void menu::update_ui_state()
     {
         // Called before widgets, also while the menu is closed.
+        settings::enforce_safe_mode();
         const auto preset = theme::normalize(settings::g_misc.menu_palette.value);
         settings::g_misc.menu_palette.value = preset;
         theme::apply(preset);
@@ -1829,6 +1833,14 @@ namespace rendering {
         const auto& input = xui::ctx().input;
         const auto content_x = this->m_x + tokens::gap + menu::k_sidebar_w + tokens::gap;
         const auto bar_y = this->m_y + tokens::gap;
+        const auto inner_pad = 4.0f;
+        const auto subtab_h = tokens::subtab_bar_h - inner_pad * 2.0f;
+        const auto util_w = inner_pad + subtab_h + inner_pad;
+        const auto util_x = content_x + w - util_w;
+        xdraw::push_font(g_fonts.inter_medium[fonts::size::petite]);
+        const auto mode_w = xdraw::measure_text("UNSAFE MODE").first;
+        xdraw::pop_font();
+        const auto mode_left = util_x - mode_w - 14.0f;
         // Page title ("Ragebot", etc.)
         constexpr const char* page_titles[7] = {
             "RAGEBOT", "LEGITBOT", "MOVEMENT", "VISUALS", "SKINS", "MISC", "CONFIGS"
@@ -1852,10 +1864,18 @@ namespace rendering {
             float curr_x = content_x + title_w + 24.0f;
             const auto pill_y = bar_y + (tokens::subtab_bar_h - 26.0f) * 0.5f;
             xdraw::push_font(rendering::g_fonts.inter_medium[rendering::fonts::size::petite]);
+            const float pill_gap = subtabs.count > 4 ? 4.0f : 8.0f;
+            float natural_width = 0.0f;
+            for (int s = 0; s < subtabs.count; ++s)
+                natural_width += xdraw::measure_text(subtabs.names[s]).first + (subtabs.count > 4 ? 12.0f : 20.0f);
+            const float available_width = std::max(0.0f, mode_left - 12.0f - curr_x - pill_gap * (subtabs.count - 1));
+            const float pill_scale = natural_width > 0.0f ? std::min(1.0f, available_width / natural_width) : 1.0f;
             for (int s = 0; s < subtabs.count; ++s)
             {
-                const auto [tw, th] = xdraw::measure_text(subtabs.names[s]);
-                const auto pw = tw + (subtabs.count > 4 ? 12.0f : 20.0f);
+                const auto natural = xdraw::measure_text(subtabs.names[s]).first;
+                const auto pw = (natural + (subtabs.count > 4 ? 12.0f : 20.0f)) * pill_scale;
+                const auto pill_label = xui::truncate(subtabs.names[s], std::max(0.0f, pw - 8.0f));
+                const auto [tw, th] = xdraw::measure_text(pill_label);
                 const auto ph = 26.0f;
                 const xui::rect pill_rect{ curr_x, pill_y, pw, ph };
                 const bool is_active = (this->m_subtab == s);
@@ -1871,7 +1891,7 @@ namespace rendering {
                 {
                     dl.rect_filled(curr_x, pill_y, pw, ph, tokens::col_accent.alpha(35), xdraw::corner_radius{ 13.0f });
                     dl.rect(curr_x, pill_y, pw, ph, tokens::col_accent, xdraw::corner_radius{ 13.0f }, 1.0f);
-                    dl.text(curr_x + (pw - tw) * 0.5f, pill_y + (ph - th) * 0.5f, subtabs.names[s], tokens::col_accent);
+                    dl.text(curr_x + (pw - tw) * 0.5f, pill_y + (ph - th) * 0.5f, pill_label, tokens::col_accent);
                 }
                 else
                 {
@@ -1879,7 +1899,7 @@ namespace rendering {
                     {
                         dl.rect_filled(curr_x, pill_y, pw, ph, tokens::col_elevated.alpha(120), xdraw::corner_radius{ 13.0f });
                     }
-                    dl.text(curr_x + (pw - tw) * 0.5f, pill_y + (ph - th) * 0.5f, subtabs.names[s], is_hovered ? tokens::col_text : tokens::col_text_dim);
+                    dl.text(curr_x + (pw - tw) * 0.5f, pill_y + (ph - th) * 0.5f, pill_label, is_hovered ? tokens::col_text : tokens::col_text_dim);
                 }
                 curr_x += pw + (subtabs.count > 4 ? 4.0f : 8.0f);
             }
@@ -1888,11 +1908,14 @@ namespace rendering {
         if (tab_idx != static_cast<int>(tab::skins))
             dl.line(this->m_x + menu::k_sidebar_w + tokens::gap, this->m_y + 67.0f,
                 this->m_x + this->m_w - 1.0f, this->m_y + 67.0f, tokens::col_border);
+        // Mode status stays immediately to the left of Search.
+        xdraw::push_font(g_fonts.inter_medium[fonts::size::petite]);
+        const char* mode_label = safe_mode::active() ? "SAFE MODE" : "UNSAFE MODE";
+        const auto [mode_text_w, mode_text_h] = xdraw::measure_text(mode_label);
+        const auto mode_color = safe_mode::active() ? xdraw::color{155, 158, 166, 255} : xdraw::color{244, 151, 188, 255};
+        dl.text(util_x - 14.0f - mode_text_w, bar_y + (tokens::subtab_bar_h - mode_text_h) * 0.5f, mode_label, mode_color);
+        xdraw::pop_font();
         // Utility: Search button on the right
-        const auto inner_pad{ 4.0f };
-        const auto subtab_h = tokens::subtab_bar_h - inner_pad * 2.0f;
-        const auto util_w = inner_pad + subtab_h + inner_pad;
-        const auto util_x = content_x + w - util_w;
         dl.rect_filled(util_x, bar_y, util_w, tokens::subtab_bar_h, tokens::col_card, xdraw::corner_radius{ tokens::card_rounding });
         dl.rect(util_x, bar_y, util_w, tokens::subtab_bar_h, tokens::col_elevated.alpha(180), xdraw::corner_radius{ tokens::card_rounding }, 1.0f);
         const auto search_anim = xui::anim::lerp(xui::fnv1a("menu_topbar_search_anim"), this->m_search_open ? 1.0f : 0.0f, 18.0f);
@@ -2264,7 +2287,14 @@ namespace rendering {
         {
             const xui::rect row_rect{ main_x + 6.0f, item_y, main_w - 12.0f, item_h };
             xdraw::push_font(g_fonts.inter_medium[fonts::size::petite]);
-            top_dl.text(row_rect.x + 10.0f, row_rect.y + (item_h - 14.0f) * 0.5f, "Menu key",
+            const auto key_icon_color = tokens::col_text_dim.alpha(main_alpha);
+            const auto key_icon_x = row_rect.x + 14.0f;
+            const auto key_icon_y = row_rect.y + item_h * 0.5f;
+            top_dl.rect(key_icon_x - 6.0f, key_icon_y - 4.5f, 12.0f, 9.0f, key_icon_color, xdraw::corner_radius{2.0f}, 1.1f);
+            for (int k = 0; k < 3; ++k)
+                top_dl.circle_filled(key_icon_x - 3.5f + 3.5f * k, key_icon_y - 1.5f, 0.7f, key_icon_color);
+            top_dl.line(key_icon_x - 3.0f, key_icon_y + 2.0f, key_icon_x + 3.0f, key_icon_y + 2.0f, key_icon_color, 1.0f);
+            top_dl.text(row_rect.x + 28.0f, row_rect.y + (item_h - 14.0f) * 0.5f, "Menu key",
                 tokens::col_text.alpha(main_alpha));
             const float kb_w = 72.0f;
             const float kb_h = 24.0f;
@@ -2396,9 +2426,7 @@ namespace rendering {
             const bool hovered = input.in_rect(row);
             if (this->m_user_popup_open && hovered && input.mouse_clicked) {
                 this->m_binding_menu_key = false;
-                safe_mode::enabled.store(!safe_mode::active(), std::memory_order_relaxed);
-                // Also clears held/toggled binds and stale editing overlays.
-                xui::binds::reset_runtime();
+                settings::set_safe_mode(!safe_mode::active());
                 if (safe_mode::active() && this->m_tab == 0) {
                     this->m_tab = 1;
                     this->m_subtab = 0;
@@ -2410,7 +2438,13 @@ namespace rendering {
             const auto color = (safe_mode::active() ? xdraw::color{155, 158, 166, 255} : xdraw::color{244, 151, 188, 255}).alpha(main_alpha);
             top_dl.rect_filled(row.x, row.y, row.w, row.h, color.alpha(static_cast<std::uint8_t>(20.0f * hover * anim)), xdraw::corner_radius{6.0f});
             xdraw::push_font(g_fonts.inter_medium[fonts::size::petite]);
-            top_dl.text(row.x + 10.0f, row.y + 11.0f, "Safe mode", color);
+            const auto shield_x = row.x + 14.0f;
+            const auto shield_y = row.y + item_h * 0.5f;
+            const std::array<float, 12> shield{{shield_x, shield_y - 6.0f, shield_x + 5.0f, shield_y - 3.0f,
+                shield_x + 4.0f, shield_y + 3.0f, shield_x, shield_y + 6.0f,
+                shield_x - 4.0f, shield_y + 3.0f, shield_x - 5.0f, shield_y - 3.0f}};
+            top_dl.polyline(shield, color, true, 1.1f);
+            top_dl.text(row.x + 28.0f, row.y + 11.0f, "Safe mode", color);
             xdraw::pop_font();
             const auto amount = xui::anim::lerp(xui::fnv1a("usr_safe_switch"), safe_mode::active() ? 1.0f : 0.0f, 14.0f);
             const auto sx = row.right() - 34.0f;

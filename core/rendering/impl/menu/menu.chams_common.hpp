@@ -81,12 +81,19 @@ inline static void draw_chams_layer( const char* label, const char* popup_id, se
 	}
 }
 
-inline static void draw_chams_config( const char* label, const char* id_suffix, settings::esp::chams_config& cfg, bool show_overlay = true, bool show_through_wall = true )
+inline static void draw_chams_config( const char* label, const char* id_suffix, settings::esp::chams_config& cfg, bool show_overlay = true, bool show_through_wall = true, float* duration = nullptr )
 {
 	xui::toggle( label, cfg.enabled );
 
 	char label_buf[ 64 ]{};
 	char popup_id[ 64 ]{};
+	if (duration) {
+		std::snprintf(popup_id, sizeof(popup_id), "##chams_settings_%s", id_suffix);
+		if (xui::begin_popup(popup_id, 220.0f)) {
+			xui::slider_float("duration##ft", *duration, 0.05f, 5.0f, "%.2f s");
+			xui::end_popup();
+		}
+	}
 
 	std::snprintf( label_buf, sizeof( label_buf ), "primary layer##%s", id_suffix );
 	std::snprintf( popup_id, sizeof( popup_id ), "##primary_%s", id_suffix );

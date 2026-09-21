@@ -296,8 +296,7 @@ xui::checkbox("filled##overlay", chams.overlay.filled);
 					xui::layout::separator();
 					detail::draw_chams_config("backtrack chams", "bt", p.m_chams.backtrack, false);
 					/*					xui::layout::separator (); not enough menu space with this*/
-					detail::draw_chams_config("onshot chams", "os", p.m_chams.onshot, false);
-					xui::slider_float("duration##ft", p.m_chams.onshot_fade_time, 0.05f, 5.0f, "%.2f s");
+					detail::draw_chams_config("onshot chams", "os", p.m_chams.onshot, false, true, &p.m_chams.onshot_fade_time.value);
 				}
 				xui::end_child();
 			}

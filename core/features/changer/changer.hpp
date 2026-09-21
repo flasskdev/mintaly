@@ -302,6 +302,7 @@ namespace features::changer {
 		void on_frame_stage_notify( );
 		void on_lobby( );
 		void reset( ); // Level teardown, on the game thread.
+		void on_render_start( ); // Complete pending first-person material updates after the engine stage.
 		void invalidate( ) { m_invalidate_pending.store( true ); }
 
 	private:
@@ -344,6 +345,7 @@ namespace features::changer {
             cosmetic_cache::identity visual{};
             settings::changer::applied_skin skin{};
             cosmetic_cache::identity hud{};
+            bool hud_refresh_pending{true};
         };
         std::unordered_map<std::uint32_t, applied_weapon> m_applied_weapons{};
 		std::uintptr_t m_pending_hud_iv{};

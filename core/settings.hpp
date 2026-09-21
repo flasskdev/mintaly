@@ -2388,6 +2388,31 @@ namespace settings {
         inline movement g_movement{};
         inline world g_world{};
 
+        inline void enforce_safe_mode()
+        {
+                if (!safe_mode::active()) return;
+                xui::binds::disable_restricted();
+                // Flash alpha is numeric, not an xui::setting. Clear any held override too.
+                auto& alpha = g_misc.m_removals.flash_alpha.value;
+                alpha = 100.0f;
+                if (auto* entry = xui::slider_binds::find_by_ptr(&alpha)) {
+                        entry->base_value = 100.0;
+                        entry->has_base_value = false;
+                        for (auto& bind : entry->binds) bind.active = false;
+                }
+        }
+
+        inline void set_safe_mode(bool enabled)
+        {
+                safe_mode::enabled.store(enabled, std::memory_order_relaxed);
+                enforce_safe_mode();
+                // Close editing UI, without resetting unrelated hold/toggle settings.
+                xui::overlays::close_all();
+                xui::ctx().active_slider = xui::null_id;
+                xui::ctx().active_slider_edit = xui::null_id;
+                xui::ctx().active_keybind = xui::null_id;
+        }
+
         inline void finalize_binds()
         {
                 auto& aa = g_combat.m_antiaim;
@@ -2415,6 +2440,7 @@ namespace settings {
                                 g_combat.m_ragebot.weapons[i].cfg.copy_values_from(g_combat.m_ragebot.groups[grp_idx]);
                         }
                 }
+                enforce_safe_mode();
         }
 
 } // namespace settings

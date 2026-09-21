@@ -860,6 +860,16 @@ namespace xui {
 			reg.settings.push_back( s );
 		}
 
+		void disable_restricted( )
+		{
+			if (!safe_mode::active()) return;
+			for (auto* s : get_bind_registry().settings) {
+				if (!s || !s->blocked()) continue;
+				s->value = false;
+				s->bind.active = false;
+			}
+		}
+
 		void unregister_setting( setting* s )
 		{
 			auto& reg = get_bind_registry( );
@@ -1414,6 +1424,7 @@ namespace xui {
 
 			const auto local = rect{ win->cursor_x, win->cursor_y, w, h };
 			win->last_item = local;
+			win->last_item_locked = false;
 			win->last_item_is_toggle = false;
 			win->last_toggle_x = 0.0f;
 			win->line_h = h;
@@ -3449,6 +3460,11 @@ namespace xui {
 		{
 			return false;
 		}
+		// Popups belong to the preceding control, including their gear/swatch.
+		if (win->last_item_locked) {
+			if (auto* popup = overlays::find(make_id(label))) popup->force_close();
+			return false;
+		}
 
 		auto& c = get_ctx( );
 		const auto id = make_id( label );
@@ -4263,6 +4279,7 @@ namespace xui {
         auto& reg = binds::get_bind_registry();
         if (reg.listening_setting == id + 300) reg.listening_setting = 0;
         const auto row = layout::item(layout::avail().first, 30.0f);
+        win->last_item_locked = true;
         win->last_item_is_toggle = false;
         auto& c = get_ctx();
         const bool hovered = !c.overlay_blocking() && c.input.in_rect(win->bounds) && c.input.in_rect(row);
@@ -4748,10 +4765,12 @@ namespace xui {
             if (!ptr) return;
             auto& store = get_storage();
             store.config_keys[ptr] = key;
-            get_or_create(ptr, field_id(key), {},
+            auto* entry = get_or_create(ptr, field_id(key), {},
                 is_integral ? static_cast<float>(std::numeric_limits<int>::lowest()) : std::numeric_limits<float>::lowest(),
                 is_integral ? static_cast<float>(std::numeric_limits<int>::max()) : std::numeric_limits<float>::max(),
                 is_integral, is_integral ? "%d" : "%.2f");
+            if (key == static_cast<std::uint32_t>(fnv1a("removals.flash alpha")))
+                entry->safe_mode_value = 100.0;
         }
 
 		slider_bind_entry* find_by_ptr( void* ptr )
@@ -4789,6 +4808,14 @@ namespace xui {
 			for ( auto& [id, entry_ptr] : store.by_id )
 			{
 				auto* entry = entry_ptr.get( );
+				if (entry && entry->ptr && safe_mode::active() && entry->safe_mode_value) {
+					if (entry->is_integral) *static_cast<int*>(entry->ptr) = static_cast<int>(*entry->safe_mode_value);
+					else *static_cast<float*>(entry->ptr) = static_cast<float>(*entry->safe_mode_value);
+					entry->base_value = *entry->safe_mode_value;
+					entry->has_base_value = false;
+					for (auto& bind : entry->binds) bind.active = false;
+					continue;
+				}
 				if ( !entry || !entry->ptr || entry->count == 0 )
 				{
 					continue;
