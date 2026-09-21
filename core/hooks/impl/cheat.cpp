@@ -498,6 +498,7 @@ namespace hooks {
 			return;
 		}
 
+		settings::enforce_safe_mode();
 		const auto local_player_controller = memory::safe_read<std::uintptr_t>( addresses::globals::local_player_controller ).value_or( 0 );
 		if ( !local_player_controller )
 		{
@@ -609,6 +610,10 @@ namespace hooks {
 		if ( stage == 12 )
 			detail::reconcile_preview_scene( );
 
+		// Finish previously queued HUD work before applying newly selected skins.
+		// A selection first seen at stage 12 therefore waits until the next render start.
+		if (stage == 12) features::changer::g_guns.on_render_start();
+
 		if ( stage == 6 || stage == 7 || stage == 12 )
 		{
 			// Apply after network data, independently of the listener's camera/alive state.
@@ -657,6 +662,7 @@ namespace hooks {
 
 	void __fastcall cheat::create_move( std::uintptr_t thisptr, int slot, bool active )
 	{
+		settings::enforce_safe_mode();
 		if ( lifecycle::is_unloading( ) || is_level_shutting_down( ) )
 		{
 			return m_create_move.call<void>( thisptr, slot, active );

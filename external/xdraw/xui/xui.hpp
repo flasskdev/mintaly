@@ -350,6 +350,7 @@ namespace xui {
 
 		void clear_all( );
 		void reset_runtime( );
+		void disable_restricted( );
 
 		[[nodiscard]] std::uintptr_t listening_id( );
 
@@ -380,6 +381,7 @@ namespace xui {
 		bool is_integral{ true };
 		double base_value{ 0.0 };
 		bool has_base_value{ false };
+		std::optional<double> safe_mode_value{};
 		std::size_t count{ 0 };
 		slider_bind binds[ k_max_binds ]{};
 	};
@@ -485,6 +487,7 @@ namespace xui {
 		float cursor_y{};
 		float line_h{};
 		rect last_item{};
+		bool last_item_locked{ false };
 		bool is_child{};
 		float content_h{};
 		std::uintptr_t group_id{ null_id };

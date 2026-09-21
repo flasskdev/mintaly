@@ -437,6 +437,10 @@ namespace config {
 					else if (j.is_number()) *static_cast<std::uint8_t*>(f.ptr) = static_cast<std::uint8_t>(j.get<double>());
 					break;
 				case field_type::float_val:
+                    if (safe_mode::active() && f.key == detail::make_key("removals", "flash alpha")) {
+                        *static_cast<float*>(f.ptr) = 100.0f;
+                        break;
+                    }
 					if (j.is_number()) *static_cast<float*>(f.ptr) = static_cast<float>(j.get<double>());
 					break;
 				case field_type::color:
