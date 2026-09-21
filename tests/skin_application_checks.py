@@ -46,8 +46,17 @@ class SkinApplicationChecks(unittest.TestCase):
         self.assertIn('SCHEMA("C_CS2HudModelWeapon", "m_hWeapon"_hash)', resolver)
         self.assertIn('SCHEMA("C_CS2HudModelBase", "m_hWeapon"_hash)', resolver)
         self.assertIn("const auto weapon_offset = weapon_handle_offset();", hud)
-        self.assertIn("value_or(0xffffffffu) == active", hud)
+        self.assertIn("hud_binding::select(", hud)
         self.assertIn("i < 128", hud)
+        locate = between(hud, "inline lookup_result locate(", "inline std::uintptr_t find(")
+        self.assertNotIn("|| !weapon_offset", locate)
+        self.assertIn("if (!weapon_offset)", locate)
+        self.assertIn("candidate.model_matches", locate)
+        self.assertIn("owned_by_player()", locate)
+        self.assertIn('"child-limit-or-cycle"', locate)
+        self.assertIn("memory::safe_read<std::uint32_t>(services + active_offset).value_or(0) != active", locate)
+        self.assertIn("return locate(pawn).entity;", hud)
+        self.assertIn("const bool should_bind = model_mismatch && is_firstperson;", hud)
 
     def test_attribute_readback_uses_runtime_schema(self):
         attrs = source("core/features/changer/cosmetic_attributes.hpp")

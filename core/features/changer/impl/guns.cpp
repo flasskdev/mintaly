@@ -30,6 +30,14 @@ namespace features::changer {
 			auto& next = next_report[reason];
 			if ( now < next ) return;
 			next = now + std::chrono::seconds( 5 );
+			if ( reason == "hud-pending" )
+			{
+				const auto local = systems::g_local.get( );
+				const auto pawn = local.observer_pawn ? local.observer_pawn : preview_scene::player_pawn( local.controller );
+				const auto hud = hud_weapon::locate( pawn );
+				diag::writef( diag::level::warning, "[skin-hud] lookup=%s candidates=%u found=%d",
+					hud.reason, static_cast<unsigned>( hud.candidates ), hud.entity != 0 );
+			}
 			diag::writef( diag::level::warning,
 				"[skin-apply] reason=%s handle=%u paint=%d hud_weapon_offset=%u attribute_list=%u attribute_vector=%u attribute_index=%u attribute_value=%u",
 				reason.data( ), static_cast<unsigned>( handle ), paint,
