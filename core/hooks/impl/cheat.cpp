@@ -612,17 +612,14 @@ namespace hooks {
 		if ( stage == 12 )
 			detail::reconcile_preview_scene( );
 
-		// Finish previously queued HUD work before applying newly selected skins.
-		// A selection first seen at stage 12 therefore waits until the next render start.
-		if (stage == 12) features::changer::g_guns.on_render_start();
-
 		if ( stage == 6 || stage == 7 || stage == 12 )
 		{
-			// Apply after network data, independently of the listener's camera/alive state.
-			features::changer::g_knives.on_frame_stage_notify( );
+			// Agent/model binding can recreate arms. Reconcile gloves last, without UI state.
 			features::changer::g_agents.on_frame_stage_notify( );
-			features::changer::g_gloves.on_frame_stage_notify( );
+			features::changer::g_knives.on_frame_stage_notify( );
 			features::changer::g_guns.on_frame_stage_notify( );
+			if ( stage == 12 ) features::changer::g_guns.on_render_start( );
+			features::changer::g_gloves.on_frame_stage_notify( );
 		}
 
 		// Process impacts after event dispatch, even when no camera is available.

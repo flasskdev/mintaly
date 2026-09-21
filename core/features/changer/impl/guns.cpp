@@ -57,6 +57,34 @@ namespace features::changer {
 				return original.cosmetic;
 			}
 		}
+		// Network provenance survives pickups even when this client never saw the donor holding it.
+		// Never use m_iAccountID here: apply() replaces that field locally.
+		const auto owner_low = SCHEMA( "C_EconEntity", "m_OriginalOwnerXuidLow"_hash );
+		const auto owner_high = SCHEMA( "C_EconEntity", "m_OriginalOwnerXuidHigh"_hash );
+		const auto source_account = owner_low ? memory::safe_read<std::uint32_t>( weapon + owner_low ).value_or( 0 ) : 0;
+		if ( source_account && source_account != holder_account )
+		{
+			const auto local = systems::g_local.get( );
+			auto local_sid = steam::user::get_steam_id( );
+			if ( !local_sid && local.controller )
+				local_sid = memory::safe_read<std::uint64_t>( local.controller + SCHEMA( "CBasePlayerController", "m_steamID"_hash ) ).value_or( 0 );
+			if ( source_account == static_cast<std::uint32_t>( local_sid ) )
+			{
+				const auto& own = settings::g_changer.skins.for_team( preview_scene::team( preview_scene::player_pawn( local.controller ) ) );
+				const auto selected = own.find( definition );
+				if ( selected == own.end( ) ) return std::nullopt;
+				return skin_selection{ cosmetic_attributes::normalize( selected->second ), source_account };
+			}
+			if ( !g_skin_sync.is_enabled( ) ) return std::nullopt;
+			const auto high = owner_high ? memory::safe_read<std::uint32_t>( weapon + owner_high ).value_or( 0 ) : 0;
+			const auto source_sid = high ? ( static_cast<std::uint64_t>( high ) << 32 ) | source_account
+				: 76561197960265728ull + source_account;
+			const auto profile = g_skin_sync.get_remote_skin( source_sid );
+			if ( !profile ) return std::nullopt;
+			const auto selected = profile->skins.find( definition );
+			if ( selected == profile->skins.end( ) ) return std::nullopt;
+			return skin_selection{ cosmetic_attributes::normalize( selected->second ), source_account };
+		}
 		const auto selected = skins.find( definition );
 		// The local caller already supplies for_team(), including its configured fallback.
 		// A missing remote selection must never fall back to this client's loadout.
@@ -85,7 +113,7 @@ namespace features::changer {
 		const auto local_team = local_pawn ? preview_scene::team( local_pawn ) : 0;
 		const auto& active_skins = settings::g_changer.skins.for_team( local_team );
 
-        const bool has_local_work = !active_skins.empty() || !this->m_original_weapons.empty();
+        const bool has_local_work = !active_skins.empty() || !this->m_original_weapons.empty() || g_skin_sync.is_enabled();
         const auto hud_model = has_local_work ? this->find_hud_model_weapon(local_pawn) : 0;
 		const auto rules = memory::safe_read<std::uintptr_t>( addresses::globals::game_rules ).value_or( 0 );
 		const auto round_offset = SCHEMA( "C_CSGameRules", "m_fRoundStartTime"_hash );
@@ -93,7 +121,7 @@ namespace features::changer {
 		if ( round_time != this->m_last_round_start_time )
 		{
 			this->m_applied_weapons.clear( );
-			this->m_original_weapons.clear( );
+			// Surviving entities keep their source skin across round boundaries.
 			this->m_last_active_handle = 0;
 			this->m_last_hud_model = 0;
 			this->m_last_round_start_time = round_time;
@@ -172,7 +200,7 @@ namespace features::changer {
 						}
 
 						const auto& skin = selected->skin;
-						const auto skin_account = account_id;
+						const auto skin_account = selected->account_id;
 						const auto hud_visual = handle == active_handle ? visual_identity( hud_model ) : cosmetic_cache::identity{};
 						const auto applied_it = this->m_applied_weapons.find( handle );
 
@@ -330,9 +358,8 @@ namespace features::changer {
 				const auto remote_skin_data = g_skin_sync.get_remote_skin( sid );
 				const settings::changer::skin_map_field::map_type empty_skins{};
 				const auto& remote_skins = remote_skin_data ? remote_skin_data->skins : empty_skins;
-				// An empty profile (or pickup by a non-sync user) must restore our previous override.
-				// Skip weapon traversal only when no original state needs restoring.
-				if (remote_skins.empty() && this->m_original_weapons.empty()) continue;
+				// A holder without a profile may carry a donor's synchronized weapon.
+				// Resolve provenance before deciding whether there is anything to apply.
 
 				const auto pawn = preview_scene::player_pawn( ctrl );
 				if ( !preview_scene::player_ready( pawn ) )
@@ -610,8 +637,9 @@ namespace features::changer {
 		const auto mesh = pk && pk->legacy_model ? std::uint64_t{2} : std::uint64_t{1};
 		const bool needs_hud = handle == active_handle &&
 			( pawn == systems::g_local.get( ).pawn || this->find_hud_model_weapon( pawn ) != 0 );
-		if ( !entity_guard::rebuild_materials( *entity, mesh ) ) return false;
+		// Binding can recreate the held model and discard its material bindings.
 		if ( needs_hud && !this->update_view_model( pawn, pk, true ) ) return false;
+		if ( !entity_guard::rebuild_materials( *entity, mesh ) ) return false;
 		if ( needs_hud )
 		{
 			const auto hud = entity_guard::capture( this->find_hud_model_weapon( pawn ) );
@@ -634,14 +662,21 @@ namespace features::changer {
 		const auto services = memory::safe_read<std::uintptr_t>(pawn + SCHEMA("C_BasePlayerPawn", "m_pWeaponServices"_hash)).value_or(0);
 		if (!services) return;
 		const auto handle = memory::safe_read<std::uint32_t>(services + SCHEMA("CPlayer_WeaponServices", "m_hActiveWeapon"_hash)).value_or(0);
-		auto found = this->m_applied_weapons.find(handle);
-		if (found == this->m_applied_weapons.end() || !found->second.hud_refresh_pending) return;
+		const auto found = this->m_applied_weapons.find(handle);
+		if (found == this->m_applied_weapons.end()) return;
 		const auto weapon = systems::g_entities.lookup(handle);
 		if (!weapon || !cosmetic_cache::reusable(found->second.visual, visual_identity(weapon))) return;
-		const auto pk = g_econ_item_system.find_paint_kit(found->second.skin.paint_kit_id);
-		if (this->update_view_model(pawn, pk, true)) {
-			found->second.hud_refresh_pending = false;
-			found->second.hud = visual_identity(this->find_hud_model_weapon(pawn));
+		const auto skin = found->second.skin;
+		const auto hud = visual_identity(this->find_hud_model_weapon(pawn));
+		const bool refresh = found->second.hud_refresh_pending || found->second.hud != hud;
+		const auto pk = g_econ_item_system.find_paint_kit(skin.paint_kit_id);
+		if (!this->update_view_model(pawn, pk, refresh)) return;
+		// Engine callbacks may invalidate the map: reacquire, never reuse found.
+		const auto current = this->m_applied_weapons.find(handle);
+		if (current != this->m_applied_weapons.end() && current->second.skin == skin &&
+			cosmetic_cache::reusable(current->second.visual, visual_identity(weapon))) {
+			current->second.hud_refresh_pending = false;
+			current->second.hud = visual_identity(this->find_hud_model_weapon(pawn));
 		}
 	}
 

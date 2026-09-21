@@ -467,12 +467,11 @@ namespace features::changer {
 		if ( !definition ) return;
 		const auto local_sys = systems::g_local.get( );
 		const bool local = pawn == local_sys.pawn;
-		const bool is_viewed = ( pawn == local_sys.pawn || ( local_sys.observer_pawn && pawn == local_sys.observer_pawn ) );
 		preview_item::applied.erase( weapon );
 		if ( local ) this->m_overridden = false;
 		memory::write<std::uint16_t>( iv + definition, static_cast<std::uint16_t>( def->def_index ) );
-		// Retry model reconciliation even after a prior partial subclass update.
-		if ( !this->update_model( weapon, iv, static_cast<std::uint16_t>( def->def_index ), !is_viewed ) || !entity_guard::current( *entity ) ) return;
+		// Remote match weapons also need subclass reconciliation, not the lobby shortcut.
+		if ( !this->update_model( weapon, iv, static_cast<std::uint16_t>( def->def_index ) ) || !entity_guard::current( *entity ) ) return;
 		memory::write<std::uint64_t>( iv + SCHEMA( "C_EconItemView", "m_iItemID"_hash ), 0xf000000000000010ull );
 		memory::write<bool>( iv + SCHEMA( "C_EconItemView", "m_bDisallowSOC"_hash ), true );
 		memory::write<int>( iv + SCHEMA( "C_EconItemView", "m_iEntityQuality"_hash ), skin->stattrak ? 9 : 3 );
@@ -532,20 +531,15 @@ namespace features::changer {
 		if ( !entity || !subclass || !get_model ) return false;
 		const auto token = detail::make_subclass_token( static_cast<std::int16_t>( def_index ) );
 		const bool changed = memory::safe_read<std::uint32_t>( weapon + subclass ).value_or( 0 ) != token;
-		memory::write<std::uint32_t>( weapon + subclass, token );
-		if ( !lobby && changed )
-		{
-			const auto bind = PATTERN( patterns::weapon_get_viewmodel );
-			if ( !bind ) return false;
-			memory::call<void>( bind, weapon );
-			if ( !entity_guard::current( *entity ) ) return false;
-		}
-		const auto path = memory::call<const char*>( get_model, iv );
-		auto target = path ? memory::read_string( reinterpret_cast<std::uintptr_t>( path ) ) : std::string{};
+		const auto bind = PATTERN( patterns::weapon_get_viewmodel );
+		if ( !lobby && !bind ) return false;
+		// World/player geometry must not be selected from the first-person model path.
+		const auto def = g_econ_item_system.find_def( static_cast<std::int16_t>( def_index ) );
+		auto target = def ? def->model_player : std::string{};
 		if ( target.empty( ) )
 		{
-			const auto def = g_econ_item_system.find_def( static_cast<std::int16_t>( def_index ) );
-			if ( def ) target = def->model_player;
+			const auto path = memory::call<const char*>( get_model, iv );
+			if ( path ) target = memory::read_string( reinterpret_cast<std::uintptr_t>( path ) );
 		}
 		if ( target.empty( ) || !entity_guard::current( *entity ) ) return false;
 		const auto state = SCHEMA( "CSkeletonInstance", "m_modelState"_hash );
@@ -553,9 +547,14 @@ namespace features::changer {
 		const auto scene = memory::safe_read<std::uintptr_t>( weapon + SCHEMA( "C_BaseEntity", "m_pGameSceneNode"_hash ) ).value_or( 0 );
 		if ( !state || !name_offset || !scene ) return false;
 		const auto name = memory::safe_read<std::uintptr_t>( scene + state + name_offset ).value_or( 0 );
-		if ( name && cosmetic_model::matches( memory::read_string( name ), target ) ) return true;
-		// memory::call<void>( set_model, view_model, target );
-		return entity_guard::set_model( *entity, target.c_str( ) );
+		const bool model_changed = !name || !cosmetic_model::matches( memory::read_string( name ), target );
+		if ( model_changed && !entity_guard::set_model( *entity, target.c_str( ) ) ) return false;
+		memory::write<std::uint32_t>( weapon + subclass, token );
+		// SetModel can reset animation state. Rebind only after model replacement,
+		// including remote players, so dual knives use their own subclass animations.
+		if ( !lobby && ( changed || model_changed ) )
+			memory::call<void>( bind, weapon );
+		return entity_guard::current( *entity );
 	}
 
 	bool knives::rebuild_paint( std::uintptr_t weapon, std::uintptr_t active_weapon, std::uintptr_t pawn, const econ_item_system::paint_kit* pk )
