@@ -1426,10 +1426,6 @@ namespace rendering {
 
     void menu::draw_side_bar(float h)
     {
-        if (safe_mode::active() && this->m_tab == 0) {
-            this->m_tab = 1;
-            this->m_subtab = 0;
-        }
         auto& dl = xui::draw::current();
         auto& ctx = xui::ctx();
         const auto& input = ctx.input;
@@ -1458,12 +1454,16 @@ namespace rendering {
         const float rage_target = safe_mode::active() ? 0.0f : 1.0f;
         const float rage_reveal = xui::ease::smoothstep(xui::anim::lerp(
             xui::fnv1a("rage_sidebar_reveal"), rage_target, 12.0f, rage_target));
+        if (safe_mode::active() && this->m_tab == 0 && rage_reveal < 0.15f) {
+            this->m_tab = 1;
+            this->m_subtab = 0;
+        }
         for (int i = 0; i < static_cast<int>(names.size()); ++i)
         {
             const float reveal = i == 0 ? rage_reveal : 1.0f;
             if (i == 0 && reveal < 0.001f) continue;
             if (i == 0) dl.push_clip(sb_x, curr_y, sb_w, 42.0f * reveal);
-            const xui::rect button{ sb_x + 10.0f - (1.0f - reveal) * 12.0f, curr_y, sb_w - 20.0f, 37.0f };
+            const xui::rect button{ sb_x + 10.0f - (1.0f - reveal) * 16.0f, curr_y, sb_w - 20.0f, 37.0f };
             const bool hovered = (i != 0 || (!safe_mode::active() && reveal > 0.98f)) &&
                 input.in_rect(button) && !ctx.overlay_blocking();
             const bool active = this->m_tab == i;
@@ -1495,16 +1495,26 @@ namespace rendering {
             }
             const auto amount = xui::anim::lerp(xui::fnv1a("mintaly_sidebar") + i,
                 active ? 1.0f : hovered ? 0.4f : 0.0f, 14.0f);
-            if (amount > 0.01f)
-            {
-                const auto color = tokens::col_accent.alpha(static_cast<std::uint8_t>(24.0f * amount));
-                dl.rect_filled_gradient(button.x, button.y, button.w, button.h,
-                    color, color.alpha(0), color.alpha(0), color, xdraw::corner_radius{ 5.0f });
-            }
             if (active)
             {
-                dl.rect_filled(button.x - 2.0f, button.y + 6.0f, 7.0f, 25.0f, tokens::col_accent.alpha(28), xdraw::corner_radius{ 3.5f });
-                dl.rect_filled(button.x, button.y + 8.0f, 3.0f, 21.0f, tokens::col_accent, xdraw::corner_radius{ 1.5f });
+                dl.rect_filled(button.x, button.y, button.w, button.h,
+                    tokens::col_card.alpha(static_cast<std::uint8_t>(170.0f * reveal)), xdraw::corner_radius{ 6.0f });
+                dl.rect(button.x, button.y, button.w, button.h,
+                    tokens::col_border.alpha(static_cast<std::uint8_t>(120.0f * reveal)), xdraw::corner_radius{ 6.0f }, 1.0f);
+
+                const float bar_w = 3.0f;
+                const float bar_h = 20.0f;
+                const float bar_x = button.x + 3.0f;
+                const float bar_y = button.y + (button.h - bar_h) * 0.5f;
+                dl.rect_filled(bar_x - 1.0f, bar_y - 2.0f, bar_w + 2.0f, bar_h + 4.0f,
+                    xui::alpha_mod(tokens::col_accent.alpha(35), reveal), xdraw::corner_radius{ 2.5f });
+                dl.rect_filled(bar_x, bar_y, bar_w, bar_h,
+                    xui::alpha_mod(tokens::col_accent, reveal), xdraw::corner_radius{ 1.5f });
+            }
+            else if (amount > 0.01f)
+            {
+                dl.rect_filled(button.x, button.y, button.w, button.h,
+                    tokens::col_card.alpha(static_cast<std::uint8_t>(90.0f * amount * reveal)), xdraw::corner_radius{ 6.0f });
             }
             const auto icon_color = xui::alpha_mod(active ? tokens::col_accent : xui::lerp(tokens::col_text_dim, tokens::col_text, amount), reveal);
             const auto cx = button.x + 22.0f;
@@ -1618,15 +1628,19 @@ namespace rendering {
                         }
                         const auto sub_anim = xui::anim::lerp(xui::fnv1a("vsub_item") + v,
                             sub_active ? 1.0f : sub_hovered ? 0.4f : 0.0f, 14.0f);
-                        if (sub_anim > 0.01f)
-                        {
-                            const auto sub_bg = tokens::col_accent.alpha(static_cast<std::uint8_t>(22.0f * sub_anim * expand_anim));
-                            dl.rect_filled(sub_btn.x, sub_btn.y, sub_btn.w, sub_btn.h, sub_bg, xdraw::corner_radius{ 4.0f });
-                        }
                         if (sub_active)
                         {
+                            dl.rect_filled(sub_btn.x, sub_btn.y, sub_btn.w, sub_btn.h,
+                                tokens::col_card.alpha(static_cast<std::uint8_t>(150.0f * expand_anim)), xdraw::corner_radius{ 4.0f });
+                            dl.rect(sub_btn.x, sub_btn.y, sub_btn.w, sub_btn.h,
+                                tokens::col_border.alpha(static_cast<std::uint8_t>(100.0f * expand_anim)), xdraw::corner_radius{ 4.0f }, 1.0f);
                             const auto strip_col = tokens::col_accent.alpha(static_cast<std::uint8_t>(255.0f * expand_anim));
-                            dl.rect_filled(sub_btn.x, sub_btn.y + 5.0f, 2.0f, sub_btn.h - 10.0f, strip_col, xdraw::corner_radius{ 1.0f });
+                            dl.rect_filled(sub_btn.x + 2.0f, sub_btn.y + 5.0f, 2.0f, sub_btn.h - 10.0f, strip_col, xdraw::corner_radius{ 1.0f });
+                        }
+                        else if (sub_anim > 0.01f)
+                        {
+                            const auto sub_bg = tokens::col_card.alpha(static_cast<std::uint8_t>(80.0f * sub_anim * expand_anim));
+                            dl.rect_filled(sub_btn.x, sub_btn.y, sub_btn.w, sub_btn.h, sub_bg, xdraw::corner_radius{ 4.0f });
                         }
                         const auto sub_base_col = sub_active ? tokens::col_accent : xui::lerp(tokens::col_text_dim, tokens::col_text, sub_anim);
                         const auto sub_col = sub_base_col.alpha(static_cast<std::uint8_t>(sub_base_col.a * expand_anim));
@@ -1837,10 +1851,7 @@ namespace rendering {
         const auto subtab_h = tokens::subtab_bar_h - inner_pad * 2.0f;
         const auto util_w = inner_pad + subtab_h + inner_pad;
         const auto util_x = content_x + w - util_w;
-        xdraw::push_font(g_fonts.inter_medium[fonts::size::petite]);
-        const auto mode_w = xdraw::measure_text("UNSAFE MODE").first;
-        xdraw::pop_font();
-        const auto mode_left = util_x - mode_w - 14.0f;
+        const auto mode_left = util_x;
         // Page title ("Ragebot", etc.)
         constexpr const char* page_titles[7] = {
             "RAGEBOT", "LEGITBOT", "MOVEMENT", "VISUALS", "SKINS", "MISC", "CONFIGS"
@@ -1908,18 +1919,11 @@ namespace rendering {
         if (tab_idx != static_cast<int>(tab::skins))
             dl.line(this->m_x + menu::k_sidebar_w + tokens::gap, this->m_y + 67.0f,
                 this->m_x + this->m_w - 1.0f, this->m_y + 67.0f, tokens::col_border);
-        // Mode status stays immediately to the left of Search.
-        xdraw::push_font(g_fonts.inter_medium[fonts::size::petite]);
-        const char* mode_label = safe_mode::active() ? "SAFE MODE" : "UNSAFE MODE";
-        const auto [mode_text_w, mode_text_h] = xdraw::measure_text(mode_label);
-        const auto mode_color = safe_mode::active() ? xdraw::color{155, 158, 166, 255} : xdraw::color{244, 151, 188, 255};
-        dl.text(util_x - 14.0f - mode_text_w, bar_y + (tokens::subtab_bar_h - mode_text_h) * 0.5f, mode_label, mode_color);
-        xdraw::pop_font();
+        const auto search_anim = xui::anim::lerp(xui::fnv1a("menu_topbar_search_anim"), this->m_search_open ? 1.0f : 0.0f, 18.0f);
+        const auto normal_interactive = search_anim < 0.03f;
         // Utility: Search button on the right
         dl.rect_filled(util_x, bar_y, util_w, tokens::subtab_bar_h, tokens::col_card, xdraw::corner_radius{ tokens::card_rounding });
         dl.rect(util_x, bar_y, util_w, tokens::subtab_bar_h, tokens::col_elevated.alpha(180), xdraw::corner_radius{ tokens::card_rounding }, 1.0f);
-        const auto search_anim = xui::anim::lerp(xui::fnv1a("menu_topbar_search_anim"), this->m_search_open ? 1.0f : 0.0f, 18.0f);
-        const auto normal_interactive = search_anim < 0.03f;
         {
             const auto bx = util_x + inner_pad;
             const auto by = bar_y + (tokens::subtab_bar_h - subtab_h) * 0.5f;
@@ -2133,7 +2137,7 @@ namespace rendering {
             xui::ctx().inside_overlay = xui::fnv1a("user_popup_overlay");
         }
         // ─────────────────────────────────────────────────────────────
-        // 1. DRAW MAIN POPUP (Theme >, Watermark >, Tooltips, Menu key KEY)
+        // 1. DRAW MAIN POPUP (Theme >, Watermark >, Tooltips, Menu key KEY, Skin sync)
         // ─────────────────────────────────────────────────────────────
         const auto main_alpha = static_cast<std::uint8_t>(255.0f * anim);
         const auto main_bg = tokens::col_card.alpha(static_cast<std::uint8_t>(225.0f * anim));
@@ -2176,11 +2180,15 @@ namespace rendering {
                         tokens::col_accent.alpha(static_cast<std::uint8_t>(90.0f * anim)), xdraw::corner_radius{ 6.0f }, 1.0f);
                 }
             }
-            // Theme palette icon
+            // Theme artist palette icon
             const auto ic_x = row_rect.x + 14.0f;
             const auto ic_y = row_rect.y + item_h * 0.5f;
-            top_dl.circle_filled(ic_x, ic_y, 4.5f, tokens::col_accent.alpha(main_alpha));
-            top_dl.circle(ic_x, ic_y, 4.5f, tokens::col_border.alpha(main_alpha));
+            const auto ic_col = selected ? tokens::col_accent.alpha(main_alpha) : tokens::col_text_dim.alpha(main_alpha);
+            top_dl.circle(ic_x, ic_y, 5.5f, ic_col, 1.2f);
+            top_dl.circle_filled(ic_x + 2.0f, ic_y + 2.0f, 1.2f, ic_col);
+            top_dl.circle_filled(ic_x - 2.5f, ic_y - 2.0f, 1.1f, tokens::col_accent.alpha(main_alpha));
+            top_dl.circle_filled(ic_x + 1.5f, ic_y - 2.5f, 1.0f, ic_col);
+            top_dl.circle_filled(ic_x - 2.2f, ic_y + 2.0f, 1.0f, ic_col);
             xdraw::push_font(g_fonts.inter_medium[fonts::size::petite]);
             top_dl.text(row_rect.x + 28.0f, row_rect.y + (item_h - 14.0f) * 0.5f, "Theme",
                 selected ? tokens::col_accent.alpha(main_alpha) : tokens::col_text.alpha(main_alpha));
@@ -2421,36 +2429,67 @@ namespace rendering {
             top_dl.circle_filled(knob_x, sw_y + sw_h * 0.5f, knob_r, knob_col);
         }
         item_y += item_h + 3.0f;
+        // --- ITEM 6: Safe mode ---
         {
-            const xui::rect row{main_x + 6.0f, item_y, main_w - 12.0f, item_h};
-            const bool hovered = input.in_rect(row);
-            if (this->m_user_popup_open && hovered && input.mouse_clicked) {
-                this->m_binding_menu_key = false;
+            const xui::rect row_rect{ main_x + 6.0f, item_y, main_w - 12.0f, item_h };
+            const bool hovered = input.in_rect(row_rect);
+            const auto h_anim = xui::anim::lerp(xui::fnv1a("usr_safe_row"), hovered ? 1.0f : 0.0f, 14.0f);
+            if (hovered && input.mouse_clicked)
+            {
                 settings::set_safe_mode(!safe_mode::active());
-                if (safe_mode::active() && this->m_tab == 0) {
-                    this->m_tab = 1;
-                    this->m_subtab = 0;
-                }
-                this->close_search();
-                input.mouse_clicked = false;
             }
-            const auto hover = xui::anim::lerp(xui::fnv1a("usr_safe_hover"), hovered ? 1.0f : 0.0f, 14.0f);
-            const auto color = (safe_mode::active() ? xdraw::color{155, 158, 166, 255} : xdraw::color{244, 151, 188, 255}).alpha(main_alpha);
-            top_dl.rect_filled(row.x, row.y, row.w, row.h, color.alpha(static_cast<std::uint8_t>(20.0f * hover * anim)), xdraw::corner_radius{6.0f});
+            if (h_anim > 0.01f)
+            {
+                top_dl.rect_filled(row_rect.x, row_rect.y, row_rect.w, row_rect.h,
+                    tokens::col_accent.alpha(static_cast<std::uint8_t>(20.0f * h_anim * anim)),
+                    xdraw::corner_radius{ 6.0f });
+            }
+
+            // Shield icon
+            const auto ic_x = row_rect.x + 14.0f;
+            const auto ic_y = row_rect.y + item_h * 0.5f;
+            const bool is_safe = safe_mode::active();
+            const auto ic_col = is_safe ? tokens::col_accent.alpha(main_alpha) : tokens::col_text_dim.alpha(main_alpha);
+            const std::array<float, 12> shield{ {
+                ic_x, ic_y - 5.5f,
+                ic_x + 4.5f, ic_y - 2.5f,
+                ic_x + 3.8f, ic_y + 3.0f,
+                ic_x, ic_y + 5.5f,
+                ic_x - 3.8f, ic_y + 3.0f,
+                ic_x - 4.5f, ic_y - 2.5f
+            } };
+            top_dl.polyline(shield, ic_col, true, 1.1f);
+            if (is_safe)
+            {
+                top_dl.line(ic_x - 2.0f, ic_y + 0.2f, ic_x - 0.5f, ic_y + 1.8f, ic_col, 1.1f);
+                top_dl.line(ic_x - 0.5f, ic_y + 1.8f, ic_x + 2.4f, ic_y - 1.5f, ic_col, 1.1f);
+            }
+            else
+            {
+                top_dl.line(ic_x, ic_y - 2.5f, ic_x, ic_y + 0.5f, ic_col, 1.1f);
+                top_dl.circle_filled(ic_x, ic_y + 2.8f, 0.7f, ic_col);
+            }
+
             xdraw::push_font(g_fonts.inter_medium[fonts::size::petite]);
-            const auto shield_x = row.x + 14.0f;
-            const auto shield_y = row.y + item_h * 0.5f;
-            const std::array<float, 12> shield{{shield_x, shield_y - 6.0f, shield_x + 5.0f, shield_y - 3.0f,
-                shield_x + 4.0f, shield_y + 3.0f, shield_x, shield_y + 6.0f,
-                shield_x - 4.0f, shield_y + 3.0f, shield_x - 5.0f, shield_y - 3.0f}};
-            top_dl.polyline(shield, color, true, 1.1f);
-            top_dl.text(row.x + 28.0f, row.y + 11.0f, "Safe mode", color);
+            top_dl.text(row_rect.x + 28.0f, row_rect.y + (item_h - 14.0f) * 0.5f, "Safe mode",
+                is_safe ? tokens::col_text.alpha(main_alpha) : tokens::col_text_dim.alpha(main_alpha));
             xdraw::pop_font();
-            const auto amount = xui::anim::lerp(xui::fnv1a("usr_safe_switch"), safe_mode::active() ? 1.0f : 0.0f, 14.0f);
-            const auto sx = row.right() - 34.0f;
-            const auto sy = row.y + 10.0f;
-            top_dl.rect_filled(sx, sy, 28.0f, 16.0f, xui::lerp(tokens::col_elevated.alpha(main_alpha), color, amount), xdraw::corner_radius{8.0f});
-            top_dl.circle_filled(sx + 7.5f + 13.0f * amount, sy + 8.0f, 5.0f, tokens::col_text.alpha(main_alpha));
+
+            // Toggle switch on the right
+            const float sw_w = 28.0f;
+            const float sw_h = 16.0f;
+            const float sw_x = row_rect.x + row_rect.w - sw_w - 6.0f;
+            const float sw_y = row_rect.y + (item_h - sw_h) * 0.5f;
+            const auto sw_anim = xui::anim::lerp(xui::fnv1a("usr_safe_sw"), is_safe ? 1.0f : 0.0f, 14.0f);
+            const auto sw_bg = xui::lerp(tokens::col_elevated.alpha(static_cast<std::uint8_t>(200.0f * anim)), tokens::col_accent.alpha(main_alpha), sw_anim);
+            top_dl.rect_filled(sw_x, sw_y, sw_w, sw_h, sw_bg, xdraw::corner_radius{ sw_h * 0.5f });
+            top_dl.rect(sw_x, sw_y, sw_w, sw_h, tokens::col_border.alpha(main_alpha), xdraw::corner_radius{ sw_h * 0.5f }, 1.0f);
+            const float knob_r = 5.0f;
+            const float knob_min_x = sw_x + knob_r + 2.5f;
+            const float knob_max_x = sw_x + sw_w - knob_r - 2.5f;
+            const float knob_x = knob_min_x + (knob_max_x - knob_min_x) * sw_anim;
+            const auto knob_col = xui::lerp(tokens::col_text_dim.alpha(main_alpha), tokens::col_dark.alpha(main_alpha), sw_anim);
+            top_dl.circle_filled(knob_x, sw_y + sw_h * 0.5f, knob_r, knob_col);
         }
         // ─────────────────────────────────────────────────────────────
         // 2. DRAW SUB-WINDOW (Theme or Watermark)
@@ -2542,21 +2581,27 @@ namespace rendering {
             else if (this->m_user_subtab == 2)
             {
                 // ────────────────────────────
-                // WATERMARK CONTROLS
+                // WATERMARK CONTROLS (With Vector Icons)
                 // ────────────────────────────
                 float w_y = sub_y + 38.0f;
                 const float w_row_h = 24.0f;
                 xdraw::push_font(g_fonts.inter_medium[fonts::size::petite]);
-                // Helper lambda for boolean toggle
-                auto draw_toggle_row = [&](const char* label, auto& setting_val) {
+                // Helper lambda for boolean toggle with vector icon
+                auto draw_toggle_row = [&](const char* label, auto& setting_val, auto draw_icon) {
                     const xui::rect t_rect{ sub_x + 10.0f, w_y, sub_w - 20.0f, w_row_h };
                     const bool t_hovered = input.in_rect(t_rect);
                     if (t_hovered && input.mouse_clicked)
                     {
                         setting_val.value = !setting_val.value;
                     }
-                    top_dl.text(t_rect.x + 2.0f, t_rect.y + (w_row_h - 14.0f) * 0.5f, label,
+                    const auto col = setting_val.value ? tokens::col_accent.alpha(s_alpha) : tokens::col_text_dim.alpha(s_alpha);
+                    const float ix = t_rect.x + 8.0f;
+                    const float iy = t_rect.y + w_row_h * 0.5f;
+                    draw_icon(ix, iy, col);
+
+                    top_dl.text(t_rect.x + 20.0f, t_rect.y + (w_row_h - 14.0f) * 0.5f, label,
                         setting_val.value ? tokens::col_text.alpha(s_alpha) : tokens::col_text_dim.alpha(s_alpha));
+
                     // Switch widget on right
                     const float sw_w = 26.0f;
                     const float sw_h = 14.0f;
@@ -2572,13 +2617,35 @@ namespace rendering {
                     top_dl.circle_filled(knob_x, sw_y + sw_h * 0.5f, knob_r,
                         setting_val.value ? tokens::col_dark.alpha(s_alpha) : tokens::col_text_dim.alpha(s_alpha));
                     w_y += w_row_h + 3.0f;
-                    };
-                draw_toggle_row("Enabled", m.m_watermark.enabled);
-                // Position selector
+                };
+
+                // 1. Enabled (Power icon)
+                draw_toggle_row("Enabled", m.m_watermark.enabled, [&](float ix, float iy, auto col) {
+                    top_dl.line(ix, iy - 4.5f, ix, iy - 0.5f, col, 1.2f);
+                    const std::array<float, 14> pwr{ {
+                        ix - 1.5f, iy - 3.2f,
+                        ix - 3.5f, iy - 1.5f,
+                        ix - 3.5f, iy + 1.5f,
+                        ix, iy + 4.0f,
+                        ix + 3.5f, iy + 1.5f,
+                        ix + 3.5f, iy - 1.5f,
+                        ix + 1.5f, iy - 3.2f
+                    } };
+                    top_dl.polyline(pwr, col, false, 1.1f);
+                });
+
+                // 2. Position selector (Grid / Layout icon)
                 {
                     constexpr const char* wm_pos_names[] = { "Top Left", "Top Center", "Top Right", "Bottom Left", "Bottom Center", "Bottom Right" };
                     const xui::rect pos_rect{ sub_x + 10.0f, w_y, sub_w - 20.0f, 26.0f };
-                    top_dl.text(pos_rect.x + 2.0f, pos_rect.y + (26.0f - 14.0f) * 0.5f, "Position", tokens::col_text.alpha(s_alpha));
+                    const auto pos_col = tokens::col_text_dim.alpha(s_alpha);
+                    const float pix = pos_rect.x + 8.0f;
+                    const float piy = pos_rect.y + 13.0f;
+                    top_dl.rect(pix - 4.5f, piy - 4.5f, 9.0f, 9.0f, pos_col, xdraw::corner_radius{ 1.0f }, 1.1f);
+                    top_dl.line(pix - 4.5f, piy, pix + 4.5f, piy, pos_col, 1.0f);
+                    top_dl.line(pix, piy - 4.5f, pix, piy + 4.5f, pos_col, 1.0f);
+
+                    top_dl.text(pos_rect.x + 20.0f, pos_rect.y + (26.0f - 14.0f) * 0.5f, "Position", tokens::col_text.alpha(s_alpha));
                     const float sel_w = 114.0f;
                     const float sel_h = 24.0f;
                     const float sel_x = pos_rect.x + pos_rect.w - sel_w - 2.0f;
@@ -2612,10 +2679,24 @@ namespace rendering {
                     top_dl.text(sel_x + (sel_w - pw) * 0.5f, sel_y + (sel_h - ph) * 0.5f, cur_name, tokens::col_text.alpha(s_alpha));
                     w_y += 30.0f;
                 }
-                // Opacity slider
+
+                // 3. Opacity slider (Half-shaded contrast circle)
                 {
                     const xui::rect op_row{ sub_x + 10.0f, w_y, sub_w - 20.0f, 22.0f };
-                    top_dl.text(op_row.x + 2.0f, op_row.y + 2.0f, "Opacity", tokens::col_text.alpha(s_alpha));
+                    const auto op_col = tokens::col_text_dim.alpha(s_alpha);
+                    const float oix = op_row.x + 8.0f;
+                    const float oiy = op_row.y + 9.0f;
+                    top_dl.circle(oix, oiy, 4.5f, op_col, 1.1f);
+                    const std::array<float, 10> half{ {
+                        oix, oiy - 4.5f,
+                        oix + 3.8f, oiy - 2.3f,
+                        oix + 3.8f, oiy + 2.3f,
+                        oix, oiy + 4.5f,
+                        oix, oiy - 4.5f
+                    } };
+                    top_dl.convex_filled(half, op_col);
+
+                    top_dl.text(op_row.x + 20.0f, op_row.y + 2.0f, "Opacity", tokens::col_text.alpha(s_alpha));
                     char op_buf[16];
                     std::snprintf(op_buf, sizeof(op_buf), "%.0f%%", m.m_watermark.opacity.value);
                     const auto [tw, th] = xdraw::measure_text(op_buf);
@@ -2647,17 +2728,79 @@ namespace rendering {
                     top_dl.circle(track_x + track_w * fill_fraction, track_y + track_h * 0.5f, 5.0f, tokens::col_text.alpha(s_alpha));
                     w_y += 16.0f;
                 }
+
                 top_dl.line(sub_x + 10.0f, w_y, sub_x + sub_w - 10.0f, w_y,
                     tokens::col_border.alpha(static_cast<std::uint8_t>(90.0f * sub_anim)));
                 w_y += 6.0f;
-                draw_toggle_row("Steam Username", m.m_watermark.show_user);
-                draw_toggle_row("FPS", m.m_watermark.show_fps);
-                draw_toggle_row("Ping", m.m_watermark.show_ping);
-                draw_toggle_row("Loss", m.m_watermark.show_loss);
-                draw_toggle_row("Clock", m.m_watermark.show_time);
-                draw_toggle_row("Map", m.m_watermark.show_map);
-                draw_toggle_row("Tick Rate", m.m_watermark.show_tick);
-                draw_toggle_row("Velocity", m.m_watermark.show_velocity);
+
+                // 4. Steam Username (User silhouette icon)
+                draw_toggle_row("Steam Username", m.m_watermark.show_user, [&](float ix, float iy, auto col) {
+                    top_dl.circle(ix, iy - 2.8f, 2.3f, col, 1.1f);
+                    top_dl.rect(ix - 4.0f, iy + 1.2f, 8.0f, 3.8f, col, xdraw::corner_radius::top(2.0f), 1.1f);
+                });
+
+                // 5. FPS (Speedometer / gauge icon)
+                draw_toggle_row("FPS", m.m_watermark.show_fps, [&](float ix, float iy, auto col) {
+                    const std::array<float, 12> gauge{ {
+                        ix - 4.5f, iy + 2.5f,
+                        ix - 4.5f, iy - 1.5f,
+                        ix - 2.2f, iy - 4.2f,
+                        ix + 2.2f, iy - 4.2f,
+                        ix + 4.5f, iy - 1.5f,
+                        ix + 4.5f, iy + 2.5f
+                    } };
+                    top_dl.polyline(gauge, col, false, 1.1f);
+                    top_dl.line(ix, iy + 1.5f, ix + 2.5f, iy - 2.0f, col, 1.2f);
+                });
+
+                // 6. Ping (Wifi signal bars icon)
+                draw_toggle_row("Ping", m.m_watermark.show_ping, [&](float ix, float iy, auto col) {
+                    top_dl.rect_filled(ix - 4.5f, iy + 1.5f, 2.0f, 3.0f, col);
+                    top_dl.rect_filled(ix - 1.0f, iy - 1.0f, 2.0f, 5.5f, col);
+                    top_dl.rect_filled(ix + 2.5f, iy - 3.5f, 2.0f, 8.0f, col);
+                });
+
+                // 7. Loss (Network packet box icon)
+                draw_toggle_row("Loss", m.m_watermark.show_loss, [&](float ix, float iy, auto col) {
+                    top_dl.rect(ix - 4.5f, iy - 4.5f, 9.0f, 9.0f, col, xdraw::corner_radius{ 1.5f }, 1.1f);
+                    top_dl.line(ix - 2.5f, iy, ix + 2.5f, iy, col, 1.2f);
+                });
+
+                // 8. Clock (Clock face icon)
+                draw_toggle_row("Clock", m.m_watermark.show_time, [&](float ix, float iy, auto col) {
+                    top_dl.circle(ix, iy, 4.5f, col, 1.1f);
+                    top_dl.line(ix, iy, ix, iy - 2.5f, col, 1.1f);
+                    top_dl.line(ix, iy, ix + 2.0f, iy, col, 1.1f);
+                });
+
+                // 9. Map (Map location pin icon)
+                draw_toggle_row("Map", m.m_watermark.show_map, [&](float ix, float iy, auto col) {
+                    top_dl.circle(ix, iy - 1.8f, 2.5f, col, 1.1f);
+                    top_dl.line(ix - 1.8f, iy - 0.5f, ix, iy + 4.2f, col, 1.1f);
+                    top_dl.line(ix + 1.8f, iy - 0.5f, ix, iy + 4.2f, col, 1.1f);
+                    top_dl.circle_filled(ix, iy - 1.8f, 0.9f, col);
+                });
+
+                // 10. Tick Rate (Pulse / frequency wave icon)
+                draw_toggle_row("Tick Rate", m.m_watermark.show_tick, [&](float ix, float iy, auto col) {
+                    const std::array<float, 12> pulse{ {
+                        ix - 4.5f, iy,
+                        ix - 2.2f, iy,
+                        ix - 1.0f, iy - 3.5f,
+                        ix + 0.8f, iy + 3.5f,
+                        ix + 2.2f, iy,
+                        ix + 4.5f, iy
+                    } };
+                    top_dl.polyline(pulse, col, false, 1.1f);
+                });
+
+                // 11. Velocity (Dual fast-forward arrows icon)
+                draw_toggle_row("Velocity", m.m_watermark.show_velocity, [&](float ix, float iy, auto col) {
+                    top_dl.line(ix - 3.5f, iy - 3.0f, ix - 0.5f, iy, col, 1.2f);
+                    top_dl.line(ix - 0.5f, iy, ix - 3.5f, iy + 3.0f, col, 1.2f);
+                    top_dl.line(ix + 0.5f, iy - 3.0f, ix + 3.5f, iy, col, 1.2f);
+                    top_dl.line(ix + 3.5f, iy, ix + 0.5f, iy + 3.0f, col, 1.2f);
+                });
                 xdraw::pop_font();
             }
         }

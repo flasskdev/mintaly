@@ -57,7 +57,12 @@ namespace features::changer {
 			}
 		}
 		const auto selected = skins.find( definition );
-		if ( selected == skins.end( ) ) return std::nullopt;
+		if ( selected == skins.end( ) )
+		{
+			const auto global_it = settings::g_changer.skins.data.find( static_cast< std::int16_t >( definition ) );
+			if ( global_it == settings::g_changer.skins.data.end( ) ) return std::nullopt;
+			return skin_selection{ cosmetic_attributes::normalize( global_it->second ), holder_account };
+		}
 		return skin_selection{ cosmetic_attributes::normalize( selected->second ), holder_account };
 	}
 
@@ -193,7 +198,7 @@ namespace features::changer {
 						if ( applied_it != this->m_applied_weapons.end( ) 
 							&& applied_it->second.visual.weapon == weapon 
 							&& applied_it->second.skin == skin
-							&& cosmetic_cache::hud_reusable(applied_it->second.hud, hud_visual, handle == active_handle)
+							&& applied_it->second.hud == hud_visual
 							&& current_pk == skin.paint_kit_id 
 							&& current_id_high == 0xf0000000 
 							&& current_seed == skin.seed
@@ -222,7 +227,6 @@ namespace features::changer {
 							this->m_applied_weapons[ handle ] = { visual_identity( weapon ), skin, hud_visual };
 					}
 
-					if ( active_handle != this->m_last_active_handle )
 					{
 						this->m_last_active_handle = active_handle;
 
@@ -237,15 +241,13 @@ namespace features::changer {
 								const auto selected = this->select_skin( active_weapon, iv, active_handle, def_index, account_id, active_skins );
 								if ( selected )
 								{
-									// The inventory pass already applied/retried this weapon.
-									// Do not rebuild its materials twice on a weapon switch.
-									this->update_view_model( local_pawn, g_econ_item_system.find_paint_kit( selected->skin.paint_kit_id ) );
+									this->update_view_model( local_pawn, g_econ_item_system.find_paint_kit( selected->skin.paint_kit_id ), true );
 								}
 								else
 								{
 									const auto paint_kit_id = memory::safe_read<int>( active_weapon + SCHEMA( "C_EconEntity", "m_nFallbackPaintKit"_hash ) ).value_or( 0 );
 									const auto pk = g_econ_item_system.find_paint_kit( paint_kit_id );
-									this->update_view_model( local_pawn, pk );
+									this->update_view_model( local_pawn, pk, true );
 								}
 							}
 						}
@@ -367,8 +369,7 @@ namespace features::changer {
 				if ( applied_it != this->m_applied_weapons.end( ) 
 					&& applied_it->second.visual.weapon == weapon 
 					&& applied_it->second.skin == skin
-					&& cosmetic_cache::hud_reusable(applied_it->second.hud, hud_visual,
-						handle == remote_active_handle && remote_hud != 0)
+					&& applied_it->second.hud == hud_visual
 					&& current_pk == skin.paint_kit_id 
 					&& current_id_high == 0xf0000000 
 					&& current_seed == skin.seed
@@ -451,8 +452,20 @@ namespace features::changer {
 				( *item_id == gun_faux_item_id || *item_id == it->second.item_id ) ) return true;
 			this->m_original_weapons.erase( it );
 		}
-		// Never mistake an override from a lost snapshot for a native item.
-		if ( *item_id == gun_faux_item_id ) return false;
+		// If the weapon already has a changer override from a previous round/session, re-synthesize rather than failing.
+		if ( *item_id == gun_faux_item_id )
+		{
+			original_weapon synth{};
+			synth.weapon = weapon;
+			synth.def_index = *definition;
+			synth.item_id = 0;
+			synth.paint_kit = 0;
+			synth.seed = 0;
+			synth.wear = 0.0f;
+			synth.stattrak = -1;
+			this->m_original_weapons.emplace( handle, std::move( synth ) );
+			return true;
+		}
 		original_weapon saved{};
 		saved.weapon = weapon;
 		saved.def_index = *definition;
@@ -540,6 +553,11 @@ namespace features::changer {
 		const auto is_legacy = pk && pk->legacy_model;
 		const auto mesh_group = is_legacy ? std::uint64_t{ 2 } : std::uint64_t{ 1 };
 
+		// Material rebuilding may recreate/reset the first-person scene. Apply viewmodel
+		// binding first so SetModel does not wipe out composite materials and skins.
+		if (needs_hud && !this->update_view_model(pawn, pk, true))
+			return false;
+
 		const auto weapon_scene_node = memory::safe_read<std::uintptr_t>( weapon + SCHEMA( "C_BaseEntity", "m_pGameSceneNode"_hash ) ).value_or( 0 );
 		if ( weapon_scene_node && PATTERN( patterns::weapon_set_mesh_group_mask ) )
 		{
@@ -558,12 +576,20 @@ namespace features::changer {
 			memory::call<void>( PATTERN( patterns::weapon_update_skin ), weapon, true );
 		}
 
-		// Material rebuilding may recreate/reset the first-person scene. Apply its
-		// mesh last, and only cache success when the bound HUD model is ready.
-		return !needs_hud || this->update_view_model(pawn, pk);
+		if ( needs_hud )
+		{
+			const auto hud = this->find_hud_model_weapon( pawn );
+			const auto hud_scene = hud ? memory::safe_read<std::uintptr_t>( hud + SCHEMA( "C_BaseEntity", "m_pGameSceneNode"_hash ) ).value_or( 0 ) : 0;
+			if ( hud_scene && mesh_pattern )
+			{
+				memory::call<void>( mesh_pattern, hud_scene, mesh_group );
+			}
+		}
+
+		return true;
 	}
 
-	bool guns::update_view_model( std::uintptr_t pawn, const econ_item_system::paint_kit* pk )
+	bool guns::update_view_model( std::uintptr_t pawn, const econ_item_system::paint_kit* pk, bool force )
 	{
 		const auto hud = this->find_hud_model_weapon(pawn);
 		auto visual = visual_identity(hud);
@@ -575,6 +601,12 @@ namespace features::changer {
 		const auto active = services ? memory::safe_read<std::uint32_t>(services + SCHEMA("CPlayer_WeaponServices", "m_hActiveWeapon"_hash)).value_or(0) : 0;
 		const auto weapon = systems::g_entities.lookup(active);
 		if (!weapon) return false;
+
+		if (force && PATTERN(patterns::weapon_get_viewmodel))
+		{
+			memory::call<void>(PATTERN(patterns::weapon_get_viewmodel), weapon);
+		}
+
 		const auto iv = weapon + SCHEMA("C_EconEntity", "m_AttributeManager"_hash) + SCHEMA("C_AttributeContainer", "m_Item"_hash);
 		const auto target = memory::call<const char*>(get_model, iv);
 		if (!target || !*target) return false;
@@ -582,9 +614,8 @@ namespace features::changer {
 		const auto name_offset = SCHEMA("CModelState", "m_ModelName"_hash);
 		if (!state_offset || !name_offset) return false;
 		const auto current_name = memory::safe_read<std::uintptr_t>(visual.scene + state_offset + name_offset).value_or(0);
-		if (!current_name || !cosmetic_model::matches(memory::read_string(current_name), target)) {
-			// Use the same engine model update as the knife changer; a mesh mask alone
-			// cannot repair a stale first-person model after a loadout/config change.
+		if (force || !current_name || !cosmetic_model::matches(memory::read_string(current_name), target)) {
+			// Rebind the model on the viewmodel entity to rebuild composite materials & mesh.
 			memory::call<void>(set_model, hud, target);
 			visual = visual_identity(hud);
 			if (!visual.ready()) return false;
@@ -592,6 +623,17 @@ namespace features::changer {
 		if (this->find_hud_model_weapon(pawn) != hud) return false;
 		const auto is_legacy = pk && pk->legacy_model;
 		memory::call<void>(mesh_pattern, visual.scene, is_legacy ? std::uint64_t{2} : std::uint64_t{1});
+
+		if ( PATTERN( patterns::weapon_update_composite_material ) )
+		{
+			memory::call<void>( PATTERN( patterns::weapon_update_composite_material ), weapon + 0x608, true );
+		}
+		memory::call_vfunc<void>( weapon, 10, 1 );
+		if ( PATTERN( patterns::weapon_update_skin ) )
+		{
+			memory::call<void>( PATTERN( patterns::weapon_update_skin ), weapon, true );
+		}
+
 		return true;
 	}
 
@@ -605,7 +647,13 @@ namespace features::changer {
 		auto found = this->m_applied_weapons.find(handle);
 		if (found == this->m_applied_weapons.end() || !found->second.hud_refresh_pending) return;
 		const auto weapon = systems::g_entities.lookup(handle);
-		if (!cosmetic_cache::reusable(found->second.visual, visual
+		if (!weapon || !cosmetic_cache::reusable(found->second.visual, visual_identity(weapon))) return;
+		const auto pk = g_econ_item_system.find_paint_kit(found->second.skin.paint_kit_id);
+		if (this->update_view_model(pawn, pk, true)) {
+			found->second.hud_refresh_pending = false;
+			found->second.hud = visual_identity(this->find_hud_model_weapon(pawn));
+		}
+	}
 
 	std::uintptr_t guns::find_hud_model_weapon( std::uintptr_t pawn )
 	{

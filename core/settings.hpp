@@ -1999,6 +1999,9 @@ namespace settings {
                         config::val<float> teammate_damage_y{ -1.0f, "widgets", "teammate damage y" };
                         config::val<float> teammate_damage_opacity{ 100.0f, "widgets", "teammate damage opacity" };
 
+                        config::val<float> unsafe_mode_x{ -1.0f, "widgets", "unsafe mode x" };
+                        config::val<float> unsafe_mode_y{ -1.0f, "widgets", "unsafe mode y" };
+
                         enum class style : std::uint8_t { modern, classic, neo, glass };
 
                         config::enm<style> widget_style{ style::modern, "widgets", "style" };
@@ -2392,7 +2395,80 @@ namespace settings {
         {
                 if (!safe_mode::active()) return;
                 xui::binds::disable_restricted();
-                // Flash alpha is numeric, not an xui::setting. Clear any held override too.
+
+                // 1. Ragebot
+                g_combat.m_ragebot.enabled.value = false;
+                g_combat.m_ragebot.enabled.bind.active = false;
+                for (auto& g : g_combat.m_ragebot.groups) {
+                        g.silent.value = false; g.silent.bind.active = false;
+                        g.no_spread.value = false; g.no_spread.bind.active = false;
+                        g.body_aim.value = false; g.body_aim.bind.active = false;
+                        g.force_shot_air.value = false; g.force_shot_air.bind.active = false;
+                        g.force_shot.value = false; g.force_shot.bind.active = false;
+                        g.autostop.value = false; g.autostop.bind.active = false;
+                        g.min_damage_override.value = false; g.min_damage_override.bind.active = false;
+                        g.hitchance_override.value = false; g.hitchance_override.bind.active = false;
+                }
+                for (auto& w : g_combat.m_ragebot.weapons) {
+                        w.override_group.value = false;
+                        w.cfg.silent.value = false; w.cfg.silent.bind.active = false;
+                        w.cfg.no_spread.value = false; w.cfg.no_spread.bind.active = false;
+                        w.cfg.body_aim.value = false; w.cfg.body_aim.bind.active = false;
+                        w.cfg.force_shot_air.value = false; w.cfg.force_shot_air.bind.active = false;
+                        w.cfg.force_shot.value = false; w.cfg.force_shot.bind.active = false;
+                        w.cfg.autostop.value = false; w.cfg.autostop.bind.active = false;
+                        w.cfg.min_damage_override.value = false; w.cfg.min_damage_override.bind.active = false;
+                        w.cfg.hitchance_override.value = false; w.cfg.hitchance_override.bind.active = false;
+                }
+
+                // 2. Anti-Aim
+                auto& aa = g_combat.m_antiaim;
+                aa.enabled.value = false; aa.enabled.bind.active = false;
+                aa.manual_left.value = false; aa.manual_left.bind.active = false;
+                aa.manual_right.value = false; aa.manual_right.bind.active = false;
+                aa.jitters.value = false; aa.jitters.bind.active = false;
+                aa.spinbot.value = false; aa.spinbot.bind.active = false;
+
+                // 3. Peek assistance & autos
+                g_combat.m_quickpeek.enabled.value = false;
+                g_combat.m_quickpeek.enabled.bind.active = false;
+                g_combat.m_duckpeek.enabled.value = false;
+                g_combat.m_duckpeek.enabled.bind.active = false;
+                g_combat.m_zeusbot.enabled.value = false;
+                g_combat.m_zeusbot.enabled.bind.active = false;
+                g_combat.m_autos.revolver.value = false;
+                g_combat.m_autos.revolver.bind.active = false;
+                g_combat.m_autos.revolver_quick.value = false;
+                g_combat.m_autos.revolver_quick.bind.active = false;
+                g_combat.m_autos.scope.value = false;
+                g_combat.m_autos.scope.bind.active = false;
+
+                // 4. Legitbot Aimbot & Triggerbot
+                for (auto& g : g_combat.m_legitbot.groups) {
+                        g.aimbot.value = false; g.aimbot.bind.active = false;
+                        g.triggerbot.value = false; g.triggerbot.bind.active = false;
+                }
+                for (auto& w : g_combat.m_legitbot.weapons) {
+                        w.cfg.aimbot.value = false; w.cfg.aimbot.bind.active = false;
+                        w.cfg.triggerbot.value = false; w.cfg.triggerbot.bind.active = false;
+                }
+
+                // 5. Movement
+                g_movement.airstrafe.value = false; g_movement.airstrafe.bind.active = false;
+                g_movement.m_test_strafer.enabled.value = false; g_movement.m_test_strafer.enabled.bind.active = false;
+                g_movement.quickstop.value = false; g_movement.quickstop.bind.active = false;
+                g_movement.fastladder.value = false; g_movement.fastladder.bind.active = false;
+                g_movement.edgejump.value = false; g_movement.edgejump.bind.active = false;
+                g_movement.slowwalk.value = false; g_movement.slowwalk.bind.active = false;
+
+                // 6. Misc
+                g_misc.m_name_changer.clantag.value = false; g_misc.m_name_changer.clantag.bind.active = false;
+                g_misc.m_kill_say.enabled.value = false; g_misc.m_kill_say.enabled.bind.active = false;
+                g_misc.m_chat_spam.enabled.value = false; g_misc.m_chat_spam.enabled.bind.active = false;
+                g_misc.m_autobuy.enabled.value = false; g_misc.m_autobuy.enabled.bind.active = false;
+
+                // 7. Removals (Smoke & Flash Alpha)
+                g_misc.m_removals.smoke.value = false; g_misc.m_removals.smoke.bind.active = false;
                 auto& alpha = g_misc.m_removals.flash_alpha.value;
                 alpha = 100.0f;
                 if (auto* entry = xui::slider_binds::find_by_ptr(&alpha)) {
@@ -2400,6 +2476,10 @@ namespace settings {
                         entry->has_base_value = false;
                         for (auto& bind : entry->binds) bind.active = false;
                 }
+
+                // 8. Trajectory
+                g_misc.m_projectile_trajectory.super_toss.value = false;
+                g_misc.m_projectile_trajectory.super_toss.bind.active = false;
         }
 
         inline void set_safe_mode(bool enabled)

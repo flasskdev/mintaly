@@ -190,11 +190,14 @@ namespace rendering {
         [[nodiscard]] bool is_keybinds_dragging() const noexcept { return this->m_keybinds_dragging; }
         [[nodiscard]] bool is_spectators_hovered() const noexcept { return this->m_spectators_hovered; }
         [[nodiscard]] bool is_spectators_dragging() const noexcept { return this->m_spectators_dragging; }
+        [[nodiscard]] bool is_unsafe_mode_hud_hovered() const noexcept { return this->m_unsafe_mode_hud_hovered; }
+        [[nodiscard]] bool is_unsafe_mode_hud_dragging() const noexcept { return this->m_unsafe_mode_hud_dragging; }
     private:
         void watermark(xdraw::draw_list& draw_list);
         void keybinds(xdraw::draw_list& draw_list);
         void spectators(xdraw::draw_list& draw_list);
         void teammate_damage(xdraw::draw_list& draw_list);
+        void unsafe_mode_hud(xdraw::draw_list& draw_list);
         bool m_teammate_damage_hovered{ false };
         bool m_teammate_damage_dragging{ false };
         bool m_teammate_damage_mouse_down{ false };
@@ -204,6 +207,8 @@ namespace rendering {
         bool m_keybinds_dragging{ false };
         bool m_spectators_hovered{ false };
         bool m_spectators_dragging{ false };
+        bool m_unsafe_mode_hud_hovered{ false };
+        bool m_unsafe_mode_hud_dragging{ false };
     };
     class fonts
     {

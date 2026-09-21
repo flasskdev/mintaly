@@ -107,5 +107,94 @@ class UserRequestsValidation(unittest.TestCase):
         cfg_h = read_source("external/config.hpp")
         self.assertIn('detail::make_key("changer", "sync enabled")', cfg_h)
 
+    # 15. Safe Mode toggle in user dropdown (bottom) and removed from topbar
+    def test_item_15_safe_mode_in_dropdown_and_removed_from_topbar(self):
+        menu_core = read_source("core/rendering/impl/menu/menu.core.cpp")
+        self.assertNotIn('mode_btn_x = util_x - 10.0f - mode_btn_w;', menu_core)
+        self.assertIn('const auto mode_left = util_x;', menu_core)
+        self.assertIn('const float main_h = 261.0f;', menu_core)
+        self.assertIn('usr_safe_sw', menu_core)
+        self.assertIn('settings::set_safe_mode(!safe_mode::active());', menu_core)
+        self.assertIn('"Safe mode"', menu_core)
+
+    # 22. Theme preset 0 is Dark theme
+    def test_item_22_theme_preset_0_restoration(self):
+        theme_h = read_source("core/rendering/theme.hpp")
+        self.assertIn('{ "Dark",    {168, 178, 194}', theme_h)
+        xdraw_h = read_source("external/xdraw/xdraw.hpp")
+        self.assertIn('inline xdraw::color col_accent{ 168, 178, 194, 255 };', xdraw_h)
+
+    # 23. Movable UNSAFE MODE HUD window styled identically to spectator list
+    def test_item_23_unsafe_mode_draggable_hud(self):
+        settings = read_source("core/settings.hpp")
+        self.assertIn('config::val<float> unsafe_mode_x{ -1.0f, "widgets", "unsafe mode x" };', settings)
+        self.assertIn('config::val<float> unsafe_mode_y{ -1.0f, "widgets", "unsafe mode y" };', settings)
+
+        rendering_h = read_source("core/rendering/rendering.hpp")
+        self.assertIn('void unsafe_mode_hud(xdraw::draw_list& draw_list);', rendering_h)
+        self.assertIn('bool m_unsafe_mode_hud_hovered{ false };', rendering_h)
+        self.assertIn('bool m_unsafe_mode_hud_dragging{ false };', rendering_h)
+
+        widgets = read_source("core/rendering/impl/widgets.cpp")
+        self.assertIn('this->unsafe_mode_hud( dl );', widgets)
+        self.assertIn('void widgets::unsafe_mode_hud( xdraw::draw_list& draw_list )', widgets)
+        self.assertIn('"UNSAFE MODE"', widgets)
+        self.assertIn('widgets_cfg.unsafe_mode_x = current_x;', widgets)
+        self.assertIn('widgets_cfg.unsafe_mode_y = current_y;', widgets)
+        self.assertIn('if ( !safe_mode::active( ) )', widgets)
+        self.assertIn('!this->m_unsafe_mode_hud_dragging', widgets)
+
+    # 16. Gear settings icon hidden on locked SAFE controls
+    def test_item_16_gear_hidden_on_safe_controls(self):
+        xui = read_source("external/xdraw/xui/xui.cpp")
+        self.assertIn('if (win->last_item_locked) {', xui)
+        self.assertIn('if (auto* popup = overlays::find(make_id(label))) popup->force_close();', xui)
+        self.assertIn('win->last_item_locked = true;', xui)
+
+    # 17. Onshot chams duration slider moved to gear popup
+    def test_item_17_onshot_chams_duration_in_gear(self):
+        player = read_source("core/rendering/impl/menu/menu.player.cpp")
+        self.assertIn('detail::draw_chams_config("onshot chams", "os", p.m_chams.onshot, false, true, &p.m_chams.onshot_fade_time.value);', player)
+        common = read_source("core/rendering/impl/menu/menu.chams_common.hpp")
+        self.assertIn('if (duration) {', common)
+        self.assertIn('xui::slider_float("duration##ft", *duration, 0.05f, 5.0f, "%.2f s");', common)
+
+    # 18. Weapon skin viewmodel application fix
+    def test_item_18_weapon_skin_viewmodel_application(self):
+        guns = read_source("core/features/changer/impl/guns.cpp")
+        self.assertIn('bool update_view_model( std::uintptr_t pawn, const econ_item_system::paint_kit* pk, bool force = false );', read_source("core/features/changer/changer.hpp"))
+        self.assertIn('this->update_view_model(pawn, pk, true)', guns)
+        self.assertIn('if (force || !current_name || !cosmetic_model::matches(memory::read_string(current_name), target))', guns)
+
+    # 19. Smooth animated hiding of Ragebot sidebar tab
+    def test_item_19_smooth_ragebot_sidebar_collapse(self):
+        menu_core = read_source("core/rendering/impl/menu/menu.core.cpp")
+        self.assertIn('rage_sidebar_reveal', menu_core)
+        self.assertIn('safe_mode::active() && this->m_tab == 0 && rage_reveal < 0.15f', menu_core)
+        self.assertIn('dl.push_clip(sb_x, curr_y, sb_w, 42.0f * reveal);', menu_core)
+        self.assertIn('curr_y += 42.0f * reveal;', menu_core)
+
+    # 20. Safe mode automatically disables all unsafe features
+    def test_item_20_safe_mode_auto_disables_features(self):
+        settings = read_source("core/settings.hpp")
+        self.assertIn('inline void enforce_safe_mode()', settings)
+        self.assertIn('g_combat.m_ragebot.enabled.value = false;', settings)
+        self.assertIn('aa.enabled.value = false;', settings)
+        self.assertIn('g_combat.m_quickpeek.enabled.value = false;', settings)
+        self.assertIn('g_movement.airstrafe.value = false;', settings)
+
+    # 21. Vector icons added to profile Theme and all Watermark options
+    def test_item_21_icons_in_theme_and_watermark(self):
+        menu_core = read_source("core/rendering/impl/menu/menu.core.cpp")
+        self.assertIn('draw_toggle_row("Enabled", m.m_watermark.enabled', menu_core)
+        self.assertIn('draw_toggle_row("Steam Username", m.m_watermark.show_user', menu_core)
+        self.assertIn('draw_toggle_row("FPS", m.m_watermark.show_fps', menu_core)
+        self.assertIn('draw_toggle_row("Ping", m.m_watermark.show_ping', menu_core)
+        self.assertIn('draw_toggle_row("Loss", m.m_watermark.show_loss', menu_core)
+        self.assertIn('draw_toggle_row("Clock", m.m_watermark.show_time', menu_core)
+        self.assertIn('draw_toggle_row("Map", m.m_watermark.show_map', menu_core)
+        self.assertIn('draw_toggle_row("Tick Rate", m.m_watermark.show_tick', menu_core)
+        self.assertIn('draw_toggle_row("Velocity", m.m_watermark.show_velocity', menu_core)
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

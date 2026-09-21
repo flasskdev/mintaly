@@ -141,16 +141,44 @@ namespace features::movement {
             probe_mins.z -= 1.5f;
             const auto safe_at = [&](float t) {
                 const auto pos = pre.networked_origin + travel * t;
-                const auto clear = systems::g_tracing.trace_player_bbox(pos, pos,
+                auto check_pos = pos;
+                const auto crouched = systems::g_tracing.trace_player_bbox(pre.networked_origin, pos,
+                    {mins, maxs}, filter, movement);
+                if (crouched.all_solid || !std::isfinite(crouched.fraction)) return false;
+
+                auto clear = systems::g_tracing.trace_player_bbox(check_pos, check_pos,
                     {standing_mins, standing_maxs}, filter, movement);
-                auto below = pos;
+                // When evaluating landing clearance (including subtick step t + event_gap or immediate landing),
+                // sub-unit ground penetration must be projected to the standable surface so valid hops are not rejected.
+                if (clear.all_solid) {
+                    const auto ground_probe = systems::g_tracing.trace_player_bbox(pre.networked_origin, check_pos,
+                        {standing_mins, standing_maxs}, filter, movement);
+                    if (!ground_probe.all_solid && ground_probe.fraction < 1.0f && ground_probe.normal.z >= standable) {
+                        check_pos = pre.networked_origin + (check_pos - pre.networked_origin) * ground_probe.fraction;
+                        check_pos.z += 0.03125f;
+                        clear = systems::g_tracing.trace_player_bbox(check_pos, check_pos,
+                            {standing_mins, standing_maxs}, filter, movement);
+                    } else {
+                        // If starting probe was also solid, probe down with crouched hull to find exact floor height
+                        auto floor_probe_end = pre.networked_origin;
+                        floor_probe_end.z -= 64.0f;
+                        const auto floor_probe = systems::g_tracing.trace_player_bbox(pre.networked_origin, floor_probe_end,
+                            {mins, maxs}, filter, movement);
+                        if (!floor_probe.all_solid && floor_probe.fraction < 1.0f && floor_probe.normal.z >= standable) {
+                            const float floor_z = pre.networked_origin.z + mins.z - 64.0f * floor_probe.fraction;
+                            check_pos.z = floor_z - standing_mins.z + 0.03125f;
+                            clear = systems::g_tracing.trace_player_bbox(check_pos, check_pos,
+                                {standing_mins, standing_maxs}, filter, movement);
+                        }
+                    }
+                }
+                auto below = check_pos;
                 below.z -= 2.0f;
-                const auto support = systems::g_tracing.trace_player_bbox(pos, below,
+                const auto support = systems::g_tracing.trace_player_bbox(check_pos, below,
                     {standing_mins, standing_maxs}, filter, movement);
                 support_fraction = support.fraction;
                 support_solid = support.all_solid;
-                const auto crouched = systems::g_tracing.trace_player_bbox(pre.networked_origin, pos,
-                    {mins, maxs}, filter, movement);
+
                 return !clear.all_solid && std::isfinite(clear.fraction) && clear.fraction == 1.0f &&
                     !support.all_solid && std::isfinite(support.fraction) && support.fraction >= 0.0f &&
                     support.fraction < 1.0f && finite(support.normal) && support.normal.z >= standable &&

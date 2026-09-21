@@ -331,7 +331,7 @@ namespace features::changer {
 		std::atomic<bool> m_invalidate_pending{ false };
 		bool apply( std::uintptr_t weapon, std::uintptr_t iv, std::uint32_t handle, std::uint32_t active_handle, std::uintptr_t pawn, const settings::changer::applied_skin* skin, std::uint32_t account_id );
 		bool rebuild_paint( std::uintptr_t weapon, std::uint32_t handle, std::uint32_t active_handle, std::uintptr_t pawn, const econ_item_system::paint_kit* pk );
-		bool update_view_model( std::uintptr_t pawn, const econ_item_system::paint_kit* pk );
+		bool update_view_model( std::uintptr_t pawn, const econ_item_system::paint_kit* pk, bool force = false );
 		[[nodiscard]] std::uintptr_t find_hud_model_weapon( std::uintptr_t pawn );
 		void clear_hud_icon( std::uintptr_t iv );
 		void schedule_hud_clear( std::uintptr_t iv );

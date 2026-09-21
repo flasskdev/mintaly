@@ -53,6 +53,7 @@ namespace rendering {
 		}
 
 		this->teammate_damage( dl );
+		this->unsafe_mode_hud( dl );
 
 		xdraw::pop_font( );
 		dl.pop_clip( );
@@ -1077,6 +1078,7 @@ namespace rendering {
 		const bool can_start_drag = menu_open
 			&& !this->m_spectators_dragging
 			&& !this->m_teammate_damage_dragging
+			&& !this->m_unsafe_mode_hud_dragging
 			&& !xui::ctx( ).overlay_blocking( )
 			&& xui::ctx( ).active_window == xui::null_id
 			&& xui::ctx( ).active_slider == xui::null_id
@@ -1251,6 +1253,7 @@ namespace rendering {
 
 		const bool can_start_drag = menu_open
 			&& !this->m_keybinds_dragging && !this->m_spectators_dragging
+			&& !this->m_unsafe_mode_hud_dragging
 			&& !ctx.overlay_blocking( )
 			&& ctx.active_window == xui::null_id
 			&& ctx.active_slider == xui::null_id
@@ -1624,6 +1627,7 @@ namespace rendering {
 		const bool can_start_drag = menu_open
 			&& !this->m_keybinds_dragging
 			&& !this->m_teammate_damage_dragging
+			&& !this->m_unsafe_mode_hud_dragging
 			&& !xui::ctx( ).overlay_blocking( )
 			&& xui::ctx( ).active_window == xui::null_id
 			&& xui::ctx( ).active_slider == xui::null_id
@@ -1754,6 +1758,154 @@ namespace rendering {
 				draw_list.text( name_x, row_y + ( row_h - nh ) * 0.5f - 0.5f, e.name, tokens::col_text.alpha( static_cast< std::uint8_t >( 245.0f * master_alpha ) ) );
 			}
 		}
+	}
+
+	void widgets::unsafe_mode_hud( xdraw::draw_list& draw_list )
+	{
+		static animation::fade container_alpha;
+		if ( !safe_mode::active( ) )
+			container_alpha.fade_in( 0.2f );
+		else
+			container_alpha.fade_out( 0.2f );
+
+		container_alpha.update( );
+		if ( !container_alpha.visible( ) )
+		{
+			this->m_unsafe_mode_hud_hovered = false;
+			this->m_unsafe_mode_hud_dragging = false;
+			return;
+		}
+
+		const auto master_alpha = container_alpha.alpha( );
+		const auto& s = xui::ctx( ).style;
+
+		constexpr auto header_h{ 28.0f };
+		const auto card_r = xdraw::corner_radius{ 6.0f };
+
+		const auto [header_tw, header_th] = xdraw::measure_text( "UNSAFE MODE", g_fonts.inter_bold[ fonts::size::petite ] );
+		const float max_w = 13.0f + 8.0f + header_tw + 14.0f;
+
+		auto draw_watermark_shadow = [&]( float sx, float sy, float sw, float sh ) {
+			draw_list.rect_filled( sx - 4.0f, sy - 3.0f, sw + 8.0f, sh + 7.0f,
+				xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 30.0f * master_alpha ) }, xdraw::corner_radius{ 9.0f } );
+			draw_list.rect_filled( sx - 1.5f, sy - 1.0f, sw + 3.0f, sh + 3.0f,
+				xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 65.0f * master_alpha ) }, xdraw::corner_radius{ 7.0f } );
+		};
+
+		auto& widgets_cfg = settings::g_misc.m_widgets;
+		const auto [screen_w, screen_h] = xdraw::viewport_size( );
+		const auto max_screen_x = std::max( 0.0f, static_cast< float >( screen_w ) - max_w );
+		const auto max_screen_y = std::max( 0.0f, static_cast< float >( screen_h ) - header_h );
+
+		float current_x = widgets_cfg.unsafe_mode_x.value;
+		float current_y = widgets_cfg.unsafe_mode_y.value;
+		const bool has_custom_pos = ( current_x >= 0.0f && current_y >= 0.0f );
+
+		if ( !has_custom_pos )
+		{
+			current_x = std::clamp( ( static_cast< float >( screen_w ) - max_w ) * 0.5f, 0.0f, max_screen_x );
+			current_y = 20.0f;
+		}
+		else
+		{
+			current_x = std::clamp( current_x, 0.0f, max_screen_x );
+			current_y = std::clamp( current_y, 0.0f, max_screen_y );
+		}
+
+		// Drag handling when menu is open
+		static bool s_last_mouse_down{ false };
+		static bool s_is_dragging{ false };
+		static float s_drag_offset_x{ 0.0f };
+		static float s_drag_offset_y{ 0.0f };
+
+		const auto& input = xui::ctx( ).input;
+		const bool lbutton_phys = ( GetAsyncKeyState( VK_LBUTTON ) & 0x8000 ) != 0;
+		const bool mouse_down = input.mouse_down && lbutton_phys;
+		const bool mouse_clicked = mouse_down && !s_last_mouse_down;
+		const bool menu_open = g_menu.is_open( );
+
+		const xui::rect widget_rect{ current_x, current_y, max_w, header_h };
+		const bool hovered = menu_open && widget_rect.contains( input.mouse_x, input.mouse_y );
+
+		this->m_unsafe_mode_hud_hovered = hovered;
+
+		if ( !menu_open || !mouse_down )
+		{
+			s_is_dragging = false;
+		}
+
+		const bool can_start_drag = menu_open
+			&& !this->m_keybinds_dragging
+			&& !this->m_spectators_dragging
+			&& !this->m_teammate_damage_dragging
+			&& !xui::ctx( ).overlay_blocking( )
+			&& xui::ctx( ).active_window == xui::null_id
+			&& xui::ctx( ).active_slider == xui::null_id
+			&& xui::ctx( ).active_resize == xui::null_id
+			&& xui::ctx( ).active_text_input == xui::null_id
+			&& xui::ctx( ).active_child_scroll == xui::null_id;
+
+		if ( can_start_drag && hovered && mouse_clicked )
+		{
+			s_is_dragging = true;
+			s_drag_offset_x = input.mouse_x - current_x;
+			s_drag_offset_y = input.mouse_y - current_y;
+		}
+
+		if ( s_is_dragging )
+		{
+			current_x = std::clamp( input.mouse_x - s_drag_offset_x, 0.0f, max_screen_x );
+			current_y = std::clamp( input.mouse_y - s_drag_offset_y, 0.0f, max_screen_y );
+
+			widgets_cfg.unsafe_mode_x = current_x;
+			widgets_cfg.unsafe_mode_y = current_y;
+		}
+
+		this->m_unsafe_mode_hud_dragging = s_is_dragging;
+		s_last_mouse_down = mouse_down;
+
+		const auto x = current_x;
+		const auto base_ry = current_y;
+
+		// Header drop shadow (watermark style)
+		draw_watermark_shadow( x, base_ry, max_w, header_h );
+
+		// Header container
+		draw_list.rect_filled( x, base_ry, max_w, header_h, tokens::col_dark.alpha( static_cast< std::uint8_t >( 230.0f * master_alpha ) ), card_r );
+
+		const auto header_border_col = ( menu_open && ( hovered || s_is_dragging ) )
+			? s.accent.alpha( static_cast< std::uint8_t >( ( s_is_dragging ? 220.0f : 140.0f ) * master_alpha ) )
+			: tokens::col_border.alpha( static_cast< std::uint8_t >( 120.0f * master_alpha ) );
+		draw_list.rect( x, base_ry, max_w, header_h, header_border_col, card_r, 1.0f );
+
+		// Top subtle ambient neon reflection line
+		const auto half_w = ( max_w - 20.0f ) * 0.5f;
+		draw_list.rect_filled_gradient(
+			x + 10.0f, base_ry, half_w, 1.2f,
+			s.accent.alpha( 0 ),
+			s.accent.alpha( static_cast< std::uint8_t >( 170.0f * master_alpha ) ),
+			s.accent.alpha( static_cast< std::uint8_t >( 170.0f * master_alpha ) ),
+			s.accent.alpha( 0 )
+		);
+		draw_list.rect_filled_gradient(
+			x + 10.0f + half_w, base_ry, half_w, 1.2f,
+			s.accent.alpha( static_cast< std::uint8_t >( 170.0f * master_alpha ) ),
+			s.accent.alpha( 0 ),
+			s.accent.alpha( 0 ),
+			s.accent.alpha( static_cast< std::uint8_t >( 170.0f * master_alpha ) )
+		);
+
+		// Modern glowing brand indicator on left of header
+		const auto dot_cx = x + 13.0f;
+		const auto dot_cy = base_ry + header_h * 0.5f;
+		draw_list.circle_filled( dot_cx, dot_cy, 4.5f, s.accent.alpha( static_cast< std::uint8_t >( 45.0f * master_alpha ) ) );
+		draw_list.circle_filled( dot_cx, dot_cy, 2.2f, s.accent.alpha( static_cast< std::uint8_t >( 240.0f * master_alpha ) ) );
+		draw_list.circle_filled( dot_cx, dot_cy, 0.8f, xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 240.0f * master_alpha ) } );
+
+		// Header title
+		const auto title_x = dot_cx + 8.0f;
+		const auto title_y = base_ry + ( header_h - header_th ) * 0.5f - 0.5f;
+		draw_list.text( title_x, title_y, "UNSAFE MODE", tokens::col_text.alpha( static_cast< std::uint8_t >( 245.0f * master_alpha ) ), g_fonts.inter_bold[ fonts::size::petite ] );
 	}
 
 } // namespace rendering
