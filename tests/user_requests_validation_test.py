@@ -196,5 +196,20 @@ class UserRequestsValidation(unittest.TestCase):
         self.assertIn('draw_toggle_row("Tick Rate", m.m_watermark.show_tick', menu_core)
         self.assertIn('draw_toggle_row("Velocity", m.m_watermark.show_velocity', menu_core)
 
+    # 22. Spectator custom knife animations properly bound instead of standard knife
+    def test_item_22_spectator_knife_animations_binding(self):
+        hud_h = read_source("core/features/changer/hud_weapon.hpp")
+        self.assertIn("model_mismatch", hud_h)
+        self.assertIn("(bind || model_mismatch) && is_firstperson", hud_h)
+        self.assertIn("PATTERN(patterns::weapon_get_viewmodel)", hud_h)
+
+        knives_cpp = read_source("core/features/changer/impl/knives.cpp")
+        self.assertIn("bool knives::update_view_model( std::uintptr_t pawn, const econ_item_system::paint_kit* pk, bool force )", knives_cpp)
+        self.assertIn("return hud_weapon::update( pawn, pk && pk->legacy_model ? std::uint64_t{2} : std::uint64_t{1}, force );", knives_cpp)
+
+        changer_h = read_source("core/features/changer/changer.hpp")
+        self.assertIn("bool update_view_model( std::uintptr_t pawn, const econ_item_system::paint_kit* pk, bool force = false );", changer_h)
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+

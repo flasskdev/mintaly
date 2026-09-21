@@ -384,7 +384,7 @@ namespace features::changer {
 		void apply( std::uintptr_t weapon, std::uintptr_t iv, const econ_item_system::item_def* def, const settings::changer::applied_skin* skin, std::uint32_t account_id, std::uintptr_t active_weapon, std::uintptr_t pawn );
 		void restore( std::uintptr_t weapon, std::uintptr_t iv, std::uintptr_t active_weapon, std::uintptr_t pawn );
 		bool update_model( std::uintptr_t weapon, std::uintptr_t iv, std::uint16_t def_index, bool lobby = false );
-		bool update_view_model( std::uintptr_t pawn, const econ_item_system::paint_kit* pk );
+		bool update_view_model( std::uintptr_t pawn, const econ_item_system::paint_kit* pk, bool force = false );
 		[[nodiscard]] std::uintptr_t find_hud_model_weapon( std::uintptr_t pawn );
 		bool rebuild_paint( std::uintptr_t weapon, std::uintptr_t active_weapon, std::uintptr_t pawn, const econ_item_system::paint_kit* pk );
 		void clear_hud_icon( std::uintptr_t iv );

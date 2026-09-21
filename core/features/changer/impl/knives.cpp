@@ -63,6 +63,17 @@ namespace features::changer {
 			return murmurhash2_lower( s.c_str( ), static_cast< int >( s.length( ) ), 0x31415926 );
 		}
 
+		struct remote_knife_state {
+			std::uint16_t def_index{ 0 };
+			int paint_kit{ 0 };
+			std::uint32_t subclass{ 0 };
+			std::uint64_t item_id{ 0 };
+			int quality{ 0 };
+			bool disallow_soc{ false };
+			bool initialized{ false };
+		};
+		inline static std::unordered_map<std::uint32_t, remote_knife_state> s_remote_knives;
+
 	} // namespace detail
 
 	void knives::on_frame_stage_notify( )
@@ -243,109 +254,182 @@ namespace features::changer {
 			}
 		}
 
-		// Apply synced knives for remote players
-		const auto all_players = systems::g_entities.get_by_type( systems::entities::type::player );
-		for ( const auto& p : all_players )
+		// Restore synced knives if sync was disabled
+		if ( !g_skin_sync.is_enabled( ) )
 		{
-			const auto ctrl = p.ptr;
-			if ( !ctrl || ctrl == local_ctrl )
+			for ( auto it = detail::s_remote_knives.begin( ); it != detail::s_remote_knives.end( ); )
 			{
-				continue;
-			}
-
-			const auto sid = memory::safe_read<std::uint64_t>( ctrl + SCHEMA( "CBasePlayerController", "m_steamID"_hash ) ).value_or( 0 );
-			constexpr std::uint64_t steam_id_base = 76561197960265728ull;
-			if ( sid < steam_id_base && !g_skin_sync.m_bot_sync_test.load( ) )
-			{
-				continue;
-			}
-
-			const auto remote_skin_data = g_skin_sync.get_remote_skin( sid );
-			if ( !remote_skin_data || remote_skin_data->skins.empty( ) )
-			{
-				continue;
-			}
-
-			settings::changer::applied_skin remote_knife_skin{};
-			const econ_item_system::item_def* remote_knife_def{ nullptr };
-			bool has_knife_skin{ false };
-			for ( const auto& [def_idx, skin] : remote_skin_data->skins )
-			{
-				const auto def = g_econ_item_system.find_def( def_idx );
-				if ( def && def->category == econ_item_system::item_category::knife )
-				{
-					remote_knife_skin = cosmetic_attributes::normalize( skin );
-					remote_knife_def = def;
-					has_knife_skin = true;
-					break;
-				}
-			}
-
-			if ( !remote_knife_def || !has_knife_skin )
-			{
-				continue;
-			}
-
-			const auto pawn = preview_scene::player_pawn( ctrl );
-			if ( !preview_scene::player_ready( pawn ) )
-			{
-				continue;
-			}
-
-			const auto remote_weapon_services = memory::safe_read<std::uintptr_t>( pawn + SCHEMA( "C_BasePlayerPawn", "m_pWeaponServices"_hash ) ).value_or( 0 );
-			if ( !remote_weapon_services )
-			{
-				continue;
-			}
-
-			const auto remote_weapons_base = remote_weapon_services + SCHEMA( "CPlayer_WeaponServices", "m_hMyWeapons"_hash );
-			const auto remote_weapons_size = memory::safe_read<int>( remote_weapons_base ).value_or( 0 );
-			const auto remote_weapons_data = memory::safe_read<std::uintptr_t>( remote_weapons_base + 0x8 ).value_or( 0 );
-			if ( !remote_weapons_data || remote_weapons_size <= 0 || remote_weapons_size > 64 )
-			{
-				continue;
-			}
-
-			const auto remote_active_handle = memory::safe_read<std::uint32_t>( remote_weapon_services + SCHEMA( "CPlayer_WeaponServices", "m_hActiveWeapon"_hash ) ).value_or( 0 );
-			const auto remote_active_weapon = systems::g_entities.lookup( remote_active_handle );
-			const auto remote_account_id = static_cast< std::uint32_t >( sid & 0xffffffff );
-
-			for ( auto i = 0; i < remote_weapons_size; ++i )
-			{
-				const auto handle = memory::safe_read<std::uint32_t>( remote_weapons_data + i * sizeof( std::uint32_t ) ).value_or( 0 );
-				if ( !handle )
-				{
-					continue;
-				}
-
+				const auto handle = it->first;
+				const auto& state = it->second;
 				const auto weapon = systems::g_entities.lookup( handle );
-				if ( !weapon || weapon < 0x10000 )
+				if ( weapon )
+				{
+					const auto entity = entity_guard::capture( weapon );
+					if ( entity )
+					{
+						const auto iv = weapon + SCHEMA( "C_EconEntity", "m_AttributeManager"_hash ) + SCHEMA( "C_AttributeContainer", "m_Item"_hash );
+						const auto definition = SCHEMA( "C_EconItemView", "m_iItemDefinitionIndex"_hash );
+						if ( definition && iv )
+						{
+							memory::write<std::uint16_t>( iv + definition, state.def_index );
+							memory::write<std::uint64_t>( iv + SCHEMA( "C_EconItemView", "m_iItemID"_hash ), state.item_id );
+							memory::write<bool>( iv + SCHEMA( "C_EconItemView", "m_bDisallowSOC"_hash ), state.disallow_soc );
+							memory::write<int>( iv + SCHEMA( "C_EconItemView", "m_iEntityQuality"_hash ), state.quality );
+							memory::write<bool>( iv + SCHEMA( "C_EconItemView", "m_bInitialized"_hash ), state.initialized );
+							memory::write<int>( weapon + SCHEMA( "C_EconEntity", "m_nFallbackPaintKit"_hash ), state.paint_kit );
+							this->update_model( weapon, iv, state.def_index, true );
+							entity_guard::rebuild_materials( *entity, 1 );
+						}
+					}
+				}
+				it = detail::s_remote_knives.erase( it );
+			}
+		}
+
+		// Apply synced knives for remote players
+		if ( g_skin_sync.is_enabled( ) )
+		{
+			const auto all_players = systems::g_entities.get_by_type( systems::entities::type::player );
+			for ( const auto& p : all_players )
+			{
+				const auto ctrl = p.ptr;
+				if ( !ctrl || ctrl == local_ctrl )
 				{
 					continue;
 				}
 
-				const auto iv = weapon + SCHEMA( "C_EconEntity", "m_AttributeManager"_hash ) + SCHEMA( "C_AttributeContainer", "m_Item"_hash );
-				const auto current_def_index = memory::read<std::uint16_t>( iv + SCHEMA( "C_EconItemView", "m_iItemDefinitionIndex"_hash ) );
-				const auto current_def = g_econ_item_system.find_def( static_cast< std::int16_t >( current_def_index ) );
-				if ( !current_def || current_def->category != econ_item_system::item_category::knife )
+				const auto sid = memory::safe_read<std::uint64_t>( ctrl + SCHEMA( "CBasePlayerController", "m_steamID"_hash ) ).value_or( 0 );
+				constexpr std::uint64_t steam_id_base = 76561197960265728ull;
+				if ( sid < steam_id_base && !g_skin_sync.m_bot_sync_test.load( ) )
 				{
 					continue;
 				}
 
-				const auto target_token = detail::make_subclass_token( remote_knife_def->def_index );
-				const auto current_subclass = memory::safe_read<std::uint32_t>( weapon + SCHEMA( "C_BaseEntity", "m_nSubclassID"_hash ) ).value_or( 0 );
-				const auto current_pk = memory::safe_read<int>( weapon + SCHEMA( "C_EconEntity", "m_nFallbackPaintKit"_hash ) ).value_or( 0 );
-
-				if ( preview_item::matches( weapon, iv, remote_knife_skin, remote_account_id, remote_knife_skin.stattrak ? 9 : 3 ) &&
-					current_def_index == static_cast<std::uint16_t>( remote_knife_def->def_index ) &&
-					current_subclass == target_token && current_pk == remote_knife_skin.paint_kit_id &&
-					cosmetic_attributes::matches( iv, remote_knife_skin ) && name_tag::matches( iv, remote_knife_skin.name_tag ) )
+				const auto pawn = preview_scene::player_pawn( ctrl );
+				if ( !preview_scene::player_ready( pawn ) )
 				{
+					continue;
+				}
+
+				const auto remote_weapon_services = memory::safe_read<std::uintptr_t>( pawn + SCHEMA( "C_BasePlayerPawn", "m_pWeaponServices"_hash ) ).value_or( 0 );
+				if ( !remote_weapon_services )
+				{
+					continue;
+				}
+
+				const auto remote_weapons_base = remote_weapon_services + SCHEMA( "CPlayer_WeaponServices", "m_hMyWeapons"_hash );
+				const auto remote_weapons_size = memory::safe_read<int>( remote_weapons_base ).value_or( 0 );
+				const auto remote_weapons_data = memory::safe_read<std::uintptr_t>( remote_weapons_base + 0x8 ).value_or( 0 );
+				if ( !remote_weapons_data || remote_weapons_size <= 0 || remote_weapons_size > 64 )
+				{
+					continue;
+				}
+
+				const auto remote_skin_data = g_skin_sync.get_remote_skin( sid );
+				settings::changer::applied_skin remote_knife_skin{};
+				const econ_item_system::item_def* remote_knife_def{ nullptr };
+				bool has_knife_skin{ false };
+				if ( remote_skin_data && !remote_skin_data->skins.empty( ) )
+				{
+					for ( const auto& [def_idx, skin] : remote_skin_data->skins )
+					{
+						const auto def = g_econ_item_system.find_def( def_idx );
+						if ( def && def->category == econ_item_system::item_category::knife )
+						{
+							remote_knife_skin = cosmetic_attributes::normalize( skin );
+							remote_knife_def = def;
+							has_knife_skin = true;
+							break;
+						}
+					}
+				}
+
+				const auto remote_active_handle = memory::safe_read<std::uint32_t>( remote_weapon_services + SCHEMA( "CPlayer_WeaponServices", "m_hActiveWeapon"_hash ) ).value_or( 0 );
+				const auto remote_active_weapon = systems::g_entities.lookup( remote_active_handle );
+				const auto remote_account_id = static_cast< std::uint32_t >( sid & 0xffffffff );
+
+				for ( auto i = 0; i < remote_weapons_size; ++i )
+				{
+					const auto handle = memory::safe_read<std::uint32_t>( remote_weapons_data + i * sizeof( std::uint32_t ) ).value_or( 0 );
+					if ( !handle )
+					{
+						continue;
+					}
+
+					const auto weapon = systems::g_entities.lookup( handle );
+					if ( !weapon || weapon < 0x10000 )
+					{
+						continue;
+					}
+
+					const auto iv = weapon + SCHEMA( "C_EconEntity", "m_AttributeManager"_hash ) + SCHEMA( "C_AttributeContainer", "m_Item"_hash );
+					const auto current_def_index = memory::read<std::uint16_t>( iv + SCHEMA( "C_EconItemView", "m_iItemDefinitionIndex"_hash ) );
+					const auto current_def = g_econ_item_system.find_def( static_cast< std::int16_t >( current_def_index ) );
+					if ( !current_def || current_def->category != econ_item_system::item_category::knife )
+					{
+						continue;
+					}
+
+					if ( !has_knife_skin || !remote_knife_def )
+					{
+						const auto it = detail::s_remote_knives.find( handle );
+						if ( it != detail::s_remote_knives.end( ) )
+						{
+							const auto& state = it->second;
+							const auto entity = entity_guard::capture( weapon );
+							if ( entity )
+							{
+								const auto definition = SCHEMA( "C_EconItemView", "m_iItemDefinitionIndex"_hash );
+								if ( definition && iv )
+								{
+									memory::write<std::uint16_t>( iv + definition, state.def_index );
+									memory::write<std::uint64_t>( iv + SCHEMA( "C_EconItemView", "m_iItemID"_hash ), state.item_id );
+									memory::write<bool>( iv + SCHEMA( "C_EconItemView", "m_bDisallowSOC"_hash ), state.disallow_soc );
+									memory::write<int>( iv + SCHEMA( "C_EconItemView", "m_iEntityQuality"_hash ), state.quality );
+									memory::write<bool>( iv + SCHEMA( "C_EconItemView", "m_bInitialized"_hash ), state.initialized );
+									memory::write<int>( weapon + SCHEMA( "C_EconEntity", "m_nFallbackPaintKit"_hash ), state.paint_kit );
+									this->update_model( weapon, iv, state.def_index, true );
+									entity_guard::rebuild_materials( *entity, 1 );
+								}
+							}
+							detail::s_remote_knives.erase( it );
+						}
+						continue;
+					}
+
+					const auto target_token = detail::make_subclass_token( remote_knife_def->def_index );
+					const auto current_subclass = memory::safe_read<std::uint32_t>( weapon + SCHEMA( "C_BaseEntity", "m_nSubclassID"_hash ) ).value_or( 0 );
+					const auto current_pk = memory::safe_read<int>( weapon + SCHEMA( "C_EconEntity", "m_nFallbackPaintKit"_hash ) ).value_or( 0 );
+
+					if ( detail::s_remote_knives.find( handle ) == detail::s_remote_knives.end( ) )
+					{
+						detail::remote_knife_state saved{};
+						saved.def_index = current_def_index;
+						saved.paint_kit = current_pk;
+						saved.subclass = current_subclass;
+						saved.item_id = memory::read<std::uint64_t>( iv + SCHEMA( "C_EconItemView", "m_iItemID"_hash ) );
+						saved.quality = memory::read<int>( iv + SCHEMA( "C_EconItemView", "m_iEntityQuality"_hash ) );
+						saved.disallow_soc = memory::read<bool>( iv + SCHEMA( "C_EconItemView", "m_bDisallowSOC"_hash ) );
+						saved.initialized = memory::read<bool>( iv + SCHEMA( "C_EconItemView", "m_bInitialized"_hash ) );
+						detail::s_remote_knives[ handle ] = saved;
+					}
+
+					if ( preview_item::matches( weapon, iv, remote_knife_skin, remote_account_id, remote_knife_skin.stattrak ? 9 : 3 ) &&
+						current_def_index == static_cast<std::uint16_t>( remote_knife_def->def_index ) &&
+						current_subclass == target_token && current_pk == remote_knife_skin.paint_kit_id &&
+						cosmetic_attributes::matches( iv, remote_knife_skin ) && name_tag::matches( iv, remote_knife_skin.name_tag ) )
+					{
+						if ( weapon == remote_active_weapon && pawn == systems::g_local.get( ).observer_pawn )
+						{
+							const auto pk = g_econ_item_system.find_paint_kit( remote_knife_skin.paint_kit_id );
+							this->update_view_model( pawn, pk );
+						}
+						break;
+					}
+
+					this->apply( weapon, iv, remote_knife_def, &remote_knife_skin, remote_account_id, remote_active_weapon, pawn );
 					break;
 				}
-
-				this->apply( weapon, iv, remote_knife_def, &remote_knife_skin, remote_account_id, remote_active_weapon, pawn );
-				break;
 			}
 		}
 	}
@@ -381,12 +465,14 @@ namespace features::changer {
 		if ( !entity || !entity_guard::ready( pawn ) || !skin || !def || !preview_item::available( ) || !preview_item::identity( weapon ).ready( ) ) return;
 		const auto definition = SCHEMA( "C_EconItemView", "m_iItemDefinitionIndex"_hash );
 		if ( !definition ) return;
-		const bool local = pawn == systems::g_local.get( ).pawn;
+		const auto local_sys = systems::g_local.get( );
+		const bool local = pawn == local_sys.pawn;
+		const bool is_viewed = ( pawn == local_sys.pawn || ( local_sys.observer_pawn && pawn == local_sys.observer_pawn ) );
 		preview_item::applied.erase( weapon );
 		if ( local ) this->m_overridden = false;
 		memory::write<std::uint16_t>( iv + definition, static_cast<std::uint16_t>( def->def_index ) );
 		// Retry model reconciliation even after a prior partial subclass update.
-		if ( !this->update_model( weapon, iv, static_cast<std::uint16_t>( def->def_index ), !local ) || !entity_guard::current( *entity ) ) return;
+		if ( !this->update_model( weapon, iv, static_cast<std::uint16_t>( def->def_index ), !is_viewed ) || !entity_guard::current( *entity ) ) return;
 		memory::write<std::uint64_t>( iv + SCHEMA( "C_EconItemView", "m_iItemID"_hash ), 0xf000000000000010ull );
 		memory::write<bool>( iv + SCHEMA( "C_EconItemView", "m_bDisallowSOC"_hash ), true );
 		memory::write<int>( iv + SCHEMA( "C_EconItemView", "m_iEntityQuality"_hash ), skin->stattrak ? 9 : 3 );
@@ -477,15 +563,18 @@ namespace features::changer {
 		const auto entity = entity_guard::capture( weapon );
 		if ( !entity || !entity_guard::ready( pawn ) ) return false;
 		const auto mesh = pk && pk->legacy_model ? std::uint64_t{2} : std::uint64_t{1};
+		const auto local_sys = systems::g_local.get( );
+		const bool is_viewed = ( pawn == local_sys.pawn || ( local_sys.observer_pawn && pawn == local_sys.observer_pawn ) );
 		const bool needs_hud = weapon == active_weapon &&
-			( pawn == systems::g_local.get( ).pawn || this->find_hud_model_weapon( pawn ) != 0 );
+			( is_viewed || this->find_hud_model_weapon( pawn ) != 0 );
+		if ( !entity_guard::rebuild_materials( *entity, mesh ) ) return false;
 		if ( needs_hud && !this->update_view_model( pawn, pk ) ) return false;
-		return entity_guard::rebuild_materials( *entity, mesh );
+		return true;
 	}
 
-	bool knives::update_view_model( std::uintptr_t pawn, const econ_item_system::paint_kit* pk )
+	bool knives::update_view_model( std::uintptr_t pawn, const econ_item_system::paint_kit* pk, bool force )
 	{
-		return hud_weapon::update( pawn, pk && pk->legacy_model ? std::uint64_t{2} : std::uint64_t{1}, false );
+		return hud_weapon::update( pawn, pk && pk->legacy_model ? std::uint64_t{2} : std::uint64_t{1}, force );
 	}
 
 	std::uintptr_t knives::find_hud_model_weapon( std::uintptr_t pawn )
@@ -536,6 +625,7 @@ namespace features::changer {
 		this->m_pending_hud_iv = 0;
 		this->m_hud_clear_time = {};
 		this->m_invalidate_pending = false;
+		detail::s_remote_knives.clear( );
 	}
 
 } // namespace features::changer

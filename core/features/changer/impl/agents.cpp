@@ -88,6 +88,7 @@ namespace {
 		std::int16_t def_index{ 0 };
 		std::uintptr_t model_handle{ 0 };
 		int team{ 0 };
+		std::string original_model{};
 	};
 	static std::unordered_map<std::uintptr_t, remote_agent_state> s_remote_agents;
 
@@ -293,109 +294,144 @@ namespace {
 			}
 		}
 
-		// Apply synced agents for remote players
-		const auto all_players = systems::g_entities.get_by_type( systems::entities::type::player );
-		for ( const auto& p : all_players )
+		// Restore synced agents if sync was disabled
+		if ( !g_skin_sync.is_enabled( ) )
 		{
-			const auto ctrl = p.ptr;
-			if ( !ctrl || ctrl == local_ctrl )
+			for ( auto it = s_remote_agents.begin( ); it != s_remote_agents.end( ); )
 			{
-				continue;
+				const auto pawn = it->first;
+				const auto& state = it->second;
+				if ( !state.original_model.empty( ) && entity_guard::ready( pawn ) )
+				{
+					replace_agent_model( pawn, state.original_model );
+					this->cycle_weapon_owners( pawn );
+				}
+				it = s_remote_agents.erase( it );
 			}
+		}
 
-			const auto sid = memory::safe_read<std::uint64_t>( ctrl + SCHEMA( "CBasePlayerController", "m_steamID"_hash ) ).value_or( 0 );
-			constexpr std::uint64_t steam_id_base = 76561197960265728ull;
-			if ( sid < steam_id_base && !g_skin_sync.m_bot_sync_test.load( ) )
+		// Apply synced agents for remote players
+		if ( g_skin_sync.is_enabled( ) )
+		{
+			const auto all_players = systems::g_entities.get_by_type( systems::entities::type::player );
+			for ( const auto& p : all_players )
 			{
-				continue;
+				const auto ctrl = p.ptr;
+				if ( !ctrl || ctrl == local_ctrl )
+				{
+					continue;
+				}
+
+				const auto sid = memory::safe_read<std::uint64_t>( ctrl + SCHEMA( "CBasePlayerController", "m_steamID"_hash ) ).value_or( 0 );
+				constexpr std::uint64_t steam_id_base = 76561197960265728ull;
+				if ( sid < steam_id_base && !g_skin_sync.m_bot_sync_test.load( ) )
+				{
+					continue;
+				}
+
+				auto pawn_handle = player_pawn_offset
+					? memory::safe_read<std::uint32_t>( ctrl + player_pawn_offset ).value_or( 0 ) : 0;
+				if ( !pawn_handle || pawn_handle == 0xffffffff )
+				{
+					const auto hpawn_off = SCHEMA( "CBasePlayerController", "m_hPawn"_hash );
+					pawn_handle = hpawn_off ? memory::safe_read<std::uint32_t>( ctrl + hpawn_off ).value_or( 0 ) : 0;
+				}
+				if ( !pawn_handle || pawn_handle == 0xffffffff )
+				{
+					continue;
+				}
+
+				const auto pawn = systems::g_entities.lookup( pawn_handle );
+				if ( !pawn || pawn < 0x10000 )
+				{
+					continue;
+				}
+
+				const auto remote_class = systems::g_entities.get_schema_name( pawn );
+				if ( !remote_class || fnv1a::runtime_hash( remote_class ) != "C_CSPlayerPawn"_hash ) continue;
+
+				auto remote_team = memory::safe_read<std::uint8_t>( pawn + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) ).value_or( 0 );
+				if ( remote_team != 2 && remote_team != 3 )
+					remote_team = memory::safe_read<std::uint8_t>( ctrl + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) ).value_or( 0 );
+				if ( remote_team != 2 && remote_team != 3 )
+				{
+					continue;
+				}
+
+				const auto remote_skin_data = g_skin_sync.get_remote_skin( sid );
+				const auto remote_agent_def = remote_skin_data ? ( ( remote_team == 3 ) ? remote_skin_data->agent_ct : remote_skin_data->agent_t ) : static_cast<std::int16_t>( 0 );
+				if ( !remote_agent_def )
+				{
+					const auto it = s_remote_agents.find( pawn );
+					if ( it != s_remote_agents.end( ) )
+					{
+						if ( !it->second.original_model.empty( ) && entity_guard::ready( pawn ) )
+						{
+							replace_agent_model( pawn, it->second.original_model );
+							this->cycle_weapon_owners( pawn );
+						}
+						s_remote_agents.erase( it );
+					}
+					continue;
+				}
+
+				const auto agent_item = g_econ_item_system.find_def( remote_agent_def );
+				if ( !agent_item || agent_item->category != econ_item_system::item_category::agent || agent_item->model_player.empty( ) ||
+					 ( agent_item->team( ) != 0 && agent_item->team( ) != remote_team ) )
+				{
+					continue;
+				}
+
+				// Reject any custom disk path models (must be standard game character model, no drive letters or traversals)
+				const std::string& raw_model = agent_item->model_player;
+				if ( raw_model.find( ":" ) != std::string::npos || raw_model.find( ".." ) != std::string::npos ||
+					 raw_model.starts_with( "/" ) || raw_model.starts_with( "\\" ) )
+				{
+					continue;
+				}
+
+				std::string remote_model = agent_item->model_player;
+				if ( remote_model.size( ) >= 7 && remote_model.substr( remote_model.size( ) - 7 ) == ".vmdl_c" )
+					remote_model = remote_model.substr( 0, remote_model.size( ) - 2 );
+
+				const auto remote_gsn = memory::safe_read<std::uintptr_t>( pawn + SCHEMA( "C_BaseEntity", "m_pGameSceneNode"_hash ) ).value_or( 0 );
+				if ( !remote_gsn )
+				{
+					continue;
+				}
+
+				const auto remote_model_state = remote_gsn + SCHEMA( "CSkeletonInstance", "m_modelState"_hash );
+				const auto remote_model_handle = memory::safe_read<std::uintptr_t>( remote_model_state + SCHEMA( "CModelState", "m_hModel"_hash ) ).value_or( 0 );
+				if ( !remote_model_handle )
+				{
+					continue;
+				}
+
+				const auto it = s_remote_agents.find( pawn );
+				if ( it != s_remote_agents.end( ) && it->second.def_index == remote_agent_def && it->second.team == remote_team && it->second.model_handle == remote_model_handle && agent_model_matches( pawn, remote_model ) )
+				{
+					continue;
+				}
+
+				std::string orig_model;
+				if ( it != s_remote_agents.end( ) )
+				{
+					orig_model = it->second.original_model;
+				}
+				else
+				{
+					const auto name_ptr = memory::safe_read<std::uintptr_t>( remote_model_state + SCHEMA( "CModelState", "m_ModelName"_hash ) ).value_or( 0 );
+					orig_model = name_ptr ? memory::read_string( name_ptr ) : std::string{};
+				}
+
+				if ( !replace_agent_model( pawn, remote_model ) ) continue;
+				if ( !agent_model_matches( pawn, remote_model ) ) continue; // Resource still loading: retry.
+
+				this->cycle_weapon_owners( pawn );
+
+				const auto new_handle = agent_model_handle( pawn );
+				s_remote_agents[ pawn ] = { remote_agent_def, new_handle, remote_team, orig_model };
 			}
-
-			const auto remote_skin_data = g_skin_sync.get_remote_skin( sid );
-			if ( !remote_skin_data )
-			{
-				continue;
-			}
-
-			auto pawn_handle = player_pawn_offset
-				? memory::safe_read<std::uint32_t>( ctrl + player_pawn_offset ).value_or( 0 ) : 0;
-			if ( !pawn_handle || pawn_handle == 0xffffffff )
-			{
-				const auto hpawn_off = SCHEMA( "CBasePlayerController", "m_hPawn"_hash );
-				pawn_handle = hpawn_off ? memory::safe_read<std::uint32_t>( ctrl + hpawn_off ).value_or( 0 ) : 0;
-			}
-			if ( !pawn_handle || pawn_handle == 0xffffffff )
-			{
-				continue;
-			}
-
-			const auto pawn = systems::g_entities.lookup( pawn_handle );
-			if ( !pawn || pawn < 0x10000 )
-			{
-				continue;
-			}
-
-			const auto remote_class = systems::g_entities.get_schema_name( pawn );
-			if ( !remote_class || fnv1a::runtime_hash( remote_class ) != "C_CSPlayerPawn"_hash ) continue;
-
-			auto remote_team = memory::safe_read<std::uint8_t>( pawn + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) ).value_or( 0 );
-			if ( remote_team != 2 && remote_team != 3 )
-				remote_team = memory::safe_read<std::uint8_t>( ctrl + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) ).value_or( 0 );
-			if ( remote_team != 2 && remote_team != 3 )
-			{
-				continue;
-			}
-
-			const auto remote_agent_def = ( remote_team == 3 ) ? remote_skin_data->agent_ct : remote_skin_data->agent_t;
-			if ( !remote_agent_def )
-			{
-				continue;
-			}
-
-			const auto agent_item = g_econ_item_system.find_def( remote_agent_def );
-			if ( !agent_item || agent_item->category != econ_item_system::item_category::agent || agent_item->model_player.empty( ) ||
-				 ( agent_item->team( ) != 0 && agent_item->team( ) != remote_team ) )
-			{
-				continue;
-			}
-
-			// Reject any custom disk path models (must be standard game character model, no drive letters or traversals)
-			const std::string& raw_model = agent_item->model_player;
-			if ( raw_model.find( ":" ) != std::string::npos || raw_model.find( ".." ) != std::string::npos ||
-				 raw_model.starts_with( "/" ) || raw_model.starts_with( "\\" ) )
-			{
-				continue;
-			}
-
-			std::string remote_model = agent_item->model_player;
-			if ( remote_model.size( ) >= 7 && remote_model.substr( remote_model.size( ) - 7 ) == ".vmdl_c" )
-				remote_model = remote_model.substr( 0, remote_model.size( ) - 2 );
-
-			const auto remote_gsn = memory::safe_read<std::uintptr_t>( pawn + SCHEMA( "C_BaseEntity", "m_pGameSceneNode"_hash ) ).value_or( 0 );
-			if ( !remote_gsn )
-			{
-				continue;
-			}
-
-			const auto remote_model_state = remote_gsn + SCHEMA( "CSkeletonInstance", "m_modelState"_hash );
-			const auto remote_model_handle = memory::safe_read<std::uintptr_t>( remote_model_state + SCHEMA( "CModelState", "m_hModel"_hash ) ).value_or( 0 );
-			if ( !remote_model_handle )
-			{
-				continue;
-			}
-
-			const auto it = s_remote_agents.find( pawn );
-			if ( it != s_remote_agents.end( ) && it->second.def_index == remote_agent_def && it->second.team == remote_team && it->second.model_handle == remote_model_handle && agent_model_matches( pawn, remote_model ) )
-			{
-				continue;
-			}
-
-			if ( !replace_agent_model( pawn, remote_model ) ) continue;
-			if ( !agent_model_matches( pawn, remote_model ) ) continue; // Resource still loading: retry.
-
-			this->cycle_weapon_owners( pawn );
-
-			const auto new_handle = agent_model_handle( pawn );
-			s_remote_agents[ pawn ] = { remote_agent_def, new_handle, remote_team };
 		}
 	}
 

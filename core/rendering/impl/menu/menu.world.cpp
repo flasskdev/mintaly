@@ -2,34 +2,41 @@
 #include <core/settings.hpp>
 #include <core/features/features.hpp>
 #include "../../rendering.hpp"
-#include "../../map_images.hpp"
-
+// #include "../../map_images.hpp" // УДАЛЕНО: Больше не нужны текстуры карт
 namespace rendering {
     namespace {
-        static Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> s_map_srvs[11]{};
-        static bool s_map_srvs_initialized = false;
         static int s_selected_map = 0;
         static float s_card_hover_anim[11]{};
         static std::string s_last_live_map{};
-
-        void ensure_map_textures()
-        {
-            if (s_map_srvs_initialized)
-                return;
-            for (std::size_t i = 0; i < rendering::map_assets::k_all_map_images.size(); ++i)
-            {
-                s_map_srvs[i] = xdraw::load_texture(rendering::map_assets::k_all_map_images[i]);
+        // Вспомогательная структура для цветов градиента
+        struct map_gradient_colors {
+            xdraw::color top_color;
+            xdraw::color bottom_color;
+        };
+        // Функция получения уникального цвета для каждой карты
+        // Индексы соответствуют enum settings::world::map_*
+        static map_gradient_colors get_map_colors(int idx) {
+            switch (idx) {
+            case settings::world::map_global:   return { { 200, 200, 210, 255 },{ 160, 160, 170, 255 } }; // Серо-белый
+            case settings::world::map_mirage:   return { { 255, 165, 0, 255 },{ 230, 140, 0, 255 } };   // Оранжевый
+            case settings::world::map_nuke:     return { { 0, 200, 255, 255 },{ 0, 180, 230, 255 } };   // Голубой
+            case settings::world::map_dust2:    return { { 210, 180, 140, 255 },{ 190, 160, 120, 255 } }; // Пустынно-желтый
+            case settings::world::map_inferno:  return { { 255, 80, 0, 255 },{ 230, 60, 0, 255 } };    // Ярко оранжевый
+            case settings::world::map_overpass: return { { 139, 69, 19, 255 },{ 110, 50, 10, 255 } };   // Коричневый
+            case settings::world::map_vertigo:  return { { 100, 120, 150, 255 },{ 80, 100, 130, 255 } };  // Серо-синий
+            case settings::world::map_office:   return { { 0, 50, 100, 255 },{ 0, 30, 80, 255 } };     // Темно-синий
+            case settings::world::map_ancient:  return { { 85, 107, 47, 255 },{ 60, 80, 30, 255 } };    // Болотно-зеленый
+            case settings::world::map_anubis:   return { { 244, 164, 96, 255 },{ 220, 140, 70, 255 } };  // Песочно-оранжевый
+            case settings::world::map_italy:    return { { 245, 222, 179, 255 },{ 220, 200, 150, 255 } }; // Бежевый
+            default:                            return { { 45, 45, 50, 255 },{ 20, 20, 25, 255 } };    // Default fallback
             }
-            s_map_srvs_initialized = true;
         }
     }
-
     void menu::draw_world(float group_w, int subtab) const
     {
         auto& item = settings::g_esp.m_item;
         auto& proj = settings::g_esp.m_projectile;
         auto& other = settings::g_esp.m_other;
-
         const auto wx = this->m_x;
         const auto wy = this->m_y;
         const auto content_x = wx + tokens::gap + tokens::sidebar_w + tokens::gap;
@@ -37,9 +44,7 @@ namespace rendering {
         const auto content_w = this->m_w - tokens::gap * 2.0f - tokens::sidebar_w - tokens::gap;
         const auto col_w = (content_w - tokens::gap) * 0.5f;
         const auto right_x = content_x + col_w + tokens::gap;
-
         constexpr const char* display_types[]{ "text", "icon", "text + icon" };
-
         auto draw_chams_layer = [&](const char* label, const char* popup_id, settings::esp::chams_layer& layer, bool is_through_wall = false)
             {
                 xui::checkbox(label, layer.enabled);
@@ -48,7 +53,6 @@ namespace rendering {
                     const bool is_outline = settings::esp::is_outline_material(layer.material.value);
                     const bool is_glow_outline = (layer.material.value == settings::esp::cham_ids::outline_glow ||
                         layer.material.value == settings::esp::cham_ids::outline_glow_ignorez);
-
                     const auto prev_mat = layer.material.value;
                     if (is_through_wall)
                     {
@@ -76,44 +80,34 @@ namespace rendering {
                             }
                         }
                     }
-
                     xui::color_picker("color", layer.color, 0.0f, true, is_outline ? &layer.filled.value : nullptr);
                     if (is_outline)
                     {
                         xui::checkbox("filled", layer.filled);
                     }
-
                     if (is_glow_outline)
                     {
                         xui::layout::spacing(5.0f);
                         xui::layout::separator();
                         auto& cfg = layer.glow;
                         char buf[64]{};
-
                         xui::text("glow settings", tokens::col_accent);
-
                         std::snprintf(buf, sizeof(buf), "intensity##%s", popup_id);
                         xui::slider_float(buf, cfg.intensity, 1.0f, 50.0f, "%.1f");
-
                         std::snprintf(buf, sizeof(buf), "thickness##%s", popup_id);
                         xui::slider_float(buf, cfg.thickness, 0.5f, 10.0f, "%.1f");
-
                         std::snprintf(buf, sizeof(buf), "softness##%s", popup_id);
                         xui::slider_float(buf, cfg.softness, 0.2f, 4.0f, "%.2f");
-
                         std::snprintf(buf, sizeof(buf), "opacity##%s", popup_id);
                         xui::slider_float(buf, cfg.opacity, 0.0f, 1.0f, "%.2f");
-
                         std::snprintf(buf, sizeof(buf), "inner spread##%s", popup_id);
                         xui::slider_float(buf, cfg.inner_spread, 0.0f, 1.0f, "%.2f");
-
                         std::snprintf(buf, sizeof(buf), "pulse speed##%s", popup_id);
                         xui::slider_float(buf, cfg.pulse_speed, 0.0f, 5.0f, "%.1f");
                     }
                     xui::end_popup();
                 }
             };
-
         // Left Column: Items ESP & Ambience Button
         xui::layout::set_cursor(content_x - wx, body_y - wy);
         if (xui::begin_child("##esp_items", col_w, this->m_body_h, true))
@@ -121,7 +115,6 @@ namespace rendering {
             static int item_group{};
             xui::combo("group##item_sel", item_group, settings::esp::item::k_group_names, settings::esp::item::k_group_count);
             xui::layout::separator();
-
             xui::toggle("item esp", item.m_overlay.group_toggle(item_group));
             if (xui::begin_popup("##ie_grp_cfg", 220.0f))
             {
@@ -131,14 +124,12 @@ namespace rendering {
                 std::snprintf(id_m, sizeof(id_m), "max dist##ie%d", item_group);
                 std::snprintf(id_t, sizeof(id_t), "text color##ie%d", item_group);
                 std::snprintf(id_i, sizeof(id_i), "icon color##ie%d", item_group);
-
                 xui::combo(id_d, g.display.value, display_types, 3);
                 xui::slider_float(id_m, g.max_distance, 1.0f, 200.0f, "%.0fm");
                 xui::color_picker(id_t, g.text_color);
                 xui::color_picker(id_i, g.icon_color);
                 xui::end_popup();
             }
-
             xui::toggle("item chams", item.m_chams.group_toggle(item_group));
             if (xui::begin_popup("##ic_grp_cfg", 220.0f))
             {
@@ -148,12 +139,10 @@ namespace rendering {
                 std::snprintf(id_pp, sizeof(id_pp), "##ic_p%d", item_group);
                 std::snprintf(id_s, sizeof(id_s), "through wall##ic%d", item_group);
                 std::snprintf(id_sp, sizeof(id_sp), "##ic_s%d", item_group);
-
                 draw_chams_layer(id_p, id_pp, g.primary, false);
                 draw_chams_layer(id_s, id_sp, g.secondary, true);
                 xui::end_popup();
             }
-
             static int chams_weapon = 0;
             xui::combo("weapon##item_chams", chams_weapon, chams_weapons::names.data(), static_cast<int>(chams_weapons::names.size()));
             if (chams_weapon > 0) {
@@ -167,7 +156,6 @@ namespace rendering {
                 }
                 xui::pop_id();
             }
-
             xui::toggle("item glow", item.m_glow.group_toggle(item_group));
             if (xui::begin_popup("##ig_grp_cfg", 220.0f))
             {
@@ -176,54 +164,41 @@ namespace rendering {
                 xui::color_picker(id, item.m_glow.groups[item_group].color);
                 xui::end_popup();
             }
-
             // --- AMBIENCE BUTTON ---
             xui::layout::spacing(6.0f);
             {
                 const auto [avail_w, _] = xui::layout::avail();
                 const float btn_h = 32.0f;
                 const auto btn_rect = xui::layout::item(avail_w, btn_h);
-
                 const bool hovered = xui::ctx().input.in_rect(btn_rect) && !xui::ctx().overlay_blocking();
                 if (hovered && xui::ctx().input.mouse_clicked)
                 {
                     const_cast<menu*>(this)->m_ambience_open = true;
                 }
-
                 const auto hover_anim = xui::anim::lerp(xui::fnv1a("amb_btn_hover"), hovered ? 1.0f : 0.0f, 14.0f);
                 auto& dl = xui::draw::current();
-
                 const auto bg_col = xui::lerp(tokens::col_card, tokens::col_elevated, hover_anim * 0.3f);
                 dl.rect_filled(btn_rect.x, btn_rect.y, btn_rect.w, btn_rect.h, bg_col, xdraw::corner_radius{ 6.0f });
-
                 const auto border_col = xui::lerp(tokens::col_border, tokens::col_accent, hover_anim);
                 dl.rect(btn_rect.x, btn_rect.y, btn_rect.w, btn_rect.h, border_col, xdraw::corner_radius{ 6.0f }, 1.0f);
-
                 const char* label = "Ambience";
                 xdraw::push_font(g_fonts.inter_medium[fonts::size::petite]);
                 const auto [tw, th] = xdraw::measure_text(label);
                 const auto text_col = xui::lerp(tokens::col_text_dim, tokens::col_text, hover_anim);
                 dl.text(btn_rect.x + 12.0f, btn_rect.y + (btn_rect.h - th) * 0.5f, label, text_col);
-
                 const float arrow_size = 14.0f;
                 const float arrow_x = btn_rect.x + btn_rect.w - arrow_size - 12.0f;
                 const float arrow_y = btn_rect.y + (btn_rect.h - arrow_size) * 0.5f;
-
                 const float cx = arrow_x + arrow_size * 0.5f;
                 const float cy = arrow_y + arrow_size * 0.5f;
                 const float span = 4.0f;
-
                 const auto arrow_col = xui::lerp(tokens::col_text_dim, tokens::col_accent, hover_anim);
-
                 dl.line(cx - span, cy - span, cx, cy, arrow_col, 1.5f);
                 dl.line(cx, cy, cx - span, cy + span, arrow_col, 1.5f);
-
                 xdraw::pop_font();
             }
-
             xui::end_child();
         }
-
         // Right Column: Projectiles & Bomb Timer
         xui::layout::set_cursor(right_x - wx, body_y - wy);
         if (xui::begin_child("##esp_projectiles", col_w, this->m_body_h, true))
@@ -231,10 +206,8 @@ namespace rendering {
             static auto proj_group{ 0 };
             xui::combo("group##proj_sel", proj_group, settings::esp::projectile::k_group_names, settings::esp::projectile::k_group_count);
             xui::layout::separator();
-
             const auto is_inferno = (proj_group == 5);
             xui::toggle(is_inferno ? "inferno esp" : "projectile esp", proj.m_overlay.group_toggle(proj_group));
-
             if (!is_inferno)
             {
                 if (xui::begin_popup("##pe_grp_cfg", 220.0f))
@@ -245,7 +218,6 @@ namespace rendering {
                     std::snprintf(id_m, sizeof(id_m), "max dist##pe%d", proj_group);
                     std::snprintf(id_t, sizeof(id_t), "text color##pe%d", proj_group);
                     std::snprintf(id_i, sizeof(id_i), "icon color##pe%d", proj_group);
-
                     xui::combo(id_d, g.display.value, display_types, 3);
                     xui::slider_float(id_m, g.max_distance, 1.0f, 200.0f, "%.0fm");
                     xui::color_picker(id_t, g.text_color);
@@ -267,7 +239,6 @@ namespace rendering {
                     xui::end_popup();
                 }
             }
-
             const auto indicator_id = proj_group == 0 ? 0 : proj_group == 3 ? 1 : proj_group == 5 ? 2 : -1;
             if (indicator_id >= 0)
             {
@@ -282,7 +253,6 @@ namespace rendering {
                     std::snprintf(id_g, sizeof(id_g), "glow##ind%d", indicator_id);
                     char id_gs[32]{};
                     std::snprintf(id_gs, sizeof(id_gs), "glow strength##ind%d", indicator_id);
-
                     xui::color_picker(id_a, g.arc_color);
                     xui::color_picker(id_i, g.icon_color);
                     xui::color_picker(id_b, g.background_color);
@@ -291,16 +261,13 @@ namespace rendering {
                     xui::end_popup();
                 }
             }
-
             xui::layout::spacing(4.0f);
             xui::layout::separator();
             xui::layout::spacing(4.0f);
-
             xui::toggle("bomb timer", other.bomb_timer);
             xui::layout::spacing(4.0f);
             xui::layout::separator();
             xui::layout::spacing(4.0f);
-
             xui::toggle("Molotov Radius", proj.m_overlay.m_infernos.enabled);
             if (xui::begin_popup("##molo_radius_direct_cfg", 220.0f))
             {
@@ -312,28 +279,23 @@ namespace rendering {
                 xui::slider_float("glow strength##molo_r", proj.m_overlay.m_infernos.glow_strength, 0.1f, 1.0f, "%.2f");
                 xui::end_popup();
             }
-
             xui::end_child();
         }
-
         // Keep active world scene & weather updated in real time
         settings::g_world.update_active(rendering::g_widgets.s_map_name);
     }
-
     void menu::draw_ambience()
     {
         if (!this->m_open || (this->m_ambience_anim <= 0.0f && !this->m_ambience_open))
         {
             return;
         }
-
         const bool is_closing = !this->m_ambience_open;
         if (!is_closing)
         {
             // Allow interaction inside the Ambience modal
             xui::ctx().modal_blocking = false;
         }
-
         const auto dt = xdraw::delta_time();
         const float amb_anim = std::clamp(this->m_ambience_anim, 0.0f, 1.0f);
         const float amb_reveal = amb_anim * xui::ease::smoothstep(this->m_open_anim);
@@ -341,28 +303,23 @@ namespace rendering {
         {
             return;
         }
-
         const auto wx = this->m_x;
         const auto wy = this->m_y;
         const auto ww = this->m_w;
         const auto wh = this->m_h;
-
         // Calculate dimensions: 90% of menu size
         const float amb_w = ww * 0.9f;
         const float amb_h = wh * 0.9f;
         const float amb_x = wx + (ww - amb_w) * 0.5f;
         const float amb_y = wy + (wh - amb_h) * 0.5f;
-
         // Window Animation (Scale + Fade)
         const float scale_factor = std::lerp(0.94f, 1.0f, amb_reveal);
         const float final_w = amb_w * scale_factor;
         const float final_h = amb_h * scale_factor;
         const float final_x = amb_x + (amb_w - final_w) * 0.5f;
         const float final_y = amb_y + (amb_h - final_h) * 0.5f;
-
         auto& modal_dl = xdraw::get(xdraw::layer::modal);
         auto& input_ref = xui::ctx().input;
-
         // Background dimming
         if (amb_reveal > 0.0f)
         {
@@ -370,13 +327,11 @@ namespace rendering {
             modal_dl.rect_filled(0.0f, 0.0f, static_cast<float>(vp.first), static_cast<float>(vp.second),
                 xdraw::color{ 0, 0, 0, static_cast<std::uint8_t>(150.0f * amb_reveal) });
         }
-
         constexpr float header_h = 42.0f;
         const float close_btn_size = 28.0f;
         const float close_btn_x = final_x + final_w - close_btn_size - 14.0f;
         const float close_btn_y = final_y + (header_h - close_btn_size) * 0.5f;
         const xui::rect close_rect{ close_btn_x, close_btn_y, close_btn_size, close_btn_size };
-
         // Close triggers (only process when open)
         if (this->m_ambience_open)
         {
@@ -387,7 +342,6 @@ namespace rendering {
                 input_ref.mouse_clicked = false;
                 xui::overlays::close_all();
             }
-
             // Close on Escape
             for (const auto vk : input_ref.key_presses())
             {
@@ -398,7 +352,6 @@ namespace rendering {
                     break;
                 }
             }
-
             // Close when clicking outside modal window (only if no popup/combobox is open)
             if (!xui::overlays::has_any() && input_ref.mouse_clicked && this->m_ambience_open)
             {
@@ -410,7 +363,6 @@ namespace rendering {
                 }
             }
         }
-
         // Suppress mouse clicks inside Ambience if closing
         const bool now_closing = !this->m_ambience_open;
         const bool saved_mouse_clicked = input_ref.mouse_clicked;
@@ -420,70 +372,54 @@ namespace rendering {
             input_ref.mouse_clicked = false;
             input_ref.mouse_down = false;
         }
-
         // Record vertex start for entire modal window (background + children + widgets)
         const std::size_t modal_vtx_start = modal_dl.vertices.size();
-
         // Draw Window Background with Blur/Glass effect (full base opacities, scaled together at end)
         const auto amb_bg = tokens::col_dark.alpha(245);
-
         // Blurred background layer
         modal_dl.rect_filled_blurred(final_x, final_y, final_w, final_h, xdraw::corner_radius{ tokens::window_rounding },
             xdraw::color{ 40, 40, 45, 180 });
-
         // Solid background
         modal_dl.rect_filled(final_x, final_y, final_w, final_h, amb_bg, xdraw::corner_radius{ tokens::window_rounding });
-
         // Border in menu accent color
         modal_dl.rect(final_x, final_y, final_w, final_h, tokens::col_accent.alpha(180), xdraw::corner_radius{ tokens::window_rounding }, 0.8f);
-
         // Header: Title "AMBIENCE"
         xdraw::push_font(rendering::g_fonts.inter_bold[rendering::fonts::size::big]);
         modal_dl.text(final_x + 20.0f, final_y + 11.0f, "AMBIENCE", tokens::col_text);
         xdraw::pop_font();
-
         // Close Button Visual
         const bool close_hovered = this->m_ambience_open && input_ref.in_rect(close_rect) && !xui::overlays::has_any();
         const auto close_anim = xui::anim::lerp(xui::fnv1a("amb_close_btn"), close_hovered ? 1.0f : 0.0f, 14.0f);
-
         if (close_anim > 0.01f)
         {
             modal_dl.rect_filled(close_btn_x, close_btn_y, close_btn_size, close_btn_size,
                 tokens::col_accent.alpha(static_cast<std::uint8_t>(40.0f * close_anim)),
                 xdraw::corner_radius{ 6.0f });
         }
-
         // Draw X icon
         const float cx = close_btn_x + close_btn_size * 0.5f;
         const float cy = close_btn_y + close_btn_size * 0.5f;
         const float span = 5.0f;
         const auto x_col = xui::lerp(tokens::col_text_dim, tokens::col_text, close_anim);
-
         modal_dl.line(cx - span, cy - span, cx + span, cy + span, x_col, 1.5f);
         modal_dl.line(cx - span, cy + span, cx + span, cy - span, x_col, 1.5f);
-
         // Separator line under header
         modal_dl.line(final_x + 1.0f, final_y + header_h, final_x + final_w - 1.0f, final_y + header_h,
             tokens::col_border.alpha(120));
-
         // -------------------------------------------------------------
         // BODY AREA: Map Selection (left) & Effects (right)
         // -------------------------------------------------------------
-        ensure_map_textures();
         auto& w = settings::g_world;
         constexpr int k_num_maps = static_cast<int>(settings::world::map_max);
-
         constexpr float pad = 16.0f;
         const float body_x = final_x + pad;
         const float body_y = final_y + header_h + pad;
         const float body_w = final_w - pad * 2.0f;
         const float body_h = final_h - header_h - pad * 2.0f;
-
         constexpr float col_gap = 16.0f;
         const float left_col_w = std::floorf((body_w - col_gap) * 0.48f);
         const float right_col_w = body_w - left_col_w - col_gap;
         const float right_col_x = body_x + left_col_w + col_gap;
-
         // Detect current live map in CS2
         int live_map_idx = -1;
         if (!rendering::g_widgets.s_map_name.empty())
@@ -503,7 +439,6 @@ namespace rendering {
                 }
             }
         }
-
         // Automatically select live map when entering a CS2 match
         if (!rendering::g_widgets.s_map_name.empty() && rendering::g_widgets.s_map_name != s_last_live_map)
         {
@@ -523,7 +458,6 @@ namespace rendering {
         {
             s_last_live_map.clear();
         }
-
         constexpr int k_map_display_order[11] = {
             settings::world::map_global,
             settings::world::map_mirage,
@@ -537,21 +471,17 @@ namespace rendering {
             settings::world::map_anubis,
             settings::world::map_italy
         };
-
         constexpr float k_col_header_h = 22.0f;
-
         // Push layer to modal so Ambience child windows and widgets draw on layer::modal,
         // leaving layer::top free for popups, comboboxes, and color pickers to draw on top cleanly!
         modal_dl.push_clip(final_x, final_y, final_w, final_h);
         xui::draw::push_layer(xdraw::layer::modal);
-
         auto draw_col_title = [&](float x, const char* title) {
             auto& dl = xui::draw::current();
             xdraw::push_font(rendering::g_fonts.inter_bold[rendering::fonts::size::petite]);
             dl.text(x + 2.0f, body_y + 2.0f, title, tokens::col_text);
             xdraw::pop_font();
             };
-
         // ==========================================
         // 1. LEFT COLUMN: MAP SELECTION
         // ==========================================
@@ -562,28 +492,22 @@ namespace rendering {
             const auto& input = xui::ctx().input;
             const bool can_interact = this->m_ambience_open && !xui::ctx().overlay_blocking();
             auto& dl = xui::draw::current();
-
             const auto time_ms = static_cast<float>(GetTickCount64() % 100000);
             const float live_pulse = 0.65f + 0.35f * std::sin(time_ms * 0.005f);
-
             const auto [avail_w, avail_h] = xui::layout::avail();
             const float card_w = avail_w;
             constexpr float card_h = 38.0f;
-
             const auto child_win = xui::layout::current_window();
             const auto cb = child_win ? child_win->bounds : xui::rect{};
-
             for (int order_i = 0; order_i < k_num_maps; ++order_i)
             {
                 const int map_idx = k_map_display_order[order_i];
                 const auto& entry = settings::world::k_map_entries[map_idx];
-
                 const auto card_rect = xui::layout::item(card_w, card_h);
                 const bool is_in_view = (card_rect.y + card_rect.h >= cb.y && card_rect.y <= cb.y + cb.h);
                 const bool is_sel = (s_selected_map == map_idx);
                 const bool is_hover = can_interact && is_in_view && input.in_rect(card_rect);
                 const bool is_live = (live_map_idx == map_idx);
-
                 if (is_hover && input.mouse_clicked)
                 {
                     s_selected_map = map_idx;
@@ -594,34 +518,82 @@ namespace rendering {
                         w.presets[map_idx]->override_map.value = true;
                     }
                 }
-
-                if (!is_in_view)
-                    continue;
-
+                if (!is_in_view) continue;
                 const float target_hover = is_sel ? 1.0f : (is_hover ? 0.7f : 0.0f);
                 s_card_hover_anim[map_idx] += (target_hover - s_card_hover_anim[map_idx]) * std::min(16.0f * dt, 1.0f);
-
                 // 1. Base dark card fill
                 const auto base_bg = is_sel
                     ? xdraw::color{ 20, 24, 30, 235 }
                 : (is_hover ? xdraw::color{ 22, 26, 33, 200 } : xdraw::color{ 15, 18, 23, 175 });
                 dl.rect_filled(card_rect.x, card_rect.y, card_rect.w, card_rect.h, base_bg, xdraw::corner_radius{ 6.0f });
 
-                // 2. Map photo preview on the right portion with smooth horizontal fade
-                if (s_map_srvs[map_idx].Get() != nullptr)
+                // 2. TRIANGLE GLOW EFFECT (Right-Angled Triangle, Point Up-Left)
                 {
-                    const float img_w = card_rect.w * 0.62f;
-                    const float img_x = card_rect.x + card_rect.w - img_w;
+                    const auto cols = get_map_colors(map_idx);
+
+                    // Геометрия ПРЯМОГО прямоугольного треугольника:
+                    // Прямой угол — в правом НИЖНЕМ углу зоны свечения.
+                    // Катет 1 (Вертикальный): правая граница карточки (весь height).
+                    // Катет 2 (Горизонтальный): нижняя линия (width = glow_width).
+                    // Гипотенуза: соединяет (Right_Top) и (Left_Bottom).
+                    // Т.е. наверху ширина НУЛЕВАЯ (острие), внизу — МАКСИМАЛЬНАЯ.
+
+                    const float glow_width = card_rect.w * 0.65f;
+                    const float right_edge = card_rect.x + card_rect.w;
+
+                    // МЕНЬШАЯ ЯРКОСТЬ (менее заметно):
+                    uint8_t alpha_mult = is_sel ? 120 : (is_hover ? 70 : 35);
+
+                    xdraw::color base_top = cols.top_color;
+                    xdraw::color base_bot = cols.bottom_color;
+                    base_top.a = static_cast<uint8_t>((base_top.a * alpha_mult) / 255);
+                    base_bot.a = static_cast<uint8_t>((base_bot.a * alpha_mult) / 255);
 
                     dl.push_clip(card_rect.x, card_rect.y, card_rect.w, card_rect.h);
-                    const auto img_tint = is_sel
-                        ? xdraw::color{ 220, 225, 235, 175 }
-                    : (is_hover ? xdraw::color{ 200, 210, 220, 140 } : xdraw::color{ 150, 160, 170, 105 });
-                    dl.image(img_x, card_rect.y, img_w, card_rect.h, s_map_srvs[map_idx].Get(), xdraw::corner_radius{ 0.0f, 6.0f, 6.0f, 0.0f }, img_tint);
 
-                    const auto fade_col_left = base_bg;
-                    const auto fade_col_right = xdraw::color{ base_bg.r, base_bg.g, base_bg.b, 40 };
-                    dl.rect_filled_gradient(img_x, card_rect.y, img_w, card_rect.h, fade_col_left, fade_col_right, fade_col_right, fade_col_left);
+                    // Высокая детализация для гладкой гипотенузы без лесенки
+                    const int num_slices = 64;
+                    const float slice_height = card_rect.h / static_cast<float>(num_slices);
+
+                    for (int i = 0; i < num_slices; ++i) {
+                        float y_pos = card_rect.y + (i * slice_height);
+
+                        // t_vert: 0 вверху, 1 внизу
+                        float t_vert = static_cast<float>(i) / static_cast<float>(num_slices - 1);
+
+                        // ПРЯМОЙ треугольник (Прямой угол справа-снизу):
+                        // Наверху (t=0) ширина НУЛЕВАЯ (0).
+                        // Внизу (t=1) ширина МАКСИМАЛЬНАЯ (glow_width).
+                        // Это создает прямой угол справа-СНИЗУ.
+                        float current_width = glow_width * t_vert;
+
+                        if (current_width <= 0.5f) continue;
+
+                        float strip_x_start = right_edge - current_width;
+
+                        // Цвет интерполируется по вертикали
+                        xdraw::color strip_color = xui::lerp(base_top, base_bot, t_vert);
+
+                        // Градиент альфы ВНУТРИ полосы:
+                        // Левый край -> Alpha 0
+                        // Правый край -> Alpha Full
+                        xdraw::color c_left = strip_color;
+                        c_left.a = 0;
+
+                        xdraw::color c_right = strip_color;
+
+                        dl.rect_filled_gradient(
+                            strip_x_start,
+                            y_pos,
+                            current_width,
+                            slice_height + 0.5f, // Перекрытие швов
+                            c_left,   // TL
+                            c_right,  // TR
+                            c_left,   // BL
+                            c_right   // BR
+                        );
+                    }
+
                     dl.pop_clip();
                 }
 
@@ -634,22 +606,19 @@ namespace rendering {
                 : (is_hover ? xdraw::color{ 220, 228, 238, 240 } : xdraw::color{ 160, 172, 185, 215 });
                 dl.text(card_rect.x + 12.0f, card_rect.y + (card_rect.h - th) * 0.5f, name, text_col);
                 xdraw::pop_font();
-
                 // 4. Live map indicator (pulsing green dot if active match)
                 if (is_live)
                 {
                     const auto dot_alpha = static_cast<std::uint8_t>(255 * live_pulse);
                     dl.circle_filled(card_rect.x + 12.0f + tw + 8.0f, card_rect.y + card_rect.h * 0.5f, 3.0f, xdraw::color{ 46, 213, 115, dot_alpha });
                 }
-
                 // 5. Gear icon on the far right
                 const float dots_cx = card_rect.x + card_rect.w - 18.0f;
                 const float dots_cy = card_rect.y + card_rect.h * 0.5f;
                 const auto dots_col = is_sel
                     ? xdraw::color{ 200, 212, 225, 220 }
                 : (is_hover ? xdraw::color{ 170, 182, 195, 185 } : xdraw::color{ 115, 128, 142, 140 });
-                xui::draw_gear( dl, dots_cx, dots_cy, dots_col, 11.0f );
-
+                xui::draw_gear(dl, dots_cx, dots_cy, dots_col, 11.0f);
                 // 6. Card border outline
                 if (is_sel)
                 {
@@ -663,18 +632,15 @@ namespace rendering {
                 {
                     dl.rect(card_rect.x, card_rect.y, card_rect.w, card_rect.h, xdraw::color{ 255, 255, 255, 8 }, xdraw::corner_radius{ 6.0f }, 1.0f);
                 }
-
                 xui::layout::spacing(2.0f);
             }
             xui::end_child();
         }
-
         // Active preset to edit
         s_selected_map = std::clamp(s_selected_map, 0, k_num_maps - 1);
         auto* editing = w.presets[s_selected_map];
         auto& scene = editing->m_scene;
         auto& weather = editing->m_weather;
-
         // ==========================================
         // 2. RIGHT COLUMN: EFFECTS
         // ==========================================
@@ -689,7 +655,6 @@ namespace rendering {
                 xui::color_picker("color##world", scene.world_color);
                 xui::end_popup();
             }
-
             // 2. Fullbright / Override sunlight (with lighting color swatch)
             xui::toggle("Override sunlight", scene.lighting);
             if (xui::begin_popup("##amb_fullbright_popup", 220.0f, &scene.lighting_color.value))
@@ -698,7 +663,6 @@ namespace rendering {
                 xui::color_picker("color##light", scene.lighting_color);
                 xui::end_popup();
             }
-
             // 2.1 Fullbright (uniform ambient illumination)
             xui::toggle("Fullbright", scene.fullbright);
             if (xui::begin_popup("##amb_fullbright_mode_popup", 220.0f, &scene.fullbright_color.value))
@@ -707,7 +671,6 @@ namespace rendering {
                 xui::color_picker("color##fullbright", scene.fullbright_color);
                 xui::end_popup();
             }
-
             // 3. Override Sky (with sky color swatch)
             xui::toggle("Override Sky", scene.skybox.custom_skybox);
             if (xui::begin_popup("##amb_skybox_popup", 220.0f, &scene.skybox.skybox_color.value))
@@ -734,7 +697,6 @@ namespace rendering {
                 xui::color_picker("sun color", scene.skybox.sun_color);
                 xui::end_popup();
             }
-
             // 3.1 Overlight (sky brightness, bloom & tint)
             xui::toggle("Overlight", scene.overlight);
             if (xui::begin_popup("##amb_overlight_popup", 220.0f, &scene.overlight_tint.value))
@@ -744,7 +706,6 @@ namespace rendering {
                 xui::color_picker("tint##overlight", scene.overlight_tint);
                 xui::end_popup();
             }
-
             // 5. Override Fog (with fog color swatch)
             xui::toggle("Override Fog", weather.fog_enabled);
             if (xui::begin_popup("##amb_fog_popup", 220.0f, &weather.fog_color.value))
@@ -755,7 +716,6 @@ namespace rendering {
                 xui::color_picker("color##fog", weather.fog_color);
                 xui::end_popup();
             }
-
             // 6. Override DoF (with ... popup)
             xui::toggle("Override DoF", scene.dof);
             if (xui::begin_popup("##amb_dof_popup", 220.0f))
@@ -766,21 +726,18 @@ namespace rendering {
                 xui::slider_float("far blurry", scene.dof_far_blurry, 200.0f, 5000.0f, "%.0f");
                 xui::end_popup();
             }
-
             xui::toggle("Override Bloom", scene.bloom);
             if (xui::begin_popup("##amb_bloom_popup", 220.0f))
             {
                 xui::slider_float("value##bloom", scene.bloom_value, 0.0f, 2.0f, "%.2f");
                 xui::end_popup();
             }
-
             xui::toggle("Override Gamma", scene.gamma);
             if (xui::begin_popup("##amb_gamma_popup", 220.0f))
             {
                 xui::slider_float("value##gamma", scene.gamma_value, 0.5f, 5.0f, "%.1f");
                 xui::end_popup();
             }
-
             xui::toggle("Weather", weather.enabled);
             if (xui::begin_popup("##amb_weather_popup", 220.0f, nullptr, true))
             {
@@ -796,20 +753,16 @@ namespace rendering {
                 xui::slider_float("wind turbulence", weather.wind_turbulence, 0.0f, 5.0f, "%.1f");
                 xui::end_popup();
             }
-
             xui::toggle("Custom Smoke Color", settings::g_misc.m_smoke_and_fire_color.custom_smoke);
             if (xui::begin_popup("##amb_smoke_col_popup", 220.0f))
             {
                 xui::color_picker("color##smoke_amb", settings::g_misc.m_smoke_and_fire_color.smoke_color);
                 xui::end_popup();
             }
-
             xui::end_child();
         }
-
         xui::draw::pop_layer();
         modal_dl.pop_clip();
-
         // Modulate all vertices emitted for this modal window by amb_reveal for perfectly synchronized fade
         if (amb_reveal < 0.999f && modal_vtx_start < modal_dl.vertices.size())
         {
@@ -819,13 +772,11 @@ namespace rendering {
                 modal_dl.vertices[i].col.a = static_cast<std::uint8_t>(modal_dl.vertices[i].col.a * alpha_factor);
             }
         }
-
         if (now_closing)
         {
             input_ref.mouse_clicked = saved_mouse_clicked;
             input_ref.mouse_down = saved_mouse_down;
         }
-
         // Apply to active world scene & weather in real time!
         w.update_active(rendering::g_widgets.s_map_name);
     }
