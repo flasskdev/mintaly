@@ -44,7 +44,8 @@ class SourceChecks(unittest.TestCase):
     def test_hud_binding_matches_active_weapon(self):
         helper = text("core/features/changer/hud_weapon.hpp")
         self.assertIn('"m_hWeapon"_hash', helper)
-        self.assertIn('value_or(0xffffffffu) == active', helper)
+        self.assertIn('hud_binding::select(', helper)
+        self.assertIn('child.weapon != active', text('utilities/hud_weapon_binding.hpp'))
         self.assertIn('i < 128', helper)
         for name in ('guns', 'knives'):
             s = text(f"core/features/changer/impl/{name}.cpp").split(f"{name}::find_hud_model_weapon", 1)[1].split(f"void {name}::clear_hud_icon", 1)[0]
