@@ -31,6 +31,8 @@ namespace hooks {
 			if ( !memory::safe_read<std::uintptr_t>( addresses::globals::local_player_controller ).value_or( 0 ) ) return;
 			features::changer::preview_scene::refresh( );
 			features::changer::g_agents.on_lobby( );
+			// Agent SetModel can replace attached weapons; discard the old pointer snapshot.
+			features::changer::preview_scene::refresh( );
 			features::changer::g_knives.on_lobby( );
 			features::changer::g_guns.on_lobby( );
 			features::changer::g_gloves.on_lobby( );

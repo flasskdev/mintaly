@@ -377,175 +377,114 @@ namespace features::changer {
 	void knives::apply( std::uintptr_t weapon, std::uintptr_t iv, const econ_item_system::item_def* def, const settings::changer::applied_skin* skin, std::uint32_t account_id, std::uintptr_t active_weapon, std::uintptr_t pawn )
 	{
 		this->m_pending_hud_iv = 0;
-        if (!skin || !def || !preview_item::available() || !preview_item::identity(weapon).ready()) return;
-        if (!PATTERN(patterns::weapon_get_viewmodel) || !PATTERN(patterns::weapon_get_model_path) || !PATTERN(patterns::set_player_model)) return;
-        const auto model_changed =
-            memory::read<std::uint16_t>(iv + SCHEMA("C_EconItemView", "m_iItemDefinitionIndex"_hash)) != static_cast<std::uint16_t>(def->def_index)
-            || memory::read<std::uint32_t>(weapon + SCHEMA("C_BaseEntity", "m_nSubclassID"_hash)) != detail::make_subclass_token(def->def_index);
-        if (model_changed) {
-            memory::write<std::uint16_t>(iv + SCHEMA("C_EconItemView", "m_iItemDefinitionIndex"_hash), static_cast<std::uint16_t>(def->def_index));
-            this->update_model(weapon, iv, static_cast<std::uint16_t>(def->def_index));
-        }
-        memory::write<std::uint64_t>(iv + SCHEMA("C_EconItemView", "m_iItemID"_hash), 0xf000000000000010ull);
-        memory::write<bool>(iv + SCHEMA("C_EconItemView", "m_bDisallowSOC"_hash), true);
-        memory::write<int>(iv + SCHEMA("C_EconItemView", "m_iEntityQuality"_hash), skin->stattrak ? 9 : 3);
-
-		memory::write<std::uint16_t>( iv + SCHEMA( "C_EconItemView", "m_iItemDefinitionIndex"_hash ), static_cast< std::uint16_t >( def->def_index ) );
+		const auto entity = entity_guard::capture( weapon );
+		if ( !entity || !entity_guard::ready( pawn ) || !skin || !def || !preview_item::available( ) || !preview_item::identity( weapon ).ready( ) ) return;
+		const auto definition = SCHEMA( "C_EconItemView", "m_iItemDefinitionIndex"_hash );
+		if ( !definition ) return;
+		const bool local = pawn == systems::g_local.get( ).pawn;
+		preview_item::applied.erase( weapon );
+		if ( local ) this->m_overridden = false;
+		memory::write<std::uint16_t>( iv + definition, static_cast<std::uint16_t>( def->def_index ) );
+		// Retry model reconciliation even after a prior partial subclass update.
+		if ( !this->update_model( weapon, iv, static_cast<std::uint16_t>( def->def_index ), !local ) || !entity_guard::current( *entity ) ) return;
+		memory::write<std::uint64_t>( iv + SCHEMA( "C_EconItemView", "m_iItemID"_hash ), 0xf000000000000010ull );
+		memory::write<bool>( iv + SCHEMA( "C_EconItemView", "m_bDisallowSOC"_hash ), true );
+		memory::write<int>( iv + SCHEMA( "C_EconItemView", "m_iEntityQuality"_hash ), skin->stattrak ? 9 : 3 );
 		memory::write<std::uint32_t>( iv + SCHEMA( "C_EconItemView", "m_iItemIDHigh"_hash ), 0xf0000000 );
 		memory::write<std::uint32_t>( iv + SCHEMA( "C_EconItemView", "m_iItemIDLow"_hash ), 0x10 );
 		memory::write<std::uint32_t>( iv + SCHEMA( "C_EconItemView", "m_iAccountID"_hash ), account_id );
 		memory::write<bool>( iv + SCHEMA( "C_EconItemView", "m_bInitialized"_hash ), true );
-
 		memory::write<int>( weapon + SCHEMA( "C_EconEntity", "m_nFallbackPaintKit"_hash ), skin->paint_kit_id );
 		memory::write<int>( weapon + SCHEMA( "C_EconEntity", "m_nFallbackSeed"_hash ), skin->seed );
 		memory::write<float>( weapon + SCHEMA( "C_EconEntity", "m_flFallbackWear"_hash ), skin->wear );
 		memory::write<int>( weapon + SCHEMA( "C_EconEntity", "m_nFallbackStatTrak"_hash ), skin->stattrak ? skin->stattrak_count : -1 );
-
+		if ( !cosmetic_attributes::apply( iv, *skin ) || !entity_guard::current( *entity ) ) return;
+		if ( !name_tag::apply( iv, skin->name_tag ) || !entity_guard::current( *entity ) ) return;
 		const auto pk = g_econ_item_system.find_paint_kit( skin->paint_kit_id );
-
-        if (!cosmetic_attributes::apply(iv, *skin)) return;
-        // Subclass/model changes may rebuild the item view; set its name afterwards.
-        if (!name_tag::apply(iv, skin->name_tag)) return;
-		this->rebuild_paint( weapon, active_weapon, pawn, pk );
+		if ( !this->rebuild_paint( weapon, active_weapon, pawn, pk ) || !entity_guard::current( *entity ) ) return;
 		this->schedule_hud_clear( iv );
-
+		if ( !entity_guard::current( *entity ) ) return;
 		preview_item::remember( weapon, *skin );
-		// A remote knife update must not mark the local original as overridden.
-		if ( pawn == systems::g_local.get( ).pawn ) this->m_overridden = true;
+		if ( local ) this->m_overridden = true;
 	}
 
 	void knives::restore( std::uintptr_t weapon, std::uintptr_t iv, std::uintptr_t active_weapon, std::uintptr_t pawn )
 	{
-		if ( !this->m_overridden || !this->m_original.captured )
-		{
-			return;
-		}
-
+		if ( !this->m_overridden || !this->m_original.captured ) return;
+		const auto entity = entity_guard::capture( weapon );
+		if ( !entity || !entity_guard::ready( pawn ) ) return;
 		this->m_pending_hud_iv = 0;
-        if (!cosmetic_attributes::restore(iv, this->m_original.attributes)) return;
-        if (this->m_original.custom_name && !name_tag::restore(iv, *this->m_original.custom_name)) return;
-        memory::write<std::uint64_t>(iv + SCHEMA("C_EconItemView", "m_iItemID"_hash), this->m_original.item_id);
-        memory::write<bool>(iv + SCHEMA("C_EconItemView", "m_bDisallowSOC"_hash), this->m_original.disallow_soc);
-        memory::write<int>(iv + SCHEMA("C_EconItemView", "m_iEntityQuality"_hash), this->m_original.quality);
-
+		if ( !cosmetic_attributes::restore( iv, this->m_original.attributes ) || !entity_guard::current( *entity ) ) return;
+		if ( this->m_original.custom_name && !name_tag::restore( iv, *this->m_original.custom_name ) ) return;
+		if ( !entity_guard::current( *entity ) ) return;
+		memory::write<std::uint64_t>( iv + SCHEMA( "C_EconItemView", "m_iItemID"_hash ), this->m_original.item_id );
+		memory::write<bool>( iv + SCHEMA( "C_EconItemView", "m_bDisallowSOC"_hash ), this->m_original.disallow_soc );
+		memory::write<int>( iv + SCHEMA( "C_EconItemView", "m_iEntityQuality"_hash ), this->m_original.quality );
 		memory::write<std::uint16_t>( iv + SCHEMA( "C_EconItemView", "m_iItemDefinitionIndex"_hash ), this->m_original.def_index );
 		memory::write<std::uint32_t>( iv + SCHEMA( "C_EconItemView", "m_iItemIDHigh"_hash ), this->m_original.id_high );
 		memory::write<std::uint32_t>( iv + SCHEMA( "C_EconItemView", "m_iItemIDLow"_hash ), this->m_original.id_low );
 		memory::write<std::uint32_t>( iv + SCHEMA( "C_EconItemView", "m_iAccountID"_hash ), this->m_original.account_id );
 		memory::write<bool>( iv + SCHEMA( "C_EconItemView", "m_bInitialized"_hash ), this->m_original.initialized );
-
 		memory::write<int>( weapon + SCHEMA( "C_EconEntity", "m_nFallbackPaintKit"_hash ), this->m_original.paint_kit );
 		memory::write<int>( weapon + SCHEMA( "C_EconEntity", "m_nFallbackSeed"_hash ), this->m_original.seed );
 		memory::write<float>( weapon + SCHEMA( "C_EconEntity", "m_flFallbackWear"_hash ), this->m_original.wear );
 		memory::write<int>( weapon + SCHEMA( "C_EconEntity", "m_nFallbackStatTrak"_hash ), this->m_original.stattrak );
-
+		if ( !this->update_model( weapon, iv, this->m_original.def_index ) || !entity_guard::current( *entity ) ) return;
 		const auto pk = g_econ_item_system.find_paint_kit( this->m_original.paint_kit );
-
-		this->update_model( weapon, iv, this->m_original.def_index );
-		this->rebuild_paint( weapon, active_weapon, pawn, pk );
+		if ( !this->rebuild_paint( weapon, active_weapon, pawn, pk ) || !entity_guard::current( *entity ) ) return;
 		this->schedule_hud_clear( iv );
-
+		if ( !entity_guard::current( *entity ) ) return;
+		preview_item::applied.erase( weapon );
 		this->m_overridden = false;
 	}
 
-	void knives::update_model( std::uintptr_t weapon, std::uintptr_t iv, std::uint16_t def_index, bool lobby )
+	bool knives::update_model( std::uintptr_t weapon, std::uintptr_t iv, std::uint16_t def_index, bool lobby )
 	{
-		const auto token = detail::make_subclass_token( static_cast< std::int16_t >( def_index ) );
-
-		memory::write<std::uint32_t>( weapon + SCHEMA( "C_BaseEntity", "m_nSubclassID"_hash ), token );
-		// Skip viewmodel binding in lobby — it forces default knife animations/position.
-		if ( !lobby )
-			memory::call<void>( PATTERN (patterns::weapon_get_viewmodel), weapon );
-
-		const char* target_model = memory::call<const char*>( PATTERN (patterns::weapon_get_model_path), iv );
-		if ( !target_model || !*target_model )
-		{
-			const auto def = g_econ_item_system.find_def( static_cast< std::int16_t >( def_index ) );
-			if ( def && !def->model_player.empty( ) )
-			{
-				target_model = def->model_player.c_str( );
-			}
-		}
-
-		if ( target_model && *target_model )
-		{
-			memory::call<void>( PATTERN (patterns::set_player_model), weapon, target_model );
-		}
-	}
-
-	void knives::rebuild_paint( std::uintptr_t weapon, std::uintptr_t active_weapon, std::uintptr_t pawn, const econ_item_system::paint_kit* pk )
-	{
-		const auto is_legacy = pk && pk->legacy_model;
-		const auto mesh_group = is_legacy ? std::uint64_t{ 2 } : std::uint64_t{ 1 };
-
-		if ( weapon == active_weapon )
-		{
-			this->update_view_model( pawn, pk );
-		}
-
-		const auto weapon_scene_node = memory::read<std::uintptr_t>( weapon + SCHEMA( "C_BaseEntity", "m_pGameSceneNode"_hash ) );
-		if ( weapon_scene_node )
-		{
-			memory::call<void>( PATTERN( patterns::weapon_set_mesh_group_mask ), weapon_scene_node, mesh_group );
-		}
-
-		memory::call<void>( PATTERN( patterns::weapon_update_composite_material ), weapon + 0x608, true );
-		memory::call_vfunc<void>( weapon, 10, 1 );
-		memory::call<void>( PATTERN( patterns::weapon_update_skin ), weapon, true );
-	}
-
-	void knives::update_view_model( std::uintptr_t pawn, const econ_item_system::paint_kit* pk )
-	{
-		const auto view_model = this->find_hud_model_weapon( pawn );
-		if ( !view_model )
-		{
-			return;
-		}
-
-		const auto view_model_scene_node = memory::read<std::uintptr_t>( view_model + SCHEMA( "C_BaseEntity", "m_pGameSceneNode"_hash ) );
-		if ( !view_model_scene_node )
-		{
-			return;
-		}
-
-		const auto identity = memory::safe_read<std::uintptr_t>( view_model + 0x10 ).value_or( 0 );
-		if ( identity )
-		{
-			const auto flags = memory::safe_read<std::uint32_t>( identity + 0x48 ).value_or( 0 )
-			                 | memory::safe_read<std::uint32_t>( identity + 0x30 ).value_or( 0 );
-			if ( flags & 0x4 )
-			{
-				return;
-			}
-		}
-
-		// Changing only the mesh-group mask leaves the old knife geometry visible.
-		const auto services = memory::safe_read<std::uintptr_t>( pawn + SCHEMA( "C_BasePlayerPawn", "m_pWeaponServices"_hash ) ).value_or( 0 );
-		const auto handle = services ? memory::safe_read<std::uint32_t>( services + SCHEMA( "CPlayer_WeaponServices", "m_hActiveWeapon"_hash ) ).value_or( 0 ) : 0;
-		const auto weapon = handle ? systems::g_entities.lookup( handle ) : 0;
+		const auto entity = entity_guard::capture( weapon );
+		const auto subclass = SCHEMA( "C_BaseEntity", "m_nSubclassID"_hash );
 		const auto get_model = PATTERN( patterns::weapon_get_model_path );
-		const auto set_model = PATTERN( patterns::set_player_model );
-		if ( weapon && get_model && set_model )
+		if ( !entity || !subclass || !get_model ) return false;
+		const auto token = detail::make_subclass_token( static_cast<std::int16_t>( def_index ) );
+		const bool changed = memory::safe_read<std::uint32_t>( weapon + subclass ).value_or( 0 ) != token;
+		memory::write<std::uint32_t>( weapon + subclass, token );
+		if ( !lobby && changed )
 		{
-			const auto iv = weapon + SCHEMA( "C_EconEntity", "m_AttributeManager"_hash ) + SCHEMA( "C_AttributeContainer", "m_Item"_hash );
-			auto target = memory::call<const char*>( get_model, iv );
-			if ( !target || !*target )
-			{
-				const auto def_idx = memory::read<std::uint16_t>( iv + SCHEMA( "C_EconItemView", "m_iItemDefinitionIndex"_hash ) );
-				const auto def = g_econ_item_system.find_def( static_cast< std::int16_t >( def_idx ) );
-				if ( def && !def->model_player.empty( ) )
-					target = def->model_player.c_str( );
-			}
-			const auto state = view_model_scene_node + SCHEMA( "CSkeletonInstance", "m_modelState"_hash );
-			const auto current_name = memory::safe_read<std::uintptr_t>( state + SCHEMA( "CModelState", "m_ModelName"_hash ) ).value_or( 0 );
-			if ( target && *target && ( !current_name || !cosmetic_model::matches( memory::read_string( current_name ), target ) ) )
-				memory::call<void>( set_model, view_model, target );
+			const auto bind = PATTERN( patterns::weapon_get_viewmodel );
+			if ( !bind ) return false;
+			memory::call<void>( bind, weapon );
+			if ( !entity_guard::current( *entity ) ) return false;
 		}
-		const auto is_legacy = pk && pk->legacy_model;
-		// Reacquire the node: SetModel may have replaced it.
-		const auto refreshed_node = memory::safe_read<std::uintptr_t>( view_model + SCHEMA( "C_BaseEntity", "m_pGameSceneNode"_hash ) ).value_or( 0 );
-		if ( refreshed_node )
-			memory::call<void>( PATTERN( patterns::weapon_set_mesh_group_mask ), refreshed_node, is_legacy ? std::uint64_t{ 2 } : std::uint64_t{ 1 } );
+		const auto path = memory::call<const char*>( get_model, iv );
+		auto target = path ? memory::read_string( reinterpret_cast<std::uintptr_t>( path ) ) : std::string{};
+		if ( target.empty( ) )
+		{
+			const auto def = g_econ_item_system.find_def( static_cast<std::int16_t>( def_index ) );
+			if ( def ) target = def->model_player;
+		}
+		if ( target.empty( ) || !entity_guard::current( *entity ) ) return false;
+		const auto state = SCHEMA( "CSkeletonInstance", "m_modelState"_hash );
+		const auto name_offset = SCHEMA( "CModelState", "m_ModelName"_hash );
+		const auto scene = memory::safe_read<std::uintptr_t>( weapon + SCHEMA( "C_BaseEntity", "m_pGameSceneNode"_hash ) ).value_or( 0 );
+		if ( !state || !name_offset || !scene ) return false;
+		const auto name = memory::safe_read<std::uintptr_t>( scene + state + name_offset ).value_or( 0 );
+		if ( name && cosmetic_model::matches( memory::read_string( name ), target ) ) return true;
+		return entity_guard::set_model( *entity, target.c_str( ) );
+	}
+
+	bool knives::rebuild_paint( std::uintptr_t weapon, std::uintptr_t active_weapon, std::uintptr_t pawn, const econ_item_system::paint_kit* pk )
+	{
+		const auto entity = entity_guard::capture( weapon );
+		if ( !entity || !entity_guard::ready( pawn ) ) return false;
+		const auto mesh = pk && pk->legacy_model ? std::uint64_t{2} : std::uint64_t{1};
+		const bool needs_hud = weapon == active_weapon &&
+			( pawn == systems::g_local.get( ).pawn || this->find_hud_model_weapon( pawn ) != 0 );
+		if ( needs_hud && !this->update_view_model( pawn, pk ) ) return false;
+		return entity_guard::rebuild_materials( *entity, mesh );
+	}
+
+	bool knives::update_view_model( std::uintptr_t pawn, const econ_item_system::paint_kit* pk )
+	{
+		return hud_weapon::update( pawn, pk && pk->legacy_model ? std::uint64_t{2} : std::uint64_t{1}, false );
 	}
 
 	std::uintptr_t knives::find_hud_model_weapon( std::uintptr_t pawn )

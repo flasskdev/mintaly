@@ -1,5 +1,6 @@
 #pragma once
 #include "changer.hpp"
+#include "entity_guard.hpp"
 #include <unordered_map>
 
 namespace features::changer::preview_item {
@@ -8,7 +9,9 @@ namespace features::changer::preview_item {
     inline constexpr std::uint64_t item_id = 0xf000000000000010ull;
     inline void reset() { applied.clear(); }
     inline cosmetic_cache::identity identity(std::uintptr_t weapon) {
-        cosmetic_cache::identity v{}; v.weapon = weapon;
+        cosmetic_cache::identity v{};
+        if (!entity_guard::ready(weapon)) return v;
+        v.weapon = weapon;
         v.scene = memory::safe_read<std::uintptr_t>(weapon + SCHEMA("C_BaseEntity", "m_pGameSceneNode"_hash)).value_or(0);
         v.owner = memory::safe_read<std::uint32_t>(weapon + SCHEMA("C_BaseEntity", "m_hOwnerEntity"_hash)).value_or(0);
         if (v.scene) v.model = memory::safe_read<std::uintptr_t>(v.scene + SCHEMA("CSkeletonInstance", "m_modelState"_hash)
