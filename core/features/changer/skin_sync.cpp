@@ -3,6 +3,7 @@
 #include "skin_sync.hpp"
 #include "changer.hpp"
 #include "preview_scene.hpp"
+#include <core/features/features.hpp>
 #include <utilities/steam/steam.hpp>
 #include <utilities/lifecycle.hpp>
 #include <utilities/memory/memory.hpp>
@@ -161,7 +162,7 @@ void skin_sync::capture_local_snapshot(std::uint64_t sid) {
 void skin_sync::on_present() {
     if (lifecycle::is_unloading()) return;
     if (settings::g_changer.sync_enabled.value != is_enabled()) on_sync_toggled();
-    const bool active = systems::g_local.get().controller != 0;
+    const bool active = systems::g_local.get( ).controller != 0;
     if (m_match_active.exchange(active) != active) {
         {
             std::unique_lock lock(m_mutex);
@@ -173,11 +174,11 @@ void skin_sync::on_present() {
             std::lock_guard lock(m_query_mutex);
             m_pending_query_ids.clear();
         }
-        if (!active) m_local_team = 0;
+        if ( !active ) m_local_team = 0;
         m_schedule_reset = true;
         m_push_pending = true;
     }
-    if (active && !m_initialized.load()) initialize();
+    if (active && !m_initialized.load()) this->initialize();
     if (!m_initialized.load() || !m_running.load()) return;
     const auto now = std::chrono::steady_clock::now();
     if (now - m_last_snapshot_time < std::chrono::milliseconds(250)) return;
@@ -201,13 +202,13 @@ void skin_sync::on_frame_stage_notify() {
         const auto team = memory::safe_read<std::uint8_t>(local.controller + team_offset).value_or(0);
         m_local_team = cosmetic_config::retain_team(m_local_team.load(), team);
     }
-    const auto now = std::chrono::steady_clock::now();
-    if (m_query_controller != local.controller) { m_query_controller = local.controller; m_next_query_time = {}; }
-    if (now < m_next_query_time) return;
-    m_next_query_time = now + std::chrono::milliseconds(250);
-    std::vector<std::uint64_t> ids;
+    const auto query_now = std::chrono::steady_clock::now();
+    if (m_query_controller != local.controller) { m_query_controller = local.controller; this->m_next_query_time = {}; }
+    if (query_now < this->m_next_query_time) return;
+    this->m_next_query_time = query_now + std::chrono::milliseconds(250);
+    std::vector<std::uint64_t> ids_to_query{};
     const auto append = [&](std::uint64_t id) {
-        if (id >= steam_base && std::find(ids.begin(), ids.end(), id) == ids.end()) ids.push_back(id);
+        if (id >= steam_base && std::find(ids_to_query.begin(), ids_to_query.end(), id) == ids_to_query.end()) ids_to_query.push_back(id);
     };
     append(sid);
     const auto offset = SCHEMA("CBasePlayerController", "m_steamID"_hash);
@@ -218,7 +219,7 @@ void skin_sync::on_frame_stage_notify() {
     for (const auto& preview : preview_scene::players) append(preview.steam_id);
     std::lock_guard lock(m_query_mutex);
     for (const auto pending : m_pending_query_ids) append(pending);
-    m_pending_query_ids = std::move(ids);
+    m_pending_query_ids = std::move(ids_to_query);
 }
 
 std::optional<remote_player_skin> skin_sync::get_remote_skin(std::uint64_t sid) const {
@@ -256,6 +257,10 @@ void skin_sync::worker_loop() {
     auto next_push = std::chrono::steady_clock::now();
     unsigned failures = 0;
     while (m_running.load()) {
+        if (!this->m_match_active.load()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(250));
+            continue;
+        }
         if (m_schedule_reset.exchange(false)) {
             m_last_push_time = {}; m_last_pull_time = {}; m_last_users_time = {};
             next_push = std::chrono::steady_clock::now(); failures = 0;
@@ -264,7 +269,7 @@ void skin_sync::worker_loop() {
         try {
             const bool heartbeat = is_enabled() && m_match_active.load() && now - m_last_push_time >= std::chrono::seconds(10);
             if (now >= next_push && (m_push_pending.load() || heartbeat)) {
-                if (perform_push()) {
+                if (this->perform_push()) {
                     failures = 0; m_last_push_time = std::chrono::steady_clock::now();
                     next_push = m_last_push_time + std::chrono::seconds(1);
                 } else {
@@ -337,7 +342,8 @@ void skin_sync::perform_pull() {
         skin.last_updated = std::chrono::steady_clock::now();
         updates.emplace(id, std::move(skin));
     }
-    std::unique_lock lock(m_mutex);
+    // std::unique_lock lock(m_mutex)
+    std::unique_lock lock( this->m_mutex );
     if (!m_running.load() || !is_enabled() || !m_match_active.load() || epoch != m_epoch) return;
     std::erase_if(m_cache, [](const auto& item) { return !fresh(item.second); });
     for (const auto id : ids) {

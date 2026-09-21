@@ -29,12 +29,13 @@ namespace features::changer::entity_guard {
         const auto identity = memory::safe_read<std::uintptr_t>(entity + 0x10).value_or(0);
         if (!identity) return std::nullopt;
         const auto flags = memory::safe_read<std::uint32_t>(identity + flags_offset);
-        if (!flags || *flags != 0) return std::nullopt;
+        // if (!flags || *flags != 0)
+        if (!flags || (*flags & 0x4) != 0) return std::nullopt;
         const auto handle = memory::safe_read<std::uint32_t>(identity + 0x10).value_or(0xffffffffu);
         if (systems::g_entities.lookup(handle) != entity) return std::nullopt;
         const auto scene = memory::safe_read<std::uintptr_t>(entity + scene_offset).value_or(0);
         if (!scene || memory::safe_read<std::uintptr_t>(scene + owner_offset).value_or(0) != entity ||
-            memory::safe_read<bool>(scene + dormant_offset).value_or(true)) return std::nullopt;
+            memory::safe_read<bool>(scene + dormant_offset).value_or(false)) return std::nullopt;
         return stamp{entity, identity, handle};
     }
 

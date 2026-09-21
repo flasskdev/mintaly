@@ -468,6 +468,7 @@ namespace features::changer {
 		if ( !state || !name_offset || !scene ) return false;
 		const auto name = memory::safe_read<std::uintptr_t>( scene + state + name_offset ).value_or( 0 );
 		if ( name && cosmetic_model::matches( memory::read_string( name ), target ) ) return true;
+		// memory::call<void>( set_model, view_model, target );
 		return entity_guard::set_model( *entity, target.c_str( ) );
 	}
 

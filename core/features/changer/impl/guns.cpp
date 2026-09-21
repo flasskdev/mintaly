@@ -158,6 +158,11 @@ namespace features::changer {
 							continue;
 						}
 
+						if ( !entity_guard::ready( weapon ) )
+						{
+							continue;
+						}
+
 						const auto selected = this->select_skin( weapon, iv, handle, current_def_index, account_id, active_skins );
 						if ( !selected )
 						{
@@ -326,6 +331,11 @@ namespace features::changer {
 				const auto current_def_index = memory::safe_read<std::uint16_t>( iv + SCHEMA( "C_EconItemView", "m_iItemDefinitionIndex"_hash ) ).value_or( 0 );
 				const auto current_def = g_econ_item_system.find_def( static_cast< std::int16_t >( current_def_index ) );
 				if ( !current_def || current_def->category != econ_item_system::item_category::gun )
+				{
+					continue;
+				}
+
+				if ( !entity_guard::ready( weapon ) )
 				{
 					continue;
 				}
@@ -567,6 +577,7 @@ namespace features::changer {
 	bool guns::update_view_model( std::uintptr_t pawn, const econ_item_system::paint_kit* pk, bool force )
 	{
 		// Do not rebuild world materials again on the unchanged-skin fast path.
+		// if (force || !current_name || !cosmetic_model::matches(memory::read_string(current_name), target))
 		return hud_weapon::update( pawn, pk && pk->legacy_model ? std::uint64_t{2} : std::uint64_t{1}, force );
 	}
 

@@ -60,9 +60,9 @@ namespace features::changer::hud_weapon {
         };
         const auto handle = active_handle();
         const auto weapon = entity_guard::capture(systems::g_entities.lookup(handle));
-        if (!weapon || !entity_guard::ready(find(pawn))) return false;
+        if (!weapon) return false;
         // A remote world weapon must not force a local viewmodel binding.
-        if (bind && pawn == systems::g_local.get().pawn) {
+        if (bind && pawn == systems::g_local.get().pawn && !find(pawn)) {
             const auto binding = PATTERN(patterns::weapon_get_viewmodel);
             if (!binding) return false;
             memory::call<void>(binding, weapon->entity);
@@ -79,7 +79,7 @@ namespace features::changer::hud_weapon {
             SCHEMA("C_BaseEntity", "m_pGameSceneNode"_hash)).value_or(0);
         if (!scene) return false;
         const auto name = memory::safe_read<std::uintptr_t>(scene + state + name_offset).value_or(0);
-        if (!name || !cosmetic_model::matches(memory::read_string(name), target)) {
+        if (bind || !name || !cosmetic_model::matches(memory::read_string(name), target)) {
             if (!entity_guard::set_model(*hud, target.c_str())) return false;
         }
         if (!entity_guard::current(*player) || !entity_guard::current(*weapon) ||
