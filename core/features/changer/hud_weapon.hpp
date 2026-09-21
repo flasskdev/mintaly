@@ -2,6 +2,8 @@
 #include <cstdint>
 #include <core/systems/systems.hpp>
 #include <utilities/memory/memory.hpp>
+#include <utilities/cosmetic_model.hpp>
+#include "entity_guard.hpp"
 
 namespace features::changer::hud_weapon {
     // Multiple HUD children can coexist during a weapon switch. Never select
@@ -39,5 +41,49 @@ namespace features::changer::hud_weapon {
             child = memory::safe_read<std::uintptr_t>(child + sibling_offset).value_or(0);
         }
         return 0; // Missing binding: retry next frame, never guess.
+    }
+
+    inline bool update(std::uintptr_t pawn, std::uint64_t mesh, bool bind) {
+        const auto player = entity_guard::capture(pawn);
+        const auto services_offset = SCHEMA("C_BasePlayerPawn", "m_pWeaponServices"_hash);
+        const auto active_offset = SCHEMA("CPlayer_WeaponServices", "m_hActiveWeapon"_hash);
+        const auto manager = SCHEMA("C_EconEntity", "m_AttributeManager"_hash);
+        const auto item = SCHEMA("C_AttributeContainer", "m_Item"_hash);
+        const auto state = SCHEMA("CSkeletonInstance", "m_modelState"_hash);
+        const auto name_offset = SCHEMA("CModelState", "m_ModelName"_hash);
+        const auto get_model = PATTERN(patterns::weapon_get_model_path);
+        if (!player || !services_offset || !active_offset || !manager || !item ||
+            !state || !name_offset || !get_model) return false;
+        const auto active_handle = [&]() {
+            const auto services = memory::safe_read<std::uintptr_t>(pawn + services_offset).value_or(0);
+            return services ? memory::safe_read<std::uint32_t>(services + active_offset).value_or(0) : 0;
+        };
+        const auto handle = active_handle();
+        const auto weapon = entity_guard::capture(systems::g_entities.lookup(handle));
+        if (!weapon || !entity_guard::ready(find(pawn))) return false;
+        // A remote world weapon must not force a local viewmodel binding.
+        if (bind && pawn == systems::g_local.get().pawn) {
+            const auto binding = PATTERN(patterns::weapon_get_viewmodel);
+            if (!binding) return false;
+            memory::call<void>(binding, weapon->entity);
+        }
+        if (!entity_guard::current(*player) || !entity_guard::current(*weapon) || active_handle() != handle)
+            return false;
+        const auto hud = entity_guard::capture(find(pawn)); // Binding may recreate the HUD.
+        if (!hud) return false;
+        const auto path = memory::call<const char*>(get_model, weapon->entity + manager + item);
+        const auto target = path ? memory::read_string(reinterpret_cast<std::uintptr_t>(path)) : std::string{};
+        if (target.empty() || !entity_guard::current(*player) || !entity_guard::current(*weapon) ||
+            !entity_guard::current(*hud) || active_handle() != handle || find(pawn) != hud->entity) return false;
+        const auto scene = memory::safe_read<std::uintptr_t>(hud->entity +
+            SCHEMA("C_BaseEntity", "m_pGameSceneNode"_hash)).value_or(0);
+        if (!scene) return false;
+        const auto name = memory::safe_read<std::uintptr_t>(scene + state + name_offset).value_or(0);
+        if (!name || !cosmetic_model::matches(memory::read_string(name), target)) {
+            if (!entity_guard::set_model(*hud, target.c_str())) return false;
+        }
+        if (!entity_guard::current(*player) || !entity_guard::current(*weapon) ||
+            active_handle() != handle || find(pawn) != hud->entity) return false;
+        return entity_guard::set_mesh(*hud, mesh);
     }
 }

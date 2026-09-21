@@ -15,7 +15,8 @@ namespace features::changer {
 	std::string g_last_applied_model{};
 
 namespace {
-	bool apply_model_safe (std::uintptr_t pawn, const char* model)
+	// Keep SEH in a frame without C++ objects requiring unwinding (MSVC C2712).
+	bool apply_model_safe( const entity_guard::stamp& entity, const char* model, bool precache )
 	{
 		struct buffer_string {
 			std::uint32_t m_unknown1 {};
@@ -24,66 +25,37 @@ namespace {
 			std::uintptr_t m_unknown3 {};
 			std::uintptr_t m_unknown4 {};
 		} buffer;
-
-		const auto init_path_buffer = PATTERN (patterns::init_particle_path_buffer);
-		const auto precache_resource = PATTERN (patterns::resource_system_precache);
-		const auto set_model = PATTERN (patterns::set_player_model);
-
-		if ( !pawn || !model || !*model || !set_model ) return false;
-
+		if ( !model || !*model ) return false;
 		__try
 		{
-			if ( init_path_buffer && precache_resource && addresses::globals::resource_system )
+			if ( !entity_guard::current( entity ) ) return false;
+			const auto init = PATTERN( patterns::init_particle_path_buffer );
+			const auto cache = PATTERN( patterns::resource_system_precache );
+			if ( precache && init && cache && addresses::globals::resource_system )
 			{
-				memory::call<void>( init_path_buffer, &buffer, model );
+				memory::call<void>( init, &buffer, model );
 				buffer.m_unknown4 = 'ldmv';
-				memory::call<void>( precache_resource, addresses::globals::resource_system, &buffer, "" );
+				memory::call<void>( cache, addresses::globals::resource_system, &buffer, "" );
 			}
-
-			memory::call<void>( set_model, pawn, model );
+			// Precache can re-enter the engine. Check the original full handle again.
+			return entity_guard::set_model( entity, model );
 		}
-		__except ( EXCEPTION_EXECUTE_HANDLER )
-		{
-			return false;
-		}
-
-		return true;
+		__except ( EXCEPTION_EXECUTE_HANDLER ) { return false; }
 	}
 
-	// MSVC rejects __try in any frame that also needs C++ unwinding (C2712), and
-	// on_frame_stage_notify holds std::string / std::vector locals -- so the
-	// guarded call gets its own frame, where every local is trivially
-	// destructible. Resolve the pattern on the caller's side, not in here.
-	bool set_model_guarded (std::uintptr_t set_model, std::uintptr_t pawn, const char* model)
-	{
-		if ( !set_model || !pawn || !model || !*model ) return false;
-		__try
-		{
-			memory::call<void>( set_model, pawn, model );
-		}
-		__except ( EXCEPTION_EXECUTE_HANDLER )
-		{
-			return false;
-		}
-
-		return true;
-	}
-
-	// Agent visuals must not overwrite movement's crouched collision hull.
 	bool replace_agent_model( std::uintptr_t pawn, const std::string& path )
 	{
+		const auto entity = entity_guard::capture( pawn );
+		if ( !entity || path.empty( ) ) return false;
 		const auto collision_offset = SCHEMA( "C_BaseModelEntity", "m_Collision"_hash );
 		const auto mins_offset = SCHEMA( "CCollisionProperty", "m_vecMins"_hash );
 		const auto maxs_offset = SCHEMA( "CCollisionProperty", "m_vecMaxs"_hash );
 		const auto collision = collision_offset ? pawn + collision_offset : 0;
 		const auto mins = ( collision && mins_offset ) ? memory::safe_read<math::vector3>( collision + mins_offset ) : std::nullopt;
 		const auto maxs = ( collision && maxs_offset ) ? memory::safe_read<math::vector3>( collision + maxs_offset ) : std::nullopt;
-
-		const bool applied = path.ends_with( ".vmdl" )
-			? apply_model_safe( pawn, path.c_str( ) )
-			: set_model_guarded( PATTERN( patterns::set_player_model ), pawn, path.c_str( ) );
-		// Restore even on a guarded failure: the engine could have changed the hull
-		// before failing to finish an asynchronous resource request.
+		const bool applied = apply_model_safe( *entity, path.c_str( ), path.ends_with( ".vmdl" ) );
+		if ( !entity_guard::current( *entity ) ) return false;
+		// Do not overwrite a crouched hull or write through a recycled pawn.
 		if ( collision && mins && maxs )
 		{
 			memory::safe_write<math::vector3>( collision + mins_offset, *mins );

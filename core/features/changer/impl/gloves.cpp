@@ -210,35 +210,13 @@ namespace features::changer {
 	bool gloves::read_paint_attributes( std::uintptr_t item_view, std::array<attribute_state, 3>& attributes ) const
 	{
 		attributes = {};
-
-		const auto count = memory::read<int>( item_view + detail::item_view_attribute_count_offset );
-		if ( count < 0 || count > detail::maximum_attribute_count )
+		cosmetic_attributes::snapshot snapshot{};
+		if ( !item_view || !cosmetic_attributes::capture( item_view, snapshot ) ) return false;
+		for ( std::size_t i = 0; i < attributes.size( ); ++i )
 		{
-			return false;
+			attributes[i].present = snapshot[i].present;
+			attributes[i].value = std::bit_cast<float>( snapshot[i].bits );
 		}
-
-		const auto data = memory::read<std::uintptr_t>( item_view + detail::item_view_attribute_data_offset );
-		if ( count && !data )
-		{
-			return false;
-		}
-
-		for ( auto i = 0; i < count; ++i )
-		{
-			const auto attribute = data + static_cast< std::ptrdiff_t >( i ) * detail::item_attribute_stride;
-			const auto definition = memory::read<std::uint16_t>( attribute + detail::item_attribute_definition_offset );
-
-			for ( std::size_t slot = 0; slot < detail::glove_attribute_indices.size( ); ++slot )
-			{
-				if ( definition == detail::glove_attribute_indices[ slot ] && !attributes[ slot ].present )
-				{
-					attributes[ slot ].value = memory::read<float>( attribute + detail::item_attribute_value_offset );
-					attributes[ slot ].present = true;
-					break;
-				}
-			}
-		}
-
 		return true;
 	}
 
@@ -312,6 +290,8 @@ namespace features::changer {
 				memory::safe_call<void>( set_attribute, item_view, detail::glove_attribute_names[ slot ], value );
 			} ) ) return;
 
+		// Attribute setters can re-enter the engine; defer identity publication if unready.
+		if ( !entity_guard::ready( pawn ) ) return;
 		// Publish identity and refresh only after a fresh read confirms all attributes.
 		memory::write<std::uint16_t>( item_view + SCHEMA( "C_EconItemView", "m_iItemDefinitionIndex"_hash ), static_cast< std::uint16_t >( def.def_index ) );
 		memory::write<std::uint64_t>( item_view + SCHEMA( "C_EconItemView", "m_iItemID"_hash ), detail::faux_item_id );
@@ -350,23 +330,20 @@ namespace features::changer {
 
 	void gloves::refresh( std::uintptr_t pawn, std::uintptr_t item_view, int team ) const
 	{
+		const auto entity = entity_guard::capture( pawn );
+		if ( !entity ) return;
 		const auto invalidate = PATTERN( patterns::econ_item_view_invalidate_description );
-		if ( invalidate && item_view )
-		{
-			memory::safe_call<void>( invalidate, item_view );
-		}
-
+		if ( invalidate && item_view ) memory::safe_call<void>( invalidate, item_view );
+		if ( !entity_guard::current( *entity ) ) return;
 		const auto reapply_offset = SCHEMA( "C_CSPlayerPawn", "m_bNeedToReApplyGloves"_hash );
 		if ( reapply_offset ) memory::write<bool>( pawn + reapply_offset, true );
-		if ( pawn == systems::g_local.get( ).pawn )
-		{
-			memory::call_vfunc<void>( pawn, detail::post_data_update_index, 1 );
-		}
-
+		if ( pawn == systems::g_local.get( ).pawn ) memory::call_vfunc<void>( pawn, detail::post_data_update_index, 1 );
+		if ( !entity_guard::current( *entity ) ) return;
 		const auto set_bodygroup = PATTERN( patterns::set_bodygroup );
 		if ( set_bodygroup )
 		{
 			memory::safe_call<void>( set_bodygroup, pawn, 0, 1u );
+			if ( !entity_guard::current( *entity ) ) return;
 			memory::safe_call<void>( set_bodygroup, pawn, team == 2 ? 0 : 1, 1u );
 		}
 	}

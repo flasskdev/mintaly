@@ -11,6 +11,7 @@
 #include <utilities/addresses/addresses.hpp>
 #include <utilities/memory/memory.hpp>
 #include <utilities/steam/steam.hpp>
+#include "entity_guard.hpp"
 
 namespace features::changer::preview_scene {
     inline constexpr std::uint64_t steam_base = 76561197960265728ull;
@@ -80,12 +81,7 @@ namespace features::changer::preview_scene {
         return 0;
     }
     inline bool player_ready(std::uintptr_t pawn) {
-        if (!pawn) return false;
-        const auto offset = SCHEMA("C_BaseEntity", "m_pGameSceneNode"_hash);
-        const auto scene = offset ? memory::safe_read<std::uintptr_t>(pawn + offset).value_or(0) : 0;
-        if (!scene) return false;
-        const auto dormant = SCHEMA("CGameSceneNode", "m_bDormant"_hash);
-        return !dormant || !memory::safe_read<bool>(scene + dormant).value_or(true);
+        return entity_guard::ready(pawn);
     }
     inline std::uintptr_t linked_controller(std::uintptr_t pawn) {
         if (!pawn) return 0;

@@ -62,6 +62,9 @@ namespace features::changer {
 		void* m_worker_handle{}; // HANDLE, closed only after the worker exits.
 		bool m_stopping{}; // Protected by m_worker_mutex; shutdown is terminal.
 		std::atomic<bool> m_running{ false };
+		std::atomic<bool> m_enabled{ false }; // Published by the menu/render thread.
+		std::atomic<bool> m_schedule_reset{ false };
+		std::uint64_t m_epoch{}; // Protected by m_mutex; rejects replies across toggles.
 		std::atomic<bool> m_match_active{ false }; // Published by on_present from the local snapshot.
 		std::atomic<bool> m_push_pending{ true };
 		std::atomic<bool> m_initialized{ false };
