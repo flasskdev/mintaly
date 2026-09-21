@@ -2443,14 +2443,12 @@ namespace settings {
                 g_combat.m_autos.scope.value = false;
                 g_combat.m_autos.scope.bind.active = false;
 
-                // 4. Legitbot Aimbot & Triggerbot
+                // 4. Legitbot Aimbot
                 for (auto& g : g_combat.m_legitbot.groups) {
                         g.aimbot.value = false; g.aimbot.bind.active = false;
-                        g.triggerbot.value = false; g.triggerbot.bind.active = false;
                 }
                 for (auto& w : g_combat.m_legitbot.weapons) {
                         w.cfg.aimbot.value = false; w.cfg.aimbot.bind.active = false;
-                        w.cfg.triggerbot.value = false; w.cfg.triggerbot.bind.active = false;
                 }
 
                 // 5. Movement

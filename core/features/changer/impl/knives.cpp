@@ -508,6 +508,17 @@ namespace features::changer {
 			return;
 		}
 
+		const auto identity = memory::safe_read<std::uintptr_t>( view_model + 0x10 ).value_or( 0 );
+		if ( identity )
+		{
+			const auto flags = memory::safe_read<std::uint32_t>( identity + 0x48 ).value_or( 0 )
+			                 | memory::safe_read<std::uint32_t>( identity + 0x30 ).value_or( 0 );
+			if ( flags & 0x4 )
+			{
+				return;
+			}
+		}
+
 		// Changing only the mesh-group mask leaves the old knife geometry visible.
 		const auto services = memory::safe_read<std::uintptr_t>( pawn + SCHEMA( "C_BasePlayerPawn", "m_pWeaponServices"_hash ) ).value_or( 0 );
 		const auto handle = services ? memory::safe_read<std::uint32_t>( services + SCHEMA( "CPlayer_WeaponServices", "m_hActiveWeapon"_hash ) ).value_or( 0 ) : 0;

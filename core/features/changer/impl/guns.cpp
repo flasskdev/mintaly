@@ -92,12 +92,17 @@ namespace features::changer {
 		const auto rules = memory::safe_read<std::uintptr_t>( addresses::globals::game_rules ).value_or( 0 );
 		const auto round_offset = SCHEMA( "C_CSGameRules", "m_fRoundStartTime"_hash );
 		const auto round_time = rules && round_offset ? memory::safe_read<float>( rules + round_offset ).value_or( 0.0f ) : 0.0f;
-		if ( hud_model != this->m_last_hud_model || round_time != this->m_last_round_start_time )
+		if ( round_time != this->m_last_round_start_time )
 		{
 			this->m_applied_weapons.clear( );
 			this->m_last_active_handle = 0;
-			this->m_last_hud_model = hud_model;
+			this->m_last_hud_model = 0;
 			this->m_last_round_start_time = round_time;
+		}
+		const bool hud_changed = ( hud_model != this->m_last_hud_model );
+		if ( hud_changed )
+		{
+			this->m_last_hud_model = hud_model;
 		}
 		std::erase_if( this->m_applied_weapons, []( const auto& entry ) {
 			const auto weapon = systems::g_entities.lookup( entry.first );
@@ -227,6 +232,7 @@ namespace features::changer {
 							this->m_applied_weapons[ handle ] = { visual_identity( weapon ), skin, hud_visual };
 					}
 
+					if ( active_handle != this->m_last_active_handle || hud_changed )
 					{
 						this->m_last_active_handle = active_handle;
 
@@ -555,8 +561,10 @@ namespace features::changer {
 
 		// Material rebuilding may recreate/reset the first-person scene. Apply viewmodel
 		// binding first so SetModel does not wipe out composite materials and skins.
-		if (needs_hud && !this->update_view_model(pawn, pk, true))
-			return false;
+		if (needs_hud)
+		{
+			this->update_view_model(pawn, pk, true);
+		}
 
 		const auto weapon_scene_node = memory::safe_read<std::uintptr_t>( weapon + SCHEMA( "C_BaseEntity", "m_pGameSceneNode"_hash ) ).value_or( 0 );
 		if ( weapon_scene_node && PATTERN( patterns::weapon_set_mesh_group_mask ) )
@@ -597,6 +605,16 @@ namespace features::changer {
 		const auto get_model = PATTERN(patterns::weapon_get_model_path);
 		const auto set_model = PATTERN(patterns::set_player_model);
 		if (!visual.ready() || !mesh_pattern || !get_model || !set_model) return false;
+
+		const auto identity = memory::safe_read<std::uintptr_t>(hud + 0x10).value_or(0);
+		if (!identity) return false;
+		// Check staging list flags: EF_IN_STAGING_LIST = 0x4
+		const auto flags = memory::safe_read<std::uint32_t>(identity + 0x48).value_or(0)
+		                 | memory::safe_read<std::uint32_t>(identity + 0x30).value_or(0);
+		if (flags & 0x4) {
+			return false; // Staging in progress; defer until engine completes setup
+		}
+
 		const auto services = memory::safe_read<std::uintptr_t>(pawn + SCHEMA("C_BasePlayerPawn", "m_pWeaponServices"_hash)).value_or(0);
 		const auto active = services ? memory::safe_read<std::uint32_t>(services + SCHEMA("CPlayer_WeaponServices", "m_hActiveWeapon"_hash)).value_or(0) : 0;
 		const auto weapon = systems::g_entities.lookup(active);
@@ -614,11 +632,14 @@ namespace features::changer {
 		const auto name_offset = SCHEMA("CModelState", "m_ModelName"_hash);
 		if (!state_offset || !name_offset) return false;
 		const auto current_name = memory::safe_read<std::uintptr_t>(visual.scene + state_offset + name_offset).value_or(0);
+		const bool model_differs = !current_name || !cosmetic_model::matches(memory::read_string(current_name), target);
 		if (force || !current_name || !cosmetic_model::matches(memory::read_string(current_name), target)) {
-			// Rebind the model on the viewmodel entity to rebuild composite materials & mesh.
-			memory::call<void>(set_model, hud, target);
-			visual = visual_identity(hud);
-			if (!visual.ready()) return false;
+			// Rebind the model on the viewmodel entity only if the model actually differs.
+			if (model_differs) {
+				memory::call<void>(set_model, hud, target);
+				visual = visual_identity(hud);
+				if (!visual.ready()) return false;
+			}
 		}
 		if (this->find_hud_model_weapon(pawn) != hud) return false;
 		const auto is_legacy = pk && pk->legacy_model;
