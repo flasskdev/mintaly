@@ -120,7 +120,7 @@ namespace rendering {
 			// Preserve captured originals so removed cosmetics can be restored on the game thread.
 			features::changer::g_guns.invalidate( );
 			features::changer::g_knives.invalidate( );
-			features::changer::g_skin_sync.trigger_push( );
+			features::changer::g_skin_sync.on_sync_toggled( );
 			settings::finalize_binds( );
 			settings::g_world.update_active( rendering::g_widgets.s_map_name );
 			rendering::g_menu.apply_theme_preset( settings::g_misc.menu_palette.value );
@@ -229,7 +229,7 @@ namespace rendering {
 					// Do not discard originals or call engine restoration from the menu thread.
 					features::changer::g_guns.invalidate( );
 					features::changer::g_knives.invalidate( );
-					features::changer::g_skin_sync.trigger_push( );
+					features::changer::g_skin_sync.on_sync_toggled( );
 					settings::finalize_binds( );
 					settings::g_world.update_active( rendering::g_widgets.s_map_name );
 					rendering::g_menu.apply_theme_preset( settings::g_misc.menu_palette.value );

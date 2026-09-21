@@ -379,7 +379,6 @@ namespace features::changer {
 		this->m_pending_hud_iv = 0;
         if (!skin || !def || !preview_item::available() || !preview_item::identity(weapon).ready()) return;
         if (!PATTERN(patterns::weapon_get_viewmodel) || !PATTERN(patterns::weapon_get_model_path) || !PATTERN(patterns::set_player_model)) return;
-        if (!skin->name_tag.empty() && !name_tag::offsets()) return;
         const auto model_changed =
             memory::read<std::uint16_t>(iv + SCHEMA("C_EconItemView", "m_iItemDefinitionIndex"_hash)) != static_cast<std::uint16_t>(def->def_index)
             || memory::read<std::uint32_t>(weapon + SCHEMA("C_BaseEntity", "m_nSubclassID"_hash)) != detail::make_subclass_token(def->def_index);

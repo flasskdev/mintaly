@@ -1708,11 +1708,6 @@ namespace rendering {
 				weapon->category == features::changer::econ_item_system::item_category::knife;
 			if ( supports_stattrak )
 			{
-				xui::text_input( "Name tag", skin.name_tag, 80, "Custom name (20 characters)" );
-				skin.name_tag = skin_options::normalize_name_tag( skin.name_tag );
-				if ( !skin.name_tag.empty( ) && xui::button( "Clear name tag", 155.0f ) ) { skin.name_tag.clear( ); notify_skin_changed( ); }
-				if ( !features::changer::name_tag::offsets( ) )
-					xui::text( "Native name tags unavailable on this game build", tokens::col_text_dim );
 				if ( xui::button( skin.stattrak ? "StatTrak: ON" : "StatTrak: OFF", 155.0f ) ) { skin.stattrak = !skin.stattrak; notify_skin_changed( ); }
 				if ( skin.stattrak ) integer_input( "StatTrak count", skin.stattrak_count, 0, std::numeric_limits<int>::max( ) );
 			}

@@ -596,7 +596,7 @@ namespace rendering {
 			return s == &wg.aimbot || s == &wg.rcs || s == &wg.standalone_rcs ||
 				s == &wg.triggerbot || s == &wg.trigger_head_only || s == &wg.give_me_your_seed ||
 				s == &wg.autowall || s == &wg.smoke_check || s == &wg.scope_check ||
-				s == &wg.flash_check || s == &wg.ground_check || s == &wg.visualize_fov;
+				s == &wg.flash_check || s == &wg.ground_check || s == &wg.auto_scope || s == &wg.visualize_fov;
 		};
 
 		// Ensure air strafer bind is always synchronized with airstrafe

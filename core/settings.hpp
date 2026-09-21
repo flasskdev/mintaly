@@ -1710,6 +1710,7 @@ namespace settings {
                 agent_selection_field agents{};
                 custom_agents_field custom_agents{};
                 music_field music{};
+                config::val<bool> sync_enabled{ true, "changer", "sync enabled" };
 
                 changer()
                 {
@@ -1762,7 +1763,7 @@ namespace settings {
 
                 struct impacts
                 {
-                        enum class sound_type : int { shop_click, home_click, bell, killcard, bullet_casing, coin_pickup, item_drop, popcan, key_press, koch, custom };
+                        enum class sound_type : int { shop_click, home_click, bell, killcard, bullet_casing, coin_pickup, item_drop, popcan, key_press, koch };
                         enum class marker_type : int { classic, damage, both };
                         enum class bullet_impact_type : int { overlay, sparks, both };
 
@@ -1778,12 +1779,10 @@ namespace settings {
                         xui::setting hit_sound{ true,{}, "hit sound", "impacts" };
                         config::enm<sound_type> hit_sound_type{ sound_type::killcard, "impacts", "hit sound type" };
                         config::val<float> hit_sound_volume{ 25.0f, "impacts", "hit sound volume" };
-                        config::str custom_hit_sound{ "hit.wav", "impacts", "custom hit sound" };
 
                         xui::setting death_sound{ true,{}, "death sound", "impacts" };
                         config::enm<sound_type> death_sound_type{ sound_type::bell, "impacts", "death sound type" };
                         config::val<float> death_sound_volume{ 20.0f, "impacts", "death sound volume" };
-                        config::str custom_death_sound{ "kill.wav", "impacts", "custom death sound" };
 
                         xui::setting hit_effect{ true,{}, "hit effect", "impacts" };
                         config::col hit_effect_color{ { 173, 192, 255, 255 }, "impacts", "hit effect color" };
@@ -2337,8 +2336,16 @@ namespace settings {
                 scene m_scene{ "active_scene" };
                 weather m_weather{ "active_weather" };
 
-                void update_active(const std::string& current_map)
+                std::string m_last_map{ "___unset___" };
+                const map_preset* m_last_source{ nullptr };
+
+                void update_active(const std::string& current_map, bool force = false)
                 {
+                        if (!force && current_map == m_last_map && m_last_source != nullptr)
+                        {
+                                return;
+                        }
+
                         int matched_idx = -1;
                         if (!current_map.empty())
                         {
@@ -2363,13 +2370,15 @@ namespace settings {
                                 source = presets[matched_idx];
                         }
 
+                        m_last_map = current_map;
+                        m_last_source = source;
                         copy_scene(this->m_scene, source->m_scene);
                         copy_weather(this->m_weather, source->m_weather);
                 }
 
                 world()
                 {
-                        update_active("");
+                        update_active("", true);
                 }
         };
 
@@ -2394,6 +2403,19 @@ namespace settings {
 
                 g_movement.m_test_strafer.enabled.value = g_movement.airstrafe.value;
                 g_movement.m_test_strafer.enabled.bind = g_movement.airstrafe.bind;
+
+                for (std::size_t i = 0; i < cstypes::weapons::k_total_weapons; ++i)
+                {
+                        const auto grp_idx = cstypes::weapons::k_weapons[i].group_idx;
+                        if (grp_idx < combat::legitbot::k_group_count && !g_combat.m_legitbot.weapons[i].override_group.value)
+                        {
+                                g_combat.m_legitbot.weapons[i].cfg.copy_values_from(g_combat.m_legitbot.groups[grp_idx]);
+                        }
+                        if (grp_idx < combat::ragebot::k_group_count && !g_combat.m_ragebot.weapons[i].override_group.value)
+                        {
+                                g_combat.m_ragebot.weapons[i].cfg.copy_values_from(g_combat.m_ragebot.groups[grp_idx]);
+                        }
+                }
         }
 
 } // namespace settings

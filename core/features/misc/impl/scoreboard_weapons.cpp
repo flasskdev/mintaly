@@ -316,7 +316,7 @@ namespace features::misc {
 				}
 			}
 		}
-		function updateIndicator(xuid, account_id, name, show) {
+		function updateIndicator(xuid, account_id, name, show, team) {
 			var sb = getScoreboard();
 			if (!sb) return;
 
@@ -389,7 +389,19 @@ namespace features::misc {
 			label.style.width = "100%";
 			label.style.height = "18px";
 			label.style.lineHeight = "18px";
-			label.style.color = "#FFFFFF";
+			var teamColor = "#FFFFFF";
+			if (team === 2) {
+				teamColor = "#E9D18A"; // Terrorists
+			} else if (team === 3) {
+				teamColor = "#B6D4EE"; // Counter-Terrorists
+			} else {
+				if (row.BHasClass && (row.BHasClass("sb-team--t") || row.BHasClass("team-t"))) {
+					teamColor = "#E9D18A";
+				} else if (row.BHasClass && (row.BHasClass("sb-team--ct") || row.BHasClass("team-ct"))) {
+					teamColor = "#B6D4EE";
+				}
+			}
+			label.style.color = teamColor;
 			label.style.fontSize = "11px";
 			label.style.fontWeight = "bold";
 			label.style.fontFamily = "Arial, sans-serif";
@@ -585,7 +597,7 @@ namespace features::misc {
 
 	SClient.register_handler("updateIndicator", function (msg) {
 		if (msg && msg.content)
-			SIndicatorManager.update(msg.content.xuid, msg.content.account_id, msg.content.name, msg.content.show);
+			SIndicatorManager.update(msg.content.xuid, msg.content.account_id, msg.content.name, msg.content.show, msg.content.team);
 	});
 
 })();
@@ -932,12 +944,17 @@ namespace features::misc {
 			player_name = memory::read_string(controller + SCHEMA("CBasePlayerController", "m_iszPlayerName"_hash), 127);
 		}
 
+		const auto team = memory::safe_read<int>(
+			controller + SCHEMA("C_BaseEntity", "m_iTeamNum"_hash)).value_or(0);
+
 		const nlohmann::json message = {
 			{"type", "updateIndicator"},
 			{"content", {
 				{"xuid", std::to_string(steamid)},
 				{"account_id", std::to_string(account_id)},
-				{"name", player_name}, {"show", show}
+				{"name", player_name},
+				{"show", show},
+				{"team", team}
 			}}
 		};
 		// JSON escaping includes line breaks, control characters and Unicode separators.

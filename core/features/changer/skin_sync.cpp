@@ -87,48 +87,83 @@ namespace features::changer {
 		return true;
 	}
 
+	bool skin_sync::is_enabled( ) const
+	{
+		return settings::g_changer.sync_enabled.value;
+	}
+
 	void skin_sync::trigger_push( )
 	{
 		this->m_push_pending = true;
 	}
 
-	void skin_sync::capture_local_snapshot(std::uint64_t steam_id)
+	void skin_sync::on_sync_toggled( )
 	{
-		remote_player_skin snapshot{};
-		// A missing/dead pawn must not publish the empty global fallback over a team loadout.
-		// Entity access belongs to the game thread, not Present.
-		const auto team = this->m_local_team.load();
-		if ( team == 2 || team == 3 )
+		auto steam_id = this->m_last_local_steam_id.load( );
+		if ( steam_id < 76561197960265728ull )
 		{
-			snapshot.skins = settings::g_changer.skins.for_team( team );
+			steam_id = this->resolve_local_steam_id( );
+		}
+		if ( steam_id >= 76561197960265728ull )
+		{
+			this->set_local_steam_id( steam_id );
+			this->capture_local_snapshot( steam_id );
+		}
+		this->m_push_pending = true;
+		if ( !this->is_enabled( ) )
+		{
+			std::unique_lock lock( this->m_mutex );
+			this->m_cache.clear( );
+			this->m_cheat_users.clear( );
 		}
 		else
 		{
-			snapshot.skins = settings::g_changer.skins.for_team( 3 );
-			for ( const auto& [def, skin] : settings::g_changer.skins.for_team( 2 ) )
-				snapshot.skins.try_emplace( def, skin );
+			this->m_last_push_time = {};
+			this->m_last_pull_time = {};
+			this->m_last_users_time = {};
 		}
-		snapshot.music_kit_id = settings::g_changer.music.id;
-		snapshot.last_updated = std::chrono::steady_clock::now();
-		const auto official_agent = [](std::int16_t id, int custom, int side) -> std::int16_t {
-			const auto& entries = settings::g_changer.custom_agents.entries;
-			if (custom >= 0 && custom < static_cast<int>(entries.size())) {
-				const auto& entry = entries[custom];
-				if (!entry.model_path.empty() && (entry.team == 0 || entry.team == side)) return 0;
+	}
+
+	void skin_sync::capture_local_snapshot(std::uint64_t steam_id)
+	{
+		remote_player_skin snapshot{};
+		if ( this->is_enabled( ) )
+		{
+			// A missing/dead pawn must not publish the empty global fallback over a team loadout.
+			// Entity access belongs to the game thread, not Present.
+			const auto team = this->m_local_team.load();
+			if ( team == 2 || team == 3 )
+			{
+				snapshot.skins = settings::g_changer.skins.for_team( team );
 			}
-			if (id <= 0) return 0;
-			const auto def = g_econ_item_system.find_def(id);
-			return def && def->category == econ_item_system::item_category::agent && !def->model_player.empty() &&
-				(def->team() == 0 || def->team() == side) ? id : 0;
-		};
-		snapshot.agent_ct = official_agent(settings::g_changer.agents.ct_def, settings::g_changer.custom_agents.selected_ct, 3);
-		snapshot.agent_t = official_agent(settings::g_changer.agents.t_def, settings::g_changer.custom_agents.selected_t, 2);
+			else
+			{
+				snapshot.skins = settings::g_changer.skins.for_team( 3 );
+				for ( const auto& [def, skin] : settings::g_changer.skins.for_team( 2 ) )
+					snapshot.skins.try_emplace( def, skin );
+			}
+			snapshot.music_kit_id = settings::g_changer.music.id;
+			snapshot.last_updated = std::chrono::steady_clock::now();
+			const auto official_agent = [](std::int16_t id, int custom, int side) -> std::int16_t {
+				const auto& entries = settings::g_changer.custom_agents.entries;
+				if (custom >= 0 && custom < static_cast<int>(entries.size())) {
+					const auto& entry = entries[custom];
+					if (!entry.model_path.empty() && (entry.team == 0 || entry.team == side)) return 0;
+				}
+				if (id <= 0) return 0;
+				const auto def = g_econ_item_system.find_def(id);
+				return def && def->category == econ_item_system::item_category::agent && !def->model_player.empty() &&
+					(def->team() == 0 || def->team() == side) ? id : 0;
+			};
+			snapshot.agent_ct = official_agent(settings::g_changer.agents.ct_def, settings::g_changer.custom_agents.selected_ct, 3);
+			snapshot.agent_t = official_agent(settings::g_changer.agents.t_def, settings::g_changer.custom_agents.selected_t, 2);
+		}
 		nlohmann::json skins = nlohmann::json::object();
 		for (const auto& [def, skin] : snapshot.skins) {
 			skins[std::to_string(def)] = {
 				{"p", skin.paint_kit_id}, {"w", skin.wear}, {"s", skin.seed},
 				{"t", skin.stattrak}, {"c", skin.stattrak_count},
-				{"n", skin_options::normalize_name_tag(skin.name_tag)}
+				{"n", ""}
 			};
 		}
 		const nlohmann::json payload = {
@@ -255,9 +290,12 @@ namespace features::changer {
 		{
 			// Menu/config writes and the settings copy now run on the same thread.
 			this->capture_local_snapshot( steam_id );
-			std::lock_guard lock( this->m_query_mutex );
-			if ( std::find( this->m_pending_query_ids.begin( ), this->m_pending_query_ids.end( ), steam_id ) == this->m_pending_query_ids.end( ) )
-				this->m_pending_query_ids.push_back( steam_id );
+			if ( this->is_enabled( ) )
+			{
+				std::lock_guard lock( this->m_query_mutex );
+				if ( std::find( this->m_pending_query_ids.begin( ), this->m_pending_query_ids.end( ), steam_id ) == this->m_pending_query_ids.end( ) )
+					this->m_pending_query_ids.push_back( steam_id );
+			}
 		}
 		catch ( const std::exception& )
 		{
@@ -267,7 +305,7 @@ namespace features::changer {
 
 	void skin_sync::on_frame_stage_notify( )
 	{
-		if ( lifecycle::is_unloading( ) || !systems::g_local.get( ).controller ) return;
+		if ( lifecycle::is_unloading( ) || !this->is_enabled( ) || !systems::g_local.get( ).controller ) return;
 		if ( !this->m_initialized.load( ) )
 		{
 			this->initialize( );
@@ -376,6 +414,7 @@ namespace features::changer {
 
 	std::optional<remote_player_skin> skin_sync::get_remote_skin( std::uint64_t steam_id ) const
 	{
+		if ( !this->is_enabled( ) ) return std::nullopt;
 		std::shared_lock lock( this->m_mutex );
 
 		constexpr std::uint64_t steam_id_base = 76561197960265728ull;
@@ -410,7 +449,12 @@ namespace features::changer {
 		const auto local_id = steam::user::get_steam_id( );
 		if ( ( local_id != 0 && steam_id == local_id ) || ( this->m_last_local_steam_id != 0 && steam_id == this->m_last_local_steam_id ) )
 		{
-			return true;
+			return this->is_enabled( );
+		}
+
+		if ( !this->is_enabled( ) )
+		{
+			return false;
 		}
 
 		constexpr std::uint64_t steam_id_base = 76561197960265728ull;
@@ -420,11 +464,19 @@ namespace features::changer {
 		}
 
 		std::shared_lock lock( this->m_mutex );
-		return this->m_cheat_users.contains( steam_id ) || this->m_cache.contains( steam_id );
+		const auto it = this->m_cache.find( steam_id );
+		if ( it != this->m_cache.end( ) )
+		{
+			if ( it->second.skins.empty( ) && it->second.agent_ct == 0 && it->second.agent_t == 0 && it->second.music_kit_id == 0 )
+				return false;
+			return true;
+		}
+		return this->m_cheat_users.contains( steam_id );
 	}
 
 	bool skin_sync::should_show_indicator( std::uint64_t steam_id ) const
 	{
+		if ( !this->is_enabled( ) ) return false;
 		const auto local_id = steam::user::get_steam_id( );
 		if ( ( local_id != 0 && steam_id == local_id ) || ( this->m_last_local_steam_id != 0 && steam_id == this->m_last_local_steam_id ) )
 		{
@@ -447,6 +499,7 @@ namespace features::changer {
 
 	int skin_sync::get_remote_music_kit( std::uint64_t steam_id ) const
 	{
+		if ( !this->is_enabled( ) ) return 0;
 		const auto skin = this->get_remote_skin( steam_id );
 		return skin ? skin->music_kit_id : 0;
 	}
@@ -456,14 +509,18 @@ namespace features::changer {
 		auto next_push = std::chrono::steady_clock::now();
 		unsigned failures = 0;
 		while (this->m_running.load()) {
-			// Do not push, pull or discover users while sitting in the lobby.
-			// An already dispatched request may finish during a map transition.
-			if (!this->m_match_active.load()) {
+			const bool is_on = this->is_enabled();
+			if (!this->m_match_active.load() && !this->m_push_pending.load()) {
+				std::this_thread::sleep_for(std::chrono::milliseconds(250));
+				continue;
+			}
+			// When sync is disabled, only allow pushing the empty profile to unpublish skins, then sleep
+			if (!is_on && !this->m_push_pending.load()) {
 				std::this_thread::sleep_for(std::chrono::milliseconds(250));
 				continue;
 			}
 			const auto now = std::chrono::steady_clock::now();
-			const bool heartbeat_due = now - this->m_last_push_time >= std::chrono::seconds(10);
+			const bool heartbeat_due = is_on && (now - this->m_last_push_time >= std::chrono::seconds(10));
 			if (now >= next_push && (this->m_push_pending.load() || heartbeat_due)) {
 				if (this->perform_push()) {
 					failures = 0;
@@ -475,11 +532,11 @@ namespace features::changer {
 				}
 			}
 			try {
-				if (this->m_running.load() && this->m_match_active.load() && now - this->m_last_pull_time >= std::chrono::seconds(2)) {
+				if (is_on && this->m_running.load() && this->m_match_active.load() && now - this->m_last_pull_time >= std::chrono::seconds(2)) {
 					this->perform_pull();
 					this->m_last_pull_time = std::chrono::steady_clock::now();
 				}
-				if (this->m_running.load() && this->m_match_active.load() && now - this->m_last_users_time >= std::chrono::seconds(3)) {
+				if (is_on && this->m_running.load() && this->m_match_active.load() && now - this->m_last_users_time >= std::chrono::seconds(3)) {
 					this->perform_users_update();
 					this->m_last_users_time = std::chrono::steady_clock::now();
 				}
@@ -617,9 +674,17 @@ namespace features::changer {
 				std::unique_lock lock( this->m_mutex );
 				for ( auto& [sid, player] : updates )
 				{
-					if ( !this->m_cache.contains( sid ) ) discovered.emplace_back( sid, player.skins.size( ) );
-					this->m_cache.insert_or_assign( sid, std::move( player ) );
-					this->m_cheat_users.insert( sid );
+					if ( player.skins.empty( ) && player.agent_ct == 0 && player.agent_t == 0 && player.music_kit_id == 0 )
+					{
+						this->m_cache.erase( sid );
+						this->m_cheat_users.erase( sid );
+					}
+					else
+					{
+						if ( !this->m_cache.contains( sid ) ) discovered.emplace_back( sid, player.skins.size( ) );
+						this->m_cache.insert_or_assign( sid, std::move( player ) );
+						this->m_cheat_users.insert( sid );
+					}
 				}
 			}
 			for ( const auto& [sid, count] : discovered )

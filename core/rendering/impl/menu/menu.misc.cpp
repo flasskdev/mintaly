@@ -14,49 +14,9 @@ namespace rendering {
 
         namespace detail {
 
-                constexpr const char* sound_types[ ]{ "shop click", "home click", "bell", "killcard", "bullet casing", "coin pickup", "item drop", "popcan", "key press", "koch", "custom" };
+                constexpr const char* sound_types[ ]{ "shop click", "home click", "bell", "killcard", "bullet casing", "coin pickup", "item drop", "popcan", "key press", "koch" };
                 constexpr auto k_sound_type_count{ static_cast< int >( std::size( sound_types ) ) };
 
-                void draw_custom_sound_picker( config::str& file_setting, std::string_view combo_label, std::string_view preview_id, float preview_volume )
-                {
-                        const auto files = features::misc::impacts::list_custom_sounds( );
-
-                        static std::vector<std::string> cached_files{};
-                        static std::vector<const char*> cached_ptrs{};
-                        cached_files = files;
-                        cached_ptrs.clear( );
-                        cached_ptrs.reserve( cached_files.size( ) );
-
-                        for ( const auto& file : cached_files )
-                        {
-                                cached_ptrs.push_back( file.c_str( ) );
-                        }
-
-                        if ( !cached_ptrs.empty( ) )
-                        {
-                                auto selected{ 0 };
-                                for ( auto i = 0; i < static_cast< int >( cached_files.size( ) ); ++i )
-                                {
-                                        if ( cached_files[ static_cast< std::size_t >( i ) ] == file_setting.value )
-                                        {
-                                                selected = i;
-                                                break;
-                                        }
-                                }
-
-                                if ( xui::combo( combo_label, selected, cached_ptrs.data( ), static_cast< int >( cached_ptrs.size( ) ) ) )
-                                {
-                                        file_setting = cached_files[ static_cast< std::size_t >( selected ) ];
-                                }
-                        }
-
-                        xui::text_input( "file", file_setting.value, 64, "hit.wav" );
-
-                        if ( xui::button( preview_id, 96.0f, 22.0f ) )
-                        {
-                                features::misc::g_impacts.play_custom_sound( file_setting.value, preview_volume );
-                        }
-                }
                 constexpr const char* marker_types[ ]{ "classic", "damage", "both" };
                 constexpr const char* impact_types[ ]{ "overlay", "sparks", "both" };
 
@@ -464,10 +424,6 @@ namespace rendering {
                                 {
                                         xui::combo( "type##hs", impacts.hit_sound_type.value, detail::sound_types, detail::k_sound_type_count );
                                         xui::slider_float( "volume##hs", impacts.hit_sound_volume, 1.0f, 100.0f, "%.0f%%" );
-                                        if ( impacts.hit_sound_type.value == settings::misc::impacts::sound_type::custom )
-                                        {
-                                                detail::draw_custom_sound_picker( impacts.custom_hit_sound, "sound##hs", "preview##hs", impacts.hit_sound_volume.value );
-                                        }
                                         xui::end_popup( );
                                 }
                                 xui::layout::spacing( 3.0f );
@@ -487,10 +443,6 @@ namespace rendering {
                                 {
                                         xui::combo( "type##ds", impacts.death_sound_type.value, detail::sound_types, detail::k_sound_type_count );
                                         xui::slider_float( "volume##ds", impacts.death_sound_volume, 1.0f, 100.0f, "%.0f%%" );
-                                        if ( impacts.death_sound_type.value == settings::misc::impacts::sound_type::custom )
-                                        {
-                                                detail::draw_custom_sound_picker( impacts.custom_death_sound, "sound##ds", "preview##ds", impacts.death_sound_volume.value );
-                                        }
                                         xui::end_popup( );
                                 }
                                 xui::layout::spacing( 3.0f );

@@ -50,11 +50,16 @@ namespace systems {
 
 		const bool registered =
 			register_listener( xs( "bullet_impact" ), [ ]( void* event ) { features::misc::g_impacts.on_bullet_impact( reinterpret_cast<std::uintptr_t>( event ) ); } ) &&
-			register_listener( xs( "player_hurt" ), [ ]( void* event ) { features::misc::g_impacts.on_player_hurt( reinterpret_cast<std::uintptr_t>( event ) ); } ) &&
+			register_listener( xs( "player_hurt" ), [ ]( void* event ) {
+				features::misc::g_impacts.on_player_hurt( reinterpret_cast<std::uintptr_t>( event ) );
+				features::esp::player::g_overlay.on_sound_event( event, "userid" );
+				features::esp::player::g_overlay.on_sound_event( event, "attacker" );
+			} ) &&
 			register_listener( xs( "round_start" ), [ ]( void* event ) { features::esp::player::g_overlay.reset_sounds( ); features::misc::g_other.on_round_start( ); features::changer::g_music.clear_mvp( ); } ) &&
 			register_listener( xs( "player_death" ), [ ]( void* event ) { features::misc::g_other.on_player_death( reinterpret_cast<std::uintptr_t>( event ) ); } ) &&
 			register_listener( xs( "vote_cast" ), [ ]( void* event ) { features::misc::g_vote_logs.on_vote_cast( reinterpret_cast<std::uintptr_t>( event ) ); } ) &&
 			register_listener( xs( "vote_failed" ), [ ]( void* event ) { features::misc::g_vote_logs.on_vote_failed_event( reinterpret_cast<std::uintptr_t>( event ) ); } ) &&
+			register_listener( xs( "vote_passed" ), [ ]( void* event ) { features::misc::g_vote_logs.on_vote_pass_event( reinterpret_cast<std::uintptr_t>( event ) ); } ) &&
 			register_listener( xs( "round_mvp" ), [ ]( void* event ) { features::changer::g_music.on_round_mvp( event ); } );
 		if ( !registered )
 		{
@@ -62,13 +67,39 @@ namespace systems {
 			return false;
 		}
 		// Optional events must not prevent the core listeners from working.
-		for ( const auto* name : { "player_footstep", "weapon_fire" } )
+		for ( const auto* name : {
+			"player_footstep",
+			"weapon_fire",
+			"weapon_reload",
+			"weapon_zoom",
+			"player_jump",
+			"player_falldamage",
+			"player_sound",
+			"player_blind",
+			"bomb_beginplant",
+			"bomb_begindefuse",
+			"bomb_planted",
+			"bomb_defused",
+			"item_pickup",
+			"item_equip",
+			"grenade_thrown",
+			"flashbang_detonate",
+			"hegrenade_detonate",
+			"smokegrenade_detonate",
+			"molotov_detonate",
+			"decoy_started"
+		} )
 		{
 			if ( !register_listener( name, [ ]( void* event ) { features::esp::player::g_overlay.on_sound_event( event ); } ) )
 			{
 				diag::writef( diag::level::warning, "ESP sound event unavailable: %s", name );
 			}
 		}
+		for ( const auto* name : { "round_end", "cs_win_panel_match", "cs_intermission" } )
+		{
+			(void)register_listener( name, [ ]( void* ) { config::registry::flush_pending_save( ); } );
+		}
+		(void)register_listener( xs( "vote_started" ), [ ]( void* event ) { features::misc::g_vote_logs.on_vote_start_event( reinterpret_cast<std::uintptr_t>( event ) ); } );
 		return true;
 	}
 

@@ -20,6 +20,10 @@ namespace features::world {
         float m_last_round_start_time{};
         bool m_particle_loaded{};
         std::uintptr_t m_particle_manager{};
+        math::vector3 m_last_origin{};
+        math::vector3 m_last_color{};
+        bool m_color_initialized{};
+        std::chrono::steady_clock::time_point m_last_update_time{};
     };
 
     class scene

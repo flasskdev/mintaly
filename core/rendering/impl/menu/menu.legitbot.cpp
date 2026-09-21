@@ -76,6 +76,14 @@ namespace rendering {
 							}
 						}
 					}
+					if ( !has_bind )
+					{
+						const auto& grp_cfg = lb.groups[ std::clamp( menu_weapons::weapon_sel_legit.group_idx, 0, 5 ) ];
+						if ( ow.cfg.auto_scope.value != grp_cfg.auto_scope.value )
+						{
+							has_bind = true;
+						}
+					}
 					if ( has_bind )
 					{
 						ow.override_group.value = true;

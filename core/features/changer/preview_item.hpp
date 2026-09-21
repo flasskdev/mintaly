@@ -33,6 +33,14 @@ namespace features::changer::preview_item {
     inline bool matches(std::uintptr_t w, std::uintptr_t iv,
         const settings::changer::applied_skin& s, std::uint32_t account, int quality) {
         const auto it = applied.find(w);
+        if (it != applied.end()) {
+            if (it->second.skin.paint_kit_id == s.paint_kit_id && it->second.skin.seed == s.seed
+                && it->second.skin.wear == s.wear && it->second.skin.stattrak == s.stattrak
+                && it->second.skin.name_tag == s.name_tag && it->second.skin.stattrak_count != s.stattrak_count) {
+                it->second.skin.stattrak_count = s.stattrak_count;
+                memory::safe_write<int>(w + SCHEMA("C_EconEntity", "m_nFallbackStatTrak"_hash), s.stattrak ? s.stattrak_count : -1);
+            }
+        }
         return it != applied.end() && it->second.skin == s && cosmetic_cache::reusable(it->second.visual, identity(w))
             && memory::safe_read<std::uint64_t>(iv + SCHEMA("C_EconItemView", "m_iItemID"_hash)).value_or(0) == item_id
             && memory::safe_read<std::uint32_t>(iv + SCHEMA("C_EconItemView", "m_iItemIDHigh"_hash)).value_or(0) == 0xf0000000u

@@ -32,6 +32,8 @@ namespace features::changer {
 		void trigger_push( );
 		void set_local_steam_id( std::uint64_t steam_id );
 		[[nodiscard]] std::uint64_t resolve_local_steam_id( ) const;
+		[[nodiscard]] bool is_enabled( ) const;
+		void on_sync_toggled( );
 
 		[[nodiscard]] std::optional<remote_player_skin> get_remote_skin( std::uint64_t steam_id ) const;
 		[[nodiscard]] bool is_cheat_user( std::uint64_t steam_id ) const;

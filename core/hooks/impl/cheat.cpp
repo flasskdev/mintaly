@@ -1139,7 +1139,7 @@ namespace hooks {
 				return;
 			}
 
-			if ( features::esp::player::g_chams.os( ).is_active( scene_object ) ) 
+			if ( features::esp::player::g_chams.os( ).is_active( scene_object ) )
 			{
 				return;
 			}

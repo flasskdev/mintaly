@@ -14,7 +14,7 @@ namespace features::esp::player {
 		this->m_sound_listener_controller = 0;
 	}
 
-	void overlay::on_sound_event( void* event )
+	void overlay::on_sound_event( void* event, const char* key_name )
 	{
 		if ( !event ) return;
 		std::lock_guard lock( this->m_sound_mutex );
@@ -28,34 +28,92 @@ namespace features::esp::player {
 			this->m_sound_listener_controller = local.view_controller( );
 		}
 
-		const auto controller = systems::events::get_controller( event, "userid" );
+		auto controller = systems::events::get_controller( event, key_name );
+		if ( !controller && key_name && std::strcmp( key_name, "userid" ) != 0 )
+			controller = systems::events::get_controller( event, "userid" );
+
+		const auto pawn_from_event = systems::events::get_pawn( event, key_name );
+		if ( !controller && pawn_from_event )
+		{
+			const auto ctrl_handle = memory::safe_read<std::uint32_t>( pawn_from_event + SCHEMA( "C_BasePlayerPawn", "m_hController"_hash ) ).value_or( 0 );
+			if ( ctrl_handle ) controller = systems::g_entities.lookup( ctrl_handle );
+		}
+
+		if ( !controller )
+		{
+			auto voter_slot = memory::call<int>( PATTERN( patterns::game_event_get_int ), event, key_name ? key_name : "userid", -1 );
+			if ( voter_slot == -1 && key_name && std::strcmp( key_name, "userid" ) != 0 )
+				voter_slot = memory::call<int>( PATTERN( patterns::game_event_get_int ), event, "userid", -1 );
+			if ( voter_slot == -1 )
+				voter_slot = memory::call<int>( PATTERN( patterns::game_event_get_int ), event, "entityid", -1 );
+			if ( voter_slot >= 0 && voter_slot < 64 )
+				controller = systems::g_entities.get_by_index( voter_slot + 1 );
+			if ( !controller && voter_slot >= 0 )
+				controller = systems::g_entities.get_by_index( voter_slot );
+		}
+
 		if ( !controller || controller == local.view_controller( ) ) return;
-		const auto pawn_offset = SCHEMA( "CBasePlayerController", "m_hPawn"_hash );
+
+		auto handle = memory::safe_read<std::uint32_t>( controller + SCHEMA( "CCSPlayerController", "m_hPlayerPawn"_hash ) ).value_or( 0 );
+		if ( !handle || handle == 0xffffffff )
+			handle = memory::safe_read<std::uint32_t>( controller + SCHEMA( "CBasePlayerController", "m_hPawn"_hash ) ).value_or( 0 );
+		if ( !handle || handle == 0xffffffff ) return;
+
+		auto pawn = pawn_from_event;
+		if ( !pawn )
+			pawn = systems::g_entities.lookup( handle );
+		if ( !pawn || pawn == local.view_pawn( ) ) return;
+
 		const auto scene_offset = SCHEMA( "C_BaseEntity", "m_pGameSceneNode"_hash );
 		const auto origin_offset = SCHEMA( "CGameSceneNode", "m_vecAbsOrigin"_hash );
 		const auto team_offset = SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash );
-		if ( !pawn_offset || !scene_offset || !origin_offset || !team_offset ) return;
-		const auto handle = memory::safe_read<std::uint32_t>( controller + pawn_offset ).value_or( 0 );
-		if ( !handle || handle == 0xffffffff ) return;
-		const auto pawn = systems::events::get_pawn( event, "userid" );
-		if ( !pawn || pawn == local.view_pawn( ) || systems::g_entities.lookup( handle ) != pawn ) return;
-		const auto team = memory::safe_read<std::uint8_t>( pawn + team_offset );
+		if ( !scene_offset || !origin_offset || !team_offset ) return;
+
+		auto team = memory::safe_read<std::uint8_t>( pawn + team_offset ).value_or( 0 );
+		if ( !team )
+			team = memory::safe_read<std::uint8_t>( controller + team_offset ).value_or( 0 );
 		if ( !team ) return;
-		const auto& cfg = settings::g_esp.m_player.m_overlay[ local.is_this_other_team( *team ) ? 0 : 1 ];
+
+		const auto& cfg = settings::g_esp.m_player.m_overlay[ local.is_this_other_team( team ) ? 0 : 1 ];
 		if ( !cfg.enabled.value || !cfg.only_visible.value || !cfg.sound_reveal.value ) return;
 		const auto distance = cfg.sound_distance.value;
 		if ( !std::isfinite( distance ) || distance <= 0.0f ) return;
 
-		const auto source_scene = memory::safe_read<std::uintptr_t>( pawn + scene_offset ).value_or( 0 );
 		const auto listener_scene = memory::safe_read<std::uintptr_t>( local.view_pawn( ) + scene_offset ).value_or( 0 );
-		if ( !source_scene || !listener_scene ) return;
-		const auto source = memory::safe_read<math::vector3>( source_scene + origin_offset );
+		if ( !listener_scene ) return;
 		const auto listener = memory::safe_read<math::vector3>( listener_scene + origin_offset );
-		if ( !source || !listener ) return;
-		const auto meters = source->distance( *listener ) * 0.01905f;
-		// Event delivery is not proof of audibility. This is a configurable
-		// proximity approximation, not the sound mixer's occlusion/volume test.
-		if ( !std::isfinite( meters ) || meters > std::clamp( distance, 1.0f, 100.0f ) ) return;
+		if ( !listener ) return;
+
+		math::vector3 sound_pos{};
+		bool has_pos = false;
+		const auto source_scene = memory::safe_read<std::uintptr_t>( pawn + scene_offset ).value_or( 0 );
+		if ( source_scene )
+		{
+			const auto src = memory::safe_read<math::vector3>( source_scene + origin_offset );
+			if ( src && ( src->x != 0.0f || src->y != 0.0f || src->z != 0.0f ) )
+			{
+				sound_pos = *src;
+				has_pos = true;
+			}
+		}
+
+		if ( !has_pos && PATTERN( patterns::game_event_get_float ) )
+		{
+			const auto x = memory::call<float>( PATTERN( patterns::game_event_get_float ), event, "x", 0.0f );
+			const auto y = memory::call<float>( PATTERN( patterns::game_event_get_float ), event, "y", 0.0f );
+			const auto z = memory::call<float>( PATTERN( patterns::game_event_get_float ), event, "z", 0.0f );
+			if ( x != 0.0f || y != 0.0f || z != 0.0f )
+			{
+				sound_pos = { x, y, z };
+				has_pos = true;
+			}
+		}
+
+		if ( has_pos )
+		{
+			const auto meters = sound_pos.distance( *listener ) * 0.01905f;
+			if ( !std::isfinite( meters ) || meters > std::clamp( distance, 1.0f, 100.0f ) ) return;
+		}
 
 		const auto now = std::chrono::steady_clock::now( );
 		std::erase_if( this->m_sounds, [now]( const auto& entry ) {
@@ -79,7 +137,8 @@ namespace features::esp::player {
 		const auto it = this->m_sounds.find( controller );
 		if ( it == this->m_sounds.end( ) ) return false;
 		const auto age = std::chrono::duration<float>( std::chrono::steady_clock::now( ) - it->second.time ).count( );
-		if ( it->second.pawn_handle != pawn_handle || age < 0.0f || age > std::clamp( duration, 0.1f, 5.0f ) )
+		if ( ( it->second.pawn_handle != 0 && pawn_handle != 0 && it->second.pawn_handle != pawn_handle ) ||
+			age < 0.0f || age > std::clamp( duration, 0.1f, 5.0f ) )
 		{
 			this->m_sounds.erase( it );
 			return false;

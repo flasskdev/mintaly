@@ -165,6 +165,30 @@ namespace features::changer {
 						const auto current_id_high = memory::safe_read<std::uint32_t>( iv + SCHEMA( "C_EconItemView", "m_iItemIDHigh"_hash ) ).value_or( 0 );
 						const auto current_seed = memory::safe_read<int>( weapon + SCHEMA( "C_EconEntity", "m_nFallbackSeed"_hash ) ).value_or( -1 );
 
+						if ( applied_it != this->m_applied_weapons.end( ) )
+						{
+							if ( applied_it->second.skin.paint_kit_id == skin.paint_kit_id
+								&& applied_it->second.skin.seed == skin.seed
+								&& applied_it->second.skin.wear == skin.wear
+								&& applied_it->second.skin.stattrak == skin.stattrak
+								&& applied_it->second.skin.name_tag == skin.name_tag
+								&& applied_it->second.skin.stattrak_count != skin.stattrak_count )
+							{
+								applied_it->second.skin.stattrak_count = skin.stattrak_count;
+								memory::write<int>( weapon + SCHEMA( "C_EconEntity", "m_nFallbackStatTrak"_hash ), skin.stattrak ? skin.stattrak_count : -1 );
+								if ( changer::cosmetic_attributes::available( ) )
+								{
+									const auto set = PATTERN( patterns::econ_item_view_set_attribute );
+									const auto count_val = std::bit_cast<float>( static_cast<std::int32_t>( skin.stattrak_count ) );
+									memory::safe_call<void>( set, iv, "kill eater", count_val );
+								}
+								if ( const auto orig = this->m_original_weapons.find( handle ); orig != this->m_original_weapons.end( ) && orig->second.cosmetic )
+								{
+									orig->second.cosmetic->skin.stattrak_count = skin.stattrak_count;
+								}
+							}
+						}
+
 						if ( applied_it != this->m_applied_weapons.end( ) 
 							&& applied_it->second.visual.weapon == weapon 
 							&& applied_it->second.skin == skin
@@ -311,6 +335,30 @@ namespace features::changer {
 				const auto current_pk = memory::safe_read<int>( weapon + SCHEMA( "C_EconEntity", "m_nFallbackPaintKit"_hash ) ).value_or( -1 );
 				const auto current_id_high = memory::safe_read<std::uint32_t>( iv + SCHEMA( "C_EconItemView", "m_iItemIDHigh"_hash ) ).value_or( 0 );
 				const auto current_seed = memory::safe_read<int>( weapon + SCHEMA( "C_EconEntity", "m_nFallbackSeed"_hash ) ).value_or( -1 );
+
+				if ( applied_it != this->m_applied_weapons.end( ) )
+				{
+					if ( applied_it->second.skin.paint_kit_id == skin.paint_kit_id
+						&& applied_it->second.skin.seed == skin.seed
+						&& applied_it->second.skin.wear == skin.wear
+						&& applied_it->second.skin.stattrak == skin.stattrak
+						&& applied_it->second.skin.name_tag == skin.name_tag
+						&& applied_it->second.skin.stattrak_count != skin.stattrak_count )
+					{
+						applied_it->second.skin.stattrak_count = skin.stattrak_count;
+						memory::write<int>( weapon + SCHEMA( "C_EconEntity", "m_nFallbackStatTrak"_hash ), skin.stattrak ? skin.stattrak_count : -1 );
+						if ( changer::cosmetic_attributes::available( ) )
+						{
+							const auto set = PATTERN( patterns::econ_item_view_set_attribute );
+							const auto count_val = std::bit_cast<float>( static_cast<std::int32_t>( skin.stattrak_count ) );
+							memory::safe_call<void>( set, iv, "kill eater", count_val );
+						}
+						if ( const auto orig = this->m_original_weapons.find( handle ); orig != this->m_original_weapons.end( ) && orig->second.cosmetic )
+						{
+							orig->second.cosmetic->skin.stattrak_count = skin.stattrak_count;
+						}
+					}
+				}
 
 				if ( applied_it != this->m_applied_weapons.end( ) 
 					&& applied_it->second.visual.weapon == weapon 

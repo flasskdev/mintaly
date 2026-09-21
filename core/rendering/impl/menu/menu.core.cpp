@@ -7,6 +7,7 @@
 #include <utilities/steam/steam.hpp>
 #include <external/config.hpp>
 #include <core/systems/systems.hpp>
+#include <core/features/changer/skin_sync.hpp>
 #include "../../rendering.hpp"
 #include "../../theme.hpp"
 
@@ -2065,7 +2066,7 @@ namespace rendering {
         const xui::rect profile_rect{ sb_x + 8.0f, footer_y + 8.0f, sb_w - 16.0f, 48.0f };
         // Main popup geometry: perfectly aligned on top of the Steam profile button
         const float main_w = profile_rect.w;
-        const float main_h = 176.0f;
+        const float main_h = 222.0f;
         const float main_x = profile_rect.x;
         const float target_main_y = profile_rect.y - main_h - 6.0f;
         const float main_y = target_main_y + (1.0f - anim) * 6.0f;
@@ -2302,6 +2303,81 @@ namespace rendering {
             top_dl.text(kb_rect.x + (kb_w - kw) * 0.5f, kb_rect.y + (kb_h - kh) * 0.5f, key_label,
                 this->m_binding_menu_key ? tokens::col_accent.alpha(main_alpha) : tokens::col_text.alpha(main_alpha));
             xdraw::pop_font();
+        }
+        item_y += item_h + 3.0f;
+        // --- ITEM 5: Skin sync (with 60s anti-spam countdown) ---
+        {
+            const xui::rect row_rect{ main_x + 6.0f, item_y, main_w - 12.0f, item_h };
+            const bool hovered = input.in_rect(row_rect);
+
+            static auto s_last_sync_toggle = std::chrono::steady_clock::time_point{};
+            const auto now = std::chrono::steady_clock::now();
+            const auto elapsed_sec = (s_last_sync_toggle == std::chrono::steady_clock::time_point{})
+                ? 9999ll
+                : std::chrono::duration_cast<std::chrono::seconds>(now - s_last_sync_toggle).count();
+            const auto cooldown_left = std::clamp(60ll - elapsed_sec, 0ll, 60ll);
+            const bool on_cooldown = (cooldown_left > 0);
+
+            const auto h_anim = xui::anim::lerp(xui::fnv1a("usr_sync_row"), (hovered && !on_cooldown) ? 1.0f : 0.0f, 14.0f);
+            if (hovered && input.mouse_clicked && !on_cooldown)
+            {
+                settings::g_changer.sync_enabled.value = !settings::g_changer.sync_enabled.value;
+                s_last_sync_toggle = now;
+                features::changer::g_skin_sync.on_sync_toggled();
+                config::registry::request_save_active();
+            }
+
+            if (h_anim > 0.01f)
+            {
+                top_dl.rect_filled(row_rect.x, row_rect.y, row_rect.w, row_rect.h,
+                    tokens::col_accent.alpha(static_cast<std::uint8_t>(20.0f * h_anim * anim)),
+                    xdraw::corner_radius{ 6.0f });
+            }
+
+            // Sync clouds / circular arrow icon
+            const auto ic_x = row_rect.x + 14.0f;
+            const auto ic_y = row_rect.y + item_h * 0.5f;
+            const auto ic_col = settings::g_changer.sync_enabled.value
+                ? (on_cooldown ? tokens::col_accent.alpha(static_cast<std::uint8_t>(main_alpha * 0.65f)) : tokens::col_accent.alpha(main_alpha))
+                : tokens::col_text_dim.alpha(main_alpha);
+            top_dl.circle(ic_x, ic_y, 4.5f, ic_col, 1.1f);
+            top_dl.line(ic_x - 2.0f, ic_y, ic_x + 2.0f, ic_y, ic_col, 1.1f);
+            top_dl.line(ic_x, ic_y - 2.0f, ic_x, ic_y + 2.0f, ic_col, 1.1f);
+
+            xdraw::push_font(g_fonts.inter_medium[fonts::size::petite]);
+            char sync_label[48]{};
+            if (on_cooldown)
+            {
+                std::snprintf(sync_label, sizeof(sync_label), "Skin sync (%llds)", cooldown_left);
+            }
+            else
+            {
+                std::snprintf(sync_label, sizeof(sync_label), "Skin sync");
+            }
+            const auto label_col = on_cooldown
+                ? tokens::col_text_dim.alpha(main_alpha)
+                : (settings::g_changer.sync_enabled.value ? tokens::col_text.alpha(main_alpha) : tokens::col_text_dim.alpha(main_alpha));
+            top_dl.text(row_rect.x + 28.0f, row_rect.y + (item_h - 14.0f) * 0.5f, sync_label, label_col);
+            xdraw::pop_font();
+
+            // Toggle switch on the right
+            const float sw_w = 28.0f;
+            const float sw_h = 16.0f;
+            const float sw_x = row_rect.x + row_rect.w - sw_w - 6.0f;
+            const float sw_y = row_rect.y + (item_h - sw_h) * 0.5f;
+            const auto sw_anim = xui::anim::lerp(xui::fnv1a("usr_sync_sw"), settings::g_changer.sync_enabled.value ? 1.0f : 0.0f, 14.0f);
+            const auto sw_bg_active = on_cooldown
+                ? tokens::col_accent.alpha(static_cast<std::uint8_t>(main_alpha * 0.6f))
+                : tokens::col_accent.alpha(main_alpha);
+            const auto sw_bg = xui::lerp(tokens::col_elevated.alpha(static_cast<std::uint8_t>(200.0f * anim)), sw_bg_active, sw_anim);
+            top_dl.rect_filled(sw_x, sw_y, sw_w, sw_h, sw_bg, xdraw::corner_radius{ sw_h * 0.5f });
+            top_dl.rect(sw_x, sw_y, sw_w, sw_h, tokens::col_border.alpha(main_alpha), xdraw::corner_radius{ sw_h * 0.5f }, 1.0f);
+            const float knob_r = 5.0f;
+            const float knob_min_x = sw_x + knob_r + 2.5f;
+            const float knob_max_x = sw_x + sw_w - knob_r - 2.5f;
+            const float knob_x = knob_min_x + (knob_max_x - knob_min_x) * sw_anim;
+            const auto knob_col = xui::lerp(tokens::col_text_dim.alpha(main_alpha), tokens::col_dark.alpha(main_alpha), sw_anim);
+            top_dl.circle_filled(knob_x, sw_y + sw_h * 0.5f, knob_r, knob_col);
         }
         // ─────────────────────────────────────────────────────────────
         // 2. DRAW SUB-WINDOW (Theme or Watermark)

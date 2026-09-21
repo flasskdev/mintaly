@@ -11,9 +11,78 @@
 
 namespace features::esp::player {
 
+	static void mark_range_last_fast( const detail::primitive_output_buffer* buffer, int prev_count, int new_count ) noexcept
+	{
+		__try
+		{
+			for ( auto i = prev_count; i < new_count; ++i )
+			{
+				const auto prim = buffer->at_fast( i );
+				if ( prim )
+				{
+					detail::mark_primitive_last_fast( prim );
+				}
+			}
+		}
+		__except ( EXCEPTION_EXECUTE_HANDLER )
+		{
+		}
+	}
+
+	template< typename F >
+	void chams::onshot::render_for_entity( std::uintptr_t entity, std::uintptr_t ragdoll_pawn, std::uintptr_t model_handle, std::uintptr_t primitive_buffer, void( __fastcall* original_fn )( std::uintptr_t, std::uintptr_t, std::uintptr_t, std::uintptr_t ), std::uintptr_t a1, std::uintptr_t scene_view, F&& apply_config_fn )
+	{
+		std::lock_guard lock( this->m_mtx );
+		if ( this->m_entries.empty( ) )
+			return;
+
+		const auto global_vars = memory::read<std::uintptr_t>( addresses::globals::global_vars );
+		const auto current_time = global_vars ? memory::read<float>( global_vars + 0x30 ) : 0.0f;
+		const auto fade_time = settings::g_esp.m_player.m_chams.onshot_fade_time.value;
+		if ( fade_time <= 0.0f )
+			return;
+
+		const auto& ocfg = settings::g_esp.m_player.m_chams.onshot;
+		if ( !ocfg.enabled.value )
+			return;
+
+		for ( const auto& e : this->m_entries )
+		{
+			if ( !e.scene_object )
+				continue;
+
+			const bool matches = ( entity && e.pawn == entity ) ||
+								 ( ragdoll_pawn && e.pawn == ragdoll_pawn ) ||
+								 ( model_handle && e.model_handle == model_handle );
+			if ( !matches )
+				continue;
+
+			const auto elapsed = current_time - e.spawn_time;
+			if ( elapsed < 0.0f || elapsed >= fade_time )
+				continue;
+
+			const auto alpha = std::clamp( 1.0f - ( elapsed / fade_time ), 0.0f, 1.0f );
+			if ( alpha <= 0.001f )
+				continue;
+
+			const auto before = detail::read_primitive_buffer( primitive_buffer );
+			const auto prev_count = before ? before->count( ) : -1;
+
+			apply_config_fn( ocfg, e.scene_object, true, alpha );
+
+			const auto after = detail::read_primitive_buffer( primitive_buffer );
+			const auto new_count = after ? after->count( ) : -1;
+			if ( after && prev_count >= 0 && new_count > prev_count )
+			{
+				mark_range_last_fast( &*after, prev_count, new_count );
+			}
+		}
+	}
+
 	bool chams::on_generate_primitives( std::uintptr_t owner_entity, std::uint32_t owner_hash, std::uintptr_t scene_object, std::uintptr_t primitive_buffer, void( __fastcall* original_fn )( std::uintptr_t, std::uintptr_t, std::uintptr_t, std::uintptr_t ), std::uintptr_t a1, std::uintptr_t scene_view )
 	{
 		const auto is_player = owner_hash == "C_CSPlayerPawn"_hash;
+		const auto is_ragdoll = owner_hash == "C_CSRagdoll"_hash;
 		const auto is_arms = owner_hash == "C_CS2HudModelArms"_hash;
 		const auto is_weapon = owner_hash == "C_CS2HudModelWeapon"_hash;
 
@@ -95,7 +164,8 @@ namespace features::esp::player {
 				}
 			};
 
-		if ( !is_player && !is_arms && !is_weapon )
+
+		if ( !is_player && !is_ragdoll && !is_arms && !is_weapon )
 		{
 			if ( ( !settings::g_misc.m_camera.thirdperson.value && !features::misc::g_camera.is_freecam_active( ) ) || !is_local_attachment( systems::g_local.get( ).view_pawn( ) ) )
 			{
@@ -133,7 +203,7 @@ namespace features::esp::player {
 
 		const auto is_other_team = local.is_this_other_team( team );
 		const auto is_local = owner_entity == local.view_pawn( );
-		const auto is_dead = health <= 0;
+		const auto is_dead = ( health <= 0 ) || is_ragdoll;
 
 		if ( is_player && is_other_team && !is_dead && chams_cfg.backtrack.enabled.value )
 		{
@@ -151,59 +221,28 @@ namespace features::esp::player {
 					const auto new_count = after ? after->count() : -1;
 					if ( after && prev_count >= 0 && new_count > prev_count )
 					{
-						__try
-						{
-							for ( auto i = prev_count; i < new_count; ++i )
-							{
-								const auto prim = after->at_fast( i );
-								if ( prim )
-								{
-									detail::mark_primitive_last_fast( prim );
-								}
-							}
-						}
-						__except ( EXCEPTION_EXECUTE_HANDLER )
-						{
-						}
+						mark_range_last_fast( &*after, prev_count, new_count );
 					}
 				}
 			}
 		}
-		if (is_player && is_other_team && chams_cfg.onshot.enabled.value) {
-			if (this->m_onshot.has_active (owner_entity)) {
-				const auto os_obj = this->m_onshot.get_scene_object (owner_entity);
-				if (os_obj) {
-					const auto& ocfg = chams_cfg.onshot;
 
-					const auto alpha = this->m_onshot.get_alpha (owner_entity);
-					const auto before = detail::read_primitive_buffer( primitive_buffer );
-					const auto prev_count = before ? before->count() : -1;
-
-					// Fade colors only. Keep configuration addresses stable for the
-					// outline material cache and avoid copying settings/strings per mesh.
-					apply_config (ocfg, os_obj, true, alpha);
-
-					const auto after = detail::read_primitive_buffer( primitive_buffer );
-					const auto new_count = after ? after->count() : -1;
-					if ( after && prev_count >= 0 && new_count > prev_count ) {
-						__try
-						{
-							for (auto i = prev_count; i < new_count; ++i)
-							{
-								const auto prim = after->at_fast( i );
-								if ( prim )
-								{
-									detail::mark_primitive_last_fast( prim );
-								}
-							}
-						}
-						__except ( EXCEPTION_EXECUTE_HANDLER )
-						{
-						}
-					}
-				}
+		if ( ( is_player || is_ragdoll ) && is_other_team && chams_cfg.onshot.enabled.value )
+		{
+			std::uintptr_t ragdoll_pawn = 0;
+			if ( is_ragdoll )
+			{
+				const auto ragdoll_pawn_handle = memory::safe_read<std::uint32_t>( owner_entity + SCHEMA( "C_CSRagdoll", "m_hPlayerPawn"_hash ) ).value_or( 0 );
+				if ( ragdoll_pawn_handle )
+					ragdoll_pawn = systems::g_entities.lookup( ragdoll_pawn_handle );
 			}
+
+			const auto game_scene_node = memory::safe_read<std::uintptr_t>( owner_entity + SCHEMA( "C_BaseEntity", "m_pGameSceneNode"_hash ) ).value_or( 0 );
+			const auto owner_model = game_scene_node ? memory::safe_read<std::uintptr_t>( game_scene_node + SCHEMA( "CSkeletonInstance", "m_modelState"_hash ) + SCHEMA( "CModelState", "m_hModel"_hash ) ).value_or( 0 ) : 0;
+
+			this->m_onshot.render_for_entity( owner_entity, ragdoll_pawn, owner_model, primitive_buffer, original_fn, a1, scene_view, apply_config );
 		}
+
 
 		const settings::esp::chams_config* target{ nullptr };
 
@@ -279,6 +318,8 @@ namespace features::esp::player {
 		apply_config( *target, scene_object );
 		return true;
 	}
+
+
 
 	void chams::on_sort_primitives( std::uintptr_t entries, std::uint32_t count )
 	{
@@ -611,61 +652,196 @@ namespace features::esp::player {
 		}
 	}
 
-	void chams::onshot::push (std::uintptr_t pawn) {
+	void chams::onshot::push (std::uintptr_t pawn, const systems::bones::data* bones, int bone_count) {
 		const auto& cfg = settings::g_esp.m_player.m_chams;
-		if (!cfg.onshot.enabled.value)
+		if (!cfg.onshot.enabled.value || !pawn)
 			return;
 
-		const auto records = combat::g_shared.lc ().get_valid_records (pawn);
-		if (records.empty ())
+		const auto game_scene_node = memory::safe_read<std::uintptr_t>( pawn + SCHEMA( "C_BaseEntity", "m_pGameSceneNode"_hash ) ).value_or( 0 );
+		if ( !game_scene_node )
 			return;
 
-		auto* record = records.front (); /* just the newest for now, kiro make this customizable or smth */
-		const auto bone_count = std::clamp (record->bone_count, 0, 27);
-		auto& pending = this->m_pending [pawn];
-		pending.bone_count = bone_count;
-		std::copy_n (record->bones, bone_count, pending.bones.begin ());
+		auto temp{ 0 };
+		const auto world_group_id = memory::call<int*>( PATTERN (patterns::get_world_group_id), game_scene_node, &temp );
+		if ( !world_group_id )
+			return;
+
+		const auto render_game_system = memory::read<std::uintptr_t>( addresses::globals::render_game_system_storage );
+		if ( !render_game_system )
+			return;
+
+		const auto world_group_handle = memory::call<std::uintptr_t>( PATTERN (patterns::get_world_group_handle), render_game_system, *world_group_id );
+		if ( !world_group_handle )
+			return;
+
+		const auto model_handle = memory::safe_read<std::uintptr_t>( game_scene_node + SCHEMA( "CSkeletonInstance", "m_modelState"_hash ) + SCHEMA( "CModelState", "m_hModel"_hash ) ).value_or( 0 );
+		if ( !model_handle )
+			return;
+
+		const auto flags = ( *world_group_id != 0 ) ? 0x2000000000ll : 0x2000000008ll;
+		const auto node_to_world = game_scene_node + SCHEMA( "CGameSceneNode", "m_nodeToWorld"_hash );
+
+		pending_entry entry{};
+		entry.pawn = pawn;
+		entry.model_handle = model_handle;
+		entry.world_group_handle = world_group_handle;
+		entry.flags = flags;
+		entry.node_to_world[ 0 ] = *reinterpret_cast< const __m128* >( node_to_world );
+		entry.node_to_world[ 1 ] = *reinterpret_cast< const __m128* >( node_to_world + 16 );
+
+		const auto bone_cache = memory::safe_read<std::uintptr_t>( game_scene_node + SCHEMA( "CSkeletonInstance", "m_modelState"_hash ) + 0x80 ).value_or( 0 );
+		const auto live_count = memory::safe_read<int>( game_scene_node + SCHEMA( "CSkeletonInstance", "m_modelState"_hash ) + 0x8c ).value_or( 0 );
+		if ( bone_cache && live_count > 0 )
+		{
+			const auto count = std::clamp( live_count, 0, 128 );
+			entry.bone_count = count;
+			for ( int i = 0; i < count; ++i )
+			{
+				const auto b = memory::safe_read<systems::bones::data>( bone_cache + i * sizeof( systems::bones::data ) );
+				if ( b )
+					entry.bones[ i ] = *b;
+			}
+		}
+
+		if ( entry.bone_count <= 0 )
+		{
+			const auto records = combat::g_shared.lc( ).get_valid_records( pawn );
+			if ( !records.empty( ) && records.front( )->bone_count > 0 )
+			{
+				auto* record = records.front( );
+				const auto count = std::clamp( record->bone_count, 0, 128 );
+				entry.bone_count = count;
+				std::copy_n( record->bones, count, entry.bones.begin( ) );
+			}
+			else
+			{
+				const auto oldest = combat::g_shared.lc( ).get_oldest_was_valid( pawn );
+				if ( oldest && oldest->bone_count > 0 )
+				{
+					const auto count = std::clamp( oldest->bone_count, 0, 128 );
+					entry.bone_count = count;
+					std::copy_n( oldest->bones, count, entry.bones.begin( ) );
+				}
+			}
+		}
+
+		if ( entry.bone_count <= 0 && bones && bone_count > 0 )
+		{
+			const auto count = std::clamp( bone_count, 0, 128 );
+			entry.bone_count = count;
+			std::copy_n( bones, count, entry.bones.begin( ) );
+		}
+
+		if ( entry.bone_count <= 0 )
+			return;
+
+		std::lock_guard lock( this->m_mtx );
+		this->m_pending.push_back( std::move( entry ) );
 	}
 
 	void chams::onshot::update () {
 		const auto& cfg = settings::g_esp.m_player.m_chams;
+		std::lock_guard lock( this->m_mtx );
 
 		if (!cfg.onshot.enabled.value) {
-			for (auto& [pawn, e] : this->m_entries)
-				e.destroy ();
+			if ( addresses::globals::scene_system ) {
+				for (auto& e : this->m_entries) {
+					if (e.scene_object) {
+						const auto s_flags = memory::safe_read<std::uint64_t>( e.scene_object + 128 );
+						if ( s_flags && !( *s_flags & 0x4000000000000000ull ) ) {
+							memory::call_vfunc<void>( addresses::globals::scene_system, 16, e.scene_object );
+						}
+					}
+				}
+			}
 			this->m_entries.clear ();
 			this->m_pending.clear ();
 			return;
 		}
 
 		const auto global_vars = memory::read<std::uintptr_t> (addresses::globals::global_vars);
-		const auto current_time = memory::read<float> (global_vars + 0x30);
+		const auto current_time = global_vars ? memory::read<float> (global_vars + 0x30) : 0.0f;
 
-		// Creating mesh scene objects from CreateMove can race the scene graph and
-		// fault inside client.dll. Materialize queued shots at frame stage instead.
-		for (auto& [pawn, pending] : this->m_pending) {
-			auto& e = this->m_entries [pawn];
-			if (e.scene_object)
-				e.destroy ();
-
-			e.create (pawn);
-			if (!e.scene_object) {
-				this->m_entries.erase (pawn);
+		for (auto& pending : this->m_pending) {
+			if ( !addresses::globals::mesh_system || !pending.model_handle || !pending.world_group_handle )
 				continue;
+
+			__m128 copy[ 2 ]{};
+			copy[ 0 ] = pending.node_to_world[ 0 ];
+			copy[ 1 ] = pending.node_to_world[ 1 ];
+
+			const auto scene_obj = memory::call_vfunc<std::uintptr_t>(
+				addresses::globals::mesh_system,
+				20,
+				pending.model_handle,
+				&copy,
+				"AnimatableSceneObjectDesc",
+				pending.flags,
+				0x4100000001ll,
+				pending.world_group_handle
+			);
+
+			if ( !scene_obj )
+				continue;
+
+			memory::write<std::uintptr_t>( scene_obj + 0x110, 0 );
+			memory::write<int>( scene_obj + 0xc0, -1 );
+
+			const auto model_data = memory::read<std::uintptr_t>( pending.model_handle );
+			if ( model_data ) {
+				const auto has_force_lod = ( memory::read<std::uint32_t>( model_data + 16 ) & 0x400 ) != 0 || ( memory::read<std::uint32_t>( model_data + 20 ) & 0x400 ) != 0;
+				auto lod = memory::read<std::uint8_t>( scene_obj + 0x9a );
+				lod = has_force_lod ? ( lod | 0x10 ) : ( lod & 0xef );
+				memory::write( scene_obj + 0x9a, lod );
 			}
 
-			e.pawn = pawn;
-			e.spawn_time = current_time;
-			e.active = true;
-			e.setup_bones (pending.bones.data (), pending.bone_count);
+			const auto obj_bone_count = memory::read<int>( scene_obj + 0xd0 );
+			const auto render_bones = memory::read<std::uintptr_t>( scene_obj + 0xd8 );
+			if ( render_bones && obj_bone_count > 0 ) {
+				const auto write_count = std::min( pending.bone_count, obj_bone_count );
+				for ( int i = 0; i < write_count; ++i ) {
+					const auto& b = pending.bones[ i ];
+					const auto dst = render_bones + ( static_cast< std::size_t >( i ) * 48 );
+
+					const auto bxx = b.rotation.x * b.rotation.x;
+					const auto byy = b.rotation.y * b.rotation.y;
+					const auto bzz = b.rotation.z * b.rotation.z;
+					const auto bxy = b.rotation.x * b.rotation.y;
+					const auto bxz = b.rotation.x * b.rotation.z;
+					const auto byz = b.rotation.y * b.rotation.z;
+					const auto bwx = b.rotation.w * b.rotation.x;
+					const auto bwy = b.rotation.w * b.rotation.y;
+					const auto bwz = b.rotation.w * b.rotation.z;
+
+					memory::write<float>( dst + 0, 1.0f - 2.0f * ( byy + bzz ) );
+					memory::write<float>( dst + 4, 2.0f * ( bxy - bwz ) );
+					memory::write<float>( dst + 8, 2.0f * ( bxz + bwy ) );
+					memory::write<float>( dst + 12, b.position.x );
+					memory::write<float>( dst + 16, 2.0f * ( bxy + bwz ) );
+					memory::write<float>( dst + 20, 1.0f - 2.0f * ( bxx + bzz ) );
+					memory::write<float>( dst + 24, 2.0f * ( byz - bwx ) );
+					memory::write<float>( dst + 28, b.position.y );
+					memory::write<float>( dst + 32, 2.0f * ( bxz - bwy ) );
+					memory::write<float>( dst + 36, 2.0f * ( byz + bwx ) );
+					memory::write<float>( dst + 40, 1.0f - 2.0f * ( bxx + byy ) );
+					memory::write<float>( dst + 44, b.position.z );
+				}
+			}
+
+			this->m_entries.push_back( { scene_obj, pending.pawn, pending.model_handle, current_time } );
 		}
 		this->m_pending.clear ();
 
 		const auto fade_time = cfg.onshot_fade_time.value;
 
 		for (auto it = this->m_entries.begin (); it != this->m_entries.end (); ) {
-			if (current_time - it->second.spawn_time >= fade_time) {
-				it->second.destroy ();
+			if (current_time - it->spawn_time >= fade_time) {
+				if ( it->scene_object && addresses::globals::scene_system ) {
+					const auto s_flags = memory::safe_read<std::uint64_t>( it->scene_object + 128 );
+					if ( s_flags && !( *s_flags & 0x4000000000000000ull ) ) {
+						memory::call_vfunc<void>( addresses::globals::scene_system, 16, it->scene_object );
+					}
+				}
 				it = this->m_entries.erase (it);
 			} else {
 				++it;
@@ -674,47 +850,72 @@ namespace features::esp::player {
 	}
 
 	void chams::onshot::shutdown (bool destroy_objects) {
-		if (destroy_objects) {
-			for (auto& [pawn, e] : this->m_entries)
-				e.destroy ();
+		std::lock_guard lock( this->m_mtx );
+		if (destroy_objects && addresses::globals::scene_system) {
+			for (auto& e : this->m_entries) {
+				if ( e.scene_object ) {
+					const auto s_flags = memory::safe_read<std::uint64_t>( e.scene_object + 128 );
+					if ( s_flags && !( *s_flags & 0x4000000000000000ull ) ) {
+						memory::call_vfunc<void>( addresses::globals::scene_system, 16, e.scene_object );
+					}
+				}
+			}
 		}
 		this->m_entries.clear ();
 		this->m_pending.clear ();
 	}
 
 	bool chams::onshot::has_active (std::uintptr_t pawn) const {
-		auto it = this->m_entries.find (pawn);
-		return it != this->m_entries.end () && it->second.scene_object;
+		std::lock_guard lock( this->m_mtx );
+		if ( pawn ) {
+			for ( const auto& e : this->m_entries ) {
+				if ( e.pawn == pawn && e.scene_object )
+					return true;
+			}
+			return false;
+		}
+		return !this->m_entries.empty ();
 	}
 
 	bool chams::onshot::is_active (std::uintptr_t scene_object) const {
-		for (const auto& [pawn, e] : this->m_entries)
+		if ( !scene_object )
+			return false;
+		std::lock_guard lock( this->m_mtx );
+		for (const auto& e : this->m_entries)
 			if (e.scene_object == scene_object)
 				return true;
 		return false;
 	}
 
 	std::uintptr_t chams::onshot::get_scene_object (std::uintptr_t pawn) const {
-		auto it = this->m_entries.find (pawn);
-		if (it != this->m_entries.end ())
-			return it->second.scene_object;
+		std::lock_guard lock( this->m_mtx );
+		if ( pawn ) {
+			for ( const auto& e : this->m_entries ) {
+				if ( e.pawn == pawn )
+					return e.scene_object;
+			}
+		}
+		if (!this->m_entries.empty ())
+			return this->m_entries.back ().scene_object;
 		return 0;
 	}
 
-	float chams::onshot::get_alpha (std::uintptr_t pawn) const {
-		auto it = this->m_entries.find (pawn);
-		if (it == this->m_entries.end () || !it->second.scene_object)
-			return 0.0f;
+	float chams::onshot::get_alpha (std::uintptr_t scene_object) const {
+		std::lock_guard lock( this->m_mtx );
+		for (const auto& e : this->m_entries) {
+			if (e.scene_object == scene_object) {
+				const auto global_vars = memory::read<std::uintptr_t> (addresses::globals::global_vars);
+				const auto current_time = global_vars ? memory::read<float> (global_vars + 0x30) : 0.0f;
+				const auto fade_time = settings::g_esp.m_player.m_chams.onshot_fade_time.value;
 
-		const auto global_vars = memory::read<std::uintptr_t> (addresses::globals::global_vars);
-		const auto current_time = memory::read<float> (global_vars + 0x30);
-		const auto fade_time = settings::g_esp.m_player.m_chams.onshot_fade_time.value;
+				if (fade_time <= 0.0f)
+					return 0.0f;
 
-		if (fade_time <= 0.0f)
-			return 0.0f;
-
-		const auto elapsed = current_time - it->second.spawn_time;
-		return std::clamp (1.0f - (elapsed / fade_time), 0.0f, 1.0f);
+				const auto elapsed = current_time - e.spawn_time;
+				return std::clamp (1.0f - (elapsed / fade_time), 0.0f, 1.0f);
+			}
+		}
+		return 0.0f;
 	}
 
 	void chams::apply_layer( std::uintptr_t primitive_buffer, void( __fastcall* original_fn )( std::uintptr_t, std::uintptr_t, std::uintptr_t, std::uintptr_t ), std::uintptr_t a1, std::uintptr_t scene_object, std::uintptr_t scene_view, const xdraw::color& color, settings::esp::cham_ids material_id, const settings::esp::outline_glow_config* glow_cfg )

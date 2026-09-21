@@ -25,8 +25,6 @@ namespace features::world {
 
 	void weather::on_frame_stage_notify( )
 	{
-		settings::g_world.update_active( rendering::g_widgets.s_map_name );
-
 		const auto manager = memory::safe_read<std::uintptr_t>( addresses::globals::particle_manager ).value_or( 0 );
 		if ( manager != this->m_particle_manager )
 		{
@@ -35,6 +33,8 @@ namespace features::world {
 			this->m_last_particle_type = -1;
 			this->m_last_round_start_time = 0.0f;
 			this->m_particle_loaded = false;
+			this->m_color_initialized = false;
+			this->m_last_origin = {};
 			this->m_particle_manager = manager;
 		}
 
@@ -79,6 +79,8 @@ namespace features::world {
 		this->m_last_particle_type = -1;
 		this->m_last_round_start_time = 0.0f;
 		this->m_particle_loaded = false;
+		this->m_color_initialized = false;
+		this->m_last_origin = {};
 	}
 
 	void weather::create_particle( )
@@ -205,50 +207,70 @@ namespace features::world {
 
 		const auto origin = memory::read<math::vector3>( game_scene_node + SCHEMA( "CGameSceneNode", "m_vecAbsOrigin"_hash ) );
 		const auto& weather = settings::g_world.m_weather;
-		if ( weather.type.value == settings::world::weather::weather_type::rain && weather.wind.value )
-		{
-			const auto direction = weather.wind_direction.value * ( std::numbers::pi_v<float> / 180.0f );
-			const auto strength = std::clamp( weather.wind_strength.value / 5.0f, 0.0f, 1.0f );
-			const auto turbulence = std::clamp( weather.wind_turbulence.value / 5.0f, 0.0f, 1.0f );
-			float vx = strength * std::cos( direction );
-			float vy = strength * std::sin( direction );
 
-			if ( turbulence > 0.0f )
+		const auto now = std::chrono::steady_clock::now( );
+		const auto time_since_last_update = std::chrono::duration<float, std::milli>( now - this->m_last_update_time ).count( );
+		const bool origin_changed = ( origin - this->m_last_origin ).length_sqr( ) > 9.0f;
+		const bool is_rain_wind = ( weather.type.value == settings::world::weather::weather_type::rain && weather.wind.value );
+
+		// Throttle particle control point updates: at 200+ FPS, calling particle_set_control_point
+		// every frame invalidates engine emitter bounds and causes heavy FPS drops.
+		// Update at most ~60 Hz (>= 16ms) or when the player has meaningfully moved.
+		if ( origin_changed || time_since_last_update >= 16.0f || !this->m_color_initialized )
+		{
+			this->m_last_update_time = now;
+			this->m_last_origin = origin;
+
+			if ( is_rain_wind )
 			{
-				const auto time = static_cast<double>( GetTickCount64( ) ) * 0.0006;
-				const auto noise_x = static_cast<float>(
-					0.60 * std::sin( time * 0.90 + 0.3 ) +
-					0.30 * std::sin( time * 2.30 + 1.7 ) +
-					0.15 * std::sin( time * 5.10 + 4.2 ) );
-				const auto noise_y = static_cast<float>(
-					0.60 * std::sin( time * 1.10 + 2.0 ) +
-					0.30 * std::sin( time * 2.70 + 0.5 ) +
-					0.15 * std::sin( time * 4.60 + 3.1 ) );
-				vx += turbulence * 0.9f * noise_x;
-				vy += turbulence * 0.9f * noise_y;
+				const auto direction = weather.wind_direction.value * ( std::numbers::pi_v<float> / 180.0f );
+				const auto strength = std::clamp( weather.wind_strength.value / 5.0f, 0.0f, 1.0f );
+				const auto turbulence = std::clamp( weather.wind_turbulence.value / 5.0f, 0.0f, 1.0f );
+				float vx = strength * std::cos( direction );
+				float vy = strength * std::sin( direction );
+
+				if ( turbulence > 0.0f )
+				{
+					const auto time = static_cast<double>( GetTickCount64( ) ) * 0.0006;
+					const auto noise_x = static_cast<float>(
+						0.60 * std::sin( time * 0.90 + 0.3 ) +
+						0.30 * std::sin( time * 2.30 + 1.7 ) +
+						0.15 * std::sin( time * 5.10 + 4.2 ) );
+					const auto noise_y = static_cast<float>(
+						0.60 * std::sin( time * 1.10 + 2.0 ) +
+						0.30 * std::sin( time * 2.70 + 0.5 ) +
+						0.15 * std::sin( time * 4.60 + 3.1 ) );
+					vx += turbulence * 0.9f * noise_x;
+					vy += turbulence * 0.9f * noise_y;
+				}
+
+				const auto magnitude = std::min( std::sqrt( vx * vx + vy * vy ), 1.0f );
+				const auto tilt = magnitude * 80.0f * ( std::numbers::pi_v<float> / 180.0f );
+				const auto heading = vx != 0.0f || vy != 0.0f ? std::atan2( vy, vx ) : 0.0f;
+				const auto sine = std::sin( tilt * 0.5f );
+				const particle_transform transform{
+					origin.x, origin.y, origin.z, 0.0f,
+					std::sin( heading ) * sine,
+					-std::cos( heading ) * sine,
+					0.0f,
+					std::cos( tilt * 0.5f )
+				};
+				memory::call<bool>( PATTERN( patterns::particle_set_transform ), particle_manager, this->m_effect_index, 0, &transform, 0 );
 			}
-
-			const auto magnitude = std::min( std::sqrt( vx * vx + vy * vy ), 1.0f );
-			const auto tilt = magnitude * 80.0f * ( std::numbers::pi_v<float> / 180.0f );
-			const auto heading = vx != 0.0f || vy != 0.0f ? std::atan2( vy, vx ) : 0.0f;
-			const auto sine = std::sin( tilt * 0.5f );
-			const particle_transform transform{
-				origin.x, origin.y, origin.z, 0.0f,
-				std::sin( heading ) * sine,
-				-std::cos( heading ) * sine,
-				0.0f,
-				std::cos( tilt * 0.5f )
-			};
-			memory::call<bool>( PATTERN( patterns::particle_set_transform ), particle_manager, this->m_effect_index, 0, &transform, 0 );
-		}
-		else
-		{
-			memory::call<bool>( PATTERN( patterns::particle_set_control_point ), particle_manager, this->m_effect_index, 0, &origin, 0 );
+			else
+			{
+				memory::call<bool>( PATTERN( patterns::particle_set_control_point ), particle_manager, this->m_effect_index, 0, &origin, 0 );
+			}
 		}
 
+		// Only push color when changed or uninitialized (avoids marking CP 1 dirty every single frame).
 		const auto color = math::vector3{ static_cast< float >( weather.color.value.r ), static_cast< float >( weather.color.value.g ), static_cast< float >( weather.color.value.b ) };
-		// Do not infer persistent initialization from an undocumented return value.
-		memory::call<void>( PATTERN( patterns::particle_set_control_point ), particle_manager, this->m_effect_index, 1, &color, 0 );
+		if ( !this->m_color_initialized || color.x != this->m_last_color.x || color.y != this->m_last_color.y || color.z != this->m_last_color.z )
+		{
+			memory::call<void>( PATTERN( patterns::particle_set_control_point ), particle_manager, this->m_effect_index, 1, &color, 0 );
+			this->m_last_color = color;
+			this->m_color_initialized = true;
+		}
 	}
 
 	void weather::release_particles( )
@@ -267,6 +289,8 @@ namespace features::world {
 		this->m_effect_index = invalid_effect_index;
 		this->m_last_particle_type = -1;
 		this->m_particle_loaded = false;
+		this->m_color_initialized = false;
+		this->m_last_origin = {};
 	}
 
 } // namespace features::world

@@ -34,7 +34,7 @@ if (ov.sound_reveal.value)
 {
 xui::slider_float("sound duration", ov.sound_duration, 0.1f, 5.0f, "%.1f s");
 xui::slider_float("sound distance", ov.sound_distance, 1.0f, 100.0f, "%.0f m");
-xui::text("steps / shots; distance estimate", tokens::col_accent);
+xui::text("all enemy sounds; distance estimate", tokens::col_accent);
 }
 }
 xui::end_popup();

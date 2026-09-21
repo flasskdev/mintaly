@@ -745,7 +745,14 @@ namespace config {
 				break;
 			}
 			case field_type::bool_val:
-				*static_cast<bool*>(f.ptr) = false;
+				if (f.key == detail::make_key("changer", "sync enabled"))
+				{
+					*static_cast<bool*>(f.ptr) = true;
+				}
+				else
+				{
+					*static_cast<bool*>(f.ptr) = false;
+				}
 				break;
 			case field_type::uint8_val:
 				*static_cast<std::uint8_t*>(f.ptr) = 0;
@@ -853,10 +860,14 @@ namespace config {
 		const auto k_air_strafe = detail::make_key("movement", "air strafe");
 		const auto k_edgestop = detail::make_key("movement", "edgestop");
 		const auto k_quickstop = detail::make_key("movement", "quick stop");
+		const auto k_legit_scope = detail::make_key("legitbot - sniper", "auto scope");
+		const auto k_legit_scope_alt1 = detail::make_key("legitbot", "auto scope");
+		const auto k_legit_scope_alt2 = detail::make_key("legitbot - snipers", "auto scope");
 
 		field* field_airstrafe = nullptr;
 		field* field_air_strafer = nullptr;
 		field* field_quickstop = nullptr;
+		field* field_legit_scope = nullptr;
 
 		for (auto& f : reg.fields)
 		{
@@ -864,6 +875,7 @@ namespace config {
 			if (f.key == k_airstrafe) field_airstrafe = &f;
 			else if (f.key == k_air_strafer) field_air_strafer = &f;
 			else if (f.key == k_quickstop) field_quickstop = &f;
+			else if (f.key == k_legit_scope) field_legit_scope = &f;
 
 			char key_str[12];
 			std::snprintf(key_str, sizeof(key_str), "%08x", f.key);
@@ -908,6 +920,10 @@ namespace config {
 				else if (k == k_edgestop && field_quickstop)
 				{
 					serial::json_to_field(it.value(), *field_quickstop);
+				}
+				else if ((k == k_legit_scope_alt1 || k == k_legit_scope_alt2) && field_legit_scope)
+				{
+					serial::json_to_field(it.value(), *field_legit_scope);
 				}
 			}
 		}
@@ -992,10 +1008,14 @@ namespace config {
 		const auto k_air_strafe = detail::make_key("movement", "air strafe");
 		const auto k_edgestop = detail::make_key("movement", "edgestop");
 		const auto k_quickstop = detail::make_key("movement", "quick stop");
+		const auto k_legit_scope = detail::make_key("legitbot - sniper", "auto scope");
+		const auto k_legit_scope_alt1 = detail::make_key("legitbot", "auto scope");
+		const auto k_legit_scope_alt2 = detail::make_key("legitbot - snipers", "auto scope");
 
 		field* field_airstrafe = nullptr;
 		field* field_air_strafer = nullptr;
 		field* field_quickstop = nullptr;
+		field* field_legit_scope = nullptr;
 
 		for (auto& f : reg.fields)
 		{
@@ -1003,6 +1023,7 @@ namespace config {
 			if (f.key == k_airstrafe) field_airstrafe = &f;
 			else if (f.key == k_air_strafer) field_air_strafer = &f;
 			else if (f.key == k_quickstop) field_quickstop = &f;
+			else if (f.key == k_legit_scope) field_legit_scope = &f;
 
 			char key_str[12];
 			std::snprintf(key_str, sizeof(key_str), "%08x", f.key);
@@ -1047,6 +1068,10 @@ namespace config {
 				else if (k == k_edgestop && field_quickstop)
 				{
 					serial::json_to_field(it.value(), *field_quickstop);
+				}
+				else if ((k == k_legit_scope_alt1 || k == k_legit_scope_alt2) && field_legit_scope)
+				{
+					serial::json_to_field(it.value(), *field_legit_scope);
 				}
 			}
 		}

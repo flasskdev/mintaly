@@ -347,12 +347,12 @@ namespace features::misc {
 
 		if ( is_kill && cfg.death_sound.value )
 		{
-			this->play_sound( cfg.death_sound_type, cfg.death_sound_volume, cfg.custom_death_sound.value );
+			this->play_sound( cfg.death_sound_type, cfg.death_sound_volume );
 		}
 
 		if ( cfg.hit_sound.value )
 		{
-			this->play_sound( cfg.hit_sound_type, cfg.hit_sound_volume, cfg.custom_hit_sound.value );
+			this->play_sound( cfg.hit_sound_type, cfg.hit_sound_volume );
 		}
 
 		if ( is_kill && cfg.death_effect.value && data.victim_pawn )
@@ -371,9 +371,18 @@ namespace features::misc {
 		}
 
 		// Trigger onshot chams after the hit is confirmed by the server.
-		if ( data.victim_pawn )
+		auto victim_pawn = data.victim_pawn;
+		if ( !victim_pawn && data.victim )
 		{
-			features::esp::player::g_chams.os( ).push( data.victim_pawn );
+			const auto pawn_handle = memory::read<std::uint32_t>( data.victim + SCHEMA( "CBasePlayerController", "m_hPawn"_hash ) );
+			if ( pawn_handle )
+			{
+				victim_pawn = systems::g_entities.lookup( pawn_handle );
+			}
+		}
+		if ( victim_pawn )
+		{
+			features::esp::player::g_chams.os( ).push( victim_pawn );
 		}
 	}
 
@@ -729,7 +738,6 @@ namespace features::misc {
 			logging::console::print( xs( "[rage] R8 discharge at {:.6f}, command {}, damage {:.0f}, hc {:.0f}%" ),
 				shot_time, confirmed.command_tick, confirmed.shot.damage, confirmed.shot.hitchance * 100.0f );
 		lock.unlock( );
-		features::esp::player::g_chams.os( ).push( confirmed.shot.victim_pawn );
 	}
 
 	const char* impacts::classify_shot_deviation( const shot_record& shot ) const
@@ -867,6 +875,8 @@ namespace features::misc {
 		auto bt_ticks{ 0 };
 		std::string mismatch_reason{};
 		math::vector3 impact_pos{};
+		auto has_skeleton{ false };
+		std::array<systems::bones::data, 27> skeleton{};
 
 		{
 			std::unique_lock lock( this->m_mtx );
@@ -913,6 +923,8 @@ namespace features::misc {
 				expected_damage = matched_shot->damage;
 				hitchance = matched_shot->hitchance;
 				bt_ticks = matched_shot->bt_ticks;
+				skeleton = matched_shot->skeleton;
+				has_skeleton = true;
 				matched_shot->resolved = true;
 
 				if ( expected_hitgroup > 0 && hitgroup != expected_hitgroup )
@@ -957,7 +969,9 @@ namespace features::misc {
 			.weapon_type = weapon_type,
 			.expected_damage = expected_damage,
 			.hitchance = hitchance,
-			.bt_ticks = bt_ticks
+			.bt_ticks = bt_ticks,
+			.skeleton = skeleton,
+			.has_skeleton = has_skeleton
 		};
 	}
 
@@ -1928,45 +1942,7 @@ namespace features::misc {
 
 	namespace custom_sound_detail {
 
-		inline void ensure_directories( )
-		{
-			std::error_code ec{};
-			std::filesystem::create_directories( L"C:\\mintaly\\sounds", ec );
-		}
-
-		[[nodiscard]] std::wstring sounds_directory( )
-		{
-			ensure_directories( );
-			return L"C:\\mintaly";
-		}
-
-		[[nodiscard]] std::string sanitize_filename( std::string_view name )
-		{
-			std::string out{};
-			out.reserve( name.size( ) );
-
-			for ( const auto c : name )
-			{
-				if ( std::isalnum( static_cast< unsigned char >( c ) ) || c == '_' || c == '-' || c == '.' )
-				{
-					out.push_back( static_cast< char >( c ) );
-				}
-			}
-
-			return out;
-		}
-
-		[[nodiscard]] bool has_extension( std::string_view name, std::string_view ext )
-		{
-			if ( name.size( ) < ext.size( ) )
-			{
-				return false;
-			}
-
-			return _strnicmp( name.data( ) + name.size( ) - ext.size( ), ext.data( ), ext.size( ) ) == 0;
-		}
-
-void play_engine_path( const char* sound_path, float volume )
+		void play_engine_path( const char* sound_path, float volume )
 		{
 			struct
 			{
@@ -1985,38 +1961,8 @@ void play_engine_path( const char* sound_path, float volume )
 			memory::call<void>( PATTERN (patterns::play_sound), 0.0f, &args );
 		}
 
-		[[nodiscard]] std::wstring resolve_sound_path( std::string_view filename )
-		{
-			const auto sanitized = sanitize_filename( filename );
-			if ( sanitized.empty( ) )
-			{
-				return {};
-			}
-
-			// Ensure directories exist
-			ensure_directories( );
-
-			const auto wide_name = std::wstring( sanitized.begin( ), sanitized.end( ) );
-
-			// Check C:\mintaly\<filename>
-			const auto root_path = std::wstring( L"C:\\mintaly\\" ) + wide_name;
-			if ( std::filesystem::exists( root_path ) )
-			{
-				return root_path;
-			}
-
-			// Check C:\mintaly\sounds\<filename>
-			const auto sounds_path = std::wstring( L"C:\\mintaly\\sounds\\" ) + wide_name;
-			if ( std::filesystem::exists( sounds_path ) )
-			{
-				return sounds_path;
-			}
-
-			return {};
-		}
-
 		// Only this worker touches WinMM or WAV files. Producers hold the queue
-		// mutex briefly; initialization, file I/O and playback never hold it.
+		// mutex briefly; initialization and playback never hold it.
 		class audio_worker
 		{
 			using play_fn_t = BOOL( WINAPI* )( LPCWSTR, HMODULE, DWORD );
@@ -2024,17 +1970,8 @@ void play_engine_path( const char* sound_path, float volume )
 
 			struct request
 			{
-				std::string filename;
 				float volume{};
 				bool koch{};
-			};
-
-			struct cached_wav
-			{
-				std::wstring path;
-				std::filesystem::file_time_type modified{};
-				std::uintmax_t size{};
-				std::vector<char> bytes;
 			};
 
 		public:
@@ -2066,57 +2003,20 @@ void play_engine_path( const char* sound_path, float volume )
 				if ( m_thread.joinable( ) ) m_thread.join( );
 			}
 
-			void enqueue( std::string_view filename, float volume, bool koch = false )
+			void enqueue( float volume, bool koch = true )
 			{
-				if ( !std::isfinite( volume ) || volume <= 0.0f || ( !koch && filename.empty( ) ) ) return;
+				if ( !std::isfinite( volume ) || volume <= 0.0f || !koch ) return;
 				{
 					std::lock_guard lock( m_mutex );
 					if ( m_stopping ) return;
 					// Drop oldest requests rather than accumulate an audio backlog.
 					if ( m_queue.size( ) >= 8 ) m_queue.pop_front( );
-					m_queue.push_back( { std::string( filename ), volume, koch } );
+					m_queue.push_back( { volume, koch } );
 				}
 				m_ready.notify_one( );
 			}
 
 		private:
-			const void* load_wav( std::string_view filename, play_fn_t play )
-			{
-				const auto path = resolve_sound_path( filename );
-				if ( path.empty( ) ) return nullptr;
-				std::error_code ec;
-				const auto modified = std::filesystem::last_write_time( path, ec );
-				if ( ec ) return nullptr;
-				const auto size = std::filesystem::file_size( path, ec );
-				// Bound memory usage for short hit/kill effects (two cache slots).
-				if ( ec || size < 12 || size > 16 * 1024 * 1024 ) return nullptr;
-
-				auto slot = m_cache.size( );
-				for ( std::size_t i = 0; i < m_cache.size( ); ++i )
-				{
-					if ( m_cache[i].path != path ) continue;
-					if ( m_cache[i].modified == modified && m_cache[i].size == size )
-						return m_cache[i].bytes.data( );
-					slot = i;
-					break;
-				}
-
-				std::ifstream file( std::filesystem::path( path ), std::ios::binary );
-				std::vector<char> bytes( static_cast<std::size_t>( size ) );
-				if ( !file.read( bytes.data( ), static_cast<std::streamsize>( size ) ) ||
-					std::memcmp( bytes.data( ), "RIFF", 4 ) || std::memcmp( bytes.data( ) + 8, "WAVE", 4 ) ) return nullptr;
-
-				if ( slot == m_cache.size( ) )
-				{
-					slot = m_next_slot;
-					m_next_slot = ( m_next_slot + 1 ) % m_cache.size( );
-				}
-				// SND_ASYNC retains the buffer: stop playback before replacing it.
-				play( nullptr, nullptr, 0 );
-				m_cache[slot] = { path, modified, size, std::move( bytes ) };
-				return m_cache[slot].bytes.data( );
-			}
-
 			void run( )
 			{
 				// Own a module reference until all asynchronous playback has stopped.
@@ -2148,7 +2048,7 @@ void play_engine_path( const char* sound_path, float volume )
 					if ( !play ) continue;
 					try
 					{
-						const void* data = item.koch ? static_cast<const void*>( sounds::g_koch_wav ) : load_wav( item.filename, play );
+						const void* data = item.koch ? static_cast<const void*>( sounds::g_koch_wav ) : nullptr;
 						if ( !data ) continue;
 						if ( set_volume )
 						{
@@ -2160,20 +2060,17 @@ void play_engine_path( const char* sound_path, float volume )
 					}
 					catch ( const std::exception& )
 					{
-						diag::write( diag::level::warning, "failed to load custom hit sound" );
+						diag::write( diag::level::warning, "failed to play hit sound" );
 					}
 				}
 
 				if ( play ) play( nullptr, nullptr, 0 );
-				m_cache = {};
 				if ( module ) FreeLibrary( module );
 			}
 
 			std::mutex m_mutex;
 			std::condition_variable m_ready;
 			std::deque<request> m_queue;
-			std::array<cached_wav, 2> m_cache;
-			std::size_t m_next_slot{};
 			bool m_stopping{ true };
 			std::thread m_thread;
 		};
@@ -2192,69 +2089,11 @@ void play_engine_path( const char* sound_path, float volume )
 		custom_sound_detail::g_audio.shutdown( );
 	}
 
-	std::string impacts::custom_sounds_directory_narrow( )
+	void impacts::play_sound( settings::misc::impacts::sound_type type, float volume )
 	{
-		return "C:\\mintaly";
-	}
-
-	std::vector<std::string> impacts::list_custom_sounds( )
-	{
-		std::vector<std::string> files{};
-
-		const auto scan_dir = [&]( const std::wstring& dir_path ) {
-			std::error_code ec{};
-			if ( !std::filesystem::exists( dir_path, ec ) || ec )
-			{
-				return;
-			}
-
-			for ( const auto& entry : std::filesystem::directory_iterator( dir_path, ec ) )
-			{
-				if ( ec || !entry.is_regular_file( ) )
-				{
-					continue;
-				}
-
-				const auto filename = entry.path( ).filename( ).string( );
-				if ( filename.empty( ) || !custom_sound_detail::has_extension( filename, ".wav" ) )
-				{
-					continue;
-				}
-
-				if ( std::find( files.begin( ), files.end( ), filename ) == files.end( ) )
-				{
-					files.push_back( filename );
-				}
-			}
-		};
-
-		// Ensure C:\mintaly and C:\mintaly\sounds exist
-		custom_sound_detail::ensure_directories( );
-
-		// Check C:\mintaly directly and C:\mintaly\sounds
-		scan_dir( L"C:\\mintaly" );
-		scan_dir( L"C:\\mintaly\\sounds" );
-
-		std::sort( files.begin( ), files.end( ) );
-		return files;
-	}
-
-	void impacts::play_custom_sound( std::string_view filename, float volume ) const
-	{
-		custom_sound_detail::g_audio.enqueue( filename, volume );
-	}
-
-	void impacts::play_sound( settings::misc::impacts::sound_type type, float volume, std::string_view custom_file )
-	{
-		if ( type == settings::misc::impacts::sound_type::custom )
-		{
-			this->play_custom_sound( custom_file, volume );
-			return;
-		}
-
 		if ( type == settings::misc::impacts::sound_type::koch )
 		{
-			custom_sound_detail::g_audio.enqueue( {}, volume, true );
+			custom_sound_detail::g_audio.enqueue( volume, true );
 			return;
 		}
 

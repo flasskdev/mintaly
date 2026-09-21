@@ -513,74 +513,103 @@ namespace features::world {
 		static __m128 wetness_density_val;
 		static __m128 wetness_timer_val;
 
-		if (settings::g_world.m_scene.dof.value && hash == 0x2ACAB07C) {
-			dof_val = _mm_set_ps (
-				settings::g_world.m_scene.dof_far_blurry,
-				settings::g_world.m_scene.dof_far_crisp,
-				settings::g_world.m_scene.dof_near_crisp,
-				settings::g_world.m_scene.dof_near_blurry);
-			value = reinterpret_cast<__m128i*> (&dof_val);
-		}
-
-		const auto& weather = settings::g_world.m_weather;
-		if (weather.wind.value && hash == shader_hash::wind_direction) {
-			const auto direction = weather.wind_direction.value *
-				(std::numbers::pi_v<float> / 180.0f);
-			wind_direction_val = _mm_set_ps (
-				0.0f, 0.0f, std::sin (direction), std::cos (direction));
-			value = reinterpret_cast<__m128i*> (&wind_direction_val);
-		} else if (weather.wind.value && hash == shader_hash::wind_strength_frequency) {
-			// Foliage shaders pack the low/high sway strength and frequency into one vector.
-			wind_strength_frequency_val = _mm_set_ps (
-				weather.wind_turbulence.value,
-				weather.wind_strength.value,
-				weather.wind_turbulence.value,
-				weather.wind_strength.value);
-			value = reinterpret_cast<__m128i*> (&wind_strength_frequency_val);
-		}
-
-		if (settings::g_world.m_scene.bloom.value || settings::g_world.m_scene.overlight.value) {
-			auto t = settings::g_world.m_scene.bloom.value ? settings::g_world.m_scene.bloom_value.value : 0.0f;
-			auto sky_boost = 0.0f;
-			if (settings::g_world.m_scene.overlight.value) {
-				const auto ol_bloom = settings::g_world.m_scene.overlight_bloom.value;
-				sky_boost += ol_bloom * 1.5f;
-				t += ol_bloom * 0.5f;
+		switch (hash) {
+		case 0x2ACAB07C: // dof
+			if (settings::g_world.m_scene.dof.value) {
+				dof_val = _mm_set_ps (
+					settings::g_world.m_scene.dof_far_blurry,
+					settings::g_world.m_scene.dof_far_crisp,
+					settings::g_world.m_scene.dof_near_crisp,
+					settings::g_world.m_scene.dof_near_blurry);
+				value = reinterpret_cast<__m128i*> (&dof_val);
 			}
-			if (hash == 0x565EAF76) {
-				bloom_scale_val = _mm_set_ps1 (0.3f + t * 1.2f + sky_boost * 0.5f);
-				value = (__m128i*) & bloom_scale_val;
-			} else if (hash == 0xBA98A9B0) {
-				bloom_threshold_val = _mm_set_ps1 (std::max(0.05f, 1.5f - t * 1.2f - sky_boost * 0.4f));
-				value = (__m128i*) & bloom_threshold_val;
-			} else if (hash == 0x2AE72B37) {
-				bloom_width_val = _mm_set_ps1 (0.5f + t * 1.5f + sky_boost * 0.3f);
-				value = (__m128i*) & bloom_width_val;
-			} else if (hash == 0xB692902E) {
-				bloom_strength_val = _mm_set_ps1 (0.2f + t * 0.6f + sky_boost * 0.5f);
-				value = (__m128i*) & bloom_strength_val;
-			} else if (hash == 0x1313A424) {
-				bloom_skybox_val = _mm_set_ps1 (0.1f + t * 0.4f + sky_boost * 1.2f);
-				value = (__m128i*) & bloom_skybox_val;
+			break;
+
+		case shader_hash::wind_direction:
+			if (settings::g_world.m_weather.wind.value) {
+				const auto direction = settings::g_world.m_weather.wind_direction.value *
+					(std::numbers::pi_v<float> / 180.0f);
+				wind_direction_val = _mm_set_ps (
+					0.0f, 0.0f, std::sin (direction), std::cos (direction));
+				value = reinterpret_cast<__m128i*> (&wind_direction_val);
 			}
-		}
+			break;
 
-		if (settings::g_world.m_scene.gamma.value && hash == 0x24470A87) {
-			gamma_val = _mm_set_ps1 (settings::g_world.m_scene.gamma_value);
-			value = (__m128i*) & gamma_val;
-		}
+		case shader_hash::wind_strength_frequency:
+			if (settings::g_world.m_weather.wind.value) {
+				const auto& weather = settings::g_world.m_weather;
+				wind_strength_frequency_val = _mm_set_ps (
+					weather.wind_turbulence.value,
+					weather.wind_strength.value,
+					weather.wind_turbulence.value,
+					weather.wind_strength.value);
+				value = reinterpret_cast<__m128i*> (&wind_strength_frequency_val);
+			}
+			break;
 
-		const auto& wetness = settings::g_world.m_weather;
-		if (wetness.wetness.value && hash == shader_hash::rain_exposure_to_sky) {
-			wetness_sky_val = _mm_set_ps1 (1.0f);
-			value = (__m128i*) & wetness_sky_val;
-		} else if (wetness.wetness.value && hash == shader_hash::rain_wetness) {
-			wetness_density_val = _mm_set_ps1 (wetness.wetness_density.value);
-			value = (__m128i*) & wetness_density_val;
-		} else if (wetness.wetness.value && hash == shader_hash::rain_timer) {
-			const auto seconds = static_cast<float> (GetTickCount64 ()) * 0.001f;
-			wetness_timer_val = _mm_set_ps1 (seconds * wetness.wetness_speed.value);
-			value = (__m128i*) & wetness_timer_val;
+		case 0x565EAF76: // bloom scale
+		case 0xBA98A9B0: // bloom threshold
+		case 0x2AE72B37: // bloom width
+		case 0xB692902E: // bloom strength
+		case 0x1313A424: // bloom skybox
+			if (settings::g_world.m_scene.bloom.value || settings::g_world.m_scene.overlight.value) {
+				auto t = settings::g_world.m_scene.bloom.value ? settings::g_world.m_scene.bloom_value.value : 0.0f;
+				auto sky_boost = 0.0f;
+				if (settings::g_world.m_scene.overlight.value) {
+					const auto ol_bloom = settings::g_world.m_scene.overlight_bloom.value;
+					sky_boost += ol_bloom * 1.5f;
+					t += ol_bloom * 0.5f;
+				}
+				if (hash == 0x565EAF76) {
+					bloom_scale_val = _mm_set_ps1 (0.3f + t * 1.2f + sky_boost * 0.5f);
+					value = (__m128i*) & bloom_scale_val;
+				} else if (hash == 0xBA98A9B0) {
+					bloom_threshold_val = _mm_set_ps1 (std::max(0.05f, 1.5f - t * 1.2f - sky_boost * 0.4f));
+					value = (__m128i*) & bloom_threshold_val;
+				} else if (hash == 0x2AE72B37) {
+					bloom_width_val = _mm_set_ps1 (0.5f + t * 1.5f + sky_boost * 0.3f);
+					value = (__m128i*) & bloom_width_val;
+				} else if (hash == 0xB692902E) {
+					bloom_strength_val = _mm_set_ps1 (0.2f + t * 0.6f + sky_boost * 0.5f);
+					value = (__m128i*) & bloom_strength_val;
+				} else if (hash == 0x1313A424) {
+					bloom_skybox_val = _mm_set_ps1 (0.1f + t * 0.4f + sky_boost * 1.2f);
+					value = (__m128i*) & bloom_skybox_val;
+				}
+			}
+			break;
+
+		case 0x24470A87: // gamma
+			if (settings::g_world.m_scene.gamma.value) {
+				gamma_val = _mm_set_ps1 (settings::g_world.m_scene.gamma_value);
+				value = (__m128i*) & gamma_val;
+			}
+			break;
+
+		case shader_hash::rain_exposure_to_sky:
+			if (settings::g_world.m_weather.wetness.value) {
+				wetness_sky_val = _mm_set_ps1 (1.0f);
+				value = (__m128i*) & wetness_sky_val;
+			}
+			break;
+
+		case shader_hash::rain_wetness:
+			if (settings::g_world.m_weather.wetness.value) {
+				wetness_density_val = _mm_set_ps1 (settings::g_world.m_weather.wetness_density.value);
+				value = (__m128i*) & wetness_density_val;
+			}
+			break;
+
+		case shader_hash::rain_timer:
+			if (settings::g_world.m_weather.wetness.value) {
+				const auto seconds = static_cast<float> (GetTickCount64 ()) * 0.001f;
+				wetness_timer_val = _mm_set_ps1 (seconds * settings::g_world.m_weather.wetness_speed.value);
+				value = (__m128i*) & wetness_timer_val;
+			}
+			break;
+
+		default:
+			break;
 		}
 	}
 

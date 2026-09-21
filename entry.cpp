@@ -250,6 +250,16 @@ namespace {
 		diag::write (diag::level::fatal, buf);
 		diag::record_crash (info, "unhandled exception");
 
+		if ( config::registry::g_io_mutex.try_lock() )
+		{
+			if ( config::registry::g_pending_save )
+			{
+				const auto name = *config::registry::g_pending_save;
+				config::registry::save( name );
+			}
+			config::registry::g_io_mutex.unlock();
+		}
+
 		const auto previous_filter =
 			g_previous_exception_filter.load (std::memory_order_acquire);
 		if (previous_filter &&

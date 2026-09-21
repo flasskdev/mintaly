@@ -135,10 +135,6 @@ namespace features::misc {
                 void on_boom( std::uintptr_t victim_pawn, int hitgroup, float damage, float hitchance, float inaccuracy, float spread, const math::vector3& aim_angle, const math::vector3& shoot_position, int tick, const std::array<systems::bones::data, 27>& skeleton, bool forced, std::uint32_t deferred_weapon = 0, int command_tick = 0 );
                 void observe_revolver_shot( );
 
-                [[nodiscard]] static std::vector<std::string> list_custom_sounds( );
-                [[nodiscard]] static std::string custom_sounds_directory_narrow( );
-                void play_custom_sound( std::string_view filename, float volume ) const;
-
         private:
                 struct shot_record
                 {
@@ -201,6 +197,8 @@ namespace features::misc {
                         float expected_damage{};
                         float hitchance{};
                         int bt_ticks{};
+                        std::array<systems::bones::data, 27> skeleton{};
+                        bool has_skeleton{ false };
                 };
 
                 struct hitmarker
@@ -256,7 +254,7 @@ namespace features::misc {
                 void render_hit_effect( xdraw::draw_list& draw_list, float time );
                 void render_bullet_impact_overlays( xdraw::draw_list& draw_list, float time );
 
-                void play_sound( settings::misc::impacts::sound_type type, float volume, std::string_view custom_file = {} );
+                void play_sound( settings::misc::impacts::sound_type type, float volume );
                 void play_hit_effect( std::uintptr_t victim_pawn );
                 void play_death_effect( std::uintptr_t victim_pawn );
                 void precache_death_effect( );
@@ -574,10 +572,12 @@ namespace features::misc {
         class vote_logs {
         public:
                 void on_vote_start( std::uintptr_t msg );
+                void on_vote_start_event( std::uintptr_t event );
                 void on_vote_pass( std::uintptr_t msg );
+                void on_vote_pass_event( std::uintptr_t event );
                 void on_vote_failed( std::uintptr_t msg );
-                void on_vote_cast( std::uintptr_t event );
                 void on_vote_failed_event( std::uintptr_t event );
+                void on_vote_cast( std::uintptr_t event );
                 void reset( );
 
         private:
@@ -585,6 +585,10 @@ namespace features::misc {
 
                 std::mutex m_mtx{};
                 bool m_vote_in_progress{ false };
+                bool m_is_kick_vote{ false };
+                std::string m_vote_reason{};
+                std::string m_vote_target_formatted{};
+                std::chrono::steady_clock::time_point m_last_finish_time{};
                 int m_yes_votes{ 0 };
                 int m_no_votes{ 0 };
                 std::unordered_set<std::uintptr_t> m_voted_players{};

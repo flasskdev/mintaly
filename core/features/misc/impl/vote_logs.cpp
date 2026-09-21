@@ -144,9 +144,26 @@ namespace features::misc {
 			const auto team_num = memory::safe_read<int>( controller + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) ).value_or( 0 );
 			switch ( team_num )
 			{
-			case 2:  return "#DEA54B"; // Terrorists
-			case 3:  return "#5B99D6"; // Counter-Terrorists
+			case 2:  return "#E9D18A"; // Terrorists 
+			case 3:  return "#B6D4EE"; // Counter-Terrorists
 			default: return "#888888";
+			}
+		}
+
+		inline const char* get_comp_teammate_color_hex( std::uintptr_t controller )
+		{
+			if ( !controller )
+				return "#888888";
+
+			const auto comp_color = memory::safe_read<int>( controller + SCHEMA( "CCSPlayerController", "m_iCompTeammateColor"_hash ) ).value_or( -1 );
+			switch ( comp_color )
+			{
+			case 0:  return "#5B99D6"; // Blue
+			case 1:  return "#4ADE80"; // Green
+			case 2:  return "#FACC15"; // Yellow
+			case 3:  return "#FB923C"; // Orange
+			case 4:  return "#C084FC"; // Purple
+			default: return get_team_color_hex( controller );
 			}
 		}
 
@@ -171,6 +188,7 @@ namespace features::misc {
 		std::unique_lock lock( this->m_mtx );
 
 		this->m_vote_in_progress = true;
+		this->m_vote_reason.clear( );
 		this->m_yes_votes = 0;
 		this->m_no_votes = 0;
 		this->m_voted_players.clear( );
@@ -182,15 +200,21 @@ namespace features::misc {
 		const auto caller_slot = memory::safe_read<int>( msg + 0x6c ).value_or( -1 );
 		std::string caller_name = "server";
 		const char* caller_team_color = "#888888";
+		const char* caller_comp_color = "#888888";
+		bool has_caller_player = false;
 
 		if ( caller_slot != 99 && caller_slot != 0x63 && caller_slot >= 0 && caller_slot < 64 )
 		{
 			const auto name = get_player_name_by_slot( caller_slot );
 			if ( !name.empty( ) )
+			{
 				caller_name = name;
+				has_caller_player = true;
+			}
 
 			const auto caller_controller = get_controller_by_slot( caller_slot );
 			caller_team_color = get_team_color_hex( caller_controller );
+			caller_comp_color = get_comp_teammate_color_hex( caller_controller );
 		}
 
 		const auto disp_str = read_protobuf_string( msg + 0x48 );
@@ -208,6 +232,7 @@ namespace features::misc {
 
 		if ( is_kick_vote )
 		{
+			this->m_is_kick_vote = true;
 			auto target_slot = memory::safe_read<int>( msg + 0x70 ).value_or( -1 );
 			if ( target_slot < 0 || target_slot >= 64 )
 			{
@@ -242,10 +267,42 @@ namespace features::misc {
 				target_name = other_team_str;
 			}
 
-			if ( !target_name.empty( ) )
-				reason = "kick " + target_name;
-			else
-				reason = "kick";
+			auto target_controller = get_controller_by_slot( target_slot );
+			if ( !target_controller && !target_name.empty( ) )
+			{
+				for ( const auto& player : systems::g_entities.get_by_type( systems::entities::type::player ) )
+				{
+					if ( player.ptr )
+					{
+						const auto name_ptr = memory::read<std::uintptr_t>( player.ptr + SCHEMA( "CCSPlayerController", "m_sSanitizedPlayerName"_hash ) );
+						if ( name_ptr && memory::read_string( name_ptr, 127 ) == target_name )
+						{
+							target_controller = player.ptr;
+							break;
+						}
+					}
+				}
+			}
+
+			const char* target_team_color = caller_team_color;
+			const char* target_comp_color = caller_team_color;
+			if ( target_controller )
+			{
+				target_team_color = get_team_color_hex( target_controller );
+				target_comp_color = get_comp_teammate_color_hex( target_controller );
+				if ( target_name.empty( ) )
+				{
+					const auto name_ptr = memory::read<std::uintptr_t>( target_controller + SCHEMA( "CCSPlayerController", "m_sSanitizedPlayerName"_hash ) );
+					if ( name_ptr )
+						target_name = memory::read_string( name_ptr, 127 );
+				}
+			}
+
+			if ( target_name.empty( ) )
+				target_name = "player";
+
+			this->m_vote_target_formatted = std::format( "<font color='{}'>\xE2\x97\x8F</font> <font color='{}'>{}</font>", target_comp_color, target_team_color, target_name );
+			reason = "kick " + target_name;
 		}
 		else if ( disp_str == "surrender" || disp_str == "#SFUI_vote_surrender" )
 		{
@@ -293,6 +350,7 @@ namespace features::misc {
 
 			if ( reason == "other" || reason == "kick player other" )
 			{
+				this->m_is_kick_vote = true;
 				auto target_slot = memory::safe_read<int>( msg + 0x70 ).value_or( -1 );
 				std::string target_name{};
 				if ( target_slot >= 0 && target_slot < 64 )
@@ -300,20 +358,74 @@ namespace features::misc {
 				if ( target_name.empty( ) && !details_str.empty( ) && details_str != "other" && !details_str.starts_with( "#" ) )
 					target_name = details_str;
 
-				if ( !target_name.empty( ) )
-					reason = "kick " + target_name;
-				else
-					reason = "kick";
+				auto target_controller = get_controller_by_slot( target_slot );
+				if ( !target_controller && !target_name.empty( ) )
+				{
+					for ( const auto& player : systems::g_entities.get_by_type( systems::entities::type::player ) )
+					{
+						if ( player.ptr )
+						{
+							const auto name_ptr = memory::read<std::uintptr_t>( player.ptr + SCHEMA( "CCSPlayerController", "m_sSanitizedPlayerName"_hash ) );
+							if ( name_ptr && memory::read_string( name_ptr, 127 ) == target_name )
+							{
+								target_controller = player.ptr;
+								break;
+							}
+						}
+					}
+				}
+
+				const char* target_team_color = caller_team_color;
+				const char* target_comp_color = caller_team_color;
+				if ( target_controller )
+				{
+					target_team_color = get_team_color_hex( target_controller );
+					target_comp_color = get_comp_teammate_color_hex( target_controller );
+					if ( target_name.empty( ) )
+					{
+						const auto name_ptr = memory::read<std::uintptr_t>( target_controller + SCHEMA( "CCSPlayerController", "m_sSanitizedPlayerName"_hash ) );
+						if ( name_ptr )
+							target_name = memory::read_string( name_ptr, 127 );
+					}
+				}
+
+				if ( target_name.empty( ) )
+					target_name = "player";
+
+				this->m_vote_target_formatted = std::format( "<font color='{}'>\xE2\x97\x8F</font> <font color='{}'>{}</font>", target_comp_color, target_team_color, target_name );
+				reason = "kick " + target_name;
 			}
 		}
+
+		this->m_vote_reason = reason;
 
 		const auto r = tokens::col_accent.r;
 		const auto g = tokens::col_accent.g;
 		const auto b = tokens::col_accent.b;
 
+		std::string caller_formatted{};
+		if ( has_caller_player )
+		{
+			caller_formatted = std::format( "<font color='{}'>\xE2\x97\x8F</font> <font color='{}'>{}</font>", caller_comp_color, caller_team_color, caller_name );
+		}
+		else
+		{
+			caller_formatted = std::format( "<font color='{}'>{}</font>", caller_team_color, caller_name );
+		}
+
+		std::string action_formatted{};
+		if ( this->m_is_kick_vote && !this->m_vote_target_formatted.empty( ) )
+		{
+			action_formatted = std::format( "<font color='#FFFFFF'>start vote to kick</font> {}", this->m_vote_target_formatted );
+		}
+		else
+		{
+			action_formatted = std::format( "<font color='#FFFFFF'>start vote for {}</font>", reason );
+		}
+
 		const auto formatted = std::format(
-			"<font color='#{:02X}{:02X}{:02X}'>[<b> mintaly </b>]</font> <font color='#888888'>:</font> <font color='{}'>{}</font> <font color='#38BDF8'>start vote for {}</font>",
-			r, g, b, caller_team_color, caller_name, reason
+			"<font color='#{:02X}{:02X}{:02X}'>[<b> mintaly </b>]</font> <font color='#888888'>:</font> {} {}",
+			r, g, b, caller_formatted, action_formatted
 		);
 
 		detail::chat_print_raw( formatted.c_str( ) );
@@ -386,6 +498,7 @@ namespace features::misc {
 		}
 
 		const auto team_color = get_team_color_hex( controller );
+		const auto comp_color = get_comp_teammate_color_hex( controller );
 
 		const auto r = tokens::col_accent.r;
 		const auto g = tokens::col_accent.g;
@@ -395,8 +508,8 @@ namespace features::misc {
 		{
 			this->m_yes_votes++;
 			const auto formatted = std::format(
-				"<font color='#{:02X}{:02X}{:02X}'>[<b> mintaly </b>]</font> <font color='#888888'>:</font> <font color='{}'>\xE2\x97\x8F {}</font> <font color='#4ADE80'>vote yes</font>",
-				r, g, b, team_color, player_name
+				"<font color='#{:02X}{:02X}{:02X}'>[<b> mintaly </b>]</font> <font color='#888888'>:</font> <font color='{}'>\xE2\x97\x8F</font> <font color='{}'>{}</font> <font color='#4ADE80'>vote yes</font>",
+				r, g, b, comp_color, team_color, player_name
 			);
 			detail::chat_print_raw( formatted.c_str( ) );
 		}
@@ -404,14 +517,19 @@ namespace features::misc {
 		{
 			this->m_no_votes++;
 			const auto formatted = std::format(
-				"<font color='#{:02X}{:02X}{:02X}'>[<b> mintaly </b>]</font> <font color='#888888'>:</font> <font color='{}'>\xE2\x97\x8F {}</font> <font color='#FF5C80'>vote no</font>",
-				r, g, b, team_color, player_name
+				"<font color='#{:02X}{:02X}{:02X}'>[<b> mintaly </b>]</font> <font color='#888888'>:</font> <font color='{}'>\xE2\x97\x8F</font> <font color='{}'>{}</font> <font color='#FF5C80'>vote no</font>",
+				r, g, b, comp_color, team_color, player_name
 			);
 			detail::chat_print_raw( formatted.c_str( ) );
 		}
 	}
 
 	void vote_logs::on_vote_pass( std::uintptr_t msg )
+	{
+		this->on_vote_finish( true );
+	}
+
+	void vote_logs::on_vote_pass_event( std::uintptr_t event )
 	{
 		this->on_vote_finish( true );
 	}
@@ -426,14 +544,130 @@ namespace features::misc {
 		this->on_vote_finish( false );
 	}
 
+	void vote_logs::on_vote_start_event( std::uintptr_t event )
+	{
+		if ( !event || !settings::g_misc.m_impacts.vote_log.value )
+			return;
+
+		std::unique_lock lock( this->m_mtx );
+		if ( this->m_vote_in_progress )
+			return;
+
+		this->m_vote_in_progress = true;
+		this->m_is_kick_vote = false;
+		this->m_vote_reason.clear( );
+		this->m_vote_target_formatted.clear( );
+		this->m_yes_votes = 0;
+		this->m_no_votes = 0;
+		this->m_voted_players.clear( );
+		this->m_voted_names.clear( );
+
+		const auto issue = memory::call<const char*>( PATTERN( patterns::game_event_get_string ), event, "issue", "" );
+		const auto param1 = memory::call<const char*>( PATTERN( patterns::game_event_get_string ), event, "param1", "" );
+		const auto initiator = memory::call<int>( PATTERN( patterns::game_event_get_int ), event, "initiator", -1 );
+
+		std::string caller_name = "server";
+		const char* caller_team_color = "#888888";
+		const char* caller_comp_color = "#888888";
+		bool has_caller_player = false;
+
+		std::uintptr_t caller_controller = 0;
+		if ( initiator >= 0 && initiator < 64 )
+			caller_controller = get_controller_by_slot( initiator );
+		if ( !caller_controller && initiator > 0 )
+			caller_controller = systems::g_entities.get_by_index( initiator );
+
+		if ( caller_controller )
+		{
+			const auto name_ptr = memory::read<std::uintptr_t>( caller_controller + SCHEMA( "CCSPlayerController", "m_sSanitizedPlayerName"_hash ) );
+			if ( name_ptr )
+			{
+				const auto name = memory::read_string( name_ptr, 127 );
+				if ( !name.empty( ) )
+				{
+					caller_name = name;
+					has_caller_player = true;
+				}
+			}
+			caller_team_color = get_team_color_hex( caller_controller );
+			caller_comp_color = get_comp_teammate_color_hex( caller_controller );
+		}
+
+		std::string issue_str = issue ? issue : "";
+		std::string param1_str = param1 ? param1 : "";
+		if ( issue_str.find( "kick" ) != std::string::npos || issue_str == "#SFUI_vote_kick" )
+		{
+			this->m_is_kick_vote = true;
+			std::string target_name = param1_str;
+			std::uintptr_t target_controller = 0;
+			if ( !target_name.empty( ) )
+			{
+				for ( const auto& player : systems::g_entities.get_by_type( systems::entities::type::player ) )
+				{
+					if ( player.ptr )
+					{
+						const auto name_ptr = memory::read<std::uintptr_t>( player.ptr + SCHEMA( "CCSPlayerController", "m_sSanitizedPlayerName"_hash ) );
+						if ( name_ptr && memory::read_string( name_ptr, 127 ) == target_name )
+						{
+							target_controller = player.ptr;
+							break;
+						}
+					}
+				}
+			}
+			const char* target_team_color = caller_team_color;
+			const char* target_comp_color = caller_team_color;
+			if ( target_controller )
+			{
+				target_team_color = get_team_color_hex( target_controller );
+				target_comp_color = get_comp_teammate_color_hex( target_controller );
+			}
+			if ( target_name.empty( ) ) target_name = "player";
+			this->m_vote_target_formatted = std::format( "<font color='{}'>\xE2\x97\x8F</font> <font color='{}'>{}</font>", target_comp_color, target_team_color, target_name );
+			this->m_vote_reason = "kick " + target_name;
+		}
+		else if ( !issue_str.empty( ) )
+		{
+			this->m_vote_reason = issue_str;
+			if ( this->m_vote_reason.starts_with( "#SFUI_vote_" ) )
+				this->m_vote_reason.erase( 0, 11 );
+			std::ranges::replace( this->m_vote_reason, '_', ' ' );
+		}
+
+		const auto r = tokens::col_accent.r;
+		const auto g = tokens::col_accent.g;
+		const auto b = tokens::col_accent.b;
+
+		std::string caller_formatted{};
+		if ( has_caller_player )
+			caller_formatted = std::format( "<font color='{}'>\xE2\x97\x8F</font> <font color='{}'>{}</font>", caller_comp_color, caller_team_color, caller_name );
+		else
+			caller_formatted = std::format( "<font color='{}'>{}</font>", caller_team_color, caller_name );
+
+		std::string action_formatted{};
+		if ( this->m_is_kick_vote && !this->m_vote_target_formatted.empty( ) )
+			action_formatted = std::format( "<font color='#FFFFFF'>start vote to kick</font> {}", this->m_vote_target_formatted );
+		else
+			action_formatted = std::format( "<font color='#FFFFFF'>start vote for {}</font>", this->m_vote_reason );
+
+		const auto formatted = std::format(
+			"<font color='#{:02X}{:02X}{:02X}'>[<b> mintaly </b>]</font> <font color='#888888'>:</font> {} {}",
+			r, g, b, caller_formatted, action_formatted
+		);
+		detail::chat_print_raw( formatted.c_str( ) );
+	}
+
 	void vote_logs::on_vote_finish( bool passed )
 	{
 		std::unique_lock lock( this->m_mtx );
 
-		if ( !this->m_vote_in_progress && this->m_yes_votes == 0 && this->m_no_votes == 0 )
+		const auto now = std::chrono::steady_clock::now( );
+		const auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>( now - this->m_last_finish_time ).count( );
+		if ( elapsed_ms < 1500 )
 		{
 			return;
 		}
+		this->m_last_finish_time = now;
 
 		if ( settings::g_misc.m_impacts.vote_log.value )
 		{
@@ -442,18 +676,37 @@ namespace features::misc {
 			const auto b = tokens::col_accent.b;
 
 			const auto status_color = passed ? "#4ADE80" : "#FF5C80";
-			const auto status_text = passed ? "vote passed" : "vote failed";
 			const auto status_icon = passed ? "\xE2\x9C\x93" : "\xE2\x9C\x97";
 
+			std::string status_body{};
+			if ( this->m_is_kick_vote && !this->m_vote_target_formatted.empty( ) )
+			{
+				status_body = std::format( "<font color='{}'>vote to kick</font> {} <font color='{}'>{} {}</font>",
+					status_color, this->m_vote_target_formatted, status_color, passed ? "passed" : "failed", status_icon );
+			}
+			else if ( !this->m_vote_reason.empty( ) && this->m_vote_reason != "unknown" )
+			{
+				status_body = std::format( "<font color='{}'>vote for {} {} {}</font>",
+					status_color, this->m_vote_reason, passed ? "passed" : "failed", status_icon );
+			}
+			else
+			{
+				status_body = std::format( "<font color='{}'>vote {} {}</font>",
+					status_color, passed ? "passed" : "failed", status_icon );
+			}
+
 			const auto formatted = std::format(
-				"<font color='#{:02X}{:02X}{:02X}'>[<b> mintaly </b>]</font> <font color='#888888'>:</font> <font color='{}'>{} {}</font> <font color='#888888'>(</font><font color='#4ADE80'>{} yes</font> <font color='#888888'>/</font> <font color='#FF5C80'>{} no</font><font color='#888888'>)</font>",
-				r, g, b, status_color, status_text, status_icon, this->m_yes_votes, this->m_no_votes
+				"<font color='#{:02X}{:02X}{:02X}'>[<b> mintaly </b>]</font> <font color='#888888'>:</font> {}",
+				r, g, b, status_body
 			);
 
 			detail::chat_print_raw( formatted.c_str( ) );
 		}
 
 		this->m_vote_in_progress = false;
+		this->m_is_kick_vote = false;
+		this->m_vote_reason.clear( );
+		this->m_vote_target_formatted.clear( );
 		this->m_yes_votes = 0;
 		this->m_no_votes = 0;
 		this->m_voted_players.clear( );
@@ -464,6 +717,9 @@ namespace features::misc {
 	{
 		std::unique_lock lock( this->m_mtx );
 		this->m_vote_in_progress = false;
+		this->m_is_kick_vote = false;
+		this->m_vote_reason.clear( );
+		this->m_vote_target_formatted.clear( );
 		this->m_yes_votes = 0;
 		this->m_no_votes = 0;
 		this->m_voted_players.clear( );
