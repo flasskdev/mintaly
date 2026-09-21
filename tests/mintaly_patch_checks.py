@@ -23,24 +23,22 @@ def reference_solve(target, inherited, speed):
     return [(d*component-p)/speed for d,p in zip(direction,perpendicular)], forward_speed
 
 class Wiring(unittest.TestCase):
-    def test_save_enabled_without_selection(self):
+    def test_standalone_skin_profiles_are_removed(self):
         s = source('core/rendering/impl/menu/skin_workspace.hpp')
-        button = s[s.index('profiles.ready() ? "Save"'):s.index('static int editing_profile')]
-        self.assertNotIn('profiles.selected >= 0', button)
-        self.assertIn('{ create(); return; }', s)
+        for removed in ('profile_store', 'profile_popup', 'profiles.json', 'Choose config', 'Create config'):
+            self.assertNotIn(removed, s)
+        self.assertNotIn('skin_workspace::profiles', source('core/rendering/impl/menu/menu.skins.cpp'))
 
-    def test_profile_selection_is_persisted(self):
-        s = source('core/rendering/impl/menu/skin_workspace.hpp')
-        self.assertIn('{"selected", active}', s)
-        self.assertIn('j.value("selected", -1)', s)
-        self.assertIn('persist(next, selected)', s)
-        self.assertIn('baseline_', s)
+    def test_cosmetics_still_belong_to_global_cfg(self):
+        s = source('core/settings.hpp')
+        for name in ('applied skins', 'agents', 'custom agents', 'music'):
+            self.assertIn('make_key("changer", "' + name + '")', s)
+        self.assertIn('Saved with the main config', source('core/rendering/impl/menu/skin_workspace.hpp'))
 
-    def test_profile_writes_are_atomic_and_backed_up(self):
-        s = source('core/rendering/impl/menu/skin_workspace.hpp')
-        self.assertIn('CopyFileW', s)
+    def test_main_cfg_writes_remain_atomic(self):
+        s = source('external/config.hpp')
         self.assertIn('MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH', s)
-        self.assertIn('m_closed = profiles.create()', s)
+        self.assertIn('g_active_config = saved_name;', s)
 
     def test_super_toss_only_in_main(self):
         s = source('core/rendering/impl/menu/menu.misc.cpp')

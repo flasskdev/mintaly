@@ -345,6 +345,7 @@ namespace xui {
 		[[nodiscard]] std::size_t count( );
 
 		void clear_all( );
+		void reset_runtime( );
 
 		[[nodiscard]] std::uintptr_t listening_id( );
 
@@ -367,18 +368,21 @@ namespace xui {
 		static constexpr std::size_t k_max_binds = 5;
 		void* ptr{ nullptr };
 		std::uintptr_t id{ 0 };
+		std::uint32_t config_key{ 0 };
 		std::string label{};
 		std::string fmt{ "%d" };
 		float v_min{ 0.0f };
 		float v_max{ 100.0f };
 		bool is_integral{ true };
-		float base_value{ 0.0f };
+		double base_value{ 0.0 };
 		bool has_base_value{ false };
 		std::size_t count{ 0 };
 		slider_bind binds[ k_max_binds ]{};
 	};
 
 	namespace slider_binds {
+
+		void register_field( void* ptr, std::uint32_t key, bool is_integral );
 
 		slider_bind_entry* get_or_create( void* ptr, std::uintptr_t id, std::string_view label, float v_min, float v_max, bool is_integral, std::string_view fmt );
 		[[nodiscard]] slider_bind_entry* find_by_ptr( void* ptr );

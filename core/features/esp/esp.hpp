@@ -1,5 +1,8 @@
 #pragma once
 
+#include <chrono>
+#include <mutex>
+
 namespace features::esp {
 
 	namespace player {
@@ -38,39 +41,35 @@ namespace features::esp {
 
 			class onshot {
 			public:
-				void push (std::uintptr_t pawn, const systems::bones::data* bones = nullptr, int bone_count = 0);
+				void push (std::uintptr_t pawn);
 				void update ();
 				void shutdown (bool destroy_objects = true);
 
-				[[nodiscard]] bool has_active (std::uintptr_t pawn = 0) const;
+				[[nodiscard]] bool has_active (std::uintptr_t pawn) const;
 				[[nodiscard]] bool is_active (std::uintptr_t scene_object) const;
-				[[nodiscard]] std::uintptr_t get_scene_object (std::uintptr_t pawn = 0) const;
-				[[nodiscard]] float get_alpha (std::uintptr_t scene_object) const;
-
-				template< typename F >
-				void render_for_entity( std::uintptr_t entity, std::uintptr_t ragdoll_pawn, std::uintptr_t model_handle, std::uintptr_t primitive_buffer, void( __fastcall* original_fn )( std::uintptr_t, std::uintptr_t, std::uintptr_t, std::uintptr_t ), std::uintptr_t a1, std::uintptr_t scene_view, F&& apply_config_fn );
+				[[nodiscard]] std::uintptr_t get_scene_object (std::uintptr_t pawn) const;
+				[[nodiscard]] float get_alpha (std::uintptr_t pawn) const;
+                [[nodiscard]] std::uintptr_t get_pawn(std::uintptr_t scene_object) const;
 
 			private:
-				struct pending_entry {
-					std::uintptr_t pawn{};
-					std::uintptr_t model_handle{};
-					std::uintptr_t world_group_handle{};
-					std::uint64_t flags{};
-					__m128 node_to_world[ 2 ]{};
-					std::array<systems::bones::data, 128> bones{};
-					int bone_count{};
-				};
+                using clock = std::chrono::steady_clock;
+                struct pending_entry {
+                    std::array<systems::bones::data, 27> bones{};
+                    int bone_count{};
+                    std::uint32_t pawn_handle{};
+                    clock::time_point hit_time{};
+                    float duration{};
+                };
+                struct hit_entry : backtrack::object {
+                    std::uint32_t pawn_handle{};
+                    clock::time_point hit_time{};
+                    float duration{};
+                };
+                // Event callbacks only queue snapshots. Engine mesh work stays at frame stage.
+                mutable std::recursive_mutex m_mutex;
+                std::unordered_map<std::uintptr_t, pending_entry> m_pending{};
+                std::unordered_map<std::uintptr_t, hit_entry> m_entries{};
 
-				struct active_entry {
-					std::uintptr_t scene_object{};
-					std::uintptr_t pawn{};
-					std::uintptr_t model_handle{};
-					float spawn_time{};
-				};
-
-				mutable std::mutex m_mtx{};
-				std::vector<pending_entry> m_pending{};
-				std::vector<active_entry> m_entries{};
 			};
 
 			[[nodiscard]] onshot& os () { return this->m_onshot; }

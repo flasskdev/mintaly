@@ -1954,7 +1954,6 @@ namespace rendering {
 	{
 		skin_workspace::hover = {};
 		skin_workspace::dialog_busy = detail::s_dialog_active.load();
-		skin_workspace::profiles.load();
 		skin_workspace::items.refresh();
 		const int previous_team = skin_workspace::team;
 		this->draw_skins_browser(group_w);

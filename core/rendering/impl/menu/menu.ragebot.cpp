@@ -170,29 +170,6 @@ namespace rendering {
 			{
 				auto& ow = rb.weapons[ menu_weapons::weapon_sel_rage.weapon_flat_idx ];
 
-				// If any keybind or slider bind was set on this weapon, auto-enable override_group
-				if ( !ow.override_group.value )
-				{
-					bool has_bind = false;
-					for ( const auto s : { &ow.cfg.silent, &ow.cfg.no_spread, &ow.cfg.body_aim, &ow.cfg.force_shot, &ow.cfg.force_shot_air, &ow.cfg.autostop, &ow.cfg.min_damage_override, &ow.cfg.hitchance_override, &ow.cfg.dynamic_pointscale, &ow.cfg.debug_multipoints } )
-					{
-						if ( s->bind.key != 0 ) { has_bind = true; break; }
-					}
-					if ( !has_bind )
-					{
-						for ( const auto ptr : { ( void* )&ow.cfg.hitchance.value, ( void* )&ow.cfg.min_damage.value, ( void* )&ow.cfg.max_fov.value, ( void* )&ow.cfg.pointscale.value } )
-						{
-							if ( auto* sb = xui::slider_binds::find_by_ptr( ptr ) )
-							{
-								if ( sb->count > 0 ) { has_bind = true; break; }
-							}
-						}
-					}
-					if ( has_bind )
-					{
-						ow.override_group.value = true;
-					}
-				}
 
 				xui::layout::spacing( 2.0f );
 				xui::toggle( "Custom Weapon Settings", ow.override_group );

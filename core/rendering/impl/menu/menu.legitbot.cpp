@@ -89,7 +89,6 @@ namespace rendering {
 						ow.override_group.value = true;
 					}
 				}
-
 				xui::layout::spacing( 2.0f );
 				xui::toggle( "Custom Weapon Settings", ow.override_group );
 				if ( !ow.override_group.value )

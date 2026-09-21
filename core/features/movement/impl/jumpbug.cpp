@@ -86,7 +86,7 @@ namespace features::movement {
                 pre.networked_velocity.z, static_cast<int>(pre.ducked), pre.duck_amount,
                 pre.collision_maxs.z - pre.collision_mins.z, when, probe_calls,
                 probe_fraction, static_cast<int>(probe_solid), support_fraction,
-                static_cast<int>(support_solid), static_cast<int>(settings::g_movement.jumpbug_include_jump_steps.value));
+                static_cast<int>(support_solid), 1);
 #else
             (void)reason; (void)when;
 #endif
@@ -106,7 +106,6 @@ namespace features::movement {
         }
         // Prepare the crouched hull early. Waiting until damage speed to crouch
         // would leave too little time for the duck transition near the floor.
-        if (!bound && pre.networked_velocity.z > -200.0f) { release_owned(); return; }
         const auto movement = memory::read<std::uintptr_t>(local.pawn + SCHEMA("C_BasePlayerPawn", "m_pMovementServices"_hash));
         if (!moves || !movement || !PATTERN(patterns::trace_hull) || !PATTERN(patterns::trace_filter_set_collision)) { report("missing_trace_dependency"); release_owned(); return; }
         const auto pawn = memory::safe_read<std::uintptr_t>(movement + 56).value_or(0);
@@ -130,7 +129,7 @@ namespace features::movement {
         const auto travel = velocity * cstypes::tick_interval;
         const auto filter = systems::g_tracing.make_player_movement_filter(local.pawn, mask, 11);
         std::optional<float> release;
-        const bool include_jump = settings::g_movement.jumpbug_include_jump_steps.value;
+        const bool include_jump = true; // A jumpbug needs the landing jump edge, including on blank/legacy CFGs.
         // Keep crouching until the standing feet enter the ground categorization
         // window, instead of releasing at tick zero and landing normally.
         if (pre.ducked && pre.duck_amount > 0.0f && *expansion > 0.0f) {
@@ -139,7 +138,7 @@ namespace features::movement {
             standing_mins.z -= *expansion;
             standing_maxs.z += *expansion;
             auto probe_mins = standing_mins;
-            probe_mins.z -= 1.0f;
+            probe_mins.z -= 1.5f;
             const auto safe_at = [&](float t) {
                 const auto pos = pre.networked_origin + travel * t;
                 const auto clear = systems::g_tracing.trace_player_bbox(pos, pos,
@@ -153,7 +152,7 @@ namespace features::movement {
                 const auto crouched = systems::g_tracing.trace_player_bbox(pre.networked_origin, pos,
                     {mins, maxs}, filter, movement);
                 return !clear.all_solid && std::isfinite(clear.fraction) && clear.fraction == 1.0f &&
-                    !support.all_solid && std::isfinite(support.fraction) && support.fraction > 0.0f &&
+                    !support.all_solid && std::isfinite(support.fraction) && support.fraction >= 0.0f &&
                     support.fraction < 1.0f && finite(support.normal) && support.normal.z >= standable &&
                     !crouched.all_solid && std::isfinite(crouched.fraction) && crouched.fraction == 1.0f;
             };

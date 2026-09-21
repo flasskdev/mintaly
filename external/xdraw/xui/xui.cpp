@@ -6,6 +6,8 @@
 #include <chrono>
 #include <cstdio>
 #include <mutex>
+#include <limits>
+#include <utility>
 
 namespace {
 
@@ -818,6 +820,7 @@ namespace xui {
 				std::unordered_map<int, bool> prev_key_state{};
 				std::uintptr_t listening_setting{};
 				std::uint64_t activation_counter{};
+				bool prime_keys{};
 			};
 
 			bind_registry& get_bind_registry( )
@@ -863,10 +866,15 @@ namespace xui {
 		void process( const input_state& input )
 		{
 			auto& reg = get_bind_registry( );
+            if ( std::exchange( reg.prime_keys, false ) )
+                for ( auto* s : reg.settings )
+                    if ( s && s->bind.key > 0 && s->bind.key < 256 )
+                        reg.prev_key_state[s->bind.key] = input.key_down(s->bind.key);
+
 
 			for ( auto* s : reg.settings )
 			{
-				if ( !s || s->bind.key == 0 )
+				if ( !s || s->bind.key <= 0 || s->bind.key >= 256 )
 				{
 					continue;
 				}
@@ -957,6 +965,28 @@ namespace xui {
 			reg.listening_setting = 0;
 			reg.activation_counter = 0;
 		}
+
+        void reset_runtime( )
+        {
+            // A popup opened in profile A must not edit profile B after Load.
+            overlays::close_all();
+            auto& context = ctx();
+            context.active_slider = 0;
+            context.active_slider_edit = 0;
+            auto& reg = get_bind_registry();
+            reg.prev_key_state.clear();
+            reg.listening_setting = 0;
+            reg.activation_counter = 0;
+            reg.prime_keys = true;
+            for (auto* s : reg.settings) {
+                if (!s) continue;
+                s->bind.active = s->bind.key != 0 && s->bind.mode == bind_mode::toggle && s->value;
+                if (s->bind.key != 0 && s->bind.mode != bind_mode::toggle) {
+                    s->value = s->bind.mode == bind_mode::hold_off;
+                    s->bind.active = s->value;
+                }
+            }
+        }
 
 		std::uintptr_t listening_id( )
 		{
@@ -4591,6 +4621,9 @@ namespace xui {
 		{
 			std::unordered_map<std::uintptr_t, std::unique_ptr<slider_bind_entry>> by_id{};
 			std::unordered_map<void*, slider_bind_entry*> by_ptr{};
+            std::unordered_map<void*, std::uint32_t> config_keys{};
+            std::unordered_map<std::uintptr_t, slider_bind_entry*> legacy_ids{};
+            bool prime_keys{};
 			bool prev_key_state[ 256 ]{};
 		};
 
@@ -4600,75 +4633,72 @@ namespace xui {
 			return s;
 		}
 
-		slider_bind_entry* get_or_create( void* ptr, std::uintptr_t id, std::string_view label, float v_min, float v_max, bool is_integral, std::string_view fmt )
-		{
-			auto& store = get_storage( );
+        // Registered numeric fields are identified by category/name, not UI layout
+        // or an address that changes across process launches.
+        static std::uintptr_t field_id(std::uint32_t key)
+        {
+            return static_cast<std::uintptr_t>(0x4346470000000000ull | key);
+        }
 
-			if ( ptr )
-			{
-				auto it_p = store.by_ptr.find( ptr );
-				if ( it_p != store.by_ptr.end( ) && it_p->second )
-				{
-					auto* e = it_p->second;
-					e->id = id;
-					if ( !label.empty( ) ) e->label = label;
-					e->v_min = v_min;
-					e->v_max = v_max;
-					e->is_integral = is_integral;
-					e->fmt = fmt;
-					if ( !e->has_base_value )
-					{
-						e->base_value = is_integral ? static_cast< float >( *static_cast< int* >( ptr ) ) : *static_cast< float* >( ptr );
-					}
-					return e;
-				}
-			}
+        slider_bind_entry* get_or_create(void* ptr, std::uintptr_t ui_id, std::string_view label,
+            float v_min, float v_max, bool is_integral, std::string_view fmt)
+        {
+            auto& store = get_storage();
+            const auto known = store.config_keys.find(ptr);
+            const bool persistent = known != store.config_keys.end();
+            const auto id = persistent ? field_id(known->second) : ui_id;
+            slider_bind_entry* entry = nullptr;
+            if (ptr) {
+                const auto found = store.by_ptr.find(ptr);
+                if (found != store.by_ptr.end()) entry = found->second;
+            }
+            if (!entry) {
+                auto& slot = store.by_id[id];
+                if (!slot) slot = std::make_unique<slider_bind_entry>();
+                entry = slot.get();
+                entry->id = id;
+            }
+            // Import old UI-ID-only configs lazily, once this particular control
+            // is drawn. Never transfer a bind between two live setting pointers.
+            if (persistent && ui_id != id) {
+                const auto old = store.by_id.find(ui_id);
+                if (old != store.by_id.end() && old->second &&
+                    old->second.get() != entry && !old->second->ptr) {
+                    if (!entry->count) {
+                        entry->count = old->second->count;
+                        std::copy_n(old->second->binds, entry->count, entry->binds);
+                    }
+                    old->second->count = 0;
+                }
+                auto [alias, inserted] = store.legacy_ids.try_emplace(ui_id, entry);
+                if (!inserted && alias->second != entry) alias->second = nullptr;
+            }
+            if (ptr) {
+                if (entry->ptr && entry->ptr != ptr) store.by_ptr.erase(entry->ptr);
+                entry->ptr = ptr;
+                store.by_ptr[ptr] = entry;
+                if (!entry->has_base_value)
+                    entry->base_value = is_integral ? static_cast<double>(*static_cast<int*>(ptr)) : *static_cast<float*>(ptr);
+            }
+            if (persistent) entry->config_key = known->second;
+            if (!label.empty()) entry->label = label;
+            entry->v_min = v_min;
+            entry->v_max = v_max;
+            entry->is_integral = is_integral;
+            entry->fmt = fmt;
+            return entry;
+        }
 
-			auto it_id = store.by_id.find( id );
-			if ( it_id != store.by_id.end( ) && it_id->second )
-			{
-				auto* e = it_id->second.get( );
-				if ( ptr )
-				{
-					e->ptr = ptr;
-					store.by_ptr[ ptr ] = e;
-					if ( !e->has_base_value )
-					{
-						e->base_value = is_integral ? static_cast< float >( *static_cast< int* >( ptr ) ) : *static_cast< float* >( ptr );
-					}
-				}
-				if ( !label.empty( ) ) e->label = label;
-				e->v_min = v_min;
-				e->v_max = v_max;
-				e->is_integral = is_integral;
-				e->fmt = fmt;
-				return e;
-			}
-
-			auto new_entry = std::make_unique<slider_bind_entry>( );
-			auto* p = new_entry.get( );
-			p->ptr = ptr;
-			p->id = id;
-			p->label = label;
-			p->fmt = fmt;
-			p->v_min = v_min;
-			p->v_max = v_max;
-			p->is_integral = is_integral;
-			p->count = 0;
-			p->has_base_value = false;
-			if ( ptr )
-			{
-				p->base_value = is_integral ? static_cast< float >( *static_cast< int* >( ptr ) ) : *static_cast< float* >( ptr );
-				store.by_ptr[ ptr ] = p;
-			}
-			else
-			{
-				p->base_value = v_min;
-			}
-
-			store.by_id[ id ] = std::move( new_entry );
-			return p;
-		}
+        void register_field(void* ptr, std::uint32_t key, bool is_integral)
+        {
+            if (!ptr) return;
+            auto& store = get_storage();
+            store.config_keys[ptr] = key;
+            get_or_create(ptr, field_id(key), {},
+                is_integral ? static_cast<float>(std::numeric_limits<int>::lowest()) : std::numeric_limits<float>::lowest(),
+                is_integral ? static_cast<float>(std::numeric_limits<int>::max()) : std::numeric_limits<float>::max(),
+                is_integral, is_integral ? "%d" : "%.2f");
+        }
 
 		slider_bind_entry* find_by_ptr( void* ptr )
 		{
@@ -4700,6 +4730,8 @@ namespace xui {
 		void process( const input_state& input )
 		{
 			auto& store = get_storage( );
+            if (std::exchange(store.prime_keys, false))
+                for (int key = 0; key < 256; ++key) store.prev_key_state[key] = input.key_down(key);
 			for ( auto& [id, entry_ptr] : store.by_id )
 			{
 				auto* entry = entry_ptr.get( );
@@ -4711,7 +4743,7 @@ namespace xui {
 				for ( std::size_t i = 0; i < entry->count; ++i )
 				{
 					auto& b = entry->binds[ i ];
-					if ( b.key == 0 )
+					if ( b.key <= 0 || b.key >= 256 )
 					{
 						b.active = false;
 						continue;
@@ -4754,15 +4786,19 @@ namespace xui {
 					if ( !entry->has_base_value )
 					{
 						entry->base_value = entry->is_integral
-							? static_cast< float >( *static_cast< int* >( entry->ptr ) )
+							? static_cast< double >( *static_cast< int* >( entry->ptr ) )
 							: *static_cast< float* >( entry->ptr );
 						entry->has_base_value = true;
 					}
 
-					const auto target_val = entry->binds[ active_idx ].value;
+                    const auto target_val = entry->binds[ active_idx ].value;
+                    if (!std::isfinite(target_val)) continue;
 					if ( entry->is_integral )
 					{
-						*static_cast< int* >( entry->ptr ) = static_cast< int >( std::roundf( target_val ) );
+						*static_cast<int*>(entry->ptr) = static_cast<int>(std::clamp(
+                            std::round(static_cast<double>(target_val)),
+                            static_cast<double>(std::numeric_limits<int>::lowest()),
+                            static_cast<double>(std::numeric_limits<int>::max())));
 					}
 					else
 					{
@@ -4773,7 +4809,7 @@ namespace xui {
 				{
 					if ( entry->is_integral )
 					{
-						*static_cast< int* >( entry->ptr ) = static_cast< int >( std::roundf( entry->base_value ) );
+						*static_cast< int* >( entry->ptr ) = static_cast< int >( std::round( entry->base_value ) );
 					}
 					else
 					{
@@ -4800,6 +4836,7 @@ namespace xui {
 
 				nlohmann::json item;
 				item[ "id" ] = entry->id;
+                if (entry->config_key) item["field"] = entry->config_key;
 				item[ "lbl" ] = entry->label;
 				auto b_arr = nlohmann::json::array( );
 				for ( std::size_t i = 0; i < entry->count; ++i )
@@ -4823,43 +4860,42 @@ namespace xui {
 			return arr.empty( ) ? std::string{} : arr.dump( );
 		}
 
-		void deserialize( std::string_view s )
-		{
-			if ( s.empty( ) ) return;
-			try
-			{
-				auto j = nlohmann::json::parse( s );
-				if ( !j.is_array( ) ) return;
-				for ( const auto& item : j )
-				{
-					if ( !item.is_object( ) || !item.contains( "id" ) || !item.contains( "b" ) ) continue;
-					const auto id = item[ "id" ].get< std::uintptr_t >( );
-					const auto label = item.value( "lbl", "" );
-					auto* entry = find_by_id( id );
-					if ( !entry )
-					{
-						entry = get_or_create( nullptr, id, label, 0.0f, 100.0f, true, "%d" );
-					}
-					if ( !entry ) continue;
-
-					entry->count = 0;
-					const auto& b_arr = item[ "b" ];
-					if ( b_arr.is_array( ) )
-					{
-						for ( const auto& b_item : b_arr )
-						{
-							if ( entry->count >= slider_bind_entry::k_max_binds ) break;
-							auto& b = entry->binds[ entry->count++ ];
-							b.key = b_item.value( "k", 0 );
-							b.mode = static_cast< bind_mode >( b_item.value( "m", 1 ) );
-							b.value = b_item.value( "v", 0.0f );
-							b.active = false;
-						}
-					}
-				}
-			}
-			catch ( ... ) {}
-		}
+        void deserialize(std::string_view s)
+        {
+            reset();
+            const auto document = nlohmann::json::parse(s, nullptr, false);
+            if (!document.is_array()) return;
+            auto& store = get_storage();
+            for (const auto& item : document) {
+                try {
+                    if (!item.is_object() || !item.contains("id") || !item.contains("b") || !item["b"].is_array()) continue;
+                    const auto id = item.contains("field") ? field_id(item.at("field").get<std::uint32_t>())
+                                                          : item.at("id").get<std::uintptr_t>();
+                    auto* entry = find_by_id(id);
+                    if (!item.contains("field")) {
+                        const auto alias = store.legacy_ids.find(id);
+                        if (alias != store.legacy_ids.end() && alias->second) entry = alias->second;
+                    }
+                    // Unknown canonical fields must not become orphaned UI binds.
+                    if (!entry && item.contains("field")) continue;
+                    if (!entry) entry = get_or_create(nullptr, id, item.value("lbl", ""), 0.0f, 100.0f, true, "%d");
+                    if (!entry) continue;
+                    entry->label = item.value("lbl", entry->label);
+                    entry->count = 0;
+                    for (const auto& source : item["b"]) {
+                        if (entry->count == slider_bind_entry::k_max_binds) break;
+                        if (!source.is_object()) continue;
+                        const auto key = source.value("k", 0);
+                        const auto mode = source.value("m", 1);
+                        const auto value = source.value("v", 0.0f);
+                        if (key <= 0 || key >= 256 || mode < 0 || mode > 2 || !std::isfinite(value)) continue;
+                        if (entry->is_integral && (static_cast<double>(value) < std::numeric_limits<int>::lowest() ||
+                            static_cast<double>(value) > std::numeric_limits<int>::max())) continue;
+                        entry->binds[entry->count++] = {key, static_cast<bind_mode>(mode), value, false};
+                    }
+                } catch (...) { /* A bad item must not discard unrelated binds. */ }
+            }
+        }
 
 		void reset( )
 		{
@@ -4871,14 +4907,24 @@ namespace xui {
 				if ( entry->has_base_value && entry->ptr )
 				{
 					if ( entry->is_integral )
-						*static_cast< int* >( entry->ptr ) = static_cast< int >( std::roundf( entry->base_value ) );
+						*static_cast< int* >( entry->ptr ) = static_cast< int >( std::round( entry->base_value ) );
 					else
 						*static_cast< float* >( entry->ptr ) = entry->base_value;
 					entry->has_base_value = false;
 				}
-				entry->count = 0;
-			}
-		}
+                entry->has_base_value = false;
+                entry->count = 0;
+                for (auto& bind : entry->binds) bind = {};
+                // Custom CFG fields may replace their maps/vectors immediately
+                // after this reset. Never retain their old element addresses.
+                if (entry->ptr && !store.config_keys.contains(entry->ptr)) {
+                    store.by_ptr.erase(entry->ptr);
+                    entry->ptr = nullptr;
+                }
+            }
+            std::fill(std::begin(store.prev_key_state), std::end(store.prev_key_state), false);
+            store.prime_keys = true;
+        }
 
 	} // namespace slider_binds
 
@@ -5602,7 +5648,7 @@ namespace xui {
 
 				if ( changed && bind_entry && !bind_entry->has_base_value )
 				{
-					bind_entry->base_value = static_cast< float >( v );
+					bind_entry->base_value = static_cast< double >( v );
 				}
 
 				bool bind_active = false;

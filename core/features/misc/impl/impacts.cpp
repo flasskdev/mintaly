@@ -273,6 +273,11 @@ namespace features::misc {
 			return;
 		}
 
+        // parse_event already validates the local attacker and enemy victim.
+        // A discharge or predicted shot is not evidence of a server-confirmed hit.
+        if (data.victim_pawn && data.damage > 0)
+            features::esp::player::g_chams.os().push(data.victim_pawn);
+
 		const auto& cfg = settings::g_misc.m_impacts;
 		const auto is_kill = data.health <= 0;
 
@@ -368,21 +373,6 @@ namespace features::misc {
 		if ( cfg.hit_log.value || cfg.console_log.value || cfg.chat_log.value )
 		{
 			this->add_hit_log( data );
-		}
-
-		// Trigger onshot chams after the hit is confirmed by the server.
-		auto victim_pawn = data.victim_pawn;
-		if ( !victim_pawn && data.victim )
-		{
-			const auto pawn_handle = memory::read<std::uint32_t>( data.victim + SCHEMA( "CBasePlayerController", "m_hPawn"_hash ) );
-			if ( pawn_handle )
-			{
-				victim_pawn = systems::g_entities.lookup( pawn_handle );
-			}
-		}
-		if ( victim_pawn )
-		{
-			features::esp::player::g_chams.os( ).push( victim_pawn );
 		}
 	}
 
@@ -875,8 +865,6 @@ namespace features::misc {
 		auto bt_ticks{ 0 };
 		std::string mismatch_reason{};
 		math::vector3 impact_pos{};
-		auto has_skeleton{ false };
-		std::array<systems::bones::data, 27> skeleton{};
 
 		{
 			std::unique_lock lock( this->m_mtx );
@@ -923,8 +911,6 @@ namespace features::misc {
 				expected_damage = matched_shot->damage;
 				hitchance = matched_shot->hitchance;
 				bt_ticks = matched_shot->bt_ticks;
-				skeleton = matched_shot->skeleton;
-				has_skeleton = true;
 				matched_shot->resolved = true;
 
 				if ( expected_hitgroup > 0 && hitgroup != expected_hitgroup )
@@ -969,9 +955,7 @@ namespace features::misc {
 			.weapon_type = weapon_type,
 			.expected_damage = expected_damage,
 			.hitchance = hitchance,
-			.bt_ticks = bt_ticks,
-			.skeleton = skeleton,
-			.has_skeleton = has_skeleton
+			.bt_ticks = bt_ticks
 		};
 	}
 

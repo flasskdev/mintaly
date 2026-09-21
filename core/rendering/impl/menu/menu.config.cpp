@@ -103,6 +103,7 @@ namespace rendering {
 
 		static inline void reset_defaults( )
 		{
+            xui::slider_binds::reset();
 			auto& reg = config::detail::get_registry( );
 
 			for ( auto& f : reg.fields )
@@ -116,6 +117,8 @@ namespace rendering {
 					config::serial::json_to_field( *def, f );
 				}
 			}
+
+			xui::binds::reset_runtime();
 
 			// Preserve captured originals so removed cosmetics can be restored on the game thread.
 			features::changer::g_guns.invalidate( );

@@ -13,12 +13,15 @@
 #include <array>
 #include <unordered_map>
 #include <mutex>
+#include <cmath>
+#include <utility>
 
 #include "nlohmann/json.hpp"
 #include "lz4/lz4.h"
 #include "xdraw/xui/xui.hpp"
 
 namespace config {
+
 	namespace registry { inline bool flush_pending_save(); }
 
 	enum class field_type : std::uint8_t
@@ -88,7 +91,11 @@ namespace config {
 
 		inline void register_field(field f)
 		{
-			get_registry().fields.push_back(f);
+            auto& fields = get_registry().fields;
+            if (std::any_of(fields.begin(), fields.end(), [&](const field& old) {
+                return old.ptr == f.ptr && old.key == f.key;
+            })) return;
+            fields.push_back(f);
 		}
 
 		inline void unregister_ptr(void* ptr)
@@ -295,19 +302,18 @@ namespace config {
 			return nlohmann::json{ { "k", b.key }, { "m", static_cast<int>(b.mode) } };
 		}
 
-		inline void json_to_bind(const nlohmann::json& j, xui::bind_info& b)
-		{
-			if (j.is_null())
-			{
-				b.key = 0;
-				b.mode = xui::bind_mode::toggle;
-				b.active = false;
-				return;
-			}
-
-			b.key = j.value("k", 0);
-			b.mode = static_cast<xui::bind_mode>(j.value("m", 0));
-		}
+        inline void json_to_bind(const nlohmann::json& j, xui::bind_info& b)
+        {
+            const auto excludes = b.excludes;
+            b = {};
+            b.excludes = excludes;
+            if (!j.is_object()) return;
+            const auto key = j.value("k", 0);
+            const auto mode = j.value("m", 0);
+            if (key <= 0 || key >= 256 || mode < 0 || mode > 2) return;
+            b.key = key;
+            b.mode = static_cast<xui::bind_mode>(mode);
+        }
 
 		inline nlohmann::json field_to_json(const field& f)
 		{
@@ -316,12 +322,22 @@ namespace config {
 			case field_type::setting:
 			{
 				const auto s = static_cast<const xui::setting*>(f.ptr);
-				return nlohmann::json{ { "v", s->value }, { "b", bind_to_json(s->bind) } };
+				// Hold state is input, not a persistent toggle. Do not save a
+                // key held during Save as the next profile's initial value.
+                const bool value = s->bind.key != 0 && s->bind.mode != xui::bind_mode::toggle
+                    ? s->bind.mode == xui::bind_mode::hold_off : s->value;
+                return nlohmann::json{ { "v", value }, { "b", bind_to_json(s->bind) } };
 			}
 			case field_type::bool_val:  return *static_cast<const bool*>(f.ptr);
-			case field_type::int_val:   return *static_cast<const int*>(f.ptr);
+            case field_type::int_val:
+                if (const auto* bind = xui::slider_binds::find_by_ptr(f.ptr); bind && bind->has_base_value)
+                    return static_cast<int>(std::round(bind->base_value));
+                return *static_cast<const int*>(f.ptr);
 			case field_type::uint8_val: return *static_cast<const std::uint8_t*>(f.ptr);
-			case field_type::float_val: return *static_cast<const float*>(f.ptr);
+            case field_type::float_val:
+                if (const auto* bind = xui::slider_binds::find_by_ptr(f.ptr); bind && bind->has_base_value)
+                    return bind->base_value;
+                return *static_cast<const float*>(f.ptr);
 			case field_type::color:
 			{
 				const auto& c = *static_cast<const xdraw::color*>(f.ptr);
@@ -366,6 +382,7 @@ namespace config {
 				case field_type::setting:
 				{
 					auto s = static_cast<xui::setting*>(f.ptr);
+                    json_to_bind(nullptr, s->bind);
 
 					if (j.is_object())
 					{
@@ -722,6 +739,7 @@ namespace config {
 
 	inline void apply_blank_profile()
 	{
+        xui::slider_binds::reset();
 		auto& reg = detail::get_registry();
 
 		for (auto& f : reg.fields)
@@ -774,11 +792,13 @@ namespace config {
 			}
 		}
 
-		xui::slider_binds::reset();
+		xui::binds::reset_runtime();
 	}
 
 	inline void initialize()
 	{
+        static bool initialized = false;
+        if (std::exchange(initialized, true)) return;
 		for (auto s : xui::binds::all())
 		{
 			if (!s || s->category.empty() || s->name.empty())
@@ -813,6 +833,9 @@ namespace config {
 		}
 
 		reg.defaults = std::move(fields_obj);
+        for (const auto& f : reg.fields)
+            if (f.type == field_type::int_val || f.type == field_type::float_val)
+                xui::slider_binds::register_field(f.ptr, f.key, f.type == field_type::int_val);
 	}
 
 	inline nlohmann::json to_json()
@@ -851,6 +874,8 @@ namespace config {
 		}
 
 		auto& reg = detail::get_registry();
+
+		xui::slider_binds::reset();
 
 		std::unordered_map<std::uint32_t, field*> lookup;
 		lookup.reserve(reg.fields.size());
@@ -944,6 +969,7 @@ namespace config {
 			xui::slider_binds::reset();
 		}
 
+		xui::binds::reset_runtime();
 		return true;
 	}
 
@@ -999,6 +1025,8 @@ namespace config {
 		{
 			baseline = &reg.factory_defaults;
 		}
+
+		xui::slider_binds::reset();
 
 		std::unordered_map<std::uint32_t, field*> lookup;
 		lookup.reserve(reg.fields.size());
@@ -1081,6 +1109,7 @@ namespace config {
 			xui::slider_binds::deserialize(root["sb"].get<std::string>());
 		}
 
+		xui::binds::reset_runtime();
 		return true;
 	}
 
@@ -1210,12 +1239,8 @@ namespace config {
 
 		inline bool remove(std::wstring_view name)
 		{
-			std::lock_guard lock(g_io_mutex);
 			std::error_code ec;
-			const bool removed = std::filesystem::remove(get_file_path(name), ec);
-			if (removed && g_pending_save && get_file_path(*g_pending_save) == get_file_path(name))
-				g_pending_save.reset(); // Do not recreate an explicitly deleted profile.
-			return removed;
+			return std::filesystem::remove(get_file_path(name), ec);
 		}
 
 		inline std::vector<std::wstring> list()

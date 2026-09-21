@@ -628,6 +628,8 @@ namespace hooks {
 		// engine during render-start stage 12.
 		if ( stage == 12 )
 		{
+            // Expire hit ghosts every render frame, not only on network updates.
+            features::esp::player::g_chams.os().update();
 			systems::g_view.update_matrix( );
 			systems::g_frame_data.update( );
 			features::world::g_weather.on_frame_stage_notify( );
@@ -647,7 +649,6 @@ namespace hooks {
 				// so the simulation timestamp, world origin and evaluated bones agree.
 				features::combat::g_shared.lc( ).run( );
 				features::esp::player::g_chams.bt( ).update( );
-				features::esp::player::g_chams.os ().update ();
 
 				features::misc::g_other.do_kill_feed_preservation( );
 			}
@@ -1139,10 +1140,15 @@ namespace hooks {
 				return;
 			}
 
-			if ( features::esp::player::g_chams.os( ).is_active( scene_object ) )
-			{
-				return;
-			}
+            if (features::esp::player::g_chams.os().is_active(scene_object))
+            {
+                if (const auto pawn = features::esp::player::g_chams.os().get_pawn(scene_object))
+                    features::esp::player::g_chams.on_generate_primitives(pawn, "C_CSPlayerPawn"_hash,
+                        scene_object, primitive_buffer,
+                        m_generate_primitives.original<void(__fastcall*)(std::uintptr_t, std::uintptr_t, std::uintptr_t, std::uintptr_t)>(),
+                        thisptr, scene_view);
+                return;
+            }
 
 			const auto owner_handle = memory::safe_read<std::uint32_t>( scene_object + 0xc0 ).value_or( 0 );
 			if ( owner_handle )
@@ -1544,9 +1550,12 @@ namespace hooks {
 		}
 		m_was_connected = false;
 
-		diag::exception_scope exception_scope{ "level shutdown: invalidate snapshots" };
 		if ( !config::registry::flush_pending_save() )
-			diag::write( diag::level::warning, "StatTrak: level shutdown config save failed" );
+		{
+			diag::write( diag::level::warning, "failed to flush deferred config save on level shutdown" );
+		}
+
+		diag::exception_scope exception_scope{ "level shutdown: invalidate snapshots" };
 		diag::step( release_engine_resources
 			? "level shutdown: pre-engine cleanup"
 			: "level shutdown: cache-only cleanup" );

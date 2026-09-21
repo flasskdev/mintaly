@@ -1012,7 +1012,7 @@ namespace settings {
                                 chams_config local_ragdoll{};
                                 chams_config backtrack{};
                                 chams_config onshot{};
-                                config::val<float> onshot_fade_time{ 0.8f, "chams onshot", "fade time" };
+                                config::val<float> onshot_fade_time{ 0.25f, "chams onshot", "fade time" };
 
                                 chams()
                                 {
@@ -2045,7 +2045,7 @@ namespace settings {
                 config::val<int> jumpbug_mode{ 0, "movement", "edgebug mode" };
                 /// 0: auto / dynamic (simulates ahead up to 64 ticks), 1..64: custom tick count
                 config::val<int> jumpbug_passes{ 0, "movement", "edgebug passes" };
-                /// Optional timed landing jump; not a guarantee of avoiding server fall damage
+                /// Legacy compatibility only: jumpbug now always emits the timed landing jump
                 xui::setting jumpbug_include_jump_steps{ true,{}, "edgebug jump steps", "movement" };
                 xui::setting slowwalk{ false,{}, "slowwalk", "movement" };
                 config::val<float> slowwalk_speed{ 33.0f, "movement", "slowwalk speed" };
@@ -2335,7 +2335,6 @@ namespace settings {
                 // Active resolved scene & weather (read directly by scene.cpp, weather.cpp, hooks, etc.)
                 scene m_scene{ "active_scene" };
                 weather m_weather{ "active_weather" };
-
                 std::string m_last_map{ "___unset___" };
                 const map_preset* m_last_source{ nullptr };
 
