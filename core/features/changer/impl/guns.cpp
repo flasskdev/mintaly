@@ -13,10 +13,32 @@
 #include <type_traits>
 #include <core/features/changer/skin_sync.hpp>
 #include <unordered_set>
+#include <unordered_map>
+#include <string_view>
+#include <chrono>
+#include <utilities/diag.hpp>
 namespace features::changer {
 
 	namespace {
 		constexpr std::uint64_t gun_faux_item_id = 0xf000000000000010ull;
+
+		void report_skin_failure( std::string_view reason, std::uint32_t handle, int paint )
+		{
+			// Game-thread only; bounded by the fixed reason strings below, not by entities.
+			static std::unordered_map<std::string_view, std::chrono::steady_clock::time_point> next_report;
+			const auto now = std::chrono::steady_clock::now( );
+			auto& next = next_report[reason];
+			if ( now < next ) return;
+			next = now + std::chrono::seconds( 5 );
+			diag::writef( diag::level::warning,
+				"[skin-apply] reason=%s handle=%u paint=%d hud_weapon_offset=%u attribute_list=%u attribute_vector=%u attribute_index=%u attribute_value=%u",
+				reason.data( ), static_cast<unsigned>( handle ), paint,
+				static_cast<unsigned>( hud_weapon::weapon_handle_offset( ) ),
+				static_cast<unsigned>( SCHEMA( "C_EconItemView", "m_AttributeList"_hash ) ),
+				static_cast<unsigned>( SCHEMA( "CAttributeList", "m_Attributes"_hash ) ),
+				static_cast<unsigned>( SCHEMA( "CEconItemAttribute", "m_iAttributeDefinitionIndex"_hash ) ),
+				static_cast<unsigned>( SCHEMA( "CEconItemAttribute", "m_flValue"_hash ) ) );
+		}
 
 		cosmetic_cache::identity visual_identity( std::uintptr_t weapon )
 		{
@@ -257,6 +279,7 @@ namespace features::changer {
 						const auto subclass_ptr = memory::safe_read<std::uintptr_t>( weapon + SCHEMA( "C_BaseEntity", "m_nSubclassID"_hash ) + 0x8 ).value_or( 0 );
 						if ( !subclass_ptr )
 						{
+							report_skin_failure( "subclass-unavailable", handle, skin.paint_kit_id );
 							continue;
 						}
 
@@ -489,14 +512,18 @@ namespace features::changer {
 	bool guns::apply( std::uintptr_t weapon, std::uintptr_t iv, std::uint32_t handle, std::uint32_t active_handle, std::uintptr_t pawn, const settings::changer::applied_skin* skin, std::uint32_t account_id )
 	{
 		this->m_pending_hud_iv = 0;
+		const auto fail = [&]( const char* reason ) {
+			report_skin_failure( reason, handle, skin ? skin->paint_kit_id : 0 );
+			return false;
+		};
 		const auto soc_offset = SCHEMA( "C_EconItemView", "m_bDisallowSOC"_hash );
-		if ( !skin || !soc_offset || !cosmetic_attributes::available( ) ) return false;
-		if ( !PATTERN( patterns::weapon_update_skin ) || !PATTERN( patterns::weapon_update_composite_material ) ) return false;
-		if ( !memory::safe_read<std::uintptr_t>( weapon + SCHEMA( "C_BaseEntity", "m_pGameSceneNode"_hash ) ).value_or( 0 ) ) return false;
-		if ( pawn == systems::g_local.get( ).pawn && handle == active_handle && !this->find_hud_model_weapon( pawn ) )
-			return false; // Retry rather than cache success before the HUD model exists.
-		if ( !this->capture_original( weapon, iv, handle ) ) return false;
-		if ( !name_tag::apply( iv, skin->name_tag ) ) return false;
+		if ( !skin || !soc_offset || !cosmetic_attributes::available( ) ) return fail( "attribute-dependencies" );
+		if ( !PATTERN( patterns::weapon_update_skin ) || !PATTERN( patterns::weapon_update_composite_material ) ) return fail( "material-patterns" );
+		if ( !memory::safe_read<std::uintptr_t>( weapon + SCHEMA( "C_BaseEntity", "m_pGameSceneNode"_hash ) ).value_or( 0 ) ) return fail( "weapon-scene" );
+		// HUD readiness must not prevent item writes or rebuilding the real weapon.
+		// A successful world apply queues a separate retry through hud_refresh_pending.
+		if ( !this->capture_original( weapon, iv, handle ) ) return fail( "original-snapshot" );
+		if ( !name_tag::apply( iv, skin->name_tag ) ) return fail( "name-attribute" );
 		memory::write<bool>( iv + soc_offset, true );
 
 		memory::write<std::uint64_t>( iv + SCHEMA( "C_EconItemView", "m_iItemID"_hash ), 0xf000000000000010ull );
@@ -513,11 +540,11 @@ namespace features::changer {
 		memory::write<int>( weapon + SCHEMA( "C_EconEntity", "m_nFallbackStatTrak"_hash ), skin->stattrak ? skin->stattrak_count : -1 );
 
 		// Replace paint/seed/wear attributes too, not only the fallback fields.
-		if ( !cosmetic_attributes::apply( iv, *skin ) ) return false;
+		if ( !cosmetic_attributes::apply( iv, *skin ) ) return fail( "attribute-readback" );
 
 		const auto pk = g_econ_item_system.find_paint_kit( skin->paint_kit_id );
 
-		if (!this->rebuild_paint( weapon, handle, active_handle, pawn, pk )) return false;
+		if (!this->rebuild_paint( weapon, handle, active_handle, pawn, pk )) return fail( "world-material-rebuild" );
 		this->schedule_hud_clear( iv );
 		const auto original = this->m_original_weapons.find( handle );
 		if ( original == this->m_original_weapons.end( ) ) return false;
@@ -637,14 +664,11 @@ namespace features::changer {
 		const auto mesh = pk && pk->legacy_model ? std::uint64_t{2} : std::uint64_t{1};
 		const bool needs_hud = handle == active_handle &&
 			( pawn == systems::g_local.get( ).pawn || this->find_hud_model_weapon( pawn ) != 0 );
-		// Binding can recreate the held model and discard its material bindings.
-		if ( needs_hud && !this->update_view_model( pawn, pk, true ) ) return false;
+		// World materials must update even if HUD lookup/binding is not ready.
 		if ( !entity_guard::rebuild_materials( *entity, mesh ) ) return false;
-		if ( needs_hud )
-		{
-			const auto hud = entity_guard::capture( this->find_hud_model_weapon( pawn ) );
-			if ( !hud || !entity_guard::set_mesh( *hud, mesh ) ) return false;
-		}
+		if ( needs_hud && !this->update_view_model( pawn, pk, true ) )
+			report_skin_failure( "hud-pending", handle, pk ? pk->id : 0 );
+		// apply() caches only the completed world update; HUD completion remains pending.
 		return entity_guard::current( *entity );
 	}
 
@@ -657,7 +681,8 @@ namespace features::changer {
 
 	void guns::on_render_start( )
 	{
-		const auto pawn = preview_scene::player_pawn(systems::g_local.get().controller);
+		const auto local = systems::g_local.get( );
+		const auto pawn = local.observer_pawn ? local.observer_pawn : preview_scene::player_pawn(local.controller);
 		if (!preview_scene::player_ready(pawn)) return;
 		const auto services = memory::safe_read<std::uintptr_t>(pawn + SCHEMA("C_BasePlayerPawn", "m_pWeaponServices"_hash)).value_or(0);
 		if (!services) return;
@@ -670,7 +695,10 @@ namespace features::changer {
 		const auto hud = visual_identity(this->find_hud_model_weapon(pawn));
 		const bool refresh = found->second.hud_refresh_pending || found->second.hud != hud;
 		const auto pk = g_econ_item_system.find_paint_kit(skin.paint_kit_id);
-		if (!this->update_view_model(pawn, pk, refresh)) return;
+		if (!this->update_view_model(pawn, pk, refresh)) {
+			report_skin_failure( "hud-pending", handle, skin.paint_kit_id );
+			return; // Leave hud_refresh_pending set until a successful retry.
+		}
 		// Engine callbacks may invalidate the map: reacquire, never reuse found.
 		const auto current = this->m_applied_weapons.find(handle);
 		if (current != this->m_applied_weapons.end() && current->second.skin == skin &&
