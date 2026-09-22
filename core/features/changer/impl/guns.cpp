@@ -674,7 +674,7 @@ namespace features::changer {
 			( pawn == systems::g_local.get( ).pawn || this->find_hud_model_weapon( pawn ) != 0 );
 		// World materials must update even if HUD lookup/binding is not ready.
 		if ( !entity_guard::rebuild_materials( *entity, mesh ) ) return false;
-		if ( needs_hud && !this->update_view_model( pawn, pk, true ) )
+		if ( needs_hud && !this->update_view_model(pawn, pk, true) )
 			report_skin_failure( "hud-pending", handle, pk ? pk->id : 0 );
 		// apply() caches only the completed world update; HUD completion remains pending.
 		return entity_guard::current( *entity );
