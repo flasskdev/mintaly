@@ -3,6 +3,8 @@
 #include <core/systems/systems.hpp>
 #include <utilities/memory/memory.hpp>
 #include <utilities/cosmetic_model.hpp>
+#include <utilities/hud_binding.hpp>
+#include <chrono>
 #include "entity_guard.hpp"
 
 namespace features::changer::hud_weapon {
@@ -10,6 +12,31 @@ namespace features::changer::hud_weapon {
         // schemas::lookup searches declared fields only, not inherited fields.
         const auto direct = SCHEMA("C_CS2HudModelWeapon", "m_hWeapon"_hash);
         return direct ? direct : SCHEMA("C_CS2HudModelBase", "m_hWeapon"_hash);
+    }
+
+    inline std::uint32_t hud_handle_offset() {
+        // Optional forward links: use only offsets actually exposed by this build.
+        const auto direct = SCHEMA("C_CSWeaponBase", "m_hHudModel"_hash);
+        if (direct) return direct;
+        return SCHEMA("C_BasePlayerWeapon", "m_hHudModel"_hash);
+    }
+
+    inline void report_lookup(std::uint32_t active, unsigned candidates, unsigned matches,
+        std::uint32_t reverse_offset, std::uint32_t forward_offset) {
+        static auto next = std::chrono::steady_clock::time_point{};
+        const auto now = std::chrono::steady_clock::now();
+        if (now < next) return;
+        next = now + std::chrono::seconds(5);
+        diag::writef(diag::level::warning,
+            "[skin-hud] active=%u candidates=%u matches=%u reverse_offset=%u forward_offset=%u",
+            static_cast<unsigned>(active), candidates, matches,
+            static_cast<unsigned>(reverse_offset), static_cast<unsigned>(forward_offset));
+        static bool dumped = false;
+        if (!dumped && addresses::globals::schema_system) {
+            dumped = true;
+            for (const auto* name : {"C_CS2HudModelWeapon", "C_CS2HudModelBase", "C_CSWeaponBase", "C_BasePlayerWeapon"})
+                systems::schemas::dump_fields(name);
+        }
     }
 
     // Multiple HUD children can coexist during a weapon switch. Never select
@@ -20,33 +47,55 @@ namespace features::changer::hud_weapon {
         const auto active_offset = SCHEMA("CPlayer_WeaponServices", "m_hActiveWeapon"_hash);
         const auto arms_offset = SCHEMA("C_CSPlayerPawn", "m_hHudModelArms"_hash);
         const auto weapon_offset = weapon_handle_offset();
+        const auto forward_offset = hud_handle_offset();
+        const auto entity_owner_offset = SCHEMA("C_BaseEntity", "m_hOwnerEntity"_hash);
         const auto scene_offset = SCHEMA("C_BaseEntity", "m_pGameSceneNode"_hash);
         const auto child_offset = SCHEMA("CGameSceneNode", "m_pChild"_hash);
         const auto sibling_offset = SCHEMA("CGameSceneNode", "m_pNextSibling"_hash);
         const auto parent_offset = SCHEMA("CGameSceneNode", "m_pParent"_hash);
         const auto owner_offset = SCHEMA("CGameSceneNode", "m_pOwner"_hash);
-        if (!services_offset || !active_offset || !arms_offset || !weapon_offset ||
+        if (!services_offset || !active_offset || !arms_offset ||
             !scene_offset || !child_offset || !sibling_offset || !parent_offset || !owner_offset) return 0;
         const auto services = memory::safe_read<std::uintptr_t>(pawn + services_offset).value_or(0);
         if (!services) return 0;
         const auto active = memory::safe_read<std::uint32_t>(services + active_offset).value_or(0);
-        if (!systems::g_entities.lookup(active)) return 0;
+        const auto weapon = systems::g_entities.lookup(active);
+        if (!weapon) return 0;
+        const auto forward = forward_offset ? systems::g_entities.lookup(
+            memory::safe_read<std::uint32_t>(weapon + forward_offset).value_or(0xffffffffu)) : 0;
         const auto arms = systems::g_entities.lookup(memory::safe_read<std::uint32_t>(pawn + arms_offset).value_or(0));
         if (!arms) return 0;
         const auto scene = memory::safe_read<std::uintptr_t>(arms + scene_offset).value_or(0);
         if (!scene) return 0;
+        std::uintptr_t found{};
+        unsigned candidates{}, matches{};
         auto child = memory::safe_read<std::uintptr_t>(scene + child_offset).value_or(0);
         for (int i = 0; child && i < 128; ++i) {
             if (memory::safe_read<std::uintptr_t>(child + parent_offset).value_or(0) != scene) return 0;
             const auto owner = memory::safe_read<std::uintptr_t>(child + owner_offset).value_or(0);
             const auto name = owner ? systems::g_entities.get_schema_name(owner) : nullptr;
             if (name && fnv1a::runtime_hash(name) == "C_CS2HudModelWeapon"_hash &&
-                memory::safe_read<std::uintptr_t>(owner + scene_offset).value_or(0) == child &&
-                memory::safe_read<std::uint32_t>(owner + weapon_offset).value_or(0xffffffffu) == active)
-                return owner;
+                memory::safe_read<std::uintptr_t>(owner + scene_offset).value_or(0) == child) {
+                ++candidates;
+                const auto reverse = weapon_offset ? memory::safe_read<std::uint32_t>(owner + weapon_offset)
+                    : std::optional<std::uint32_t>{};
+                // A resolved field that cannot be read is not an absent field.
+                if (weapon_offset && !reverse) return 0;
+                const auto entity_owner = entity_owner_offset ? memory::safe_read<std::uint32_t>(
+                    owner + entity_owner_offset).value_or(0xffffffffu) : 0xffffffffu;
+                if (hud_binding::matches(active, owner, reverse, entity_owner, forward)) {
+                    found = owner;
+                    ++matches;
+                }
+            }
             child = memory::safe_read<std::uintptr_t>(child + sibling_offset).value_or(0);
         }
-        return 0; // Missing binding: retry next frame, never guess.
+        // Reject truncated/cyclic lists and ambiguous bindings, even with a matching model name.
+        if (child || matches != 1) {
+            report_lookup(active, candidates, matches, weapon_offset, forward_offset);
+            return 0;
+        }
+        return found;
     }
 
     inline bool update(std::uintptr_t pawn, std::uint64_t mesh, bool bind) {
