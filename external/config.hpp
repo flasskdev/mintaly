@@ -748,9 +748,18 @@ namespace config {
 	inline constexpr int k_delta_blank_baseline_version{ 2 };
 	inline constexpr char k_share_magic[]{ "AC" };
 
+	inline void reset_bind_assignments()
+	{
+		// UI settings may be registered after the config defaults snapshot.
+		// Clear all live assignments, then let the incoming profile restore its own.
+		for (auto* setting : xui::binds::all())
+			if (setting) serial::json_to_bind(nullptr, setting->bind);
+	}
+
 	inline void apply_blank_profile()
 	{
         xui::slider_binds::reset();
+		reset_bind_assignments();
 		auto& reg = detail::get_registry();
 
 		for (auto& f : reg.fields)
@@ -887,6 +896,7 @@ namespace config {
 		auto& reg = detail::get_registry();
 
 		xui::slider_binds::reset();
+		reset_bind_assignments();
 
 		std::unordered_map<std::uint32_t, field*> lookup;
 		lookup.reserve(reg.fields.size());
@@ -1038,6 +1048,7 @@ namespace config {
 		}
 
 		xui::slider_binds::reset();
+		reset_bind_assignments();
 
 		std::unordered_map<std::uint32_t, field*> lookup;
 		lookup.reserve(reg.fields.size());
