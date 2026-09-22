@@ -46,8 +46,21 @@ class SkinApplicationChecks(unittest.TestCase):
         self.assertIn('SCHEMA("C_CS2HudModelWeapon", "m_hWeapon"_hash)', resolver)
         self.assertIn('SCHEMA("C_CS2HudModelBase", "m_hWeapon"_hash)', resolver)
         self.assertIn("const auto weapon_offset = weapon_handle_offset();", hud)
-        self.assertIn("value_or(0xffffffffu) == active", hud)
+        self.assertIn("hud_binding::matches(active, owner, reverse, entity_owner, forward)", hud)
         self.assertIn("i < 128", hud)
+        self.assertIn("if (child || matches != 1)", hud)
+        self.assertNotIn("!arms_offset || !weapon_offset", hud)
+        self.assertIn('SCHEMA("C_BaseEntity", "m_hOwnerEntity"_hash)', hud)
+        self.assertIn('SCHEMA("C_CSWeaponBase", "m_hHudModel"_hash)', hud)
+        self.assertIn("if (weapon_offset && !reverse) return 0;", hud)
+
+    def test_missing_binding_has_bounded_schema_diagnostics(self):
+        hud = source("core/features/changer/hud_weapon.hpp")
+        self.assertIn("std::chrono::seconds(5)", hud)
+        self.assertIn("systems::schemas::dump_fields(name)", hud)
+        schema = source("core/systems/impl/schemas.cpp")
+        self.assertIn("*count > 256", schema)
+        self.assertIn("memory::read_string( name, 128 )", schema)
 
     def test_attribute_readback_uses_runtime_schema(self):
         attrs = source("core/features/changer/cosmetic_attributes.hpp")
