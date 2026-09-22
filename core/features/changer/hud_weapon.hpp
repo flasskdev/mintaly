@@ -1,12 +1,12 @@
 #pragma once
 #include <cstdint>
-#include <chrono>
-#include <array>
 #include <core/systems/systems.hpp>
 #include <utilities/memory/memory.hpp>
 #include <utilities/cosmetic_model.hpp>
 #include <utilities/hud_weapon_binding.hpp>
-#include <utilities/hud_binding.hpp>
+#include <utilities/diag.hpp>
+#include <array>
+#include <chrono>
 #include "entity_guard.hpp"
 
 namespace features::changer::hud_weapon {
@@ -17,10 +17,8 @@ namespace features::changer::hud_weapon {
     }
 
     inline std::uint32_t hud_handle_offset() {
-        // Optional forward links: use only offsets actually exposed by this build.
         const auto direct = SCHEMA("C_CSWeaponBase", "m_hHudModel"_hash);
-        if (direct) return direct;
-        return SCHEMA("C_BasePlayerWeapon", "m_hHudModel"_hash);
+        return direct ? direct : SCHEMA("C_BasePlayerWeapon", "m_hHudModel"_hash);
     }
 
     inline void report_lookup(std::uint32_t active, unsigned candidates, unsigned matches,
@@ -55,9 +53,8 @@ namespace features::changer::hud_weapon {
         const auto services_offset = SCHEMA("C_BasePlayerPawn", "m_pWeaponServices"_hash);
         const auto active_offset = SCHEMA("CPlayer_WeaponServices", "m_hActiveWeapon"_hash);
         const auto arms_offset = SCHEMA("C_CSPlayerPawn", "m_hHudModelArms"_hash);
-        const auto weapon_offset = weapon_handle_offset(); // Optional in current CS2 builds.
+        const auto weapon_offset = weapon_handle_offset();
         const auto forward_offset = hud_handle_offset();
-        const auto entity_owner_offset = SCHEMA("C_BaseEntity", "m_hOwnerEntity"_hash);
         const auto scene_offset = SCHEMA("C_BaseEntity", "m_pGameSceneNode"_hash);
         const auto child_offset = SCHEMA("CGameSceneNode", "m_pChild"_hash);
         const auto sibling_offset = SCHEMA("CGameSceneNode", "m_pNextSibling"_hash);
@@ -77,28 +74,24 @@ namespace features::changer::hud_weapon {
             return systems::g_entities.lookup(owner) == pawn;
         };
         if (!owned_by_player()) return {0, "weapon-owner"};
+        std::uint32_t forward_handle = hud_binding::invalid_handle;
+        if (forward_offset) {
+            const auto value = memory::safe_read<std::uint32_t>(weapon->entity + forward_offset);
+            if (!value) return {0, "unreadable-forward-link"};
+            forward_handle = *value;
+        }
+        const bool has_forward = forward_handle && forward_handle != hud_binding::invalid_handle;
+        const auto forward = has_forward ? systems::g_entities.lookup(forward_handle) : 0;
+        if (has_forward && !forward) return {0, "unready-forward-link"};
         const auto arms_handle = memory::safe_read<std::uint32_t>(pawn + arms_offset).value_or(0);
         const auto arms = entity_guard::capture(systems::g_entities.lookup(arms_handle));
         if (!arms) return {0, "hud-arms"};
         const auto scene = memory::safe_read<std::uintptr_t>(arms->entity + scene_offset).value_or(0);
         if (!scene) return {0, "arms-scene"};
 
-        std::string target;
-        const auto state = SCHEMA("CSkeletonInstance", "m_modelState"_hash);
-        const auto name_offset = SCHEMA("CModelState", "m_ModelName"_hash);
-        if (!weapon_offset) {
-            const auto manager = SCHEMA("C_EconEntity", "m_AttributeManager"_hash);
-            const auto item = SCHEMA("C_AttributeContainer", "m_Item"_hash);
-            const auto get_model = PATTERN(patterns::weapon_get_model_path);
-            if (!manager || !item || !state || !name_offset || !get_model)
-                return {0, "model-dependencies"};
-            const auto path = memory::call<const char*>(get_model, weapon->entity + manager + item);
-            if (path) target = memory::read_string(reinterpret_cast<std::uintptr_t>(path));
-            if (target.empty()) return {0, "active-model-path"};
-        }
-
         std::array<hud_binding::candidate, 128> candidates{};
         std::size_t count = 0;
+        unsigned matches = 0;
         const auto first = memory::safe_read<std::uintptr_t>(scene + child_offset);
         if (!first) return {0, "unreadable-children"};
         auto child = *first;
@@ -113,26 +106,50 @@ namespace features::changer::hud_weapon {
                 candidate.entity = owner;
                 candidate.ready = entity_guard::ready(owner) &&
                     memory::safe_read<std::uintptr_t>(owner + scene_offset).value_or(0) == child;
+                const auto entity_owner = memory::safe_read<std::uint32_t>(owner + weapon_owner_offset);
+                if (!entity_owner) return {0, "unreadable-owner-link", count};
+                candidate.owner = *entity_owner;
+                std::optional<std::uint32_t> reverse;
                 if (weapon_offset) {
-                    // An unreadable/mismatched existing field must NOT use the fallback.
-                    candidate.weapon = memory::safe_read<std::uint32_t>(owner + weapon_offset).value_or(0xffffffffu);
-                } else {
-                    const auto model_name = memory::safe_read<std::uintptr_t>(child + state + name_offset).value_or(0);
-                    candidate.model_matches = model_name && cosmetic_model::matches(memory::read_string(model_name), target);
+                    reverse = memory::safe_read<std::uint32_t>(owner + weapon_offset);
+                    if (!reverse) return {0, "unreadable-reverse-link", count};
+                    candidate.weapon = *reverse;
                 }
+                if (hud_binding::matches(active, owner, reverse, candidate.owner, forward)) ++matches;
             }
             const auto next = memory::safe_read<std::uintptr_t>(child + sibling_offset);
             if (!next) return {0, "unreadable-sibling", count};
             child = *next;
         }
         if (child) return {0, "child-limit-or-cycle", count};
+        const auto children = std::span<const hud_binding::candidate>{candidates.data(), count};
+        auto selected = hud_binding::select(children, active, weapon_offset != 0, forward);
+        // A missing model-path signature must not block a proven entity link.
+        if (!selected.entity && selected.state == hud_binding::status::model_mismatch &&
+            !weapon_offset && !forward && count == 1) {
+            const auto manager = SCHEMA("C_EconEntity", "m_AttributeManager"_hash);
+            const auto item = SCHEMA("C_AttributeContainer", "m_Item"_hash);
+            const auto state = SCHEMA("CSkeletonInstance", "m_modelState"_hash);
+            const auto name_offset = SCHEMA("CModelState", "m_ModelName"_hash);
+            const auto get_model = PATTERN(patterns::weapon_get_model_path);
+            if (!manager || !item || !state || !name_offset || !get_model)
+                return {0, "model-dependencies", count};
+            const auto path = memory::call<const char*>(get_model, weapon->entity + manager + item);
+            const auto target = path ? memory::read_string(reinterpret_cast<std::uintptr_t>(path)) : std::string{};
+            if (target.empty()) return {0, "active-model-path", count};
+            const auto candidate_scene = memory::safe_read<std::uintptr_t>(candidates[0].entity + scene_offset).value_or(0);
+            const auto model_name = candidate_scene ? memory::safe_read<std::uintptr_t>(candidate_scene + state + name_offset).value_or(0) : 0;
+            candidates[0].model_matches = model_name && cosmetic_model::matches(memory::read_string(model_name), target);
+            selected = hud_binding::select(children, active, false);
+        }
         if (!entity_guard::current(*player) || !entity_guard::current(*weapon) || !entity_guard::current(*arms) ||
             memory::safe_read<std::uintptr_t>(pawn + services_offset).value_or(0) != services ||
             memory::safe_read<std::uint32_t>(services + active_offset).value_or(0) != active ||
-            memory::safe_read<std::uint32_t>(pawn + arms_offset).value_or(0) != arms_handle || !owned_by_player())
+            memory::safe_read<std::uint32_t>(pawn + arms_offset).value_or(0) != arms_handle || !owned_by_player() ||
+            (forward_offset && memory::safe_read<std::uint32_t>(weapon->entity + forward_offset).value_or(0) != forward_handle))
             return {0, "binding-changed", count};
-        const auto selected = hud_binding::select(
-            std::span<const hud_binding::candidate>{candidates.data(), count}, active, weapon_offset != 0);
+        if (!selected.entity)
+            report_lookup(active, static_cast<unsigned>(count), matches, weapon_offset, forward_offset);
         return {selected.entity, hud_binding::describe(selected.state), count};
     }
 
@@ -164,25 +181,26 @@ namespace features::changer::hud_weapon {
         const auto target = path ? memory::read_string(reinterpret_cast<std::uintptr_t>(path)) : std::string{};
         if (target.empty()) return false;
 
-        const auto existing_hud = find(pawn);
+        const auto lookup = locate(pawn);
+        const auto existing_hud = lookup.entity;
+        // Unresolved children are not evidence of a missing model. Rebinding
+        // on every ambiguous lookup can repeatedly recreate overlapping HUDs.
+        if (!existing_hud && lookup.candidates) return false;
         bool model_mismatch = true;
         if (existing_hud) {
             const auto scene = memory::safe_read<std::uintptr_t>(existing_hud +
                 SCHEMA("C_BaseEntity", "m_pGameSceneNode"_hash)).value_or(0);
             if (scene) {
                 const auto name = memory::safe_read<std::uintptr_t>(scene + state + name_offset).value_or(0);
-                if (name && cosmetic_model::matches(memory::read_string(name), target)) {
+                if (name && cosmetic_model::matches(memory::read_string(name), target))
                     model_mismatch = false;
-                }
             }
         }
 
-        // A remote world weapon must not force a local viewmodel binding unless spectated in first-person.
-        // When spectating a synchronized player or viewing a custom knife whose HUD model/anim graph
-        // is still the default knife, bind the viewmodel so custom animations (inspect, deploy, attacks) play.
-        const bool should_bind = (bind || model_mismatch) && is_firstperson;
+        // Only bind local/spectated first-person models, never remote world weapons.
+        const bool should_bind = model_mismatch && is_firstperson;
         if (should_bind) {
-            static std::uintptr_t s_last_bound_weapon{ 0 };
+            static std::uintptr_t s_last_bound_weapon{0};
             static std::chrono::steady_clock::time_point s_last_bind_time{};
             const auto now = std::chrono::steady_clock::now();
             if (weapon->entity != s_last_bound_weapon || (now - s_last_bind_time) > std::chrono::milliseconds(250)) {
@@ -209,8 +227,7 @@ namespace features::changer::hud_weapon {
             active_handle() != handle || find(pawn) != hud->entity) return false;
         if (!entity_guard::set_mesh(*hud, mesh)) return false;
         if (bind || model_mismatch || changed_model) {
-            // Refresh through the real econ weapon AFTER HUD binding/SetModel.
-            // C_CS2HudModelWeapon is not an econ entity; never write an item view into it.
+            // Refresh via the real econ weapon; a HUD model has no item view.
             const auto skin = PATTERN(patterns::weapon_update_skin);
             if (!skin) return false;
             memory::call<void>(skin, weapon->entity, true);

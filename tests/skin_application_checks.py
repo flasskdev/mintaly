@@ -50,13 +50,41 @@ class SkinApplicationChecks(unittest.TestCase):
         self.assertIn("i < 128", hud)
         locate = between(hud, "inline lookup_result locate(", "inline std::uintptr_t find(")
         self.assertNotIn("|| !weapon_offset", locate)
-        self.assertIn("if (!weapon_offset)", locate)
-        self.assertIn("candidate.model_matches", locate)
+        self.assertIn("!weapon_offset && !forward && count == 1", locate)
+        self.assertIn("candidates[0].model_matches", locate)
         self.assertIn("owned_by_player()", locate)
         self.assertIn('"child-limit-or-cycle"', locate)
         self.assertIn("memory::safe_read<std::uint32_t>(services + active_offset).value_or(0) != active", locate)
         self.assertIn("return locate(pawn).entity;", hud)
-        self.assertIn("const bool should_bind = (bind || model_mismatch) && is_firstperson;", hud)
+        self.assertIn("const bool should_bind = model_mismatch && is_firstperson;", hud)
+        self.assertIn("hud_binding::matches(active, owner, reverse, candidate.owner, forward)", hud)
+        self.assertIn('SCHEMA("C_BaseEntity", "m_hOwnerEntity"_hash)', hud)
+        self.assertIn('SCHEMA("C_CSWeaponBase", "m_hHudModel"_hash)', hud)
+        self.assertIn('if (!reverse) return {0, "unreadable-reverse-link", count};', hud)
+        self.assertIn('if (has_forward && !forward) return {0, "unready-forward-link"};', hud)
+
+    def test_ambiguous_children_do_not_trigger_rebinding(self):
+        hud = source("core/features/changer/hud_weapon.hpp")
+        update = hud.split("inline bool update(", 1)[1]
+        self.assertLess(update.index("if (!existing_hud && lookup.candidates) return false;"),
+                        update.index("memory::call<void>(binding, weapon->entity)"))
+
+    def test_hud_files_have_no_merge_markers(self):
+        for path in ("core/features/changer/hud_weapon.hpp", "tests/skin_application_checks.py"):
+            for line in source(path).splitlines():
+                self.assertFalse(line.startswith(("<<<<<<<", "=======", ">>>>>>>")), path)
+
+    def test_pickup_source_precedes_holder_loadout(self):
+        guns = source("core/features/changer/impl/guns.cpp")
+        select = between(guns, "std::optional<guns::skin_selection> guns::select_skin(",
+                         "void guns::on_frame_stage_notify(")
+        self.assertLess(select.index("return original.cosmetic;"), select.index("const auto selected = skins.find"))
+        self.assertIn('SCHEMA( "C_EconEntity", "m_OriginalOwnerXuidLow"_hash )', select)
+        self.assertIn("g_skin_sync.get_remote_skin( source_sid )", select)
+        donor = between(select, "if ( source_account && source_account != holder_account )",
+                        "const auto selected = skins.find")
+        self.assertIn("if ( !profile ) return std::nullopt;", donor)
+        self.assertIn("if ( selected == profile->skins.end( ) ) return std::nullopt;", donor)
 
     def test_missing_binding_has_bounded_schema_diagnostics(self):
         hud = source("core/features/changer/hud_weapon.hpp")

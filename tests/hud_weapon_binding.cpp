@@ -47,4 +47,33 @@ int main() {
     switching[0].ready = true;
     switching[0].weapon = active; // Duplicate links are ambiguous too.
     assert(select(switching, active, true).state == status::ambiguous);
+
+    // Missing m_hWeapon does not make multiple children ambiguous if there
+    // is a unique owner or forward link to the full active weapon handle.
+    switching[0].weapon = recycled;
+    switching[1].weapon = active;
+    switching[1].owner = active;
+    assert(select(switching, active, false).entity == switching[1].entity);
+    switching[1].owner = recycled;
+    assert(!select(switching, active, false).entity);
+    assert(select(switching, active, false, switching[1].entity).entity == switching[1].entity);
+    assert(!select(switching, active, false, 0x30000).entity);
+    switching[1].owner = active;
+    switching[1].weapon = recycled;
+    assert(!select(switching, active, true, switching[1].entity).entity);
+    switching[0].owner = active;
+    assert(select(switching, active, false).state == status::ambiguous);
+    switching[0].ready = false;
+    assert(select(switching, active, false).state == status::ambiguous);
+    switching[0].owner = hud_binding::invalid_handle;
+    switching[1].ready = false;
+    assert(!select(switching, active, false).entity);
+    switching[1].ready = true;
+    switching[1].model_matches = false;
+    assert(select(switching, active, false).entity == switching[1].entity);
+
+    // An explicit stale link must never fall back to a singleton model match.
+    one[0] = {0x10000, recycled, true, true};
+    assert(!select(one, active, true, one[0].entity).entity);
+    assert(!select(one, active, false, 0x30000).entity);
 }
