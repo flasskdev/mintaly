@@ -22,6 +22,134 @@ namespace features::changer {
 	namespace {
 		constexpr std::uint64_t gun_faux_item_id = 0xf000000000000010ull;
 
+		struct schema_offsets {
+			int fallback_paint_kit{};
+			int fallback_seed{};
+			int fallback_wear{};
+			int fallback_stattrak{};
+			int item_id{};
+			int item_def_index{};
+			int account_id{};
+			int entity_quality{};
+			int initialized{};
+			int disallow_soc{};
+			int item_id_high{};
+			int item_id_low{};
+			int subclass_id{};
+			int scene_node{};
+			int model_state{};
+			int model_handle{};
+			int owner_entity{};
+			int weapon_services{};
+			int my_weapons{};
+			int active_weapon{};
+			int game_rules{};
+			int round_start_time{};
+			int attribute_manager{};
+			int item{};
+			int original_owner_low{};
+			int original_owner_high{};
+			int steam_id{};
+			int name_tag{};
+			int custom_name{};
+			int m_flFallbackWear{};
+			int m_nFallbackStatTrak{};
+			int m_iEntityQuality{};
+			int m_iAccountID{};
+			int m_bInitialized{};
+			int m_bDisallowSOC{};
+			int m_iItemIDHigh{};
+			int m_iItemIDLow{};
+			int m_iItemID{};
+			int m_iItemDefinitionIndex{};
+			int m_nSubclassID{};
+			int m_pGameSceneNode{};
+			int m_modelState{};
+			int m_hModel{};
+			int m_hOwnerEntity{};
+			int m_pWeaponServices{};
+			int m_hMyWeapons{};
+			int m_hActiveWeapon{};
+			int m_fRoundStartTime{};
+			int C_EconEntity{};
+			int C_AttributeContainer{};
+			int C_EconItemView{};
+			int C_BaseEntity{};
+			int CSkeletonInstance{};
+			int CModelState{};
+			int CBasePlayerPawn{};
+			int CPlayer_WeaponServices{};
+			int CBasePlayerController{};
+			int C_CSGameRules{};
+
+			void init() {
+				fallback_paint_kit = SCHEMA("C_EconEntity", "m_nFallbackPaintKit"_hash);
+				fallback_seed = SCHEMA("C_EconEntity", "m_nFallbackSeed"_hash);
+				fallback_wear = SCHEMA("C_EconEntity", "m_flFallbackWear"_hash);
+				fallback_stattrak = SCHEMA("C_EconEntity", "m_nFallbackStatTrak"_hash);
+				item_id = SCHEMA("C_EconItemView", "m_iItemID"_hash);
+				item_def_index = SCHEMA("C_EconItemView", "m_iItemDefinitionIndex"_hash);
+				account_id = SCHEMA("C_EconItemView", "m_iAccountID"_hash);
+				entity_quality = SCHEMA("C_EconItemView", "m_iEntityQuality"_hash);
+				initialized = SCHEMA("C_EconItemView", "m_bInitialized"_hash);
+				disallow_soc = SCHEMA("C_EconItemView", "m_bDisallowSOC"_hash);
+				item_id_high = SCHEMA("C_EconItemView", "m_iItemIDHigh"_hash);
+				item_id_low = SCHEMA("C_EconItemView", "m_iItemIDLow"_hash);
+				subclass_id = SCHEMA("C_BaseEntity", "m_nSubclassID"_hash);
+				scene_node = SCHEMA("C_BaseEntity", "m_pGameSceneNode"_hash);
+				model_state = SCHEMA("CSkeletonInstance", "m_modelState"_hash);
+				model_handle = SCHEMA("CModelState", "m_hModel"_hash);
+				owner_entity = SCHEMA("C_BaseEntity", "m_hOwnerEntity"_hash);
+				weapon_services = SCHEMA("C_BasePlayerPawn", "m_pWeaponServices"_hash);
+				my_weapons = SCHEMA("CPlayer_WeaponServices", "m_hMyWeapons"_hash);
+				active_weapon = SCHEMA("CPlayer_WeaponServices", "m_hActiveWeapon"_hash);
+				game_rules = SCHEMA("C_CSGameRules", "m_fRoundStartTime"_hash);
+				round_start_time = SCHEMA("C_CSGameRules", "m_fRoundStartTime"_hash);
+				attribute_manager = SCHEMA("C_EconEntity", "m_AttributeManager"_hash);
+				item = SCHEMA("C_AttributeContainer", "m_Item"_hash);
+				original_owner_low = SCHEMA("C_EconEntity", "m_OriginalOwnerXuidLow"_hash);
+				original_owner_high = SCHEMA("C_EconEntity", "m_OriginalOwnerXuidHigh"_hash);
+				steam_id = SCHEMA("CBasePlayerController", "m_steamID"_hash);
+				name_tag = SCHEMA("C_EconItemView", "m_iCustomName"_hash);
+				custom_name = SCHEMA("C_EconItemView", "m_iCustomName"_hash);
+				m_flFallbackWear = SCHEMA("C_EconEntity", "m_flFallbackWear"_hash);
+				m_nFallbackStatTrak = SCHEMA("C_EconEntity", "m_nFallbackStatTrak"_hash);
+				m_iEntityQuality = SCHEMA("C_EconItemView", "m_iEntityQuality"_hash);
+				m_iAccountID = SCHEMA("C_EconItemView", "m_iAccountID"_hash);
+				m_bInitialized = SCHEMA("C_EconItemView", "m_bInitialized"_hash);
+				m_bDisallowSOC = SCHEMA("C_EconItemView", "m_bDisallowSOC"_hash);
+				m_iItemIDHigh = SCHEMA("C_EconItemView", "m_iItemIDHigh"_hash);
+				m_iItemIDLow = SCHEMA("C_EconItemView", "m_iItemIDLow"_hash);
+				m_iItemID = SCHEMA("C_EconItemView", "m_iItemID"_hash);
+				m_iItemDefinitionIndex = SCHEMA("C_EconItemView", "m_iItemDefinitionIndex"_hash);
+				m_nSubclassID = SCHEMA("C_BaseEntity", "m_nSubclassID"_hash);
+				m_pGameSceneNode = SCHEMA("C_BaseEntity", "m_pGameSceneNode"_hash);
+				m_modelState = SCHEMA("CSkeletonInstance", "m_modelState"_hash);
+				m_hModel = SCHEMA("CModelState", "m_hModel"_hash);
+				m_hOwnerEntity = SCHEMA("C_BaseEntity", "m_hOwnerEntity"_hash);
+				m_pWeaponServices = SCHEMA("C_BasePlayerPawn", "m_pWeaponServices"_hash);
+				m_hMyWeapons = SCHEMA("CPlayer_WeaponServices", "m_hMyWeapons"_hash);
+				m_hActiveWeapon = SCHEMA("CPlayer_WeaponServices", "m_hActiveWeapon"_hash);
+				m_fRoundStartTime = SCHEMA("C_CSGameRules", "m_fRoundStartTime"_hash);
+				C_EconEntity = SCHEMA("C_EconEntity", "m_AttributeManager"_hash);
+				C_AttributeContainer = SCHEMA("C_AttributeContainer", "m_Item"_hash);
+				C_EconItemView = SCHEMA("C_EconItemView", "m_iItemDefinitionIndex"_hash);
+				C_BaseEntity = SCHEMA("C_BaseEntity", "m_pGameSceneNode"_hash);
+				CSkeletonInstance = SCHEMA("CSkeletonInstance", "m_modelState"_hash);
+				CModelState = SCHEMA("CModelState", "m_hModel"_hash);
+				CBasePlayerPawn = SCHEMA("C_BasePlayerPawn", "m_pWeaponServices"_hash);
+				CPlayer_WeaponServices = SCHEMA("CPlayer_WeaponServices", "m_hMyWeapons"_hash);
+				CBasePlayerController = SCHEMA("CBasePlayerController", "m_steamID"_hash);
+				C_CSGameRules = SCHEMA("C_CSGameRules", "m_fRoundStartTime"_hash);
+			}
+		};
+
+		inline schema_offsets& get_offsets() {
+			static schema_offsets offsets;
+			static bool init = (offsets.init(), true);
+			return offsets;
+		}
+
 		void report_skin_failure( std::string_view reason, std::uint32_t handle, int paint )
 		{
 			// Game-thread only; bounded by the fixed reason strings below, not by entities.
@@ -53,10 +181,11 @@ namespace features::changer {
 			cosmetic_cache::identity result{};
 			result.weapon = weapon;
 			if ( !weapon ) return result;
-			result.scene = memory::safe_read<std::uintptr_t>( weapon + SCHEMA( "C_BaseEntity", "m_pGameSceneNode"_hash ) ).value_or( 0 );
-			result.owner = memory::safe_read<std::uint32_t>( weapon + SCHEMA( "C_BaseEntity", "m_hOwnerEntity"_hash ) ).value_or( 0 );
+			const auto& off = get_offsets();
+			result.scene = memory::safe_read<std::uintptr_t>( weapon + off.scene_node ).value_or( 0 );
+			result.owner = memory::safe_read<std::uint32_t>( weapon + off.owner_entity ).value_or( 0 );
 			if ( result.scene )
-				result.model = memory::safe_read<std::uintptr_t>( result.scene + SCHEMA( "CSkeletonInstance", "m_modelState"_hash ) + SCHEMA( "CModelState", "m_hModel"_hash ) ).value_or( 0 );
+				result.model = memory::safe_read<std::uintptr_t>( result.scene + off.model_state + off.model_handle ).value_or( 0 );
 			return result;
 		}
 	}
@@ -367,50 +496,52 @@ namespace features::changer {
 			}
 		}
 
-		// Apply synced skins for remote players
+		// Apply synced skins for remote players (frame-throttled)
 		if ( g_skin_sync.is_enabled( ) )
 		{
-			const auto all_players = systems::g_entities.get_by_type( systems::entities::type::player );
-			for ( const auto& p : all_players )
+			// Build/update controller list once per frame
+			if ( this->m_remote_frame_counter == 0 )
 			{
-				const auto ctrl = p.ptr;
-				if ( !ctrl || ctrl == local_ctrl )
+				this->m_remote_controllers.clear();
+				const auto all_players = systems::g_entities.get_by_type( systems::entities::type::player );
+				for ( const auto& p : all_players )
 				{
-					continue;
+					const auto ctrl = p.ptr;
+					if ( !ctrl || ctrl == local_ctrl ) continue;
+					const auto sid = memory::safe_read<std::uint64_t>( ctrl + SCHEMA( "CBasePlayerController", "m_steamID"_hash ) ).value_or( 0 );
+					constexpr std::uint64_t steam_id_base = 76561197960265728ull;
+					if ( sid < steam_id_base && !g_skin_sync.m_bot_sync_test.load( ) ) continue;
+					const auto pawn = preview_scene::player_pawn( ctrl );
+					if ( !preview_scene::player_ready( pawn ) ) continue;
+					this->m_remote_controllers.push_back( ctrl );
 				}
+				this->m_remote_player_index = 0;
+			}
 
+			// Process up to 2 remote players per frame
+			constexpr std::size_t PLAYERS_PER_FRAME = 2;
+			const auto& controllers = this->m_remote_controllers;
+			const std::size_t start = this->m_remote_player_index;
+			const std::size_t end = std::min(start + PLAYERS_PER_FRAME, controllers.size());
+
+			for ( std::size_t idx = start; idx < end; ++idx )
+			{
+				const auto ctrl = controllers[idx];
 				const auto sid = memory::safe_read<std::uint64_t>( ctrl + SCHEMA( "CBasePlayerController", "m_steamID"_hash ) ).value_or( 0 );
-				constexpr std::uint64_t steam_id_base = 76561197960265728ull;
-				if ( sid < steam_id_base && !g_skin_sync.m_bot_sync_test.load( ) )
-				{
-					continue;
-				}
-
 				const auto remote_skin_data = g_skin_sync.get_remote_skin( sid );
 				const settings::changer::skin_map_field::map_type empty_skins{};
 				const auto& remote_skins = remote_skin_data ? remote_skin_data->skins : empty_skins;
-				// A holder without a profile may carry a donor's synchronized weapon.
-				// Resolve provenance before deciding whether there is anything to apply.
 
 				const auto pawn = preview_scene::player_pawn( ctrl );
-				if ( !preview_scene::player_ready( pawn ) )
-				{
-					continue;
-				}
+				if ( !preview_scene::player_ready( pawn ) ) continue;
 
 				const auto remote_weapon_services = memory::safe_read<std::uintptr_t>( pawn + SCHEMA( "C_BasePlayerPawn", "m_pWeaponServices"_hash ) ).value_or( 0 );
-				if ( !remote_weapon_services )
-				{
-					continue;
-				}
+				if ( !remote_weapon_services ) continue;
 
 				const auto remote_weapons_base = remote_weapon_services + SCHEMA( "CPlayer_WeaponServices", "m_hMyWeapons"_hash );
 				const auto remote_weapons_size = memory::safe_read<int>( remote_weapons_base ).value_or( 0 );
 				const auto remote_weapons_data = memory::safe_read<std::uintptr_t>( remote_weapons_base + 0x8 ).value_or( 0 );
-				if ( !remote_weapons_data || remote_weapons_size <= 0 || remote_weapons_size > 64 )
-				{
-					continue;
-				}
+				if ( !remote_weapons_data || remote_weapons_size <= 0 || remote_weapons_size > 64 ) continue;
 
 				const auto remote_active_handle = memory::safe_read<std::uint32_t>( remote_weapon_services + SCHEMA( "CPlayer_WeaponServices", "m_hActiveWeapon"_hash ) ).value_or( 0 );
 				const auto remote_account_id = static_cast< std::uint32_t >( sid & 0xffffffff );
@@ -419,29 +550,14 @@ namespace features::changer {
 				for ( auto i = 0; i < remote_weapons_size; ++i )
 				{
 					const auto handle = memory::safe_read<std::uint32_t>( remote_weapons_data + i * sizeof( std::uint32_t ) ).value_or( 0 );
-					if ( !handle )
-					{
-						continue;
-					}
-
+					if ( !handle ) continue;
 					const auto weapon = systems::g_entities.lookup( handle );
-					if ( !weapon || weapon < 0x10000 )
-					{
-						continue;
-					}
-
+					if ( !weapon || weapon < 0x10000 ) continue;
 					const auto iv = weapon + SCHEMA( "C_EconEntity", "m_AttributeManager"_hash ) + SCHEMA( "C_AttributeContainer", "m_Item"_hash );
 					const auto current_def_index = memory::safe_read<std::uint16_t>( iv + SCHEMA( "C_EconItemView", "m_iItemDefinitionIndex"_hash ) ).value_or( 0 );
 					const auto current_def = g_econ_item_system.find_def( static_cast< std::int16_t >( current_def_index ) );
-					if ( !current_def || current_def->category != econ_item_system::item_category::gun )
-					{
-						continue;
-					}
-
-					if ( !entity_guard::ready( weapon ) )
-					{
-						continue;
-					}
+					if ( !current_def || current_def->category != econ_item_system::item_category::gun ) continue;
+					if ( !entity_guard::ready( weapon ) ) continue;
 
 					const auto selected = this->select_skin( weapon, iv, handle, current_def_index, remote_account_id, remote_skins );
 					if ( !selected )
@@ -513,6 +629,14 @@ namespace features::changer {
 						this->m_applied_weapons[ handle ] = { visual_identity( weapon ), skin, hud_visual };
 					}
 				}
+			}
+
+			// Advance frame counter for next batch
+			this->m_remote_player_index = end;
+			if ( this->m_remote_player_index >= controllers.size() )
+			{
+				this->m_remote_player_index = 0;
+				this->m_remote_frame_counter = (this->m_remote_frame_counter + 1) % 3; // Rebuild controller list every 3 frames
 			}
 		}
 	}

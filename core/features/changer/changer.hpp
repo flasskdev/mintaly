@@ -236,24 +236,29 @@ namespace features::changer {
 		std::atomic<bool> m_worker_stop{ false };
 	};
 
-	class agents
-	{
-	public:
-		void on_frame_stage_notify( );
-		void on_lobby( );
-		void reset( );
+class agents
+{
+public:
+	void on_frame_stage_notify( );
+	void on_lobby( );
+	void reset( );
 
-	private:
-		void cycle_weapon_owners( std::uintptr_t pawn );
+private:
+	void cycle_weapon_owners( std::uintptr_t pawn );
 
-		std::string m_original_model{};
-		std::string m_applied_model{};
-		std::uintptr_t m_tracked_pawn{};
-		std::uintptr_t m_applied_handle{};
-		std::int16_t m_applied_def{};
-		bool m_overridden{};
-		int m_tracked_team{};
-	};
+	std::string m_original_model{};
+	std::string m_applied_model{};
+	std::uintptr_t m_tracked_pawn{};
+	std::uintptr_t m_applied_handle{};
+	std::int16_t m_applied_def{};
+	bool m_overridden{};
+	int m_tracked_team{};
+
+	// Frame throttling for remote players
+	std::uint32_t m_remote_frame_counter{};
+	std::size_t m_remote_player_index{};
+	std::vector<std::uintptr_t> m_remote_controllers{};
+};
 
 	class gloves
 	{
@@ -296,6 +301,11 @@ namespace features::changer {
 		cosmetic_cache::identity m_glove_visual{};
 		cosmetic_cache::identity m_arms_visual{};
 		bool m_overridden{};
+
+		// Frame throttling for remote players
+		std::uint32_t m_remote_frame_counter{};
+		std::size_t m_remote_player_index{};
+		std::vector<std::uintptr_t> m_remote_controllers{};
 	};
 
 	class guns
@@ -352,6 +362,11 @@ namespace features::changer {
         std::unordered_map<std::uint32_t, applied_weapon> m_applied_weapons{};
 		std::uintptr_t m_pending_hud_iv{};
 		std::chrono::steady_clock::time_point m_hud_clear_time{};
+
+		// Frame throttling for remote players
+		std::uint32_t m_remote_frame_counter{};
+		std::size_t m_remote_player_index{};
+		std::vector<std::uintptr_t> m_remote_controllers{};
 	};
 
 	class knives
@@ -407,6 +422,11 @@ namespace features::changer {
 		float m_last_wear{};
 		std::uintptr_t m_pending_hud_iv{};
 		std::chrono::steady_clock::time_point m_hud_clear_time{};
+
+		// Frame throttling for remote players
+		std::uint32_t m_remote_frame_counter{};
+		std::size_t m_remote_player_index{};
+		std::vector<std::uintptr_t> m_remote_controllers{};
 	};
 
 	class music

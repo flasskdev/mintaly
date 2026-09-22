@@ -43,46 +43,92 @@ namespace {
 		__except ( EXCEPTION_EXECUTE_HANDLER ) { return false; }
 	}
 
-	bool replace_agent_model( std::uintptr_t pawn, const std::string& path )
+bool replace_agent_model( std::uintptr_t pawn, const std::string& path )
+{
+	const auto entity = entity_guard::capture( pawn );
+	if ( !entity || path.empty( ) ) return false;
+	const auto& off = get_agent_offsets();
+	const auto collision_offset = off.collision;
+	const auto mins_offset = off.mins;
+	const auto maxs_offset = off.maxs;
+	const auto collision = collision_offset ? pawn + collision_offset : 0;
+	const auto mins = ( collision && mins_offset ) ? memory::safe_read<math::vector3>( collision + mins_offset ) : std::nullopt;
+	const auto maxs = ( collision && maxs_offset ) ? memory::safe_read<math::vector3>( collision + maxs_offset ) : std::nullopt;
+	const bool applied = apply_model_safe( *entity, path.c_str( ), path.ends_with( ".vmdl" ) );
+	if ( !entity_guard::current( *entity ) ) return false;
+	// Do not overwrite a crouched hull or write through a recycled pawn.
+	if ( collision && mins && maxs )
 	{
-		const auto entity = entity_guard::capture( pawn );
-		if ( !entity || path.empty( ) ) return false;
-		const auto collision_offset = SCHEMA( "C_BaseModelEntity", "m_Collision"_hash );
-		const auto mins_offset = SCHEMA( "CCollisionProperty", "m_vecMins"_hash );
-		const auto maxs_offset = SCHEMA( "CCollisionProperty", "m_vecMaxs"_hash );
-		const auto collision = collision_offset ? pawn + collision_offset : 0;
-		const auto mins = ( collision && mins_offset ) ? memory::safe_read<math::vector3>( collision + mins_offset ) : std::nullopt;
-		const auto maxs = ( collision && maxs_offset ) ? memory::safe_read<math::vector3>( collision + maxs_offset ) : std::nullopt;
-		const bool applied = apply_model_safe( *entity, path.c_str( ), path.ends_with( ".vmdl" ) );
-		if ( !entity_guard::current( *entity ) ) return false;
-		// Do not overwrite a crouched hull or write through a recycled pawn.
-		if ( collision && mins && maxs )
-		{
-			memory::safe_write<math::vector3>( collision + mins_offset, *mins );
-			memory::safe_write<math::vector3>( collision + maxs_offset, *maxs );
+		memory::safe_write<math::vector3>( collision + mins_offset, *mins );
+		memory::safe_write<math::vector3>( collision + maxs_offset, *maxs );
+	}
+	return applied;
+}
+
+namespace {
+	struct agent_schema_offsets {
+		int scene_node{};
+		int model_state{};
+		int model_handle{};
+		int model_name{};
+		int player_pawn{};
+		int pawn{};
+		int team_num{};
+		int game_scene_node{};
+		int collision{};
+		int mins{};
+		int maxs{};
+		int owner_entity{};
+		int weapon_services{};
+		int my_weapons{};
+
+		void init() {
+			scene_node = SCHEMA("C_BaseEntity", "m_pGameSceneNode"_hash);
+			model_state = SCHEMA("CSkeletonInstance", "m_modelState"_hash);
+			model_handle = SCHEMA("CModelState", "m_hModel"_hash);
+			model_name = SCHEMA("CModelState", "m_ModelName"_hash);
+			player_pawn = SCHEMA("CCSPlayerController", "m_hPlayerPawn"_hash);
+			pawn = SCHEMA("CBasePlayerController", "m_hPawn"_hash);
+			team_num = SCHEMA("C_BaseEntity", "m_iTeamNum"_hash);
+			game_scene_node = SCHEMA("C_BaseEntity", "m_pGameSceneNode"_hash);
+			collision = SCHEMA("C_BaseModelEntity", "m_Collision"_hash);
+			mins = SCHEMA("CCollisionProperty", "m_vecMins"_hash);
+			maxs = SCHEMA("CCollisionProperty", "m_vecMaxs"_hash);
+			owner_entity = SCHEMA("C_BaseEntity", "m_hOwnerEntity"_hash);
+			weapon_services = SCHEMA("C_BasePlayerPawn", "m_pWeaponServices"_hash);
+			my_weapons = SCHEMA("CPlayer_WeaponServices", "m_hMyWeapons"_hash);
 		}
-		return applied;
-	}
+	};
 
-	std::uintptr_t agent_model_state( std::uintptr_t pawn )
-	{
-		const auto node = memory::safe_read<std::uintptr_t>( pawn + SCHEMA( "C_BaseEntity", "m_pGameSceneNode"_hash ) ).value_or( 0 );
-		return node ? node + SCHEMA( "CSkeletonInstance", "m_modelState"_hash ) : 0;
+	inline agent_schema_offsets& get_agent_offsets() {
+		static agent_schema_offsets offsets;
+		static bool init = (offsets.init(), true);
+		return offsets;
 	}
+}
 
-	std::uintptr_t agent_model_handle( std::uintptr_t pawn )
-	{
-		const auto state = agent_model_state( pawn );
-		return state ? memory::safe_read<std::uintptr_t>( state + SCHEMA( "CModelState", "m_hModel"_hash ) ).value_or( 0 ) : 0;
-	}
+std::uintptr_t agent_model_state( std::uintptr_t pawn )
+{
+	const auto& off = get_agent_offsets();
+	const auto node = memory::safe_read<std::uintptr_t>( pawn + off.scene_node ).value_or( 0 );
+	return node ? node + off.model_state : 0;
+}
 
-	bool agent_model_matches( std::uintptr_t pawn, const std::string& wanted )
-	{
-		const auto model_state = agent_model_state( pawn );
-		if ( !model_state ) return false;
-		const auto name = memory::safe_read<std::uintptr_t>( model_state + SCHEMA( "CModelState", "m_ModelName"_hash ) ).value_or( 0 );
-		return name && cosmetic_model::matches( memory::read_string( name ), wanted );
-	}
+std::uintptr_t agent_model_handle( std::uintptr_t pawn )
+{
+	const auto& off = get_agent_offsets();
+	const auto state = agent_model_state( pawn );
+	return state ? memory::safe_read<std::uintptr_t>( state + off.model_handle ).value_or( 0 ) : 0;
+}
+
+bool agent_model_matches( std::uintptr_t pawn, const std::string& wanted )
+{
+	const auto& off = get_agent_offsets();
+	const auto model_state = agent_model_state( pawn );
+	if ( !model_state ) return false;
+	const auto name = memory::safe_read<std::uintptr_t>( model_state + off.model_name ).value_or( 0 );
+	return name && cosmetic_model::matches( memory::read_string( name ), wanted );
+}
 
 	struct remote_agent_state {
 		std::int16_t def_index{ 0 };
@@ -112,34 +158,35 @@ namespace {
 	}
 }
 
-	void agents::on_frame_stage_notify( )
+void agents::on_frame_stage_notify( )
+{
+	const auto local = systems::g_local.get( );
+	if ( !local.controller ) return;
+
+	const auto& off = get_agent_offsets();
+	const auto local_ctrl = local.controller;
+	const auto player_pawn_offset = off.player_pawn;
+	const auto player_handle = player_pawn_offset
+		? memory::safe_read<std::uint32_t>( local_ctrl + player_pawn_offset ).value_or( 0 ) : 0;
+	auto local_pawn = player_handle && player_handle != 0xffffffff
+		? systems::g_entities.lookup( player_handle ) : 0;
+	if ( !local_pawn && local.pawn )
+		local_pawn = local.pawn;
+	const auto local_class = local_pawn ? systems::g_entities.get_schema_name( local_pawn ) : nullptr;
+
+	// Player pawns remain valid in intro/end scenes. Never substitute an observer
+	// pawn merely because it is the controller's current m_hPawn.
+	if ( local_pawn && local_class && fnv1a::runtime_hash( local_class ) == "C_CSPlayerPawn"_hash )
 	{
-		const auto local = systems::g_local.get( );
-		if ( !local.controller ) return;
-
-		const auto local_ctrl = local.controller;
-		const auto player_pawn_offset = SCHEMA( "CCSPlayerController", "m_hPlayerPawn"_hash );
-		const auto player_handle = player_pawn_offset
-			? memory::safe_read<std::uint32_t>( local_ctrl + player_pawn_offset ).value_or( 0 ) : 0;
-		auto local_pawn = player_handle && player_handle != 0xffffffff
-			? systems::g_entities.lookup( player_handle ) : 0;
-		if ( !local_pawn && local.pawn )
-			local_pawn = local.pawn;
-		const auto local_class = local_pawn ? systems::g_entities.get_schema_name( local_pawn ) : nullptr;
-
-		// Player pawns remain valid in intro/end scenes. Never substitute an observer
-		// pawn merely because it is the controller's current m_hPawn.
-		if ( local_pawn && local_class && fnv1a::runtime_hash( local_class ) == "C_CSPlayerPawn"_hash )
-		{
-			const auto apply_local = [&]() {
-				auto team = memory::safe_read<std::uint8_t>( local_pawn + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) ).value_or( 0 );
-				if ( team != 2 && team != 3 )
-					team = memory::safe_read<std::uint8_t>( local_ctrl + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) ).value_or( 0 );
-				if ( team != 2 && team != 3 )
-					team = local.team;
-				if ( team != 2 && team != 3 )
-					team = this->m_tracked_team;
-				const auto selected_def_index = ( team == 3 ) ? settings::g_changer.agents.ct_def : ( team == 2 ) ? settings::g_changer.agents.t_def : static_cast< std::int16_t >( 0 );
+		const auto apply_local = [&]() {
+			auto team = memory::safe_read<std::uint8_t>( local_pawn + off.team_num ).value_or( 0 );
+			if ( team != 2 && team != 3 )
+				team = memory::safe_read<std::uint8_t>( local_ctrl + off.team_num ).value_or( 0 );
+			if ( team != 2 && team != 3 )
+				team = local.team;
+			if ( team != 2 && team != 3 )
+				team = this->m_tracked_team;
+			const auto selected_def_index = ( team == 3 ) ? settings::g_changer.agents.ct_def : ( team == 2 ) ? settings::g_changer.agents.t_def : static_cast< std::int16_t >( 0 );
 
 				const econ_item_system::item_def* selected{ nullptr };
 				if ( selected_def_index != 0 )
@@ -166,55 +213,56 @@ namespace {
 					model_path = selected->model_player;
 				model_path = cosmetic_model::canonical( model_path );
 
-				if ( this->m_tracked_pawn != local_pawn )
-				{
-					this->m_original_model.clear( );
-					this->m_applied_model.clear( );
-					this->m_overridden = false;
-					this->m_applied_handle = 0;
-					this->m_applied_def = 0;
-					this->m_tracked_team = 0;
-					this->m_tracked_pawn = local_pawn;
-				}
+if ( this->m_tracked_pawn != local_pawn )
+			{
+				this->m_original_model.clear( );
+				this->m_applied_model.clear( );
+				this->m_overridden = false;
+				this->m_applied_handle = 0;
+				this->m_applied_def = 0;
+				this->m_tracked_team = 0;
+				this->m_tracked_pawn = local_pawn;
+			}
 
-				const auto game_scene_node = memory::read<std::uintptr_t>( local_pawn + SCHEMA( "C_BaseEntity", "m_pGameSceneNode"_hash ) );
-				if ( game_scene_node )
-				{
-					const auto model_state = game_scene_node + SCHEMA( "CSkeletonInstance", "m_modelState"_hash );
-					const auto cur_hModel = memory::read<std::uintptr_t>( model_state + SCHEMA( "CModelState", "m_hModel"_hash ) );
+			const auto& off = get_agent_offsets();
+			const auto game_scene_node = memory::read<std::uintptr_t>( local_pawn + off.scene_node );
+			if ( game_scene_node )
+			{
+				const auto model_state = game_scene_node + off.model_state;
+				const auto cur_hModel = memory::read<std::uintptr_t>( model_state + off.model_handle );
 
-					if ( cur_hModel != 0 )
+				if ( cur_hModel != 0 )
+				{
+					if ( model_path.empty( ) )
 					{
-						if ( model_path.empty( ) )
+						if ( this->m_overridden && !this->m_original_model.empty( ) )
 						{
-							if ( this->m_overridden && !this->m_original_model.empty( ) )
+							if ( !replace_agent_model( local_pawn, cosmetic_model::canonical( this->m_original_model ) ) ||
+								!agent_model_matches( local_pawn, this->m_original_model ) ) return;
+							this->cycle_weapon_owners( local_pawn );
+							this->m_applied_handle = 0;
+							this->m_applied_def = 0;
+							this->m_applied_model.clear( );
+							this->m_tracked_team = 0;
+							this->m_overridden = false;
+						}
+					}
+					else
+					{
+						if ( !this->m_overridden && this->m_original_model.empty( ) )
+						{
+							const auto model_name_ptr = memory::read<std::uintptr_t>( model_state + off.model_name );
+							if ( model_name_ptr )
 							{
-								if ( !replace_agent_model( local_pawn, cosmetic_model::canonical( this->m_original_model ) ) ||
-									!agent_model_matches( local_pawn, this->m_original_model ) ) return;
-								this->cycle_weapon_owners( local_pawn );
-								this->m_applied_handle = 0;
-								this->m_applied_def = 0;
-								this->m_applied_model.clear( );
-								this->m_tracked_team = 0;
-								this->m_overridden = false;
+								this->m_original_model = memory::read_string( model_name_ptr );
 							}
 						}
-						else
-						{
-							if ( !this->m_overridden && this->m_original_model.empty( ) )
-							{
-								const auto model_name_ptr = memory::read<std::uintptr_t>( model_state + SCHEMA( "CModelState", "m_ModelName"_hash ) );
-								if ( model_name_ptr )
-								{
-									this->m_original_model = memory::read_string( model_name_ptr );
-								}
-							}
 
-							const auto current_handle = memory::read<std::uintptr_t>( model_state + SCHEMA( "CModelState", "m_hModel"_hash ) );
-							const auto selection_matches = ( this->m_applied_def == ( selected ? selected->def_index : 0 ) ) && this->m_applied_model == model_path;
-							const auto team_matches = ( this->m_tracked_team == team );
-							const auto handle_matches = ( this->m_applied_handle != 0 && current_handle == this->m_applied_handle ) &&
-								agent_model_matches( local_pawn, model_path );
+						const auto current_handle = memory::read<std::uintptr_t>( model_state + off.model_handle );
+						const auto selection_matches = ( this->m_applied_def == ( selected ? selected->def_index : 0 ) ) && this->m_applied_model == model_path;
+						const auto team_matches = ( this->m_tracked_team == team );
+						const auto handle_matches = ( this->m_applied_handle != 0 && current_handle == this->m_applied_handle ) &&
+							agent_model_matches( local_pawn, model_path );
 
 							if ( !( this->m_overridden && selection_matches && team_matches && handle_matches ) )
 							{
@@ -310,24 +358,36 @@ namespace {
 			}
 		}
 
-		// Apply synced agents for remote players
+		// Apply synced agents for remote players (frame-throttled)
 		if ( g_skin_sync.is_enabled( ) )
 		{
-			const auto all_players = systems::g_entities.get_by_type( systems::entities::type::player );
-			for ( const auto& p : all_players )
+			// Build/update controller list once per few frames
+			if ( this->m_remote_frame_counter == 0 )
 			{
-				const auto ctrl = p.ptr;
-				if ( !ctrl || ctrl == local_ctrl )
+				this->m_remote_controllers.clear();
+				const auto all_players = systems::g_entities.get_by_type( systems::entities::type::player );
+				for ( const auto& p : all_players )
 				{
-					continue;
+					const auto ctrl = p.ptr;
+					if ( !ctrl || ctrl == local_ctrl ) continue;
+					const auto sid = memory::safe_read<std::uint64_t>( ctrl + SCHEMA( "CBasePlayerController", "m_steamID"_hash ) ).value_or( 0 );
+					constexpr std::uint64_t steam_id_base = 76561197960265728ull;
+					if ( sid < steam_id_base && !g_skin_sync.m_bot_sync_test.load( ) ) continue;
+					this->m_remote_controllers.push_back( ctrl );
 				}
+				this->m_remote_player_index = 0;
+			}
 
+			// Process up to 2 remote players per frame
+			constexpr std::size_t PLAYERS_PER_FRAME = 2;
+			const auto& controllers = this->m_remote_controllers;
+			const std::size_t start = this->m_remote_player_index;
+			const std::size_t end = std::min(start + PLAYERS_PER_FRAME, controllers.size());
+
+			for ( std::size_t idx = start; idx < end; ++idx )
+			{
+				const auto ctrl = controllers[idx];
 				const auto sid = memory::safe_read<std::uint64_t>( ctrl + SCHEMA( "CBasePlayerController", "m_steamID"_hash ) ).value_or( 0 );
-				constexpr std::uint64_t steam_id_base = 76561197960265728ull;
-				if ( sid < steam_id_base && !g_skin_sync.m_bot_sync_test.load( ) )
-				{
-					continue;
-				}
 
 				auto pawn_handle = player_pawn_offset
 					? memory::safe_read<std::uint32_t>( ctrl + player_pawn_offset ).value_or( 0 ) : 0;
@@ -336,16 +396,10 @@ namespace {
 					const auto hpawn_off = SCHEMA( "CBasePlayerController", "m_hPawn"_hash );
 					pawn_handle = hpawn_off ? memory::safe_read<std::uint32_t>( ctrl + hpawn_off ).value_or( 0 ) : 0;
 				}
-				if ( !pawn_handle || pawn_handle == 0xffffffff )
-				{
-					continue;
-				}
+				if ( !pawn_handle || pawn_handle == 0xffffffff ) continue;
 
 				const auto pawn = systems::g_entities.lookup( pawn_handle );
-				if ( !pawn || pawn < 0x10000 )
-				{
-					continue;
-				}
+				if ( !pawn || pawn < 0x10000 ) continue;
 
 				const auto remote_class = systems::g_entities.get_schema_name( pawn );
 				if ( !remote_class || fnv1a::runtime_hash( remote_class ) != "C_CSPlayerPawn"_hash ) continue;
@@ -353,10 +407,7 @@ namespace {
 				auto remote_team = memory::safe_read<std::uint8_t>( pawn + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) ).value_or( 0 );
 				if ( remote_team != 2 && remote_team != 3 )
 					remote_team = memory::safe_read<std::uint8_t>( ctrl + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) ).value_or( 0 );
-				if ( remote_team != 2 && remote_team != 3 )
-				{
-					continue;
-				}
+				if ( remote_team != 2 && remote_team != 3 ) continue;
 
 				const auto remote_skin_data = g_skin_sync.get_remote_skin( sid );
 				const auto remote_agent_def = remote_skin_data ? ( ( remote_team == 3 ) ? remote_skin_data->agent_ct : remote_skin_data->agent_t ) : static_cast<std::int16_t>( 0 );
@@ -395,34 +446,29 @@ namespace {
 					remote_model = remote_model.substr( 0, remote_model.size( ) - 2 );
 
 				const auto remote_gsn = memory::safe_read<std::uintptr_t>( pawn + SCHEMA( "C_BaseEntity", "m_pGameSceneNode"_hash ) ).value_or( 0 );
-				if ( !remote_gsn )
-				{
-					continue;
-				}
+				if ( !remote_gsn ) continue;
 
 				const auto remote_model_state = remote_gsn + SCHEMA( "CSkeletonInstance", "m_modelState"_hash );
 				const auto remote_model_handle = memory::safe_read<std::uintptr_t>( remote_model_state + SCHEMA( "CModelState", "m_hModel"_hash ) ).value_or( 0 );
-				if ( !remote_model_handle )
-				{
-					continue;
-				}
+				if ( !remote_model_handle ) continue;
 
-				const auto it = s_remote_agents.find( pawn );
-				if ( it != s_remote_agents.end( ) && it->second.def_index == remote_agent_def && it->second.team == remote_team && it->second.model_handle == remote_model_handle && agent_model_matches( pawn, remote_model ) )
-				{
-					continue;
-				}
+const auto& off = get_agent_offsets();
+			const auto it = s_remote_agents.find( pawn );
+			if ( it != s_remote_agents.end( ) && it->second.def_index == remote_agent_def && it->second.team == remote_team && it->second.model_handle == remote_model_handle && agent_model_matches( pawn, remote_model ) )
+			{
+				continue;
+			}
 
-				std::string orig_model;
-				if ( it != s_remote_agents.end( ) )
-				{
-					orig_model = it->second.original_model;
-				}
-				else
-				{
-					const auto name_ptr = memory::safe_read<std::uintptr_t>( remote_model_state + SCHEMA( "CModelState", "m_ModelName"_hash ) ).value_or( 0 );
-					orig_model = name_ptr ? memory::read_string( name_ptr ) : std::string{};
-				}
+			std::string orig_model;
+			if ( it != s_remote_agents.end( ) )
+			{
+				orig_model = it->second.original_model;
+			}
+			else
+			{
+				const auto name_ptr = memory::safe_read<std::uintptr_t>( remote_model_state + off.model_name ).value_or( 0 );
+				orig_model = name_ptr ? memory::read_string( name_ptr ) : std::string{};
+			}
 
 				if ( !replace_agent_model( pawn, remote_model ) ) continue;
 				if ( !agent_model_matches( pawn, remote_model ) ) continue; // Resource still loading: retry.
@@ -432,41 +478,50 @@ namespace {
 				const auto new_handle = agent_model_handle( pawn );
 				s_remote_agents[ pawn ] = { remote_agent_def, new_handle, remote_team, orig_model };
 			}
-		}
-	}
 
-	void agents::cycle_weapon_owners( std::uintptr_t pawn )
-	{
-		const auto weapon_services = memory::safe_read<std::uintptr_t>( pawn + SCHEMA( "C_BasePlayerPawn", "m_pWeaponServices"_hash ) ).value_or( 0 );
-		if ( weapon_services )
-		{
-			const auto weapons_base = weapon_services + SCHEMA( "CPlayer_WeaponServices", "m_hMyWeapons"_hash );
-			const auto weapons_size = memory::read<int>( weapons_base );
-			const auto weapons_data = memory::read<std::uintptr_t>( weapons_base + 0x8 );
-
-			if ( weapons_data && weapons_size > 0 && weapons_size < 64 )
+			// Advance frame counter for next batch
+			this->m_remote_player_index = end;
+			if ( this->m_remote_player_index >= controllers.size() )
 			{
-				for ( auto i = 0; i < weapons_size; ++i )
-				{
-					const auto handle = memory::read<std::uint32_t>( weapons_data + i * sizeof( std::uint32_t ) );
-					const auto weapon = systems::g_entities.lookup( handle );
-
-					if ( !weapon )
-					{
-						continue;
-					}
-
-					const auto owner_off = SCHEMA( "C_BaseEntity", "m_hOwnerEntity"_hash );
-					if ( !owner_off ) continue;
-					const auto saved_owner = memory::read<std::uint32_t>( weapon + owner_off );
-
-					memory::write<std::uint32_t>( weapon + owner_off, 0xffffffff );
-					memory::write<std::uint32_t>( weapon + owner_off, saved_owner );
-				}
+				this->m_remote_player_index = 0;
+				this->m_remote_frame_counter = (this->m_remote_frame_counter + 1) % 3;
 			}
 		}
-
 	}
+
+void agents::cycle_weapon_owners( std::uintptr_t pawn )
+{
+	const auto& off = get_agent_offsets();
+	const auto weapon_services = memory::safe_read<std::uintptr_t>( pawn + off.weapon_services ).value_or( 0 );
+	if ( weapon_services )
+	{
+		const auto weapons_base = weapon_services + off.my_weapons;
+		const auto weapons_size = memory::read<int>( weapons_base );
+		const auto weapons_data = memory::read<std::uintptr_t>( weapons_base + 0x8 );
+
+		if ( weapons_data && weapons_size > 0 && weapons_size < 64 )
+		{
+			for ( auto i = 0; i < weapons_size; ++i )
+			{
+				const auto handle = memory::read<std::uint32_t>( weapons_data + i * sizeof( std::uint32_t ) );
+				const auto weapon = systems::g_entities.lookup( handle );
+
+				if ( !weapon )
+				{
+					continue;
+				}
+
+				const auto owner_off = off.owner_entity;
+				if ( !owner_off ) continue;
+				const auto saved_owner = memory::read<std::uint32_t>( weapon + owner_off );
+
+				memory::write<std::uint32_t>( weapon + owner_off, 0xffffffff );
+				memory::write<std::uint32_t>( weapon + owner_off, saved_owner );
+			}
+		}
+	}
+
+}
 
 	void agents::on_lobby( )
 	{
