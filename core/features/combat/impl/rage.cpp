@@ -14,6 +14,16 @@ namespace features::combat {
     namespace perf = utilities::performance;
 
     namespace {
+        // Margin above the required hitchance that a shot must clear before it is
+        // accepted. The Monte-Carlo estimate carries sampling noise, so borderline
+        // values near the config threshold would otherwise pass and miss at roughly
+        // (needed - noise) real probability. A small floor keeps those sub-threshold
+        // shots from being sent. Capped at 1.0 so 100% settings still fire.
+        constexpr float k_hitchance_margin = 0.015f;
+        float hitchance_floor(float needed_hc)
+        {
+            return std::min(needed_hc + k_hitchance_margin, 1.0f);
+        }
         void report_rage_timings()
         {
             static auto last = std::chrono::steady_clock::now();
@@ -526,10 +536,11 @@ namespace features::combat {
         const auto needed_hc = config.hitchance_override.value ?
             static_cast<float>(config.hitchance_override_value) / 100.0f :
             static_cast<float>(config.hitchance) / 100.0f;
+        const auto hc_floor = hitchance_floor(needed_hc);
 
         const auto standing_inaccuracy = duckpeek_active ? this->get_standing_inaccuracy(local, ctx) : ctx.predicted_inaccuracy;
         const auto current_hc = best.valid ? best.hitchance : 0.0f;
-        const auto accurate = best.valid && current_hc >= needed_hc;
+        const auto accurate = best.valid && current_hc >= hc_floor;
         const auto max_acc = g_shared.is_max_accuracy(ctx.predicted_inaccuracy);
         const auto force = best.valid && (ctx.on_ground ? (config.force_shot.value && max_acc) : (config.force_shot_air.value && max_acc));
         const auto shot_viable = accurate || force;
@@ -556,7 +567,7 @@ namespace features::combat {
             if (standing_best.valid)
             {
                 const auto pred_standing_hc = standing_best.hitchance;
-                const auto pred_accurate = pred_standing_hc >= needed_hc;
+                const auto pred_accurate = pred_standing_hc >= hc_floor;
                 const auto pred_max_acc = g_shared.is_max_accuracy(standing_inaccuracy);
                 const auto pred_force = config.force_shot.value && pred_max_acc;
 
@@ -780,7 +791,9 @@ namespace features::combat {
         for (auto& hits : m_candidate_hits) hits.clear();
 
         // One queue per record round, not two barriers per individual player.
-        // Newest poses run first; retain the direct-hit early-out for older poses.
+        // Newest poses run first. Older poses keep being scanned unless the newest
+        // one already produced a lethal direct hit (damage-first selection needs
+        // the older, stronger records to compete).
         for (int ri = 0; ri < k_max_scan_records; ++ri)
         {
             m_scan_tasks.clear();
@@ -863,7 +876,7 @@ namespace features::combat {
                         const auto& hit = work.hits[pi];
                         if (!hit || hit->is_center != centers) continue;
                         m_candidate_hits[ci].push_back(*hit);
-                        if (!hit->penetrated) m_candidate_done[ci] = 1;
+                        if (!hit->penetrated && hit->damage >= static_cast<float>(hit->health)) m_candidate_done[ci] = 1;
                     }
                 }
             }
@@ -1140,11 +1153,14 @@ namespace features::combat {
         const auto needed_hc = config.hitchance_override.value ?
             static_cast<float>(config.hitchance_override_value) / 100.0f :
             static_cast<float>(config.hitchance) / 100.0f;
+        const auto hc_floor = hitchance_floor(needed_hc);
 
-        // Build the spread cache once for the entire evaluation loop.
+        // Build the spread cache once for the entire evaluation loop. More samples
+        // than the default tighten the Monte-Carlo estimate, which both rejects more
+        // borderline misses and avoids dropping shots that only *looked* weak.
         const auto hc_cache = config.no_spread.value
             ? shared::spread_cache{}
-            : g_shared.build_spread_cache( eval_inaccuracy, aim_ctx.spread );
+            : g_shared.build_spread_cache( eval_inaccuracy, aim_ctx.spread, 256 );
         const auto weapon_range = g_shared.ctx().range;
         const auto no_spread = config.no_spread.value;
         const auto batch_width = no_spread ? 1 : std::max(threadpool::get_thread_count(), 1);
@@ -1165,7 +1181,7 @@ namespace features::combat {
 
             // Theoretical upper bound score if this hit had 100% hitchance
             const auto max_possible_score = 1000000.0f +
-                (can_kill ? (100000.0f + 10000.0f) : (h.damage * 105.0f)) +
+                (can_kill ? (100000.0f + h.damage * 100.0f + 10000.0f) : (h.damage * 105.0f)) +
                 (h.penetrated ? 0.0f : 250.0f) +
                 (h.is_center ? 50.0f : 0.0f) +
                 static_cast<float>(hitgroup_priority(h.hitbox_index)) * 2.0f -
@@ -1199,11 +1215,11 @@ namespace features::combat {
             }
             const auto hc = no_spread ? 1.0f : hitchances[ci];
 
-            const auto passes_hitchance = config.no_spread.value || hc >= needed_hc;
+            const auto passes_hitchance = config.no_spread.value || hc >= hc_floor;
 
             auto score = passes_hitchance ? 1000000.0f : 0.0f;
             if (can_kill)
-                score += 100000.0f + hc * 10000.0f;
+                score += 100000.0f + h.damage * 100.0f + hc * 10000.0f;
             else
                 score += h.damage * hc * 100.0f + h.damage * 5.0f;
 
@@ -1525,32 +1541,61 @@ namespace features::combat {
                 !std::isfinite(shared_ctx.recoil_index))
                 return;
 
-            // Zero angles can be a legitimate solution. Validate the resulting ray,
-            // including the zero-vector fallback returned by the bounded solver.
-            const auto corrected = shared_ctx.inaccuracy == 0.0f && shared_ctx.spread == 0.0f
-                ? aim_angle : g_shared.find_spread_correction(aim_angle, stamp_tick);
-            if (!std::isfinite(corrected.x) || !std::isfinite(corrected.y) || !std::isfinite(corrected.z))
-                return;
-
-            const auto seed = g_shared.get_spread_seed(corrected, stamp_tick);
+            // The command will carry corrected - aim_punch; the server derives the
+            // spread seed from those exact angles, so predict and validate against
+            // them rather than the pre-punch correction. A one-tick drift of the
+            // stamped tick drifts the seed, so retry the adjacent ticks and stamp
+            // the accepted one into the input history.
+            auto corrected = aim_angle;
+            auto sent = math::vector3{};
+            const auto base_tick = stamp_tick;
+            auto accepted = false;
             shared::spread_cache shot_cache{};
-            shot_cache.count = 1;
-            shot_cache.inaccuracy = shared_ctx.inaccuracy;
-            shot_cache.spread = shared_ctx.spread;
-            shot_cache.values[0] = g_shared.calculate_spread(seed, shared_ctx.inaccuracy,
-                shared_ctx.spread, shared_ctx.recoil_index, shared_ctx.item_def_idx, shared_ctx.num_bullets);
-            const auto sx = shot_cache.values[0].x;
-            const auto sy = shot_cache.values[0].y;
-            shot_cache.inv_len[0] = 1.0f / std::sqrt(1.0f + sx * sx + sy * sy);
 
-            if (tgt.hit.bone_index < 0 || tgt.hit.bone_index >= tgt.hit.record->bone_count ||
-                tgt.hit.bone_index >= 128 ||
-                g_shared.calculate_hitchance(shoot_eye, corrected, tgt.hit.hitbox,
-                    tgt.hit.record->bones[tgt.hit.bone_index], shot_cache) < 1.0f)
+            for (auto attempts = 0; attempts < 3; ++attempts)
+            {
+                const auto tick = base_tick + (attempts == 0 ? 0 : (attempts == 1 ? 1 : -1));
+
+                if (shared_ctx.inaccuracy == 0.0f && shared_ctx.spread == 0.0f)
+                    corrected = aim_angle;
+                else
+                    corrected = g_shared.find_spread_correction(aim_angle, tick);
+
+                sent = math::vector3{
+                    std::clamp(corrected.x - aim_punch.x, -89.0f, 89.0f),
+                    corrected.y - aim_punch.y,
+                    corrected.z
+                };
+                if (!std::isfinite(sent.x) || !std::isfinite(sent.y) || !std::isfinite(sent.z))
+                    continue;
+
+                const auto seed = g_shared.get_spread_seed(sent, tick);
+                shot_cache = {};
+                shot_cache.count = 1;
+                shot_cache.inaccuracy = shared_ctx.inaccuracy;
+                shot_cache.spread = shared_ctx.spread;
+                shot_cache.values[0] = g_shared.calculate_spread(seed, shared_ctx.inaccuracy,
+                    shared_ctx.spread, shared_ctx.recoil_index, shared_ctx.item_def_idx, shared_ctx.num_bullets);
+                const auto sx = shot_cache.values[0].x;
+                const auto sy = shot_cache.values[0].y;
+                shot_cache.inv_len[0] = 1.0f / std::sqrt(1.0f + sx * sx + sy * sy);
+
+                if (tgt.hit.bone_index < 0 || tgt.hit.bone_index >= tgt.hit.record->bone_count ||
+                    tgt.hit.bone_index >= 128 ||
+                    g_shared.calculate_hitchance(shoot_eye, sent, tgt.hit.hitbox,
+                        tgt.hit.record->bones[tgt.hit.bone_index], shot_cache) < 1.0f)
+                    continue;
+
+                accepted = true;
+                stamp_tick = tick;
+                break;
+            }
+
+            if (!accepted)
                 return;
 
             math::vector3 forward{}, left{}, up{};
-            math::helpers::angle_vectors_left(corrected, &forward, &left, &up);
+            math::helpers::angle_vectors_left(sent, &forward, &left, &up);
             const auto& spread = shot_cache.values[0];
             const auto direction = (forward + left * spread.x + up * spread.y).normalized();
             const auto pen_ctx = g_shared.pen().prepare_target(tgt.hit.pawn, tgt.hit.record);

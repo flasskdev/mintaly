@@ -1732,6 +1732,7 @@ namespace settings {
                 {
                         xui::setting clantag{ false,{}, "clantag", "name changer" };
                         xui::setting override_name{ false,{}, "override name", "name changer" };
+				xui::setting random_nickname{ false,{}, "random nickname", "name changer" };
                         config::str name{ "Player", "name changer", "name" };
                         xui::setting anim_nickname{ false,{}, "anim nickname", "name changer" };
                         config::val<float> anim_speed{ 0.25f, "name changer", "anim speed" };

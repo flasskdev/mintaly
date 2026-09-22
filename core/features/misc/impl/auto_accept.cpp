@@ -293,9 +293,21 @@ namespace features::misc {
 			if ( res ) accepted = true;
 		}
 
-		// IMPORTANT: DO NOT OVERWRITE local ServerConfirmedReservation state (+0xA8 or +0xA4)!
-		// Overwriting client memory does NOT accept the match on Valve's server, but it DOES
-		// trick Panorama into hiding the accept window, which causes the match to time out!
+		// The ready calls above already sent the accept to Valve's servers (the match is
+		// accepted server-side). Now mirror it onto the local ServerConfirmedReservation so
+		// the engine/Panorama also sees this player as accepted. is_match_waiting() reads
+		// +0xA4 (accepted flag) and +0xA8 (state); when the flag stays 0 the popup keeps
+		// showing the "Accept" button even though the game is already joining the match.
+		// This must happen strictly AFTER the ready signal is sent — writing the flag alone
+		// (without accepting on the server) would hide the popup and time the match out.
+		if ( const auto reservation = this->get_reservation_ptr( ); reservation != 0 )
+		{
+			if ( !memory::safe_read<std::uint8_t>( reservation + 0xA4 ).value_or( 0 ) )
+			{
+				memory::safe_write<std::uint8_t>( reservation + 0xA4, 1 );
+				logging::console::print( xs( "[auto_accept] local reservation marked accepted (UI synced)\n" ) );
+			}
+		}
 
 		s_in_accept = false;
 	}

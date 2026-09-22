@@ -1405,25 +1405,146 @@ namespace features::combat {
                 return static_cast< float >( hits ) / static_cast< float >( n );
         }
 
-        math::vector3 shared::find_spread_correction( const math::vector3& aim_angle, int tick ) const
+        std::optional<math::vector3> shared::solve_spread_correction( const math::vector3& aim_angle, int tick ) const
         {
-                for ( auto i = 0; i < 720; i++ )
+                const auto clamp_pitch = []( float value ) { return value < -89.0f ? -89.0f : ( value > 89.0f ? 89.0f : value ); };
+
+                math::vector3 aim_forward{};
+                math::helpers::angle_vectors_left( aim_angle, &aim_forward );
+
+                // Compensation: tilt the pitch by the total spread magnitude and roll the
+                // frame so the residual lateral spread cancels against the aim line.
+                const auto make_candidate = [ & ]( const math::vector3& base, const math::vector2& spread, math::vector3& adj ) -> bool
                 {
-                        const auto test_angles = math::vector3{ static_cast< float >( i ) / 2.0f, aim_angle.y, 0.0f };
-                        const auto seed = this->get_spread_seed( test_angles, tick );
-                        const auto spread = this->calculate_spread( seed, this->m_ctx.inaccuracy, this->m_ctx.spread, this->m_ctx.recoil_index, this->m_ctx.item_def_idx, this->m_ctx.num_bullets );
+                        adj = base;
+                        adj.x = clamp_pitch( adj.x + math::helpers::rad_to_deg( std::atan( std::sqrt( spread.x * spread.x + spread.y * spread.y ) ) ) );
+                        adj.z = -math::helpers::rad_to_deg( std::atan2( spread.x, spread.y ) );
 
-                        auto adj_angle = aim_angle;
-                        adj_angle.x += math::helpers::rad_to_deg( std::atan( std::sqrt( spread.x * spread.x + spread.y * spread.y ) ) );
-                        adj_angle.z = -math::helpers::rad_to_deg( std::atan2( spread.x, spread.y ) );
+                        if ( !std::isfinite( adj.x ) || !std::isfinite( adj.z ) )
+                                return false;
 
-                        if ( this->get_spread_seed( adj_angle, tick ) == seed )
+                        // The compensated ray must still actually face the target: this prunes
+                        // seed-equality hits whose rolled frame bends the bullet off the aim.
+                        math::vector3 fwd{}, left{}, up{};
+                        math::helpers::angle_vectors_left( adj, &fwd, &left, &up );
+                        const auto dir = fwd + left * spread.x + up * spread.y;
+                        const auto len = std::sqrt( dir.dot( dir ) );
+                        if ( len < 1e-6f )
+                                return false;
+
+                        return aim_forward.dot( dir / len ) >= 0.9995f;
+                };
+
+                // Accepts a candidate when the compensated angles land in the same seed
+                // bucket as the base, i.e. the server deterministically reproduces the
+                // very spread we compensated against for the angles we send.
+                const auto consider = [ & ]( const math::vector3& base ) -> std::optional<math::vector3>
+                {
+                        if ( !std::isfinite( base.x ) || !std::isfinite( base.y ) || !std::isfinite( base.z ) )
+                                return std::nullopt;
+
+                        const auto seed = this->get_spread_seed( base, tick );
+                        const auto spread = this->calculate_spread( seed, this->m_ctx.inaccuracy, this->m_ctx.spread,
+                                this->m_ctx.recoil_index, this->m_ctx.item_def_idx, this->m_ctx.num_bullets );
+
+                        if ( !std::isfinite( spread.x ) || !std::isfinite( spread.y ) )
+                                return std::nullopt;
+
+                        math::vector3 adj{};
+                        if ( !make_candidate( base, spread, adj ) )
+                                return std::nullopt;
+
+                        if ( this->get_spread_seed( adj, tick ) == seed )
+                                return adj;
+
+                        return std::nullopt;
+                };
+
+                const auto pitch = clamp_pitch( aim_angle.x );
+
+                // Fixed-point crawl: step toward the compensated pitch until the base
+                // stops moving; a stable base is self-consistent even when the seed
+                // quantizes the angle space coarsely. Reuses the spread of the failed
+                // candidate for the crawl step (no extra engine calls).
+                auto crawl = math::vector3{ pitch, aim_angle.y, 0.0f };
+                for ( auto i = 0; i < 8 && std::fabs( crawl.x - pitch ) <= 30.0f; ++i )
+                {
+                        if ( !std::isfinite( crawl.x ) || !std::isfinite( crawl.y ) || !std::isfinite( crawl.z ) )
+                                break;
+
+                        const auto seed = this->get_spread_seed( crawl, tick );
+                        const auto spread = this->calculate_spread( seed, this->m_ctx.inaccuracy, this->m_ctx.spread,
+                                this->m_ctx.recoil_index, this->m_ctx.item_def_idx, this->m_ctx.num_bullets );
+                        if ( !std::isfinite( spread.x ) || !std::isfinite( spread.y ) )
+                                break;
+
+                        math::vector3 adj{};
+                        if ( !make_candidate( crawl, spread, adj ) )
                         {
-                                return adj_angle;
+                                if ( std::isfinite( adj.x ) && std::isfinite( adj.z ) )
+                                        crawl = adj;
+                                else
+                                        break;
+                                continue;
+                        }
+
+                        if ( this->get_spread_seed( adj, tick ) == seed )
+                                return adj;
+
+                        crawl = adj;
+                }
+
+                // Fine pitch sweep around the aim: catches the tight quantization buckets.
+                for ( auto d = -20; d <= 20; ++d )
+                {
+                        const auto candidate = math::vector3{ clamp_pitch( pitch + static_cast< float >( d ) * 0.1f ), aim_angle.y, 0.0f };
+                        if ( const auto solved = consider( candidate ); solved )
+                                return solved;
+                }
+
+                // Wider pitch sweep with coarser steps.
+                for ( auto d = -24; d <= 24; ++d )
+                {
+                        if ( d == 0 ) continue;
+
+                        const auto candidate = math::vector3{ clamp_pitch( pitch + static_cast< float >( d ) * 2.0f ), aim_angle.y, 0.0f };
+                        if ( const auto solved = consider( candidate ); solved )
+                                return solved;
+                }
+
+                // Small yaw / roll perturb sweeps: the seed may consume yaw or roll bits.
+                for ( const auto yaw_off : { -1, 1 } )
+                {
+                        for ( const auto roll_off : { -2, -1, 1, 2 } )
+                        {
+                                for ( auto d = -10; d <= 10; ++d )
+                                {
+                                        const auto candidate = math::vector3{
+                                                clamp_pitch( pitch + static_cast< float >( d ) ),
+                                                aim_angle.y + static_cast< float >( yaw_off ) * 0.5f,
+                                                static_cast< float >( roll_off )
+                                        };
+                                        if ( const auto solved = consider( candidate ); solved )
+                                                return solved;
+                                }
                         }
                 }
 
-                return {};
+                // Coarse full-range fallback sweep: preserves diversity across every seed bucket.
+                for ( auto i = 0; i < 720; i += 4 )
+                {
+                        const auto candidate = math::vector3{ static_cast< float >( i ) / 2.0f, aim_angle.y, 0.0f };
+                        if ( const auto solved = consider( candidate ); solved )
+                                return solved;
+                }
+
+                return std::nullopt;
+        }
+
+        math::vector3 shared::find_spread_correction( const math::vector3& aim_angle, int tick ) const
+        {
+                const auto solved = this->solve_spread_correction( aim_angle, tick );
+                return solved ? *solved : aim_angle;
         }
 
         math::vector3 shared::get_eye_position( std::uintptr_t local_pawn ) const
@@ -1740,8 +1861,7 @@ namespace features::combat {
                         return tick_base >= this->m_last_shoot_tick + 2 && ( client_tick >= next_primary || client_tick >= next_secondary );
                 }
 
-                if ( this->m_ctx.item_def_idx == cstypes::item_definition_index::weapon_r8_revolver
-                        && settings::g_combat.m_autos.revolver_quick.value )
+                if ( this->m_ctx.item_def_idx == cstypes::item_definition_index::weapon_r8_revolver )
                 {
                         const auto next_secondary = memory::read<int>( this->m_ctx.weapon + SCHEMA( "C_BasePlayerWeapon", "m_nNextSecondaryAttackTick"_hash ) );
                         return tick_base >= this->m_last_shoot_tick + 2 && client_tick >= next_primary && client_tick >= next_secondary;
@@ -1752,8 +1872,7 @@ namespace features::combat {
 
         bool shared::quick_revolver_active( ) const
         {
-                return this->m_ctx.item_def_idx == cstypes::item_definition_index::weapon_r8_revolver
-                        && settings::g_combat.m_autos.revolver_quick.value;
+                return this->m_ctx.item_def_idx == cstypes::item_definition_index::weapon_r8_revolver;
         }
 
         bool shared::is_max_accuracy( float inaccuracy ) const

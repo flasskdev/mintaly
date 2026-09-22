@@ -7,6 +7,7 @@
 #include <utilities/addresses/addresses.hpp>
 #include <utilities/logging/logging.hpp>
 #include <utilities/steam/steam.hpp>
+#include <utilities/random/random.hpp>
 #include <core/settings.hpp>
 #include <core/features/features.hpp>
 #include <core/features/changer/cosmetic_attributes.hpp>
@@ -26,6 +27,49 @@ namespace features::misc {
                         const auto name_ptr = memory::safe_read<std::uintptr_t>(
                                 controller + SCHEMA("CCSPlayerController", "m_sSanitizedPlayerName"_hash)).value_or(0);
                         return memory::read_string(name_ptr, 127);
+                }
+
+                [[nodiscard]] std::string random_match_player_name(const std::string& exclude = {})
+                {
+                        std::vector<std::string> names;
+                        const auto local = systems::g_local.get();
+                        for (const auto& player : systems::g_entities.get_by_type(systems::entities::type::player))
+                        {
+                                if (!player.ptr || player.ptr == local.controller)
+                                        continue;
+
+                                const auto name_ptr = memory::safe_read<std::uintptr_t>(
+                                        player.ptr + SCHEMA("CCSPlayerController", "m_sSanitizedPlayerName"_hash)).value_or(0);
+                                if (!name_ptr)
+                                        continue;
+
+                                auto pname = memory::read_string(name_ptr, 127);
+                                if (pname.empty() || pname == "x")
+                                        continue;
+                                if (!exclude.empty() && pname == exclude)
+                                        continue;
+
+                                names.push_back(std::move(pname));
+                        }
+
+                        if (names.empty())
+                        {
+                                return {};
+                        }
+
+                        return names[static_cast<std::size_t>(random::integer(0, static_cast<int>(names.size()) - 1))];
+                }
+
+                [[nodiscard]] std::string make_random_nickname()
+                {
+                        static constexpr const char* const k_parts[][ 16 ]{
+                                { "Shadow", "Ghost", "Storm", "Frost", "Night", "Savage", "Crazy", "Pro", "Top", "Killer", "Silent", "Dark", "Blaze", "Fast", "Lucky", "Sneaky" },
+                                { "Player", "Shooter", "Sniper", "Rusher", "Clutch", "Legend", "Striker", "Aimer", "Fragger", "Hunter", "Runner", "Viper", "Wolf", "Fox", "Eagle", "Panda" }
+                        };
+                        const auto part_a = k_parts[ 0 ][ random::integer( 0, 15 ) ];
+                        const auto part_b = k_parts[ 1 ][ random::integer( 0, 15 ) ];
+                        const auto suffix = random::integer( 10, 999 );
+                        return std::format( "{}{}{}", part_a, part_b, suffix );
                 }
 
                 [[nodiscard]] std::string get_steam_nickname(std::uintptr_t controller = 0)
@@ -496,7 +540,36 @@ namespace features::misc {
                         this->m_last_sent_name.clear();
                 }
 
-                const bool override_name_active = cfg.override_name.value && !cfg.name.value.empty();
+                const bool random_nickname_active = cfg.override_name.value && cfg.random_nickname.value;
+
+                // Randomly steal a name from the match player list, rotating at
+                // a fast rate (one name per ~0.15s) while the checkbox is active.
+                static std::string s_current_random_name;
+                static auto s_next_random_time = std::chrono::steady_clock::now();
+                if (random_nickname_active)
+                {
+                        const auto now = std::chrono::steady_clock::now();
+                        if (s_current_random_name.empty() || now >= s_next_random_time)
+                        {
+                                auto candidate = random_match_player_name(s_current_random_name);
+                                if (candidate.empty())
+                                {
+                                        candidate = make_random_nickname();
+                                }
+
+                                if (!candidate.empty())
+                                {
+                                        s_current_random_name = std::move(candidate);
+                                        s_next_random_time = now + std::chrono::milliseconds(75);
+                                }
+                        }
+                }
+                else
+                {
+                        s_current_random_name.clear();
+                }
+
+                const bool override_name_active = cfg.override_name.value && (random_nickname_active || !cfg.name.value.empty());
                 if (this->m_override_name_was_active && !override_name_active)
                 {
                         // Override was toggled off while clantag is still active - force immediate update
@@ -504,7 +577,7 @@ namespace features::misc {
                 }
                 this->m_override_name_was_active = override_name_active;
 
-                const auto& configured_name = cfg.name.value;
+                const auto& configured_name = random_nickname_active ? s_current_random_name : cfg.name.value;
                 const auto& base_name = override_name_active
                         ? configured_name
                         : (!this->m_original_name.empty() && this->m_original_name != "x" ? this->m_original_name : (!steam_name.empty() && steam_name != "x" ? steam_name : "Player"));
