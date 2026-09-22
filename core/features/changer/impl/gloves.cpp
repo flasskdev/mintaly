@@ -54,18 +54,6 @@ namespace features::changer {
 		};
 		inline static std::unordered_map<std::uintptr_t, remote_glove_state> s_remote_gloves;
 
-		cosmetic_cache::identity glove_visual( std::uintptr_t entity )
-		{
-			cosmetic_cache::identity result{};
-			result.weapon = entity;
-			if ( !entity ) return result;
-			const auto& off = get_offsets();
-			result.scene = memory::safe_read<std::uintptr_t>( entity + off.scene_node ).value_or( 0 );
-			if ( result.scene )
-				result.model = memory::safe_read<std::uintptr_t>( result.scene + off.model_state + off.model_handle ).value_or( 0 );
-			return result;
-		}
-
 	} // namespace detail
 
 	namespace {
@@ -119,6 +107,20 @@ namespace features::changer {
 			return offsets;
 		}
 	}
+
+	namespace detail {
+		cosmetic_cache::identity glove_visual( std::uintptr_t entity )
+		{
+			cosmetic_cache::identity result{};
+			result.weapon = entity;
+			if ( !entity ) return result;
+			const auto& off = get_offsets();
+			result.scene = memory::safe_read<std::uintptr_t>( entity + off.scene_node ).value_or( 0 );
+			if ( result.scene )
+				result.model = memory::safe_read<std::uintptr_t>( result.scene + off.model_state + off.model_handle ).value_or( 0 );
+			return result;
+		}
+	} // namespace detail
 
 	void gloves::on_frame_stage_notify( )
 	{
