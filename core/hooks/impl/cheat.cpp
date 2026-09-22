@@ -592,14 +592,15 @@ namespace hooks {
 			return;
 		}
 
-		// Apply only through the regular match-pawn path, never a scan of UI previews.
-		if ( stage == 6 || stage == 7 || stage == 12 )
+		// One cosmetic pass after render-start has committed the network/model state.
+		// A presentation controller alone must not enable lobby cosmetics.
+		if ( stage == 12 && memory::safe_read<std::uintptr_t>( addresses::globals::game_rules ).value_or( 0 ) )
 		{
 			// Agent/model binding can recreate arms. Reconcile gloves last, without UI state.
 			features::changer::g_agents.on_frame_stage_notify( );
 			features::changer::g_knives.on_frame_stage_notify( );
 			features::changer::g_guns.on_frame_stage_notify( );
-			if ( stage == 12 ) features::changer::g_guns.on_render_start( );
+			features::changer::g_guns.on_render_start( );
 			features::changer::g_gloves.on_frame_stage_notify( );
 		}
 
@@ -613,7 +614,7 @@ namespace hooks {
 		// engine during render-start stage 12.
 		if ( stage == 12 )
 		{
-            // Expire hit ghosts every render frame, not only on network updates.
+            // Expire hit highlights every render frame, not only on network updates.
             features::esp::player::g_chams.os().update();
 			systems::g_view.update_matrix( );
 			systems::g_frame_data.update( );
@@ -1126,16 +1127,7 @@ namespace hooks {
 				return;
 			}
 
-            if (features::esp::player::g_chams.os().is_active(scene_object))
-            {
-                if (const auto pawn = features::esp::player::g_chams.os().get_pawn(scene_object))
-                    features::esp::player::g_chams.on_generate_primitives(pawn, "C_CSPlayerPawn"_hash,
-                        scene_object, primitive_buffer,
-                        m_generate_primitives.original<void(__fastcall*)(std::uintptr_t, std::uintptr_t, std::uintptr_t, std::uintptr_t)>(),
-                        thisptr, scene_view);
-                return;
-            }
-
+			// Hit highlighting uses the victim's actual scene object, not a clone.
 			const auto owner_handle = memory::safe_read<std::uint32_t>( scene_object + 0xc0 ).value_or( 0 );
 			if ( owner_handle )
 			{
@@ -2143,6 +2135,12 @@ namespace hooks {
 	{
 		if ( lifecycle::is_unloading( ) ||
 			memory::safe_read<std::uintptr_t>( addresses::globals::local_player_controller ).value_or( 0 ) ) return;
+		// Teardown clears the queue. Restore the selection on lobby entry and
+		// after a config load, without requiring another click on a music tile.
+		// submit() deduplicates both pending and already-applied selections.
+		const auto configured_kit = settings::g_changer.music.id;
+		if ( configured_kit >= 0 && configured_kit < 0xffff )
+			detail::g_lobby_music_requests.submit( { static_cast<std::uint16_t>( configured_kit ), {} } );
 		const auto pending = detail::g_lobby_music_requests.next( );
 		if ( !pending ) return;
 		static auto next_retry = std::chrono::steady_clock::time_point{};

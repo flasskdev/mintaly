@@ -14,7 +14,6 @@ namespace features::esp::player {
 	bool chams::on_generate_primitives( std::uintptr_t owner_entity, std::uint32_t owner_hash, std::uintptr_t scene_object, std::uintptr_t primitive_buffer, void( __fastcall* original_fn )( std::uintptr_t, std::uintptr_t, std::uintptr_t, std::uintptr_t ), std::uintptr_t a1, std::uintptr_t scene_view )
 	{
 		const auto is_player = owner_hash == "C_CSPlayerPawn"_hash;
-        const bool is_hit_ghost = m_onshot.is_active(scene_object);
 		const auto is_arms = owner_hash == "C_CS2HudModelArms"_hash;
 		const auto is_weapon = owner_hash == "C_CS2HudModelWeapon"_hash;
 
@@ -80,7 +79,7 @@ namespace features::esp::player {
 				const bool needs_original_base = !has_primary_fill && !has_secondary_fill &&
 					( cfg.overlay.enabled.value || ( primary_is_outline && !primary_suppress_fill ) || force_original );
 
-				if ( needs_original_base && !suppress_fill && !is_hit_ghost )
+				if ( needs_original_base && !suppress_fill )
 				{
 					original_fn( a1, target_scene_obj, scene_view, primitive_buffer );
 				}
@@ -136,7 +135,7 @@ namespace features::esp::player {
 		const auto is_local = owner_entity == local.view_pawn( );
 		const auto is_dead = health <= 0;
 
-		if ( !is_hit_ghost && is_player && is_other_team && !is_dead && chams_cfg.backtrack.enabled.value )
+		if ( is_player && is_other_team && !is_dead && chams_cfg.backtrack.enabled.value )
 		{
 			if ( this->m_backtrack.has_active( owner_entity ) )
 			{
@@ -170,43 +169,16 @@ namespace features::esp::player {
 				}
 			}
 		}
-		if (is_hit_ghost && is_player && is_other_team && chams_cfg.onshot.enabled.value) {
-			if (this->m_onshot.has_active (owner_entity)) {
-				const auto os_obj = this->m_onshot.get_scene_object (owner_entity);
-				if (os_obj) {
-					const auto& ocfg = chams_cfg.onshot;
-
-					const auto alpha = this->m_onshot.get_alpha (owner_entity);
-					const auto before = detail::read_primitive_buffer( primitive_buffer );
-					const auto prev_count = before ? before->count() : -1;
-
-					// Fade colors only. Keep configuration addresses stable for the
-					// outline material cache and avoid copying settings/strings per mesh.
-					apply_config (ocfg, os_obj, false, alpha);
-
-					const auto after = detail::read_primitive_buffer( primitive_buffer );
-					const auto new_count = after ? after->count() : -1;
-					if ( after && prev_count >= 0 && new_count > prev_count ) {
-						__try
-						{
-							for (auto i = prev_count; i < new_count; ++i)
-							{
-								const auto prim = after->at_fast( i );
-								if ( prim )
-								{
-									detail::mark_primitive_last_fast( prim );
-								}
-							}
-						}
-						__except ( EXCEPTION_EXECUTE_HANDLER )
-						{
-						}
-					}
-				}
-			}
+		const auto& onshot = chams_cfg.onshot;
+		if ( is_player && is_other_team && onshot.enabled.value &&
+			( onshot.primary.enabled.value || onshot.secondary.enabled.value || onshot.overlay.enabled.value ) &&
+			this->m_onshot.has_active( owner_entity ) )
+		{
+			// Override ordinary enemy chams on the actual victim, including a
+			// lethal hit, and resume its normal configuration after expiry.
+			apply_config( onshot, scene_object );
+			return true;
 		}
-
-        if (is_hit_ghost) return true;
 
 		const settings::esp::chams_config* target{ nullptr };
 
@@ -617,113 +589,45 @@ namespace features::esp::player {
     void chams::onshot::push(std::uintptr_t pawn) {
         const auto& cfg = settings::g_esp.m_player.m_chams;
         if (!pawn || !cfg.onshot.enabled.value) return;
-        const auto controller_handle = memory::safe_read<std::uint32_t>(
-            pawn + SCHEMA("C_BasePlayerPawn", "m_hController"_hash)).value_or(0);
-        const auto controller = systems::g_entities.lookup(controller_handle);
-        if (!controller) return;
-        const auto handle = memory::safe_read<std::uint32_t>(
-            controller + SCHEMA("CCSPlayerController", "m_hPlayerPawn"_hash)).value_or(0);
+        // Use the entity's full serial-bearing handle. The controller can
+        // already have switched to an observer when a lethal hurt arrives.
+        const auto identity = memory::safe_read<std::uintptr_t>(pawn + 0x10).value_or(0);
+        if (!identity) return;
+        const auto handle = memory::safe_read<std::uint32_t>(identity + 0x10).value_or(0xffffffffu);
         if (systems::g_entities.lookup(handle) != pawn) return;
-
-        pending_entry pending{};
-        pending.pawn_handle = handle;
-        pending.hit_time = clock::now();
         const auto duration = cfg.onshot_fade_time.value;
-        pending.duration = std::isfinite(duration) ? std::clamp(duration, 0.05f, 5.0f) : 0.25f;
-        // Snapshot the current evaluated pose even if rage/lag compensation is off.
-        // Unlike get_skeleton(), capture all contiguous bones, including non-hitboxes.
-        const auto node = memory::safe_read<std::uintptr_t>(
-            pawn + SCHEMA("C_BaseEntity", "m_pGameSceneNode"_hash)).value_or(0);
-        if (node) {
-            const auto model = node + SCHEMA("CSkeletonInstance", "m_modelState"_hash);
-            const auto cache = memory::safe_read<std::uintptr_t>(model + 0x80).value_or(0);
-            const auto count = memory::safe_read<int>(model + 0x8c).value_or(0);
-            if (cache && count > 0) {
-                pending.bone_count = std::min(count, 27);
-                for (int i = 0; i < pending.bone_count; ++i) {
-                    const auto bone = memory::safe_read<systems::bones::data>(cache + i * sizeof(systems::bones::data));
-                    if (!bone) { pending.bone_count = 0; break; }
-                    pending.bones[i] = *bone;
-                }
-            }
-        }
-        if (!pending.bone_count) return;
+        const auto seconds = std::isfinite(duration) ? std::clamp(duration, 0.05f, 5.0f) : 0.25f;
         std::lock_guard lock(m_mutex);
-        m_pending[pawn] = pending;
+        // A second confirmed hit restarts this victim's timer only.
+        m_entries[pawn] = {handle, clock::now(), seconds};
     }
 
     void chams::onshot::update() {
         std::lock_guard lock(m_mutex);
-        const auto& cfg = settings::g_esp.m_player.m_chams;
-        if (!cfg.onshot.enabled.value) { shutdown(); return; }
+        if (!settings::g_esp.m_player.m_chams.onshot.enabled.value) {
+            m_entries.clear();
+            return;
+        }
         const auto now = clock::now();
-        for (auto& [pawn, pending] : m_pending) {
-            if (systems::g_entities.lookup(pending.pawn_handle) != pawn ||
-                std::chrono::duration<float>(now - pending.hit_time).count() >= pending.duration) continue;
-            auto& e = m_entries[pawn];
-            e.destroy();
-            e.create(pawn);
-            if (!e.scene_object) { m_entries.erase(pawn); continue; }
-            e.pawn = pawn;
-            e.pawn_handle = pending.pawn_handle;
-            e.hit_time = pending.hit_time;
-            e.duration = pending.duration;
-            e.active = true;
-            e.setup_bones(pending.bones.data(), pending.bone_count);
-        }
-        m_pending.clear();
-        for (auto it = m_entries.begin(); it != m_entries.end();) {
-            const auto& e = it->second;
-            if (systems::g_entities.lookup(e.pawn_handle) != it->first ||
-                std::chrono::duration<float>(now - e.hit_time).count() >= e.duration) {
-                it->second.destroy();
-                it = m_entries.erase(it);
-            } else ++it;
-        }
+        std::erase_if(m_entries, [now](const auto& entry) {
+            const auto& hit = entry.second;
+            return systems::g_entities.lookup(hit.pawn_handle) != entry.first ||
+                std::chrono::duration<float>(now - hit.hit_time).count() >= hit.duration;
+        });
     }
 
-    void chams::onshot::shutdown(bool destroy_objects) {
+    void chams::onshot::shutdown(bool /*destroy_objects*/) {
         std::lock_guard lock(m_mutex);
-        if (destroy_objects)
-            for (auto& [pawn, e] : m_entries) e.destroy();
         m_entries.clear();
-        m_pending.clear();
     }
 
     bool chams::onshot::has_active(std::uintptr_t pawn) const {
         std::lock_guard lock(m_mutex);
         const auto it = m_entries.find(pawn);
-        return it != m_entries.end() && it->second.scene_object;
-    }
-
-    bool chams::onshot::is_active(std::uintptr_t scene_object) const {
-        std::lock_guard lock(m_mutex);
-        for (const auto& [pawn, e] : m_entries)
-            if (e.scene_object == scene_object) return true;
-        return false;
-    }
-
-    std::uintptr_t chams::onshot::get_pawn(std::uintptr_t scene_object) const {
-        std::lock_guard lock(m_mutex);
-        for (const auto& [pawn, e] : m_entries)
-            if (e.scene_object == scene_object && systems::g_entities.lookup(e.pawn_handle) == pawn)
-                return pawn;
-        return 0;
-    }
-
-    std::uintptr_t chams::onshot::get_scene_object(std::uintptr_t pawn) const {
-        std::lock_guard lock(m_mutex);
-        const auto it = m_entries.find(pawn);
-        return it != m_entries.end() ? it->second.scene_object : 0;
-    }
-
-    float chams::onshot::get_alpha(std::uintptr_t pawn) const {
-        std::lock_guard lock(m_mutex);
-        const auto it = m_entries.find(pawn);
-        if (it == m_entries.end() || !it->second.scene_object) return 0.0f;
-        const auto& e = it->second;
-        const auto elapsed = std::chrono::duration<float>(clock::now() - e.hit_time).count();
-        return e.duration > 0.0f ? std::clamp(1.0f - elapsed / e.duration, 0.0f, 1.0f) : 0.0f;
+        if (it == m_entries.end()) return false;
+        const auto& hit = it->second;
+        return systems::g_entities.lookup(hit.pawn_handle) == pawn &&
+            std::chrono::duration<float>(clock::now() - hit.hit_time).count() < hit.duration;
     }
 
 	void chams::apply_layer( std::uintptr_t primitive_buffer, void( __fastcall* original_fn )( std::uintptr_t, std::uintptr_t, std::uintptr_t, std::uintptr_t ), std::uintptr_t a1, std::uintptr_t scene_object, std::uintptr_t scene_view, const xdraw::color& color, settings::esp::cham_ids material_id, const settings::esp::outline_glow_config* glow_cfg )

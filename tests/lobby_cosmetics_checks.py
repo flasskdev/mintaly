@@ -104,7 +104,7 @@ class LobbyCosmeticsChecks(unittest.TestCase):
             self.assertIsNone(re.search(r'g_(?:agents|knives|guns|gloves)\.on_lobby\s*\(', s))
     def test_match_changers_and_explicit_inspect_remain_available(self):
         s = source('core/hooks/impl/cheat.cpp').split('void __fastcall cheat::frame_stage_notify',1)[1].split('// Process impacts',1)[0]
-        self.assertIn('stage == 6 || stage == 7 || stage == 12', s)
+        self.assertIn('stage == 12 && memory::safe_read<std::uintptr_t>( addresses::globals::game_rules )', s)
         for name in ('agents', 'knives', 'guns', 'gloves'):
             self.assertIn(f'g_{name}.on_frame_stage_notify( );', s)
         self.assertIn('g_guns.on_render_start( );', s)
