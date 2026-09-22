@@ -496,6 +496,12 @@ namespace rendering {
 
 	void widgets::keybinds( xdraw::draw_list& draw_list )
 	{
+		if ( settings::g_misc.m_widgets.keybinds_opacity.value <= 0.0f && !g_menu.is_open( ) )
+		{
+			this->m_keybinds_hovered = false;
+			this->m_keybinds_dragging = false;
+			return;
+		}
 		struct row_anim_t
 		{
 			animation::fade alpha;
@@ -542,11 +548,9 @@ namespace rendering {
 			out[ i ] = '\0';
 		};
 
-		bind_entry entries[ k_max_entries ]{};
-		auto count{ 0 };
-
-		static bind_entry s_cached_entries[ k_max_entries ]{};
-		static int s_cached_count = 0;
+		// Render the retained snapshot directly; only rebuild it at the existing cadence.
+		static bind_entry entries[ k_max_entries ]{};
+		static int count = 0;
 		static float s_cached_max_w = 195.0f;
 		static auto s_last_binds_gather = std::chrono::steady_clock::time_point{};
 
@@ -554,6 +558,8 @@ namespace rendering {
 		if ( std::chrono::duration<float>( now - s_last_binds_gather ).count( ) >= 0.04f )
 		{
 			s_last_binds_gather = now;
+			count = 0;
+			for ( auto& entry : entries ) entry = {};
 
 		const auto& ctx = features::combat::g_shared.ctx( );
 		const auto has_weapon = ctx.valid && ctx.weapon_type >= cstypes::weapon_type::pistol && ctx.weapon_type <= cstypes::weapon_type::lmg;
@@ -978,18 +984,8 @@ namespace rendering {
 				mw = header_tw + 45.0f;
 			}
 			s_cached_max_w = mw;
-			s_cached_count = count;
-			for ( auto i = 0; i < count; ++i )
-			{
-				s_cached_entries[ i ] = entries[ i ];
-			}
 		}
 
-		count = s_cached_count;
-		for ( int i = 0; i < count; ++i )
-		{
-			entries[ i ] = s_cached_entries[ i ];
-		}
 		const float max_w = s_cached_max_w;
 
 		// Keep the header visible as a preview while the menu is open.
@@ -1220,6 +1216,13 @@ namespace rendering {
 	void widgets::teammate_damage( xdraw::draw_list& draw_list )
 	{
 		auto& cfg = settings::g_misc.m_widgets;
+		if ( !cfg.teammate_damage.value || ( cfg.teammate_damage_opacity.value <= 0.0f && !g_menu.is_open( ) ) )
+		{
+			this->m_teammate_damage_hovered = false;
+			this->m_teammate_damage_dragging = false;
+			this->m_teammate_damage_mouse_down = false;
+			return;
+		}
 		const auto& ctx = xui::ctx( );
 		const auto& input = ctx.input;
 		const bool mouse_down = input.mouse_down && ( GetAsyncKeyState( VK_LBUTTON ) & 0x8000 ) != 0;
@@ -1239,7 +1242,14 @@ namespace rendering {
 		xdraw::push_font( g_fonts.inter_bold[ fonts::size::petite ] );
 		const auto [title_w, title_h] = xdraw::measure_text( "Teammate damage" );
 		xdraw::pop_font( );
-		const auto text = std::format( "Kills: {}/3  |  Damage: {}/300", s_team_kills, s_team_damage );
+		static std::string text;
+		static int last_kills{}, last_damage{};
+		if ( text.empty( ) || last_kills != s_team_kills || last_damage != s_team_damage )
+		{
+			last_kills = s_team_kills;
+			last_damage = s_team_damage;
+			text = std::format( "Kills: {}/3  |  Damage: {}/300", last_kills, last_damage );
+		}
 		const auto [text_w, text_h] = xdraw::measure_text( text );
 		const auto width = std::max( 195.0f, std::max( title_w + 45.0f, text_w + 28.0f ) );
 		const auto max_x = std::max( 0.0f, static_cast<float>( screen_w ) - width );
@@ -1307,6 +1317,12 @@ namespace rendering {
 
 	void widgets::spectators( xdraw::draw_list& draw_list )
 	{
+		if ( settings::g_misc.m_widgets.spectator_opacity.value <= 0.0f && !g_menu.is_open( ) )
+		{
+			this->m_spectators_hovered = false;
+			this->m_spectators_dragging = false;
+			return;
+		}
 		struct avatar_cache
 		{
 			struct entry
@@ -1412,9 +1428,6 @@ namespace rendering {
 			float nw{ 0.0f }, nh{ 0.0f };
 			std::uint64_t steam_id;
 		};
-
-		spectator_entry entries[ 32 ]{};
-		auto count{ 0 };
 
 		static spectator_entry s_cached_entries[ 32 ]{};
 		static int s_cached_count = 0;
@@ -1535,11 +1548,8 @@ namespace rendering {
 			s_cached_max_w = mw;
 		}
 
-		count = s_cached_count;
-		for ( int i = 0; i < count; ++i )
-		{
-			entries[ i ] = s_cached_entries[ i ];
-		}
+		const auto count = s_cached_count;
+		const auto& entries = s_cached_entries;
 		const float max_w = s_cached_max_w;
 
 		if ( count > 0 || g_menu.is_open( ) )

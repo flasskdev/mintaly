@@ -5,6 +5,7 @@
 
 #include <wincodec.h>
 #include <algorithm>
+#include <array>
 #include <string>
 #include <numbers>
 #include <memory>
@@ -944,7 +945,9 @@ namespace xdraw {
 			return;
 		}
 
-		std::vector<float> path{};
+		// These helpers are synchronous and non-reentrant. Retain scratch
+		// capacity per thread instead of allocating for every HUD card.
+		thread_local std::vector<float> path;
 		this->build_rounded_rect_path( x, y, w, h, rounding, path );
 		this->convex_filled( path, col, aa );
 	}
@@ -1415,7 +1418,9 @@ namespace xdraw {
 		centroid_x /= static_cast< float >( count );
 		centroid_y /= static_cast< float >( count );
 
-		std::vector<float> normals( count * 2 );
+		thread_local std::vector<float> normals;
+		// Zero degenerate edges too; resize alone would retain old normals.
+		normals.assign( static_cast<std::size_t>( count ) * 2, 0.0f );
 
 		for ( auto i = 0; i < count; ++i )
 		{
@@ -1519,7 +1524,7 @@ namespace xdraw {
 			return;
 		}
 
-		std::vector<float> path{};
+		thread_local std::vector<float> path;
 		this->build_rounded_rect_path( x, y, w, h, rounding, path );
 		this->polyline( path, col, true, thickness, aa );
 	}
@@ -1598,7 +1603,8 @@ namespace xdraw {
 
 		this->ensure_cmd( nullptr );
 
-		std::vector<float> normals( seg_count * 2 );
+		thread_local std::vector<float> normals;
+		normals.assign( static_cast<std::size_t>( seg_count ) * 2, 0.0f );
 
 		for ( auto i = 0; i < seg_count; ++i )
 		{
@@ -2234,8 +2240,18 @@ namespace xdraw {
 		r.bl = std::clamp( r.bl, 0.0f, max_r );
 
 		constexpr auto half_pi = std::numbers::pi_v<float> *0.5f;
+		// auto_segments is capped at 128, hence at most 32 per corner.
+		// Cache unit arcs, not screen coordinates: dragging and resizing remain exact.
+		struct unit_arc {
+			bool ready{};
+			std::array<std::array<float, 2>, 32> points{};
+		};
+		thread_local std::array<std::array<unit_arc, 33>, 4> arcs{};
+		constexpr std::array starts{ std::numbers::pi_v<float>,
+			std::numbers::pi_v<float> + half_pi, 0.0f, half_pi };
+		path.reserve( 256 );
 
-		auto arc = [ & ]( float cx, float cy, float radius, float start_angle, int segments )
+		auto arc = [ & ]( float cx, float cy, float radius, int corner, int segments )
 			{
 				if ( radius <= 0.5f )
 				{
@@ -2248,27 +2264,35 @@ namespace xdraw {
 					return;
 				}
 
-				const auto step = half_pi / static_cast< float >( segments );
-
+				auto& cached = arcs[corner][segments];
+				if ( !cached.ready )
+				{
+					const auto step = half_pi / static_cast<float>( segments );
+					for ( auto i = 0; i < segments; ++i )
+					{
+						const auto angle = starts[corner] + step * static_cast<float>( i );
+						cached.points[i] = { std::cos( angle ), std::sin( angle ) };
+					}
+					cached.ready = true;
+				}
 				for ( auto i = 0; i < segments; ++i )
 				{
-					const auto a = start_angle + step * static_cast< float >( i );
-					path.push_back( cx + std::cos( a ) * radius );
-					path.push_back( cy + std::sin( a ) * radius );
+					path.push_back( cx + cached.points[i][0] * radius );
+					path.push_back( cy + cached.points[i][1] * radius );
 				}
 			};
 
 		const auto segs_tl = std::max( 1, this->auto_segments( r.tl ) / 4 );
-		arc( x + r.tl, y + r.tl, r.tl, std::numbers::pi_v<float>, segs_tl );
+		arc( x + r.tl, y + r.tl, r.tl, 0, segs_tl );
 
 		const auto segs_tr = std::max( 1, this->auto_segments( r.tr ) / 4 );
-		arc( x + w - r.tr, y + r.tr, r.tr, std::numbers::pi_v<float> +half_pi, segs_tr );
+		arc( x + w - r.tr, y + r.tr, r.tr, 1, segs_tr );
 
 		const auto segs_br = std::max( 1, this->auto_segments( r.br ) / 4 );
-		arc( x + w - r.br, y + h - r.br, r.br, 0.0f, segs_br );
+		arc( x + w - r.br, y + h - r.br, r.br, 2, segs_br );
 
 		const auto segs_bl = std::max( 1, this->auto_segments( r.bl ) / 4 );
-		arc( x + r.bl, y + h - r.bl, r.bl, half_pi, segs_bl );
+		arc( x + r.bl, y + h - r.bl, r.bl, 3, segs_bl );
 	}
 
 	void gif_image::update( float dt )
