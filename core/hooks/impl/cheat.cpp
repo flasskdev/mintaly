@@ -24,19 +24,9 @@ namespace hooks {
 	namespace detail {
 		inline lobby_music::queue g_lobby_music_requests;
 
-		void reconcile_preview_scene( )
-		{
-			if ( lifecycle::is_unloading( ) || !addresses::globals::schema_system ) return;
-			// Lobby models remain entirely engine-owned. Keep match intro/team previews.
-			if ( !memory::safe_read<std::uintptr_t>( addresses::globals::local_player_controller ).value_or( 0 ) ) return;
-			features::changer::preview_scene::refresh( );
-			features::changer::g_agents.on_lobby( );
-			// Agent SetModel can replace attached weapons; discard the old pointer snapshot.
-			features::changer::preview_scene::refresh( );
-			features::changer::g_knives.on_lobby( );
-			features::changer::g_guns.on_lobby( );
-			features::changer::g_gloves.on_lobby( );
-		}
+		// Preview scenes are engine-owned. Do not automatically apply loadout
+		// overrides to lobby/party or detached presentation models. Actual match
+		// pawns use the frame-stage changers; explicit Inspect is separate.
 
 		// Isolated SEH frame: no std::string/optional destructors here (MSVC C2712).
 		bool dispatch_lobby_music_guarded( std::uintptr_t stop, std::uintptr_t update, const char* name )
@@ -537,12 +527,6 @@ namespace hooks {
 			if ( !lifecycle::is_unloading( ) &&
 				!memory::safe_read<std::uintptr_t>( addresses::globals::local_player_controller ).value_or( 0 ) )
 				features::changer::g_inspect_preview.on_frame_stage_notify( );
-			if ( stage == 0 || stage == 6 || stage == 7 || stage == 12 )
-			{
-				// Menu background levels may have a non-empty map name.
-				if ( !memory::safe_read<std::uintptr_t>( addresses::globals::local_player_controller ).value_or( 0 ) )
-					detail::reconcile_preview_scene( );
-			}
 
 			return;
 		}
@@ -608,10 +592,7 @@ namespace hooks {
 			return;
 		}
 
-		// Resolve team/intro previews once, after updates and before rendering.
-		if ( stage == 12 )
-			detail::reconcile_preview_scene( );
-
+		// Apply only through the regular match-pawn path, never a scan of UI previews.
 		if ( stage == 6 || stage == 7 || stage == 12 )
 		{
 			// Agent/model binding can recreate arms. Reconcile gloves last, without UI state.
@@ -1631,7 +1612,6 @@ namespace hooks {
 		if ( m_was_connected ) do_level_shutdown( false );
 		m_seen_disconnected = true;
 		process_lobby_music( );
-		detail::reconcile_preview_scene( );
 	}
 
 	void __fastcall cheat::process_input_event( std::uintptr_t csgo_input, int slot, float frametime )

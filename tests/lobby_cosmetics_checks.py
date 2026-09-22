@@ -94,19 +94,26 @@ class LobbyCosmeticsChecks(unittest.TestCase):
         self.assertIn('players.size() == 1', s)
         self.assertIn('return sid >= steam_base && p.steam_id == sid;', s)
         self.assertIn('local_player_controller', s.split('players.size() == 1',1)[1])
-    def test_preview_is_guarded_to_match_only(self):
-        reconcile = source('core/hooks/impl/cheat.cpp').split('void reconcile_preview_scene', 1)[1].split('// Isolated SEH frame', 1)[0]
-        self.assertLess(reconcile.index('local_player_controller'), reconcile.index('preview_scene::refresh'))
-        self.assertIn('value_or( 0 ) ) return;', reconcile)
+    def test_automatic_preview_cosmetics_are_not_dispatched(self):
+        hook_files = list((ROOT / 'core/hooks').rglob('*.cpp'))
+        for path in hook_files:
+            s = path.read_text(encoding='utf-8')
+            self.assertNotIn('reconcile_preview_scene', s)
+            self.assertNotIn('preview_scene::refresh(', s)
+            self.assertNotIn('preview_scene::refresh( ', s)
+            self.assertIsNone(re.search(r'g_(?:agents|knives|guns|gloves)\.on_lobby\s*\(', s))
+    def test_match_changers_and_explicit_inspect_remain_available(self):
         s = source('core/hooks/impl/cheat.cpp').split('void __fastcall cheat::frame_stage_notify',1)[1].split('// Process impacts',1)[0]
-        self.assertEqual(s.count('detail::reconcile_preview_scene( );'), 2)
-        self.assertNotIn('s_map_name.empty', s)
         self.assertIn('stage == 6 || stage == 7 || stage == 12', s)
+        for name in ('agents', 'knives', 'guns', 'gloves'):
+            self.assertIn(f'g_{name}.on_frame_stage_notify( );', s)
+        self.assertIn('g_guns.on_render_start( );', s)
+        self.assertIn('g_inspect_preview.on_frame_stage_notify', s)
     def test_lobby_has_client_frame_dispatch_without_net_updates(self):
         s = source('core/hooks/impl/cheat.cpp')
         frame = s.split('void __fastcall cheat::read_frame_input', 1)[1].split('void __fastcall cheat::process_input_event', 1)[0]
         self.assertLess(frame.index('m_read_frame_input.call<void>'), frame.index('process_lobby_music( );'))
-        self.assertIn('detail::reconcile_preview_scene( );', frame)
+        self.assertNotIn('reconcile_preview_scene', frame)
         self.assertIn('local_player_controller', frame)
         self.assertIn('lifecycle::is_unloading', frame)
         present = s.split('HRESULT __fastcall cheat::present', 1)[1].split('HRESULT __fastcall cheat::resize_buffers', 1)[0]
