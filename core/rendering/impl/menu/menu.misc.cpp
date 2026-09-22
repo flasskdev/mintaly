@@ -113,11 +113,24 @@ namespace rendering {
                                 xui::toggle( "Nickname Override", m.m_name_changer.override_name );
                                 if ( xui::begin_popup( "##restore_name", 250.0f ) )
                                 {
-                                        xui::text_input( "nickname##override", m.m_name_changer.name.value, 127, "Player" );
+                                        const auto local = systems::g_local.get( );
+                                        std::string nickname_hint;
+                                        const auto name_offset = SCHEMA( "CCSPlayerController", "m_sSanitizedPlayerName"_hash );
+                                        if ( local.controller && name_offset )
+                                        {
+                                                const auto name_ptr = memory::safe_read<std::uintptr_t>( local.controller + name_offset ).value_or( 0 );
+                                                if ( name_ptr ) nickname_hint = memory::read_string( name_ptr, 127 );
+                                        }
+                                        if ( nickname_hint.empty( ) )
+                                        {
+                                                const auto persona = steam::friends::get_persona_name( );
+                                                if ( persona ) nickname_hint = memory::read_string( reinterpret_cast<std::uintptr_t>( persona ), 127 );
+                                        }
+                                        if ( nickname_hint.empty( ) ) nickname_hint = "nickname...";
+                                        xui::text_input( "nickname##override", m.m_name_changer.name.value, 127, nickname_hint );
                                         xui::layout::spacing( 3.0f );
 
                                         std::vector<std::string> match_players;
-                                        const auto local = systems::g_local.get( );
                                         for ( const auto& player : systems::g_entities.get_by_type( systems::entities::type::player ) )
                                         {
                                                 if ( !player.ptr || player.ptr == local.controller )

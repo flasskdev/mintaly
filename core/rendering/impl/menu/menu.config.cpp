@@ -3,6 +3,7 @@
 #include <core/settings.hpp>
 #include <core/features/features.hpp>
 #include <core/hooks/hooks.hpp>
+#include <utilities/logging/logging.hpp>
 
 #include "../../rendering.hpp"
 
@@ -104,6 +105,7 @@ namespace rendering {
 		static inline void reset_defaults( )
 		{
             xui::slider_binds::reset();
+			config::reset_bind_assignments();
 			auto& reg = config::detail::get_registry( );
 
 			for ( auto& f : reg.fields )
@@ -223,21 +225,28 @@ namespace rendering {
 
 				if ( is_hovered && !popup_hovered && input.mouse_clicked && !xui::ctx( ).overlay_blocking( ) )
 				{
-					detail::selected = i;
-					detail::name_buf = narrow;
-					detail::confirm_save = false;
-					detail::confirm_delete = false;
-					detail::reset_popup_open = false;
-					config::registry::load( wname );
-					// Do not discard originals or call engine restoration from the menu thread.
-					features::changer::g_guns.invalidate( );
-					features::changer::g_knives.invalidate( );
-					features::changer::g_skin_sync.on_sync_toggled( );
-					settings::finalize_binds( );
-					settings::g_world.update_active( rendering::g_widgets.s_map_name );
-					rendering::g_menu.apply_theme_preset( settings::g_misc.menu_palette.value );
-					xui::tooltips::set_enabled( settings::g_misc.tooltips.value );
-					hooks::cheat::trigger_lobby_music( static_cast< std::uint16_t >( settings::g_changer.music.id ) );
+					if ( config::registry::load( wname ) )
+					{
+						detail::selected = i;
+						detail::name_buf = narrow;
+						detail::confirm_save = false;
+						detail::confirm_delete = false;
+						detail::reset_popup_open = false;
+						// Only finalize the new profile after a successful load.
+						features::changer::g_guns.invalidate( );
+						features::changer::g_knives.invalidate( );
+						features::changer::g_skin_sync.on_sync_toggled( );
+						settings::finalize_binds( );
+						settings::g_world.update_active( rendering::g_widgets.s_map_name );
+						rendering::g_menu.apply_theme_preset( settings::g_misc.menu_palette.value );
+						xui::tooltips::set_enabled( settings::g_misc.tooltips.value );
+						hooks::cheat::trigger_lobby_music( static_cast< std::uint16_t >( settings::g_changer.music.id ) );
+					}
+					else
+					{
+						logging::console::print( "[config] failed to load '{}'\n", narrow );
+						logging::popup::show( "Config load failed", "Could not load the selected profile. Check the config file and disk access." );
+					}
 				}
 				else if ( is_hovered && !popup_hovered && input.rmb_clicked && !xui::ctx( ).overlay_blocking( ) )
 				{
