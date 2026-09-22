@@ -515,4 +515,184 @@ namespace features::changer {
         this->m_original.quality = memory::read<int>(iv + SCHEMA("C_EconItemView", "m_iEntityQuality"_hash));
         this->m_original.disallow_soc = memory::read<bool>(iv + SCHEMA("C_EconItemView", "m_bDisallowSOC"_hash));
 		this->m_original.def_index = memory::read<std::uint16_t>( iv + SCHEMA( "C_EconItemView", "m_iItemDefinitionIndex"_hash ) );
-		this->m_original.id_high = memory::read<std::uint32_t>( iv + SCHEMA( "C_EconItemView", "m
+		this->m_original.id_high = memory::read<std::uint32_t>( iv + SCHEMA( "C_EconItemView", "m_iItemIDHigh"_hash ) );
+		this->m_original.id_low = memory::read<std::uint32_t>( iv + SCHEMA( "C_EconItemView", "m_iItemIDLow"_hash ) );
+		this->m_original.account_id = memory::read<std::uint32_t>( iv + SCHEMA( "C_EconItemView", "m_iAccountID"_hash ) );
+		this->m_original.initialized = memory::read<bool>( iv + SCHEMA( "C_EconItemView", "m_bInitialized"_hash ) );
+		this->m_original.paint_kit = memory::read<int>( weapon + SCHEMA( "C_EconEntity", "m_nFallbackPaintKit"_hash ) );
+		this->m_original.seed = memory::read<int>( weapon + SCHEMA( "C_EconEntity", "m_nFallbackSeed"_hash ) );
+		this->m_original.wear = memory::read<float>( weapon + SCHEMA( "C_EconEntity", "m_flFallbackWear"_hash ) );
+		this->m_original.stattrak = memory::read<int>( weapon + SCHEMA( "C_EconEntity", "m_nFallbackStatTrak"_hash ) );
+		this->m_original.captured = true;
+	}
+
+	void knives::apply( std::uintptr_t weapon, std::uintptr_t iv, const econ_item_system::item_def* def, const settings::changer::applied_skin* skin, std::uint32_t account_id, std::uintptr_t active_weapon, std::uintptr_t pawn )
+	{
+		this->m_pending_hud_iv = 0;
+		const auto entity = entity_guard::capture( weapon );
+		if ( !entity || !entity_guard::ready( pawn ) || !skin || !def || !preview_item::available( ) || !preview_item::identity( weapon ).ready( ) ) return;
+		const auto definition = SCHEMA( "C_EconItemView", "m_iItemDefinitionIndex"_hash );
+		if ( !definition ) return;
+		const auto local_sys = systems::g_local.get( );
+		const bool local = pawn == local_sys.pawn;
+		preview_item::applied.erase( weapon );
+		if ( local ) this->m_overridden = false;
+		memory::write<std::uint16_t>( iv + definition, static_cast<std::uint16_t>( def->def_index ) );
+		// Remote match weapons also need subclass reconciliation, not the lobby shortcut.
+		if ( !this->update_model( weapon, iv, static_cast<std::uint16_t>( def->def_index ) ) || !entity_guard::current( *entity ) ) return;
+		memory::write<std::uint64_t>( iv + SCHEMA( "C_EconItemView", "m_iItemID"_hash ), 0xf000000000000010ull );
+		memory::write<bool>( iv + SCHEMA( "C_EconItemView", "m_bDisallowSOC"_hash ), true );
+		memory::write<int>( iv + SCHEMA( "C_EconItemView", "m_iEntityQuality"_hash ), skin->stattrak ? 9 : 3 );
+		memory::write<std::uint32_t>( iv + SCHEMA( "C_EconItemView", "m_iItemIDHigh"_hash ), 0xf0000000 );
+		memory::write<std::uint32_t>( iv + SCHEMA( "C_EconItemView", "m_iItemIDLow"_hash ), 0x10 );
+		memory::write<std::uint32_t>( iv + SCHEMA( "C_EconItemView", "m_iAccountID"_hash ), account_id );
+		memory::write<bool>( iv + SCHEMA( "C_EconItemView", "m_bInitialized"_hash ), true );
+		memory::write<int>( weapon + SCHEMA( "C_EconEntity", "m_nFallbackPaintKit"_hash ), skin->paint_kit_id );
+		memory::write<int>( weapon + SCHEMA( "C_EconEntity", "m_nFallbackSeed"_hash ), skin->seed );
+		memory::write<float>( weapon + SCHEMA( "C_EconEntity", "m_flFallbackWear"_hash ), skin->wear );
+		memory::write<int>( weapon + SCHEMA( "C_EconEntity", "m_nFallbackStatTrak"_hash ), skin->stattrak ? skin->stattrak_count : -1 );
+		if ( !cosmetic_attributes::apply( iv, *skin ) || !entity_guard::current( *entity ) ) return;
+		if ( !name_tag::apply( iv, skin->name_tag ) || !entity_guard::current( *entity ) ) return;
+		const auto pk = g_econ_item_system.find_paint_kit( skin->paint_kit_id );
+		if ( !this->rebuild_paint( weapon, active_weapon, pawn, pk ) || !entity_guard::current( *entity ) ) return;
+		this->schedule_hud_clear( iv );
+		if ( !entity_guard::current( *entity ) ) return;
+		preview_item::remember( weapon, *skin );
+		if ( local ) this->m_overridden = true;
+	}
+
+	void knives::restore( std::uintptr_t weapon, std::uintptr_t iv, std::uintptr_t active_weapon, std::uintptr_t pawn )
+	{
+		if ( !this->m_overridden || !this->m_original.captured ) return;
+		const auto entity = entity_guard::capture( weapon );
+		if ( !entity || !entity_guard::ready( pawn ) ) return;
+		this->m_pending_hud_iv = 0;
+		if ( !cosmetic_attributes::restore( iv, this->m_original.attributes ) || !entity_guard::current( *entity ) ) return;
+		if ( this->m_original.custom_name && !name_tag::restore( iv, *this->m_original.custom_name ) ) return;
+		if ( !entity_guard::current( *entity ) ) return;
+		memory::write<std::uint64_t>( iv + SCHEMA( "C_EconItemView", "m_iItemID"_hash ), this->m_original.item_id );
+		memory::write<bool>( iv + SCHEMA( "C_EconItemView", "m_bDisallowSOC"_hash ), this->m_original.disallow_soc );
+		memory::write<int>( iv + SCHEMA( "C_EconItemView", "m_iEntityQuality"_hash ), this->m_original.quality );
+		memory::write<std::uint16_t>( iv + SCHEMA( "C_EconItemView", "m_iItemDefinitionIndex"_hash ), this->m_original.def_index );
+		memory::write<std::uint32_t>( iv + SCHEMA( "C_EconItemView", "m_iItemIDHigh"_hash ), this->m_original.id_high );
+		memory::write<std::uint32_t>( iv + SCHEMA( "C_EconItemView", "m_iItemIDLow"_hash ), this->m_original.id_low );
+		memory::write<std::uint32_t>( iv + SCHEMA( "C_EconItemView", "m_iAccountID"_hash ), this->m_original.account_id );
+		memory::write<bool>( iv + SCHEMA( "C_EconItemView", "m_bInitialized"_hash ), this->m_original.initialized );
+		memory::write<int>( weapon + SCHEMA( "C_EconEntity", "m_nFallbackPaintKit"_hash ), this->m_original.paint_kit );
+		memory::write<int>( weapon + SCHEMA( "C_EconEntity", "m_nFallbackSeed"_hash ), this->m_original.seed );
+		memory::write<float>( weapon + SCHEMA( "C_EconEntity", "m_flFallbackWear"_hash ), this->m_original.wear );
+		memory::write<int>( weapon + SCHEMA( "C_EconEntity", "m_nFallbackStatTrak"_hash ), this->m_original.stattrak );
+		if ( !this->update_model( weapon, iv, this->m_original.def_index ) || !entity_guard::current( *entity ) ) return;
+		const auto pk = g_econ_item_system.find_paint_kit( this->m_original.paint_kit );
+		if ( !this->rebuild_paint( weapon, active_weapon, pawn, pk ) || !entity_guard::current( *entity ) ) return;
+		this->schedule_hud_clear( iv );
+		if ( !entity_guard::current( *entity ) ) return;
+		preview_item::applied.erase( weapon );
+		this->m_overridden = false;
+	}
+
+	bool knives::update_model( std::uintptr_t weapon, std::uintptr_t iv, std::uint16_t def_index, bool lobby )
+	{
+		const auto entity = entity_guard::capture( weapon );
+		const auto subclass = SCHEMA( "C_BaseEntity", "m_nSubclassID"_hash );
+		const auto get_model = PATTERN( patterns::weapon_get_model_path );
+		if ( !entity || !subclass || !get_model ) return false;
+		const auto token = detail::make_subclass_token( static_cast<std::int16_t>( def_index ) );
+		const bool changed = memory::safe_read<std::uint32_t>( weapon + subclass ).value_or( 0 ) != token;
+		const auto bind = PATTERN( patterns::weapon_get_viewmodel );
+		if ( !lobby && !bind ) return false;
+		// World/player geometry must not be selected from the first-person model path.
+		const auto def = g_econ_item_system.find_def( static_cast<std::int16_t>( def_index ) );
+		auto target = def ? def->model_player : std::string{};
+		if ( target.empty( ) )
+		{
+			const auto path = memory::call<const char*>( get_model, iv );
+			if ( path ) target = memory::read_string( reinterpret_cast<std::uintptr_t>( path ) );
+		}
+		if ( target.empty( ) || !entity_guard::current( *entity ) ) return false;
+		const auto state = SCHEMA( "CSkeletonInstance", "m_modelState"_hash );
+		const auto name_offset = SCHEMA( "CModelState", "m_ModelName"_hash );
+		const auto scene = memory::safe_read<std::uintptr_t>( weapon + SCHEMA( "C_BaseEntity", "m_pGameSceneNode"_hash ) ).value_or( 0 );
+		if ( !state || !name_offset || !scene ) return false;
+		const auto name = memory::safe_read<std::uintptr_t>( scene + state + name_offset ).value_or( 0 );
+		const bool model_changed = !name || !cosmetic_model::matches( memory::read_string( name ), target );
+		if ( model_changed && !entity_guard::set_model( *entity, target.c_str( ) ) ) return false;
+		memory::write<std::uint32_t>( weapon + subclass, token );
+		// SetModel can reset animation state. Rebind only after model replacement,
+		// including remote players, so dual knives use their own subclass animations.
+		if ( !lobby && ( changed || model_changed ) )
+			memory::call<void>( bind, weapon );
+		return entity_guard::current( *entity );
+	}
+
+	bool knives::rebuild_paint( std::uintptr_t weapon, std::uintptr_t active_weapon, std::uintptr_t pawn, const econ_item_system::paint_kit* pk )
+	{
+		const auto entity = entity_guard::capture( weapon );
+		if ( !entity || !entity_guard::ready( pawn ) ) return false;
+		const auto mesh = pk && pk->legacy_model ? std::uint64_t{2} : std::uint64_t{1};
+		const auto local_sys = systems::g_local.get( );
+		const bool is_viewed = ( pawn == local_sys.pawn || ( local_sys.observer_pawn && pawn == local_sys.observer_pawn ) );
+		const bool needs_hud = weapon == active_weapon &&
+			( is_viewed || this->find_hud_model_weapon( pawn ) != 0 );
+		if ( !entity_guard::rebuild_materials( *entity, mesh ) ) return false;
+		if ( needs_hud && !this->update_view_model( pawn, pk ) ) return false;
+		return true;
+	}
+
+	bool knives::update_view_model( std::uintptr_t pawn, const econ_item_system::paint_kit* pk, bool force )
+	{
+		return hud_weapon::update( pawn, pk && pk->legacy_model ? std::uint64_t{2} : std::uint64_t{1}, force );
+	}
+
+	std::uintptr_t knives::find_hud_model_weapon( std::uintptr_t pawn )
+	{
+		return hud_weapon::find( pawn );
+	}
+
+	void knives::clear_hud_icon( std::uintptr_t iv )
+	{
+		const auto invalidate = PATTERN( patterns::econ_item_view_invalidate_description );
+		if ( iv && invalidate )
+		{
+			memory::call<void>( invalidate, iv );
+		}
+	}
+
+	void knives::schedule_hud_clear( std::uintptr_t iv )
+	{
+		this->clear_hud_icon( iv );
+		this->m_pending_hud_iv = iv;
+		this->m_hud_clear_time = std::chrono::steady_clock::now( ) + std::chrono::milliseconds( 200 );
+	}
+
+	void knives::process_hud_clear( )
+	{
+		this->m_pending_hud_iv = 0;
+	}
+
+	void knives::on_lobby( )
+	{
+		// Preview entities are engine-owned. Match equipment is applied only
+		// through on_frame_stage_notify, never through lobby/intro previews.
+	}
+
+	void knives::reset( )
+	{
+		this->m_original = {};
+		this->m_overridden = false;
+		this->m_tracked_pawn = 0;
+		this->m_tracked_weapon_handle = 0;
+		this->m_last_active_handle = 0;
+		this->m_last_hud_model = 0;
+		this->m_last_round_start_time = 0.0f;
+		this->m_last_knife_def = 0;
+		this->m_last_paint_kit = 0;
+		this->m_last_seed = 0;
+		this->m_last_wear = 0.0f;
+		this->m_pending_hud_iv = 0;
+		this->m_hud_clear_time = {};
+		this->m_invalidate_pending = false;
+		detail::s_remote_knives.clear( );
+	}
+
+} // namespace features::changer
