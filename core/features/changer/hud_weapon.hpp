@@ -1,15 +1,12 @@
 #pragma once
 #include <cstdint>
+#include <chrono>
+#include <array>
 #include <core/systems/systems.hpp>
 #include <utilities/memory/memory.hpp>
 #include <utilities/cosmetic_model.hpp>
-<<<<<<< HEAD
 #include <utilities/hud_weapon_binding.hpp>
-#include <array>
-=======
 #include <utilities/hud_binding.hpp>
-#include <chrono>
->>>>>>> fb47dc3818127cef83b2780e079c3550143312a7
 #include "entity_guard.hpp"
 
 namespace features::changer::hud_weapon {
@@ -58,31 +55,21 @@ namespace features::changer::hud_weapon {
         const auto services_offset = SCHEMA("C_BasePlayerPawn", "m_pWeaponServices"_hash);
         const auto active_offset = SCHEMA("CPlayer_WeaponServices", "m_hActiveWeapon"_hash);
         const auto arms_offset = SCHEMA("C_CSPlayerPawn", "m_hHudModelArms"_hash);
-<<<<<<< HEAD
         const auto weapon_offset = weapon_handle_offset(); // Optional in current CS2 builds.
-=======
-        const auto weapon_offset = weapon_handle_offset();
         const auto forward_offset = hud_handle_offset();
         const auto entity_owner_offset = SCHEMA("C_BaseEntity", "m_hOwnerEntity"_hash);
->>>>>>> fb47dc3818127cef83b2780e079c3550143312a7
         const auto scene_offset = SCHEMA("C_BaseEntity", "m_pGameSceneNode"_hash);
         const auto child_offset = SCHEMA("CGameSceneNode", "m_pChild"_hash);
         const auto sibling_offset = SCHEMA("CGameSceneNode", "m_pNextSibling"_hash);
         const auto parent_offset = SCHEMA("CGameSceneNode", "m_pParent"_hash);
         const auto owner_offset = SCHEMA("CGameSceneNode", "m_pOwner"_hash);
-<<<<<<< HEAD
         const auto weapon_owner_offset = SCHEMA("C_BaseEntity", "m_hOwnerEntity"_hash);
         if (!services_offset || !active_offset || !arms_offset || !weapon_owner_offset ||
             !scene_offset || !child_offset || !sibling_offset || !parent_offset || !owner_offset)
             return {0, "scene-schema"};
-=======
-        if (!services_offset || !active_offset || !arms_offset ||
-            !scene_offset || !child_offset || !sibling_offset || !parent_offset || !owner_offset) return 0;
->>>>>>> fb47dc3818127cef83b2780e079c3550143312a7
         const auto services = memory::safe_read<std::uintptr_t>(pawn + services_offset).value_or(0);
         if (!services) return {0, "weapon-services"};
         const auto active = memory::safe_read<std::uint32_t>(services + active_offset).value_or(0);
-<<<<<<< HEAD
         const auto weapon = entity_guard::capture(systems::g_entities.lookup(active));
         if (!weapon) return {0, "active-weapon"};
         const auto owned_by_player = [&]() {
@@ -115,25 +102,11 @@ namespace features::changer::hud_weapon {
         const auto first = memory::safe_read<std::uintptr_t>(scene + child_offset);
         if (!first) return {0, "unreadable-children"};
         auto child = *first;
-=======
-        const auto weapon = systems::g_entities.lookup(active);
-        if (!weapon) return 0;
-        const auto forward = forward_offset ? systems::g_entities.lookup(
-            memory::safe_read<std::uint32_t>(weapon + forward_offset).value_or(0xffffffffu)) : 0;
-        const auto arms = systems::g_entities.lookup(memory::safe_read<std::uint32_t>(pawn + arms_offset).value_or(0));
-        if (!arms) return 0;
-        const auto scene = memory::safe_read<std::uintptr_t>(arms + scene_offset).value_or(0);
-        if (!scene) return 0;
-        std::uintptr_t found{};
-        unsigned candidates{}, matches{};
-        auto child = memory::safe_read<std::uintptr_t>(scene + child_offset).value_or(0);
->>>>>>> fb47dc3818127cef83b2780e079c3550143312a7
         for (int i = 0; child && i < 128; ++i) {
             if (memory::safe_read<std::uintptr_t>(child + parent_offset).value_or(0) != scene)
                 return {0, "changed-parent", count};
             const auto owner = memory::safe_read<std::uintptr_t>(child + owner_offset).value_or(0);
             const auto name = owner ? systems::g_entities.get_schema_name(owner) : nullptr;
-<<<<<<< HEAD
             if (!name) return {0, "unreadable-child-class", count};
             if (fnv1a::runtime_hash(name) == "C_CS2HudModelWeapon"_hash) {
                 auto& candidate = candidates[count++];
@@ -165,30 +138,6 @@ namespace features::changer::hud_weapon {
 
     inline std::uintptr_t find(std::uintptr_t pawn) {
         return locate(pawn).entity;
-=======
-            if (name && fnv1a::runtime_hash(name) == "C_CS2HudModelWeapon"_hash &&
-                memory::safe_read<std::uintptr_t>(owner + scene_offset).value_or(0) == child) {
-                ++candidates;
-                const auto reverse = weapon_offset ? memory::safe_read<std::uint32_t>(owner + weapon_offset)
-                    : std::optional<std::uint32_t>{};
-                // A resolved field that cannot be read is not an absent field.
-                if (weapon_offset && !reverse) return 0;
-                const auto entity_owner = entity_owner_offset ? memory::safe_read<std::uint32_t>(
-                    owner + entity_owner_offset).value_or(0xffffffffu) : 0xffffffffu;
-                if (hud_binding::matches(active, owner, reverse, entity_owner, forward)) {
-                    found = owner;
-                    ++matches;
-                }
-            }
-            child = memory::safe_read<std::uintptr_t>(child + sibling_offset).value_or(0);
-        }
-        // Reject truncated/cyclic lists and ambiguous bindings, even with a matching model name.
-        if (child || matches != 1) {
-            report_lookup(active, candidates, matches, weapon_offset, forward_offset);
-            return 0;
-        }
-        return found;
->>>>>>> fb47dc3818127cef83b2780e079c3550143312a7
     }
 
     inline bool update(std::uintptr_t pawn, std::uint64_t mesh, bool bind) {
@@ -231,8 +180,7 @@ namespace features::changer::hud_weapon {
         // A remote world weapon must not force a local viewmodel binding unless spectated in first-person.
         // When spectating a synchronized player or viewing a custom knife whose HUD model/anim graph
         // is still the default knife, bind the viewmodel so custom animations (inspect, deploy, attacks) play.
-        // A paint refresh does not require rebuilding an already matching model binding.
-        const bool should_bind = model_mismatch && is_firstperson;
+        const bool should_bind = (bind || model_mismatch) && is_firstperson;
         if (should_bind) {
             static std::uintptr_t s_last_bound_weapon{ 0 };
             static std::chrono::steady_clock::time_point s_last_bind_time{};
