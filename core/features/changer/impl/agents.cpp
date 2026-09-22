@@ -43,28 +43,6 @@ namespace {
 		__except ( EXCEPTION_EXECUTE_HANDLER ) { return false; }
 	}
 
-bool replace_agent_model( std::uintptr_t pawn, const std::string& path )
-{
-	const auto entity = entity_guard::capture( pawn );
-	if ( !entity || path.empty( ) ) return false;
-	const auto& off = get_agent_offsets();
-	const auto collision_offset = off.collision;
-	const auto mins_offset = off.mins;
-	const auto maxs_offset = off.maxs;
-	const auto collision = collision_offset ? pawn + collision_offset : 0;
-	const auto mins = ( collision && mins_offset ) ? memory::safe_read<math::vector3>( collision + mins_offset ) : std::nullopt;
-	const auto maxs = ( collision && maxs_offset ) ? memory::safe_read<math::vector3>( collision + maxs_offset ) : std::nullopt;
-	const bool applied = apply_model_safe( *entity, path.c_str( ), path.ends_with( ".vmdl" ) );
-	if ( !entity_guard::current( *entity ) ) return false;
-	// Do not overwrite a crouched hull or write through a recycled pawn.
-	if ( collision && mins && maxs )
-	{
-		memory::safe_write<math::vector3>( collision + mins_offset, *mins );
-		memory::safe_write<math::vector3>( collision + maxs_offset, *maxs );
-	}
-	return applied;
-}
-
 namespace {
 	struct agent_schema_offsets {
 		int scene_node{};
@@ -105,6 +83,28 @@ namespace {
 		static bool init = (offsets.init(), true);
 		return offsets;
 	}
+}
+
+bool replace_agent_model( std::uintptr_t pawn, const std::string& path )
+{
+	const auto entity = entity_guard::capture( pawn );
+	if ( !entity || path.empty( ) ) return false;
+	const auto& off = get_agent_offsets();
+	const auto collision_offset = off.collision;
+	const auto mins_offset = off.mins;
+	const auto maxs_offset = off.maxs;
+	const auto collision = collision_offset ? pawn + collision_offset : 0;
+	const auto mins = ( collision && mins_offset ) ? memory::safe_read<math::vector3>( collision + mins_offset ) : std::nullopt;
+	const auto maxs = ( collision && maxs_offset ) ? memory::safe_read<math::vector3>( collision + maxs_offset ) : std::nullopt;
+	const bool applied = apply_model_safe( *entity, path.c_str( ), path.ends_with( ".vmdl" ) );
+	if ( !entity_guard::current( *entity ) ) return false;
+	// Do not overwrite a crouched hull or write through a recycled pawn.
+	if ( collision && mins && maxs )
+	{
+		memory::safe_write<math::vector3>( collision + mins_offset, *mins );
+		memory::safe_write<math::vector3>( collision + maxs_offset, *maxs );
+	}
+	return applied;
 }
 
 std::uintptr_t agent_model_state( std::uintptr_t pawn )
