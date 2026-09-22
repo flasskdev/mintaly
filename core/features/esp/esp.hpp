@@ -46,28 +46,17 @@ namespace features::esp {
 				void shutdown (bool destroy_objects = true);
 
 				[[nodiscard]] bool has_active (std::uintptr_t pawn) const;
-				[[nodiscard]] bool is_active (std::uintptr_t scene_object) const;
-				[[nodiscard]] std::uintptr_t get_scene_object (std::uintptr_t pawn) const;
-				[[nodiscard]] float get_alpha (std::uintptr_t pawn) const;
-                [[nodiscard]] std::uintptr_t get_pawn(std::uintptr_t scene_object) const;
 
 			private:
                 using clock = std::chrono::steady_clock;
-                struct pending_entry {
-                    std::array<systems::bones::data, 27> bones{};
-                    int bone_count{};
+                struct hit_entry {
                     std::uint32_t pawn_handle{};
                     clock::time_point hit_time{};
                     float duration{};
                 };
-                struct hit_entry : backtrack::object {
-                    std::uint32_t pawn_handle{};
-                    clock::time_point hit_time{};
-                    float duration{};
-                };
-                // Event callbacks only queue snapshots. Engine mesh work stays at frame stage.
-                mutable std::recursive_mutex m_mutex;
-                std::unordered_map<std::uintptr_t, pending_entry> m_pending{};
+                // A confirmed hit colors the victim's current mesh for the full
+                // duration. No bone capture or engine-owned clone is required.
+                mutable std::mutex m_mutex;
                 std::unordered_map<std::uintptr_t, hit_entry> m_entries{};
 
 			};

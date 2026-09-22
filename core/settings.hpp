@@ -2341,13 +2341,10 @@ namespace settings {
                 std::string m_last_map{ "___unset___" };
                 const map_preset* m_last_source{ nullptr };
 
-                void update_active(const std::string& current_map, bool force = false)
+                void update_active(const std::string& current_map, bool /*force*/ = false)
                 {
-                        if (!force && current_map == m_last_map && m_last_source != nullptr)
-                        {
-                                return;
-                        }
-
+                        // The map name is not a settings revision: colors, toggles,
+                        // config loads and per-map overrides can change on the same map.
                         int matched_idx = -1;
                         if (!current_map.empty())
                         {

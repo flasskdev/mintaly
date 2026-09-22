@@ -394,7 +394,7 @@ namespace features::changer {
 						if ( applied_it != this->m_applied_weapons.end( ) 
 							&& applied_it->second.visual.weapon == weapon 
 							&& applied_it->second.skin == skin
-							&& applied_it->second.hud == hud_visual
+							// HUD changes are handled separately at render start.
 							&& current_pk == skin.paint_kit_id 
 							&& current_id_high == 0xf0000000 
 							&& current_seed == skin.seed
@@ -407,9 +407,7 @@ namespace features::changer {
 							&& name_tag::matches( iv, skin.name_tag )
 							&& cosmetic_attributes::matches( iv, skin ) )
 						{
-							// The engine can reset the HUD mesh without changing its entity/model identity.
-							if (handle == active_handle)
-								this->update_view_model(local_pawn, g_econ_item_system.find_paint_kit(skin.paint_kit_id));
+							// Render-start reconciles the HUD once, independently of world paint.
 							continue;
 						}
 
@@ -499,8 +497,8 @@ namespace features::changer {
 		// Apply synced skins for remote players (frame-throttled)
 		if ( g_skin_sync.is_enabled( ) )
 		{
-			// Build/update controller list once per frame
-			if ( this->m_remote_frame_counter == 0 )
+			// Do not restart an unfinished batch at player zero on every frame.
+			if ( this->m_remote_frame_counter == 0 && this->m_remote_player_index == 0 )
 			{
 				this->m_remote_controllers.clear();
 				const auto all_players = systems::g_entities.get_by_type( systems::entities::type::player );
@@ -827,6 +825,13 @@ namespace features::changer {
 		const auto hud = visual_identity(this->find_hud_model_weapon(pawn));
 		const bool refresh = found->second.hud_refresh_pending || found->second.hud != hud;
 		const auto pk = g_econ_item_system.find_paint_kit(skin.paint_kit_id);
+		if (!refresh) {
+			// Preserve mesh-reset recovery without repeated model-path lookups,
+			// attachment walks and material callbacks for an unchanged HUD.
+			if (const auto entity = entity_guard::capture(hud.weapon))
+				(void)entity_guard::set_mesh(*entity, pk && pk->legacy_model ? std::uint64_t{2} : std::uint64_t{1});
+			return;
+		}
 		if (!this->update_view_model(pawn, pk, refresh)) {
 			report_skin_failure( "hud-pending", handle, skin.paint_kit_id );
 			return; // Leave hud_refresh_pending set until a successful retry.

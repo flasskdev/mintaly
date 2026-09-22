@@ -56,6 +56,12 @@ namespace features::changer::entity_guard {
         const auto scene = memory::safe_read<std::uintptr_t>(expected.entity +
             SCHEMA("C_BaseEntity", "m_pGameSceneNode"_hash)).value_or(0);
         if (!scene) return false;
+        const auto state = SCHEMA("CSkeletonInstance", "m_modelState"_hash);
+        const auto mesh = SCHEMA("CModelState", "m_MeshGroupMask"_hash);
+        if (state && mesh) {
+            const auto applied = memory::safe_read<std::uint64_t>(scene + state + mesh);
+            if (applied && *applied == mask) return true;
+        }
         memory::call<void>(set, scene, mask);
         return current(expected);
     }
