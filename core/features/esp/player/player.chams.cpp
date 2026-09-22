@@ -40,7 +40,7 @@ namespace features::esp::player {
 				return parent_owner == view_pawn;
 			};
 
-		const auto apply_config = [ & ]( const settings::esp::chams_config& cfg, std::uintptr_t target_scene_obj, bool force_original = false, float alpha = 1.0f )
+		const auto apply_config = [ & ]( const settings::esp::chams_config& cfg, std::uintptr_t target_scene_obj, bool force_original = false, float alpha = 1.0f, bool draw_original_base = true )
 			{
 				const auto fade = [alpha]( xdraw::color color ) {
 					color.a = static_cast<std::uint8_t>( color.a * alpha );
@@ -79,7 +79,7 @@ namespace features::esp::player {
 				const bool needs_original_base = !has_primary_fill && !has_secondary_fill &&
 					( cfg.overlay.enabled.value || ( primary_is_outline && !primary_suppress_fill ) || force_original );
 
-				if ( needs_original_base && !suppress_fill )
+				if ( needs_original_base && !suppress_fill && draw_original_base )
 				{
 					original_fn( a1, target_scene_obj, scene_view, primitive_buffer );
 				}
@@ -170,13 +170,33 @@ namespace features::esp::player {
 			}
 		}
 		const auto& onshot = chams_cfg.onshot;
-		if ( is_player && is_other_team && onshot.enabled.value &&
-			( onshot.primary.enabled.value || onshot.secondary.enabled.value || onshot.overlay.enabled.value ) &&
-			this->m_onshot.has_active( owner_entity ) )
+		const auto hit_alpha = is_player && is_other_team && onshot.enabled.value
+			? this->m_onshot.get_alpha( owner_entity ) : 0.0f;
+		if ( hit_alpha > 0.0f &&
+			( onshot.primary.enabled.value || onshot.secondary.enabled.value || onshot.overlay.enabled.value ) )
 		{
-			// Override ordinary enemy chams on the actual victim, including a
-			// lethal hit, and resume its normal configuration after expiry.
-			apply_config( onshot, scene_object );
+			// Preserve the normal appearance underneath the fading hit effect.
+			const auto& base = is_dead ? chams_cfg.enemy_ragdoll : chams_cfg.enemy;
+			if ( base.enabled.value &&
+				( base.primary.enabled.value || base.secondary.enabled.value || base.overlay.enabled.value ) )
+				apply_config( base, scene_object );
+			else
+				original_fn( a1, scene_object, scene_view, primitive_buffer );
+
+			const auto before = detail::read_primitive_buffer( primitive_buffer );
+			const auto first = before ? before->count() : -1;
+			apply_config( onshot, scene_object, false, hit_alpha, false );
+			const auto after = detail::read_primitive_buffer( primitive_buffer );
+			if ( after && first >= 0 )
+			{
+				__try
+				{
+					for ( auto i = first; i < after->count(); ++i )
+						if ( const auto primitive = after->at_fast( i ) )
+							detail::mark_primitive_last_fast( primitive );
+				}
+				__except ( EXCEPTION_EXECUTE_HANDLER ) {}
+			}
 			return true;
 		}
 
@@ -619,6 +639,19 @@ namespace features::esp::player {
     void chams::onshot::shutdown(bool /*destroy_objects*/) {
         std::lock_guard lock(m_mutex);
         m_entries.clear();
+    }
+
+    float chams::onshot::get_alpha(std::uintptr_t pawn) const {
+        std::lock_guard lock(m_mutex);
+        const auto it = m_entries.find(pawn);
+        if (it == m_entries.end()) return 0.0f;
+        const auto& hit = it->second;
+        if (systems::g_entities.lookup(hit.pawn_handle) != pawn || hit.duration <= 0.0f)
+            return 0.0f;
+        const auto elapsed = std::chrono::duration<float>(clock::now() - hit.hit_time).count();
+        const auto t = std::clamp(elapsed / hit.duration, 0.0f, 1.0f);
+        // Inverse smoothstep: full opacity at impact, zero at duration.
+        return (1.0f - t) * (1.0f - t) * (1.0f + 2.0f * t);
     }
 
     bool chams::onshot::has_active(std::uintptr_t pawn) const {

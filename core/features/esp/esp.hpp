@@ -46,6 +46,7 @@ namespace features::esp {
 				void shutdown (bool destroy_objects = true);
 
 				[[nodiscard]] bool has_active (std::uintptr_t pawn) const;
+				[[nodiscard]] float get_alpha (std::uintptr_t pawn) const;
 
 			private:
                 using clock = std::chrono::steady_clock;
