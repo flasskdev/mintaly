@@ -12,6 +12,8 @@ namespace systems {
 	{
 	public:
 		[[nodiscard]] static std::uint32_t lookup( const char* class_name, std::uint32_t field_hash );
+		// Bounded, read-only diagnostics for unresolved cosmetic bindings.
+		static void dump_fields( const char* class_name );
 	};
 
 	class materials
