@@ -7,6 +7,32 @@ def source(path): return (ROOT / path).read_text(encoding='utf-8')
 def body(text, start, end): return text.split(start, 1)[1].split(end, 1)[0]
 
 class ConfigAndBinds(unittest.TestCase):
+    def test_profile_load_clears_assignments_outside_defaults_snapshot(self):
+        s = source('external/config.hpp')
+        reset = body(s, 'inline void reset_bind_assignments()', 'inline void apply_blank_profile()')
+        self.assertIn('xui::binds::all()', reset)
+        self.assertIn('serial::json_to_bind(nullptr, setting->bind)', reset)
+        for start, end in [('inline bool from_json(', 'inline nlohmann::json to_json_delta'),
+                           ('inline bool from_json_delta(', 'namespace registry')]:
+            load = body(s, start, end)
+            self.assertLess(load.index('reset_bind_assignments();'), load.index('serial::json_to_field'))
+            self.assertLess(load.index('if (!fields_obj.is_object())'), load.index('reset_bind_assignments();'))
+    def test_failed_menu_load_does_not_finalize_profile(self):
+        s = source('core/rendering/impl/menu/menu.config.cpp')
+        load = body(s, 'if ( config::registry::load( wname ) )', 'else if ( is_hovered')
+        success, failure = load.split('\n\t\t\t\t\telse', 1)
+        self.assertIn('detail::selected = i;', success)
+        self.assertIn('settings::finalize_binds( );', success)
+        self.assertNotIn('settings::finalize_binds', failure)
+        self.assertIn('logging::popup::show', failure)
+    def test_nickname_hint_uses_player_name_without_assigning_value(self):
+        s = source('core/rendering/impl/menu/menu.misc.cpp')
+        hint = body(s, 'std::string nickname_hint;', 'std::vector<std::string> match_players;')
+        self.assertIn('m_sSanitizedPlayerName', hint)
+        self.assertIn('steam::friends::get_persona_name', hint)
+        self.assertIn('127, nickname_hint', hint)
+        self.assertNotIn('m.m_name_changer.name.value =', hint)
+        self.assertNotIn('"Player"', hint)
     def test_every_rage_numeric_and_hitbox_field_is_registered(self):
         s = body(source('core/settings.hpp'), 'struct weapon_group', 'struct individual_weapon')
         declared = set(re.findall(r'config::(?:val<[^>]+>|bools<[^>]+>)\s+(\w+)', s))

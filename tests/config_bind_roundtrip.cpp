@@ -99,4 +99,39 @@ int main() {
     xui::bind_info bind{'J', xui::bind_mode::toggle, true};
     config::serial::json_to_bind({{"k", 1000}, {"m", 99}}, bind);
     assert(bind.key == 0 && !bind.active);
+
+    // Settings registered after initialize() are absent from the defaults
+    // snapshot, but their assignments must not leak into the next profile.
+    xui::setting late{false, {}, "late bind regression", "ragebot"};
+    late.bind.excludes = &rage.enabled;
+    const auto arm_late = [&] {
+        late.bind.key = 'L';
+        late.bind.mode = xui::bind_mode::hold_on;
+        late.bind.active = true;
+        xui::ctx().active_keybind = 123;
+    };
+    const auto cleared = [&] {
+        assert(late.bind.key == 0 && !late.bind.active);
+        assert(late.bind.excludes == &rage.enabled);
+        assert(xui::ctx().active_keybind == 0);
+        for (auto* setting : xui::binds::all())
+            assert(!setting || setting->bind.key == 0);
+        assert(xui::slider_binds::serialize().empty());
+    };
+    arm_late();
+    assert(!config::from_json({{"version", config::k_version}, {"fields", nullptr}}));
+    assert(late.bind.key == 'L'); // Reject invalid input before clearing assignments.
+    assert(config::from_json({{"version", config::k_version}, {"fields", nlohmann::json::object()}}));
+    cleared();
+    assert(config::from_json(saved));
+    assert(config::to_json() == saved);
+    arm_late();
+    assert(config::from_json_delta({{"v", config::k_version}, {"f", nlohmann::json::object()}}));
+    cleared();
+    assert(config::from_json_delta(delta));
+    assert(config::to_json() == saved);
+    arm_late();
+    config::apply_blank_profile();
+    cleared();
+    xui::binds::unregister_setting(&late);
 }

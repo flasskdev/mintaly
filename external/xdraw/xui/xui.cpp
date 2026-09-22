@@ -992,6 +992,7 @@ namespace xui {
             auto& context = ctx();
             context.active_slider = 0;
             context.active_slider_edit = 0;
+            context.active_keybind = 0;
             auto& reg = get_bind_registry();
             reg.prev_key_state.clear();
             reg.listening_setting = 0;
