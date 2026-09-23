@@ -1,5 +1,4 @@
 #pragma once
-
 #include "jumpbug_cycle.hpp"
 
 namespace features::movement {
@@ -37,10 +36,10 @@ namespace features::movement {
 
 	private:
 		bool m_active_this_tick{ false };
+		bool m_owned_duck{ false };
 		bool m_fired_last_tick{ false };
-        bool m_owned_duck{ false };
-        std::uintptr_t m_pawn{};
-        jumpbug_cycle m_cycle{};
+		std::uintptr_t m_pawn{};
+		jumpbug_cycle m_cycle{};
 	};
 
 	class slowwalk

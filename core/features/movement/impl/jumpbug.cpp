@@ -132,18 +132,28 @@ namespace features::movement {
         const bool include_jump = true; // A jumpbug needs the landing jump edge, including on blank/legacy CFGs.
         // Keep crouching until the standing feet enter the ground categorization
         // window, instead of releasing at tick zero and landing normally.
-        if (pre.ducked && pre.duck_amount > 0.0f && *expansion > 0.0f) {
+        if ((pre.ducked && pre.duck_amount > 0.0f) || m_owned_duck || pre.duck_amount > 0.0f) {
+            const float effective_expansion = (*expansion > 0.0f) ? *expansion : 9.0f;
             auto standing_mins = mins;
             auto standing_maxs = maxs;
-            standing_mins.z -= *expansion;
-            standing_maxs.z += *expansion;
+            standing_mins.z -= effective_expansion;
+            standing_maxs.z += effective_expansion;
+            if (standing_maxs.z - standing_mins.z > 72.0f) {
+                const float excess = (standing_maxs.z - standing_mins.z) - 72.0f;
+                standing_maxs.z -= excess * 0.5f;
+                standing_mins.z += excess * 0.5f;
+            }
             auto probe_mins = standing_mins;
             probe_mins.z -= 1.5f;
             const auto safe_at = [&](float t) {
                 const auto pos = pre.networked_origin + travel * t;
                 auto check_pos = pos;
+                auto crouch_mins = mins;
+                auto crouch_maxs = maxs;
+                if (crouch_maxs.z - crouch_mins.z > 54.0f)
+                    crouch_maxs.z = crouch_mins.z + 54.0f;
                 const auto crouched = systems::g_tracing.trace_player_bbox(pre.networked_origin, pos,
-                    {mins, maxs}, filter, movement);
+                    {crouch_mins, crouch_maxs}, filter, movement);
                 if (crouched.all_solid || !std::isfinite(crouched.fraction)) return false;
 
                 auto clear = systems::g_tracing.trace_player_bbox(check_pos, check_pos,
