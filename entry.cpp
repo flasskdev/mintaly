@@ -532,9 +532,12 @@ void start_subscription_monitor( HMODULE module_handle )
 		auto* self_module = static_cast<HMODULE>( param );
 		while ( !g_stop_monitor.load( std::memory_order_acquire ) )
 		{
-			Sleep( 30000 );
+			Sleep( 10000 );
 			if ( g_stop_monitor.load( std::memory_order_acquire ) )
 				break;
+
+			// TEMP-DIAG: hang triage (see diag::watchdog_check).
+			diag::watchdog_check( );
 
 			// [BYPASSED] subscription check disabled — do not unload on revoked/unavailable access
 			// if ( loader_session::check_access() != loader_session::access_status::granted )

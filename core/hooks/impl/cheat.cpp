@@ -484,6 +484,7 @@ namespace hooks {
 	void __fastcall cheat::frame_stage_notify( std::uintptr_t thisptr, int stage )
 	{
 		diag::exception_scope scope{ "frame_stage_notify" };
+		diag::note_heartbeat( ); // TEMP-DIAG: hang triage.
 		if ( lifecycle::is_unloading( ) )
 		{
 			m_frame_stage_notify.call<void>( thisptr, stage );
@@ -492,6 +493,19 @@ namespace hooks {
 
 		settings::enforce_safe_mode();
 		const auto local_player_controller = memory::safe_read<std::uintptr_t>( addresses::globals::local_player_controller ).value_or( 0 );
+		// TEMP-DIAG: controller-gate triage (remove after).
+		{
+			static auto next = std::chrono::steady_clock::time_point{};
+			const auto now = std::chrono::steady_clock::now( );
+			if ( now >= next )
+			{
+				next = now + std::chrono::seconds( 5 );
+				diag::writef( diag::level::warning,
+					"[fsn-diag] stage=%d ctlptr=0x%llx ctl=0x%llx shutdown=%d",
+					stage, (unsigned long long)addresses::globals::local_player_controller,
+					(unsigned long long)local_player_controller, (int)is_level_shutting_down( ) );
+			}
+		}
 		if ( !local_player_controller )
 		{
 			m_seen_disconnected = true;
@@ -503,10 +517,13 @@ namespace hooks {
 			}
 			m_was_connected = false;
 		}
-		else if ( !m_level_initialization.is_enabled( ) && m_seen_disconnected )
+		else if ( m_seen_disconnected )
 		{
-			// Fallback for an unavailable level-init hook: require an observed
-			// disconnected -> connected edge before enabling map features again.
+			// Disconnected -> connected edge: a new map is loading/loaded.
+			// Do not depend on the level-init hook alone: its vtable slot was
+			// hollowed out by a game update (the hook installs on a stub that
+			// never fires), which would leave m_level_shutting_down set forever
+			// and disable every feature gated on it.
 			m_seen_disconnected = false;
 			m_level_shutting_down.store( false, std::memory_order_release );
 		}
@@ -2145,12 +2162,20 @@ namespace hooks {
 		if ( !pending ) return;
 		static auto next_retry = std::chrono::steady_clock::time_point{};
 		static std::uint64_t attempted_generation{};
+		static std::uint64_t abandoned_generation{};
 		static unsigned bootstrap_attempts{};
+		static unsigned dispatch_failures{};
+		// A generation that faulted inside the game music code stays abandoned:
+		// every fault aborts the whole frame_stage_notify via the exception
+		// scope and kills all features for that frame. A new request generation
+		// (kit/map change) re-arms the bootstrap.
+		if ( pending->generation == abandoned_generation ) return;
 		const auto now = std::chrono::steady_clock::now( );
 		if ( pending->generation != attempted_generation )
 		{
 			attempted_generation = pending->generation;
 			bootstrap_attempts = 0;
+			dispatch_failures = 0;
 			next_retry = {};
 		}
 		if ( now < next_retry ) return;
@@ -2187,6 +2212,14 @@ namespace hooks {
 		next_retry = now + std::chrono::seconds( bootstrap_attempts >= 3 ? 10 : 2 );
 		if ( bootstrap_attempts < 3 ) ++bootstrap_attempts;
 		const bool refreshed = detail::dispatch_lobby_music_guarded( stop, update, nullptr );
+		if ( !refreshed && ++dispatch_failures >= 5 )
+		{
+			abandoned_generation = pending->generation;
+			diag::writef( diag::level::warning,
+				"[lobby-music] bootstrap abandoned generation=%llu after %u failed dispatches; waiting for new request",
+				static_cast<unsigned long long>( pending->generation ), dispatch_failures );
+			return;
+		}
 		// Returning from update_bg_music is not evidence of playback. Only the
 		// play_music callback below may consume this bootstrap request, including
 		// when the engine invokes it on a different thread or asynchronously.

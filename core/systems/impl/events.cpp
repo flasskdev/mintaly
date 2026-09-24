@@ -140,6 +140,8 @@ namespace systems {
 			&current_entry->listener, current_entry->name.c_str( ), false );
 		if ( !success )
 		{
+			diag::writef( diag::level::warning, "game event AddListener failed: %s (manager=0x%llx)",
+				current_entry->name.c_str( ), (unsigned long long)addresses::globals::game_event_manager );
 			return false;
 		}
 

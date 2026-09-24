@@ -9,6 +9,30 @@ namespace systems {
 
 	void local::update( )
 	{
+		// TEMP-DIAG: pin down the dead-features chain (remove after triage).
+		{
+			static auto next = std::chrono::steady_clock::time_point{};
+			const auto now = std::chrono::steady_clock::now( );
+			if ( now >= next )
+			{
+				next = now + std::chrono::seconds( 5 );
+				const auto ctl = memory::safe_read<std::uintptr_t>( addresses::globals::local_player_controller ).value_or( 0 );
+				const auto elist = memory::safe_read<std::uintptr_t>( addresses::globals::entity_list ).value_or( 0 );
+				const auto off_pawn = SCHEMA( "CBasePlayerController", "m_hPawn"_hash );
+				const auto off_hp = SCHEMA( "C_BaseEntity", "m_iHealth"_hash );
+				const auto off_team = SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash );
+				const auto pawn_h = ctl && off_pawn ? memory::safe_read<std::uint32_t>( ctl + off_pawn ).value_or( 0 ) : 0;
+				const auto pawn = pawn_h ? g_entities.lookup( pawn_h ) : 0;
+				const auto hp = pawn && off_hp ? memory::safe_read<int>( pawn + off_hp ).value_or( -999 ) : -999;
+				diag::writef( diag::level::warning,
+					"[local-diag] ctl=0x%llx elist=0x%llx empty=%d off_pawn=%u off_hp=%u off_team=%u pawn_h=0x%x pawn=0x%llx hp=%d vm=0x%llx gv=0x%llx",
+					(unsigned long long)ctl, (unsigned long long)elist, (int)g_entities.is_empty( ),
+					(unsigned)off_pawn, (unsigned)off_hp, (unsigned)off_team,
+					(unsigned)pawn_h, (unsigned long long)pawn, hp,
+					(unsigned long long)addresses::globals::view_matrix,
+					(unsigned long long)addresses::globals::global_vars );
+			}
+		}
 		const auto local_player_controller = memory::safe_read<std::uintptr_t>( addresses::globals::local_player_controller ).value_or( 0 );
 		if ( !local_player_controller )
 		{

@@ -862,6 +862,41 @@ namespace diag {
 		record_crash( &info, stage );
 	}
 
+	// TEMP-DIAG: hang triage. The game thread calls note_heartbeat() from
+	// frame_stage_notify; the monitor thread calls watchdog_check(). A stall
+	// captures a process snapshot so the frozen thread's stack can be read
+	// from the .dmp. Remove once the map-enter freeze is root-caused.
+	inline std::atomic<std::uint64_t> g_frame_heartbeat_ms{};
+	inline std::atomic_bool g_watchdog_dumped{};
+
+	inline void note_heartbeat( )
+	{
+		g_frame_heartbeat_ms.store( GetTickCount64( ), std::memory_order_release );
+		g_watchdog_dumped.store( false, std::memory_order_release );
+	}
+
+	inline void watchdog_check( unsigned long stall_ms = 40000 )
+	{
+		const auto last = g_frame_heartbeat_ms.load( std::memory_order_acquire );
+		if ( !last )
+		{
+			return;
+		}
+		const auto now = GetTickCount64( );
+		if ( now - last < stall_ms )
+		{
+			return;
+		}
+		bool expected = false;
+		if ( !g_watchdog_dumped.compare_exchange_strong( expected, true ) )
+		{
+			return;
+		}
+		writef( level::warning, "[watchdog] frame stall %llus, capturing snapshot",
+			static_cast<unsigned long long>( ( now - last ) / 1000 ) );
+		capture_snapshot( "watchdog-stall" );
+	}
+
 	inline void step( const char* message )
 	{
 		write( level::debug, message );
