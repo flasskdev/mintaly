@@ -67,6 +67,7 @@ namespace systems {
 
 	bool prediction::simulate( input::usercmd* cmd, const systems::local::snapshot& local, const std::function<void( )>& fn )
 	{
+		return false; // Временно: несовместимость prediction с новой сборкой игры.
 		std::lock_guard simulation_lock( this->m_simulation_mtx );
 		if ( !cmd || !local.pawn || !local.controller || !fn )
 			return false;
