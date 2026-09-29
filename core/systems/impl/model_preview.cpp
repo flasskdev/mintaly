@@ -128,6 +128,12 @@ void model_preview::hide() {
     pose_basis_valid_ = false;
 }
 
+bool model_preview::item_preview_active() const {
+    std::lock_guard lock(mutex_);
+    return wanted_ && wanted_->visible &&
+        (wanted_->type == kind::weapon || wanted_->type == kind::knife || wanted_->type == kind::gloves);
+}
+
 bool model_preview::wants_agent_pose() const noexcept {
     return pose_capture_requested_.load(std::memory_order_acquire);
 }
@@ -492,8 +498,17 @@ void model_preview::update() {
         diag::writef(diag::level::info, "[model-preview] Panorama bootstrap submitted");
     }
 
+    const char* kind_name = "weapon";
+    switch (value.type) {
+    case model_preview::kind::knife: kind_name = "knife"; break;
+    case model_preview::kind::gloves: kind_name = "gloves"; break;
+    case model_preview::kind::agent: kind_name = "agent"; break;
+    case model_preview::kind::music: kind_name = "music"; break;
+    case model_preview::kind::weapon: default: break;
+    }
+
     const nlohmann::json payload{
-        {"visible", value.visible}, {"kind", "agent"},
+        {"visible", value.visible}, {"kind", kind_name},
         {"def", value.def_index}, {"paint", value.paint_kit},
         {"music", value.music_kit}, {"team", value.team},
         {"model", value.model_path}, {"width", value.width}, {"height", value.height},
@@ -516,6 +531,7 @@ void model_preview::update() {
     std::lock_guard lock(mutex_);
     const bool asset_changed = !last_sent_ || last_sent_->type != value.type ||
         last_sent_->def_index != value.def_index || last_sent_->team != value.team ||
+        last_sent_->paint_kit != value.paint_kit || last_sent_->music_kit != value.music_kit ||
         last_sent_->model_path != value.model_path;
     connected_ = true;
     last_sent_ = value;
@@ -524,7 +540,7 @@ void model_preview::update() {
             "[model-preview] isolated-panel capture armed after excluding %llu pre-panel actor(s)",
             static_cast<unsigned long long>(g_preview_candidate_filter.preexisting_count));
     }
-    status_ = value.visible ? "CS2 agent: team intro animation, then idle." : "CS2 agent preview closed.";
+    status_ = value.visible ? "CS2 native item preview is active." : "CS2 item preview closed.";
     if (asset_changed)
         diag::writef(diag::level::info,
             "[model-preview] request script submitted visible=%d team=%d def=%d yaw=%.1f pitch=%.1f",

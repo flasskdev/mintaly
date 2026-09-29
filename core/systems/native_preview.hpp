@@ -48,6 +48,7 @@ public:
     void set_capture_available(bool available);
     void submit(request value);
     void hide();
+    [[nodiscard]] bool item_preview_active() const;
     void update();
     [[nodiscard]] bool wants_agent_pose() const noexcept;
     void capture_agent_pose(std::uintptr_t entity);

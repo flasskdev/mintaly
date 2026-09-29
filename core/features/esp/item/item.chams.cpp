@@ -76,6 +76,9 @@ namespace features::esp::item {
 
 	bool chams::on_generate_primitives( std::uintptr_t owner_entity, std::uint32_t owner_hash, std::uintptr_t scene_object, std::uintptr_t primitive_buffer, std::uintptr_t( __fastcall* original_fn )( std::uintptr_t, std::uintptr_t, std::uintptr_t, std::uintptr_t ), std::uintptr_t a1, std::uintptr_t scene_view )
 	{
+		if ( systems::g_model_preview.item_preview_active( ) )
+			return false;
+
 		const auto& chams_cfg = settings::g_esp.m_item.m_chams;
 		if ( !chams_cfg.enabled.value )
 		{

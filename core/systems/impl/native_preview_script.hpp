@@ -175,7 +175,7 @@ inline constexpr const char* bootstrap = R"MINTALY_JS(
         state.touched = Date.now();
         if (!a.visible) { destroy(); return; }
         state.args = a;
-        var generation = [a.kind, a.def, a.team, a.model].join('|');
+        var generation = [a.kind, a.def, a.paint, a.music, a.team, a.model].join('|');
         if (state.generation === generation && state.panel && state.panel.IsValid()) {
             applyLayout();
             applyRotation();

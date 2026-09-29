@@ -9,6 +9,7 @@
 #include <atomic>
 #include <optional>
 #include <core/features/features.hpp>
+#include <core/systems/systems.hpp>
 #include <core/settings.hpp>
 #include <core/hooks/hooks.hpp>
 #include <utilities/diag.hpp>
@@ -284,6 +285,7 @@ namespace rendering {
 			int browsing_agent_team{};
 			std::string search_buf{};
 			browser_tab active_tab{ browser_tab::skins };
+			bool details_open{};
 		};
 
 		skins_state skins_ui{};
@@ -303,7 +305,7 @@ namespace rendering {
 		constexpr auto k_card_w_ref{ 118.0f };
 		constexpr auto k_card_h_ref{ 100.0f };
 		constexpr auto k_card_gap{ 8.0f };
-		constexpr auto k_columns{ 3 };
+		constexpr auto k_columns{ 5 };
 		constexpr auto k_image_h_ratio{ 0.70f };
 		constexpr auto k_rarity_bar_h{ 2.0f };
 
@@ -331,6 +333,9 @@ namespace rendering {
 
 			if ( p == skins_page::browser )
 			{
+				skins_ui.details_open = false;
+				skins_ui.active_tab = browser_tab::skins;
+				skins_ui.search_buf.clear( );
 				skins_ui.browsing_def = def;
 				skin_workspace::active_browsing_weapon = def;
 				if ( def != 0 )
@@ -1128,12 +1133,8 @@ namespace rendering {
 			const auto image_h = std::floor( card.h * k_image_h_ratio );
 
 			const auto hovered = skin_workspace::hovered(card);
-			if (hovered) {
-				skin_workspace::hover.weapon = def->def_index;
-				if (is_skinned && pk) skin_workspace::hover.paint = pk->id;
-				else skin_workspace::hover.paint = 0;
-				if (input.mouse_clicked) skin_workspace::focused_weapon[skin_workspace::team == 3 ? 0 : 1] = def->def_index;
-			}
+			if ( hovered && input.mouse_clicked )
+				skin_workspace::focused_weapon[ skin_workspace::team == 3 ? 0 : 1 ] = def->def_index;
 			const auto hover_anim = xui::anim::lerp( xui::fnv1a( "wcard" ) + static_cast< std::uintptr_t >( def->def_index ), hovered ? 1.0f : 0.0f, 14.0f );
 
 			auto card_bg = tokens::col_elevated;
@@ -1322,7 +1323,6 @@ namespace rendering {
 
 			const auto image_h = std::floor( card.h * k_image_h_ratio );
 			const auto hovered = skin_workspace::hovered(card);
-			if (hovered) { skin_workspace::hover.custom = entry_idx; skin_workspace::hover.agent = 0; }
 			const auto hover_anim = xui::anim::lerp( xui::fnv1a( "catile" ) + static_cast< std::uintptr_t >( entry_idx ), hovered ? 1.0f : 0.0f, 14.0f );
 
 			auto card_bg = tokens::col_elevated;
@@ -1426,7 +1426,6 @@ namespace rendering {
 			const auto image_h = std::floor( card.h * k_image_h_ratio );
 
 			const auto hovered = skin_workspace::hovered(card);
-			if (hovered) { skin_workspace::hover.agent = def->def_index; skin_workspace::hover.custom = -1; }
 			const auto hover_anim = xui::anim::lerp( xui::fnv1a( "atile" ) + static_cast< std::uintptr_t >( def->def_index ), hovered ? 1.0f : 0.0f, 14.0f );
 
 			auto card_bg = tokens::col_elevated;
@@ -1532,7 +1531,6 @@ namespace rendering {
 			const auto image_h = std::floor( card.h * k_image_h_ratio );
 
 			const auto hovered = skin_workspace::hovered(card);
-			if (hovered) skin_workspace::hover.music = kit ? kit->id : 0;
 			const auto hover_id = xui::fnv1a( "mtile" ) + ( kit ? static_cast< std::uintptr_t >( kit->id ) : 0 );
 			const auto hover_anim = xui::anim::lerp( hover_id, hovered ? 1.0f : 0.0f, 14.0f );
 
@@ -1656,8 +1654,13 @@ namespace rendering {
 			int parsed{};
 			const auto result = std::from_chars( buffer.data( ), buffer.data( ) + buffer.size( ), parsed );
 			const auto valid = result.ec == std::errc{} && result.ptr == buffer.data( ) + buffer.size( ) && parsed >= minimum && parsed <= maximum;
-			if ( valid ) value = parsed;
-			else xui::text( std::format( "Enter {} to {}. Previous value kept.", minimum, maximum ), {235, 91, 105} );
+			if ( !valid )
+				xui::text( std::format( "Enter {} to {}. Previous value kept.", minimum, maximum ), {235, 91, 105} );
+			else if ( value != parsed )
+			{
+				value = parsed;
+				notify_skin_changed( );
+			}
 		}
 
 		static void draw_skin_editor( const features::changer::econ_item_system::item_def* weapon )
@@ -1714,6 +1717,20 @@ namespace rendering {
 			else
 			{
 				skin.stattrak = false;
+			}
+
+			static std::unordered_map<std::uintptr_t, std::string> name_tag_buffers;
+			const auto name_tag_id = xui::make_id( "Name tag" );
+			auto& name_tag_buffer = name_tag_buffers[ name_tag_id ];
+			if ( xui::ctx( ).active_text_input != name_tag_id ) name_tag_buffer = skin.name_tag;
+			if ( xui::text_input( "Name tag", name_tag_buffer, 20, "Optional name tag" ) )
+			{
+				auto normalized = skin_options::normalize_name_tag( name_tag_buffer );
+				if ( normalized != skin.name_tag )
+				{
+					skin.name_tag = std::move( normalized );
+					notify_skin_changed( );
+				}
 			}
 
 			xui::layout::spacing( 6.0f );
@@ -1780,7 +1797,6 @@ namespace rendering {
 			const bool is_vanilla = ( pk->id == 0 );
 			const bool is_equipped = is_vanilla ? ( current_kit_id <= 0 ) : ( pk->id == current_kit_id );
 			const auto hovered = skin_workspace::hovered(card);
-			if (hovered && weapon) { skin_workspace::hover.weapon = weapon->def_index; skin_workspace::hover.paint = pk->id; }
 			const auto hover_anim = xui::anim::lerp( xui::fnv1a( "scard" ) + static_cast< std::uintptr_t >( pk->id ), hovered ? 1.0f : 0.0f, 14.0f );
 
 			auto card_bg = tokens::col_elevated;
@@ -1860,6 +1876,8 @@ namespace rendering {
 
 			if ( hovered && input.mouse_clicked )
 			{
+				skins_ui.details_open = true;
+				skins_ui.active_tab = browser_tab::skins;
 				if ( is_equipped )
 				{
 					const auto browsing_def = econ.find_def( skins_ui.browsing_def );
@@ -1948,6 +1966,136 @@ namespace rendering {
 			}
 		}
 
+		static void draw_inventory_preview( const xui::rect& area, int category )
+		{
+			auto& dl = xui::draw::current( );
+			auto& econ = features::changer::g_econ_item_system;
+			auto backdrop = tokens::col_card;
+			backdrop.a = 30;
+			dl.rect_filled( area.x, area.y, area.w, area.h, backdrop, xdraw::corner_radius{ 12.0f } );
+			dl.rect( area.x, area.y, area.w, area.h, tokens::col_border.alpha( 190 ), xdraw::corner_radius{ 12.0f }, 1.0f );
+
+			const xui::rect ct_button{ area.right( ) - 130.0f, area.y + 12.0f, 48.0f, 26.0f };
+			const xui::rect t_button{ area.right( ) - 72.0f, area.y + 12.0f, 48.0f, 26.0f };
+			if ( skin_workspace::button( ct_button, "CT", skin_workspace::team == 3 ) )
+				skin_workspace::team = 3;
+			if ( skin_workspace::button( t_button, "T", skin_workspace::team == 2 ) )
+				skin_workspace::team = 2;
+
+			systems::model_preview::request preview{};
+			preview.team = skin_workspace::team;
+			preview.visible = true;
+			preview.width = std::max( 64, static_cast<int>( area.w - 20.0f ) );
+			preview.height = std::max( 64, static_cast<int>( area.h - 18.0f ) );
+			preview.x = area.x + 10.0f;
+			preview.y = area.y + 9.0f;
+			const auto [screen_w, screen_h] = xdraw::viewport_size( );
+			preview.screen_width = static_cast<int>( screen_w );
+			preview.screen_height = static_cast<int>( screen_h );
+			preview.background_rgb = 0x10131a;
+
+			std::string title{ "Choose an item below" };
+			std::string subtitle{ "The preview stays on your current selection" };
+			xdraw::color rarity_color = tokens::col_text_dim;
+
+			if ( category == 4 )
+			{
+				preview.type = systems::model_preview::kind::music;
+				preview.music_kit = settings::g_changer.music.id;
+				const auto* kit = econ.find_music_kit( preview.music_kit );
+				title = kit ? kit->localized_name : "Standard music kit";
+				subtitle = "Music kit";
+			}
+			else if ( category == 3 )
+			{
+				preview.type = systems::model_preview::kind::agent;
+				const auto& agents = settings::g_changer.agents;
+				const auto& custom_agents = settings::g_changer.custom_agents;
+				const auto custom_index = skin_workspace::team == 3 ? custom_agents.selected_ct : custom_agents.selected_t;
+				preview.def_index = skin_workspace::team == 3 ? agents.ct_def : agents.t_def;
+				if ( preview.def_index <= 0 )
+				{
+					for ( const auto* candidate : econ.agents( ) )
+					{
+						if ( candidate && ( candidate->team( ) == 0 || candidate->team( ) == skin_workspace::team ) )
+						{
+							preview.def_index = candidate->def_index;
+							break;
+						}
+					}
+				}
+				if ( custom_index >= 0 && custom_index < static_cast<int>( custom_agents.entries.size( ) ) )
+				{
+					const auto& selected = custom_agents.entries[ custom_index ];
+					if ( selected.team == 0 || selected.team == skin_workspace::team )
+					{
+						preview.model_path = selected.model_path;
+						title = selected.name;
+						subtitle = "Custom operative";
+					}
+				}
+				if ( title == "Choose an item below" )
+				{
+					const auto* agent = econ.find_def( static_cast<std::int16_t>( preview.def_index ) );
+					title = agent ? agent->localized_name : ( skin_workspace::team == 3 ? "Default CT operative" : "Default T operative" );
+					subtitle = "Operative";
+				}
+			}
+			else
+			{
+				preview.type = category == 1 ? systems::model_preview::kind::knife :
+					category == 2 ? systems::model_preview::kind::gloves : systems::model_preview::kind::weapon;
+
+				const auto team_index = skin_workspace::team == 3 ? 0 : 1;
+				const auto desired_category = category == 1 ? features::changer::econ_item_system::item_category::knife :
+					category == 2 ? features::changer::econ_item_system::item_category::glove : features::changer::econ_item_system::item_category::gun;
+				const auto focused = skin_workspace::focused_weapon[ team_index ];
+				const auto selected_def = skins_ui.current == skins_page::browser && skins_ui.browsing_def != 0
+					? skins_ui.browsing_def : focused;
+				const auto* weapon = econ.find_def( selected_def );
+				if ( !weapon || weapon->category != desired_category || ( weapon->team( ) != 0 && weapon->team( ) != skin_workspace::team ) )
+				{
+					weapon = nullptr;
+					for ( const auto* candidate : skin_workspace::items.weapons( std::clamp( category, 0, 2 ) ) )
+					{
+						if ( candidate && candidate->category == desired_category &&
+							( candidate->team( ) == 0 || candidate->team( ) == skin_workspace::team ) )
+						{
+							weapon = candidate;
+							break;
+						}
+					}
+				}
+
+				if ( weapon )
+				{
+					preview.def_index = weapon->def_index;
+					title = weapon->localized_name;
+					const auto& applied = settings::g_changer.skins.for_team( skin_workspace::team );
+					if ( const auto it = applied.find( weapon->def_index ); it != applied.end( ) )
+					{
+						preview.paint_kit = it->second.paint_kit_id;
+						if ( const auto* kit = econ.find_paint_kit( preview.paint_kit ) )
+						{
+							title += "  /  " + kit->localized_name;
+							rarity_color = skin_workspace::rarity_colors[ std::clamp( econ.combined_rarity( weapon->def_index, preview.paint_kit ), 0, 7 ) ];
+							subtitle = it->second.stattrak ? "StatTrak | Inspect animation" : "Inspect animation";
+						}
+						else subtitle = "Inspect animation";
+					}
+					else subtitle = "Inspect animation";
+				}
+			}
+
+			systems::g_model_preview.submit( std::move( preview ) );
+
+			const auto label = category == 3 ? "OPERATIVE PREVIEW" : category == 4 ? "MUSIC KIT PREVIEW" : "WEAPON PREVIEW";
+			dl.text( area.x + 16.0f, area.y + 12.0f, label, tokens::col_text_dim );
+			const auto title_fit = rendering::theme::fit_text( title, std::max( 80.0f, area.w - 210.0f ) );
+			dl.text( area.x + 16.0f, area.bottom( ) - 42.0f, title_fit, tokens::col_text );
+			dl.text( area.x + 16.0f, area.bottom( ) - 23.0f, subtitle, rarity_color );
+		}
+
 	} // namespace detail
 
 	void menu::draw_skins( float group_w )
@@ -1966,8 +2114,6 @@ namespace rendering {
 				if (*selected == removed) *selected = -1; else if (*selected > removed) --*selected;
 			skin_workspace::hover = {};
 		}
-		if (skin_workspace::sidebar({m_body_x, m_body_y, skin_workspace::left_width(m_body_w), m_body_h}, m_subtab))
-			m_subtab = 4;
 		if (previous_team != skin_workspace::team)
 		{
 			xui::overlays::close_all();
@@ -2004,11 +2150,10 @@ namespace rendering {
 
 		const auto wx = this->m_x;
 		const auto wy = this->m_y;
-		const auto left_w = skin_workspace::left_width(this->m_body_w);
-		constexpr float k_panel_gap = 14.0f;
-		const auto content_x = this->m_body_x + left_w + k_panel_gap;
+		constexpr float k_panel_gap = 12.0f;
+		const auto content_x = this->m_body_x;
 		const auto body_y = this->m_body_y;
-		const auto content_w = this->m_body_w - left_w - k_panel_gap;
+		const auto content_w = this->m_body_w;
 		const auto body_h = this->m_body_h;
 		if (this->m_subtab == 3 && detail::skins_ui.browsing_agent_team == 0)
 		{
@@ -2027,12 +2172,16 @@ namespace rendering {
 		}
 
 		const auto fade_alpha = xui::ease::out_cubic( std::clamp( detail::skins_ui.fade, 0.0f, 1.0f ) );
+		const auto preview_h = std::clamp( body_h * 0.45f, 138.0f, 300.0f );
+		const auto list_y = body_y + preview_h + k_panel_gap;
+		const auto list_h = std::max( 80.0f, body_h - preview_h - k_panel_gap );
+		detail::draw_inventory_preview( { content_x, body_y, content_w, preview_h }, this->m_subtab );
 
-		xui::layout::set_cursor( content_x - wx, body_y - wy );
+		xui::layout::set_cursor( content_x - wx, list_y - wy );
 
 		if ( detail::skins_ui.current == detail::skins_page::grid )
 		{
-			if ( !xui::begin_child( "##skins_grid", content_w, body_h, true ) )
+			if ( !xui::begin_child( "##skins_grid", content_w, list_h, true ) )
 			{
 				return;
 			}
@@ -2154,7 +2303,7 @@ namespace rendering {
 		}
 		else
 		{
-			if ( !xui::begin_child( "##skins_browser", content_w, body_h, true ) )
+			if ( !xui::begin_child( "##skins_browser", content_w, list_h, true ) )
 			{
 				return;
 			}
@@ -2173,7 +2322,7 @@ namespace rendering {
 			const auto bar_x = win->bounds.x + s.window_pad_x;
 			const auto bar_y = win->bounds.y + s.window_pad_y - win->scroll_y;
 
-			const auto back_w{ 60.0f };
+			const auto back_w{ 88.0f };
 			const auto back_rect = xui::rect{ bar_x, bar_y, back_w, bar_h };
 			const auto back_hovered = skin_workspace::hovered(back_rect);
 			const auto back_hover = xui::anim::lerp( xui::fnv1a( "skin_back" ), back_hovered ? 1.0f : 0.0f, 14.0f );
@@ -2195,35 +2344,12 @@ namespace rendering {
 			back_bg.a = static_cast< std::uint8_t >( back_bg.a * fade_alpha );
 			dl.rect_filled( back_rect.x, back_rect.y, back_rect.w, back_rect.h, back_bg, xdraw::corner_radius{ s.button_rounding } );
 
-			const auto [bw, bh] = xdraw::measure_text( "back" );
+			const auto [bw, bh] = xdraw::measure_text( "<  Weapons" );
 			auto back_text = xui::lerp( s.text_dim, s.text, back_hover );
 			back_text.a = static_cast< std::uint8_t >( back_text.a * fade_alpha );
-			dl.text( back_rect.x + ( back_rect.w - bw ) * 0.5f, back_rect.y + ( back_rect.h - bh ) * 0.5f, "back", back_text );
+			dl.text( back_rect.x + ( back_rect.w - bw ) * 0.5f, back_rect.y + ( back_rect.h - bh ) * 0.5f, "<  Weapons", back_text );
 
 			float next_header_x = back_rect.right( ) + 6.0f;
-			if ( detail::skins_ui.browsing_agent_team == 0 )
-			{
-				constexpr const char* browser_tabs[]{ "Skins", "Chams" };
-				int active_tab = detail::skins_ui.active_tab == detail::browser_tab::chams ? 1 : 0;
-				constexpr float tab_w{ 94.0f };
-				const auto combo_label_gap = xui::ctx( ).style.item_spacing_y * 0.25f;
-				xui::layout::set_cursor( next_header_x - win->bounds.x, bar_y - win->bounds.y - combo_label_gap );
-				xui::push_style_var( xui::style_var::combo_h, bar_h );
-				xui::push_style_color( xui::style_col::combo_bg, s.button_bg );
-				xui::push_style_color( xui::style_col::combo_border, s.button_border );
-				xui::push_style_color( xui::style_col::combo_arrow, tokens::col_text_dim );
-				xui::push_style_color( xui::style_col::combo_hovered, s.button_hovered );
-				if ( xui::combo( "##skin_browser_tab", active_tab, browser_tabs, 2, tab_w ) )
-				{
-					detail::skins_ui.active_tab = active_tab == 1
-						? detail::browser_tab::chams
-						: detail::browser_tab::skins;
-				}
-				xui::pop_style_color( 4 );
-				xui::pop_style_var( );
-				next_header_x += tab_w + 8.0f;
-			}
-
 			xui::layout::set_cursor( next_header_x - win->bounds.x, bar_y - win->bounds.y );
 			xui::text_input( "##skin_search", detail::skins_ui.search_buf, 64, "search..." );
 
@@ -2323,64 +2449,112 @@ namespace rendering {
 			}
 
 			const auto weapon = econ.find_def( detail::skins_ui.browsing_def );
-			xui::layout::set_cursor( s.window_pad_x, grid_top_y - win->bounds.y );
-			// Scrolled-off controls must not react to clicks outside their child.
-			auto& editor_input = xui::ctx( ).input;
-			const auto saved_clicked = editor_input.mouse_clicked;
-			const auto saved_double_clicked = editor_input.mouse_double_clicked;
-			if ( !input.in_rect( win->bounds ) )
-			{
-				editor_input.mouse_clicked = false;
-				editor_input.mouse_double_clicked = false;
-			}
-			if ( detail::skins_ui.active_tab == detail::browser_tab::chams )
-			{
-				detail::draw_weapon_chams_editor( weapon );
-				editor_input.mouse_clicked = saved_clicked;
-				editor_input.mouse_double_clicked = saved_double_clicked;
-				win->content_h = grid_top_y - win->bounds.y + xui::layout::get_cursor( ).second + 30.0f;
-				xui::end_child( );
-				return;
-			}
-
-			detail::draw_skin_editor( weapon );
-			editor_input.mouse_clicked = saved_clicked;
-			editor_input.mouse_double_clicked = saved_double_clicked;
-			xui::layout::new_line( );
-			grid_top_y = win->bounds.y + xui::layout::get_cursor( ).second + 12.0f;
-
-			const auto& kits = skin_workspace::items.paints(detail::skins_ui.browsing_def, detail::skins_ui.search_buf);
-			if (kits.empty()) xui::text("No matching skins", tokens::col_text_dim);
-
-			const auto rows = ( static_cast< int >( kits.size( ) ) + detail::k_columns - 1 ) / detail::k_columns;
-			const auto grid_h = rows * card_h + ( rows > 0 ? ( rows - 1 ) * detail::k_card_gap : 0.0f );
-
-			xui::layout::set_cursor( s.window_pad_x, grid_top_y - win->bounds.y );
-			xui::layout::item( inner_w, grid_h );
-
+			const auto& kits = skin_workspace::items.paints( detail::skins_ui.browsing_def, detail::skins_ui.search_buf );
 			const auto applied_it = detail::skin_map( ).find( detail::skins_ui.browsing_def );
 			const auto current_kit = ( applied_it != detail::skin_map( ).end( ) ) ? applied_it->second.paint_kit_id : -1;
 
-			for ( auto i = 0; i < static_cast< int >( kits.size( ) ); ++i )
+			if ( detail::skins_ui.details_open )
 			{
-				const auto col = i % detail::k_columns;
-				const auto row = i / detail::k_columns;
+				const auto parent_bounds = win->bounds;
+				const auto child_y = grid_top_y - parent_bounds.y;
+				const auto child_h = std::max( 70.0f, parent_bounds.h - child_y - s.window_pad_y );
+				const auto split_gap = 10.0f;
+				const auto paint_w = std::floor( ( inner_w - split_gap ) * 0.53f );
+				const auto settings_w = std::max( 80.0f, inner_w - paint_w - split_gap );
 
-				const auto cx = std::floor( base_x + col * ( card_w + detail::k_card_gap ) );
-				const auto cy = std::floor( grid_top_y + row * ( card_h + detail::k_card_gap ) );
-
-				if ( cy + card_h < win->bounds.y || cy > win->bounds.bottom( ) )
+				// The paint catalogue and editor scroll independently so the selected
+				// item stays visible while tuning its finish.
+				xui::layout::set_cursor( s.window_pad_x, child_y );
+				if ( xui::begin_child( "##skin_paint_list", paint_w, child_h, true ) )
 				{
-					continue;
+					auto* paint_window = xui::layout::current_window( );
+					const auto paint_inner_w = paint_window->bounds.w - s.window_pad_x * 2.0f;
+					const auto columns = std::clamp( static_cast<int>( ( paint_inner_w + detail::k_card_gap ) / 160.0f ), 1, 5 );
+					const auto paint_gap = ( columns - 1 ) * detail::k_card_gap;
+					const auto paint_card_w = std::floor( ( paint_inner_w - paint_gap ) / static_cast<float>( columns ) );
+					const auto paint_card_h = std::floor( paint_card_w * ( detail::k_card_h_ref / detail::k_card_w_ref ) );
+					const auto paint_base_x = paint_window->bounds.x + s.window_pad_x;
+					const auto paint_base_y = paint_window->bounds.y + s.window_pad_y - paint_window->scroll_y;
+					const auto rows = ( static_cast<int>( kits.size( ) ) + columns - 1 ) / columns;
+					const auto grid_h = rows * paint_card_h + ( rows > 0 ? ( rows - 1 ) * detail::k_card_gap : 0.0f );
+					xui::layout::set_cursor( s.window_pad_x, s.window_pad_y - paint_window->scroll_y );
+					xui::layout::item( paint_inner_w, grid_h );
+					if ( kits.empty( ) ) xui::text( "No matching skins", tokens::col_text_dim );
+
+					for ( auto i = 0; i < static_cast<int>( kits.size( ) ); ++i )
+					{
+						const auto col = i % columns;
+						const auto row = i / columns;
+						const auto cx = std::floor( paint_base_x + col * ( paint_card_w + detail::k_card_gap ) );
+						const auto cy = std::floor( paint_base_y + row * ( paint_card_h + detail::k_card_gap ) );
+						if ( cy + paint_card_h < paint_window->bounds.y || cy > paint_window->bounds.bottom( ) ) continue;
+						detail::draw_skin_tile( { cx, cy, paint_card_w, paint_card_h }, kits[ i ], weapon, current_kit, fade_alpha );
+					}
+					paint_window->content_h = s.window_pad_y + grid_h;
+					xui::end_child( );
 				}
 
-				const auto card = xui::rect{ cx, cy, card_w, card_h };
-				detail::draw_skin_tile( card, kits[ i ], weapon, current_kit, fade_alpha );
+				if ( auto* parent = xui::layout::current_window( ) )
+					xui::layout::set_cursor( s.window_pad_x + paint_w + split_gap, child_y );
+				if ( xui::begin_child( "##skin_settings", settings_w, child_h, true ) )
+				{
+					auto* settings_window = xui::layout::current_window( );
+					const auto settings_inner_w = settings_window->bounds.w - s.window_pad_x * 2.0f;
+					xui::layout::set_cursor( s.window_pad_x, s.window_pad_y );
+					xui::section_header( "ITEM SETTINGS" );
+					const auto tab_gap = xui::ctx( ).style.item_spacing_x;
+					const auto tab_w = ( settings_inner_w - tab_gap ) * 0.5f;
+					if ( xui::button( "Skin", tab_w ) ) detail::skins_ui.active_tab = detail::browser_tab::skins;
+					xui::layout::same_line( );
+					if ( xui::button( "Weapon chams", tab_w ) ) detail::skins_ui.active_tab = detail::browser_tab::chams;
+					xui::layout::spacing( 8.0f );
+
+					auto& settings_input = xui::ctx( ).input;
+					const auto saved_clicked = settings_input.mouse_clicked;
+					const auto saved_double_clicked = settings_input.mouse_double_clicked;
+					if ( !input.in_rect( settings_window->bounds ) )
+					{
+						settings_input.mouse_clicked = false;
+						settings_input.mouse_double_clicked = false;
+					}
+					if ( detail::skins_ui.active_tab == detail::browser_tab::chams )
+					{
+						xui::text( "In-game only; the item preview stays clean.", tokens::col_text_dim );
+						detail::draw_weapon_chams_editor( weapon );
+					}
+					else
+						detail::draw_skin_editor( weapon );
+					settings_input.mouse_clicked = saved_clicked;
+					settings_input.mouse_double_clicked = saved_double_clicked;
+					settings_window->content_h = xui::layout::get_cursor( ).second + s.window_pad_y + 24.0f;
+					xui::end_child( );
+				}
+
+				if ( auto* parent = xui::layout::current_window( ) )
+					parent->content_h = parent->bounds.h;
+				xui::end_child( );
 			}
+			else
+			{
+				const auto rows = ( static_cast<int>( kits.size( ) ) + detail::k_columns - 1 ) / detail::k_columns;
+				const auto grid_h = rows * card_h + ( rows > 0 ? ( rows - 1 ) * detail::k_card_gap : 0.0f );
+				xui::layout::set_cursor( s.window_pad_x, grid_top_y - win->bounds.y );
+				xui::layout::item( inner_w, grid_h );
+				if ( kits.empty( ) ) xui::text( "No matching skins", tokens::col_text_dim );
 
-			win->content_h = grid_top_y - win->bounds.y + grid_h;
+				for ( auto i = 0; i < static_cast<int>( kits.size( ) ); ++i )
+				{
+					const auto col = i % detail::k_columns;
+					const auto row = i / detail::k_columns;
+					const auto cx = std::floor( base_x + col * ( card_w + detail::k_card_gap ) );
+					const auto cy = std::floor( grid_top_y + row * ( card_h + detail::k_card_gap ) );
+					if ( cy + card_h < win->bounds.y || cy > win->bounds.bottom( ) ) continue;
+					detail::draw_skin_tile( { cx, cy, card_w, card_h }, kits[ i ], weapon, current_kit, fade_alpha );
+				}
 
-			xui::end_child( );
+				win->content_h = grid_top_y - win->bounds.y + grid_h;
+				xui::end_child( );
+			}
 		}
 	}
 

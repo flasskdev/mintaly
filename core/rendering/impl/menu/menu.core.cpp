@@ -1356,6 +1356,8 @@ namespace rendering {
             xui::layout::set_cursor(content_x - wx, body_y - wy);
             if (this->m_search_open)
             {
+                if (!xui::overlays::find(nemesis::preview3d::agent_window_id))
+                    systems::g_model_preview.hide();
                 // While search is open, block the regular top-bar interactions in this frame.
                 this->m_config_popup_open = false;
                 xui::ctx().inside_overlay = xui::fnv1a("menu_search_mode");
@@ -1379,6 +1381,12 @@ namespace rendering {
             case 3: this->draw_visuals(col_w); break;
             case 4: this->draw_skins(col_w); break;
             case 5: this->draw_misc(col_w); break;
+            }
+
+            if (this->m_tab != static_cast<int>(tab::skins) &&
+                !xui::overlays::find(nemesis::preview3d::agent_window_id))
+            {
+                systems::g_model_preview.hide();
             }
 
             this->draw_config_dropdown();

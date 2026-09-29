@@ -43,6 +43,8 @@ namespace features::esp::player {
 			owner_hash == "C_CSPlayerPawnBase"_hash || owner_hash == "C_BasePlayerPawn"_hash;
 		const auto is_arms = owner_hash == "C_CS2HudModelArms"_hash;
 		const auto is_weapon = owner_hash == "C_CS2HudModelWeapon"_hash;
+		if ( ( is_arms || is_weapon ) && systems::g_model_preview.item_preview_active( ) )
+			return false;
 
 		const auto is_local_attachment = [ & ]( std::uintptr_t view_pawn ) -> bool
 			{
