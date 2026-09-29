@@ -383,8 +383,18 @@ namespace features::combat {
             if (snapshots.empty())
             {
                 auto extrap = g_shared.lc().extrapolate(pawn);
-                if (!extrap.has_value()) continue;
-                snapshots.push_back(std::move(*extrap));
+                if (extrap.has_value())
+                {
+                    snapshots.push_back(std::move(*extrap));
+                }
+                else
+                {
+                    shared::lagcomp::record live_record{};
+                    if (live_record.setup(pawn))
+                    {
+                        snapshots.push_back(std::move(live_record));
+                    }
+                }
             }
             std::array<shared::lagcomp::record*, k_max_lagcomp_records> records_buf{};
             int records_count{};

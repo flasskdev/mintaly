@@ -328,22 +328,10 @@ void model_preview::capture_agent_pose(std::uintptr_t entity) {
         return;
     }
 
-    if (!has_basis && valid_bones[left_shoulder_id] && valid_bones[right_shoulder_id]) {
-        const auto& left = skeleton[left_shoulder_id].position;
-        const auto& right = skeleton[right_shoulder_id].position;
-        const auto dx = right.x - left.x;
-        const auto dy = right.y - left.y;
-        const auto length = std::sqrt(dx * dx + dy * dy);
-        if (std::isfinite(length) && length > 0.5f) {
-            basis_x = dx / length;
-            basis_y = dy / length;
-            has_basis = true;
-        }
-    }
-    if (!has_basis) {
-        report_pose("shoulder-axis-unavailable", valid_count, 0.0f, 0.0f);
-        return;
-    }
+    constexpr float k_deg2rad = 3.14159265358979323846f / 180.0f;
+    const float yaw_rad = value.yaw * k_deg2rad;
+    basis_x = -std::sin(yaw_rad);
+    basis_y = std::cos(yaw_rad);
 
     float min_horizontal = (std::numeric_limits<float>::max)();
     float max_horizontal = (std::numeric_limits<float>::lowest)();
@@ -365,15 +353,16 @@ void model_preview::capture_agent_pose(std::uintptr_t entity) {
     float min_y = value.y + static_cast<float>(value.height);
     float max_x = value.x;
     float max_y = value.y;
+    // In warehouse_vanity with cam_char_inspect_wide, the model spans ~67.5% of panel
+    // height from foot bone to head bone (eyes), with feet placed at 94.5% of panel height.
     const auto scale_y = std::min(
-        static_cast<float>(value.height) * 0.74f / world_height,
-        static_cast<float>(value.width) * 0.82f / world_width);
-    const auto scale_x = std::min(
-        scale_y * (0.84f / 0.74f),
-        static_cast<float>(value.width) * 0.82f / world_width);
+        static_cast<float>(value.height) * 0.675f / world_height,
+        static_cast<float>(value.width) * 0.85f / world_width);
+    // Square pixel aspect ratio ensures limbs and shoulders maintain true anatomical 1:1 scale:
+    const auto scale_x = scale_y;
     const auto horizontal_center = (min_horizontal + max_horizontal) * 0.5f;
-    const auto panel_center_x = value.x + static_cast<float>(value.width) * 0.525f;
-    const auto panel_bottom = value.y + static_cast<float>(value.height) * 0.95f;
+    const auto panel_center_x = value.x + static_cast<float>(value.width) * 0.50f;
+    const auto panel_bottom = value.y + static_cast<float>(value.height) * 0.945f;
 
     for (std::size_t i = 0; i < skeleton.size(); ++i) {
         if (!valid_bones[i])
@@ -404,12 +393,14 @@ void model_preview::capture_agent_pose(std::uintptr_t entity) {
         return;
     }
 
-    const float pad_x = std::max(3.0f, pose_width * 0.035f);
-    const float pad_y = std::max(3.0f, pose_height * 0.018f);
+    const float pad_x = std::max(6.0f, pose_width * 0.06f);
+    // Head bone is at eye level; pad above head bone by 8% of pose height to encompass headwear:
+    const float pad_top = std::max(12.0f, pose_height * 0.08f);
+    const float pad_bottom = std::max(4.0f, pose_height * 0.02f);
     snapshot.left = min_x - pad_x;
-    snapshot.top = min_y - pad_y;
+    snapshot.top = min_y - pad_top;
     snapshot.right = max_x + pad_x;
-    snapshot.bottom = max_y + pad_y;
+    snapshot.bottom = max_y + pad_bottom;
     snapshot.captured_at = clock::now();
     snapshot.valid = true;
 

@@ -1246,6 +1246,10 @@ namespace rendering {
             {
                 return;
             }
+            if (auto* agent_ov = xui::overlays::find(nemesis::preview3d::agent_window_id))
+            {
+                agent_ov->update_anchor({ this->m_x, this->m_y, this->m_w, this->m_h });
+            }
             if (g_widgets.is_keybinds_dragging() || (g_widgets.is_keybinds_hovered() && xui::ctx().input.mouse_clicked))
             {
                 xui::ctx().active_window = xui::null_id;

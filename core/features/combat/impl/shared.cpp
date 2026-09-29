@@ -197,9 +197,13 @@ namespace features::combat {
                         const auto hit_handle = memory::read<std::uint32_t>( trace_holder + 0x2c );
                         const auto hit_entity = systems::g_entities.lookup( hit_handle );
 
-                        if ( !hit_entity || hit_entity != ctx.target_pawn )
+                        if ( hit_entity != ctx.target_pawn )
                         {
-                                continue;
+                                const auto owner_handle = hit_entity ? memory::safe_read<std::uint32_t>( hit_entity + SCHEMA( "C_BaseEntity", "m_hOwnerEntity"_hash ) ).value_or( 0 ) : 0;
+                                if ( !owner_handle || systems::g_entities.lookup( owner_handle ) != ctx.target_pawn )
+                                {
+                                        continue;
+                                }
                         }
 
                         target_hit_idx = i;
@@ -605,35 +609,40 @@ namespace features::combat {
 		}
 
 		const auto local_pawn = systems::g_local.get( ).pawn;
-		const auto net_channel = memory::call<std::uintptr_t>(PATTERN (patterns::get_net_channel), 0, 0 );
 		const auto global_vars = memory::read<std::uintptr_t>( addresses::globals::global_vars );
 
-		if ( !local_pawn || !net_channel || !global_vars )
+		if ( !local_pawn || !global_vars )
 		{
 			return false;
 		}
-
-		const auto max_unlag = [ ]
-			{
-				const auto server_limit = CONVAR ("sv_maxunlag")->get<float>( );
-				const auto player_limit = CONVAR ("sv_maxunlag_player")->get<float>( );
-				return player_limit > 0.0f ? std::min( server_limit, player_limit ) : server_limit;
-			}( );
 
 		const auto current_time = memory::read<float>( global_vars + 0x30 );
-		const auto latency = memory::call_vfunc<float>( net_channel, 10, 0 );
-
-		if ( !std::isfinite( max_unlag ) || !std::isfinite( current_time ) ||
-			!std::isfinite( latency ) )
+		if ( !std::isfinite( current_time ) || current_time <= 0.0f )
 		{
-			return false;
+			return this->valid;
 		}
 
-		// This value is the effective ping for the selected flow in this build;
-		// combining both flows double-counts latency and can erase the window.
-		const auto budget = max_unlag - std::max( latency, 0.0f );
+		const auto max_unlag_cvar = CONVAR( "sv_maxunlag" );
+		const auto max_unlag = ( max_unlag_cvar && max_unlag_cvar->get<float>( ) > 0.0f ) ? max_unlag_cvar->get<float>( ) : 0.2f;
 
-		return budget > 0.0f && this->simulation_time >= current_time - budget;
+		float latency = 0.0f;
+		if ( PATTERN( patterns::get_net_channel ) )
+		{
+			const auto net_channel = memory::call<std::uintptr_t>( PATTERN( patterns::get_net_channel ), 0, 0 );
+			if ( net_channel )
+			{
+				latency = memory::call_vfunc<float>( net_channel, 10, 0 );
+				if ( !std::isfinite( latency ) || latency < 0.0f )
+				{
+					latency = 0.0f;
+				}
+			}
+		}
+
+		const auto budget = std::max( 0.001f, max_unlag - latency );
+		const auto delta = current_time - this->simulation_time;
+
+		return delta >= -0.2f && delta <= budget;
 	}
 
 	void shared::lagcomp::record::apply( )

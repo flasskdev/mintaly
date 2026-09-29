@@ -23,28 +23,52 @@ class agent_preview_window final : public xui::overlay {
     std::string agent_name_ = "CS2 Agent";
     float open_anim_{};
     float preview_ready_time_{};
-    bool rotating_{}, dragging_window_{};
-    float grab_x_{}, grab_y_{};
+    bool rotating_{};
 
     struct point2 { float x{}, y{}; };
     struct projected_agent {
-        std::array<point2, 16> bones{};
-        std::array<bool, 16> bone_valid{};
+        std::array<point2, 21> bones{};
+        std::array<bool, 21> bone_valid{};
         xui::rect bounds{};
         bool valid{};
     };
 
+    void update_layout() {
+        const auto [sw, sh] = xdraw::viewport_size();
+        constexpr float w = 378.0f, h = 568.0f;
+        // Reserve room for the side trigger; the preview always docks to the right.
+        const float x = m_anchor.x + m_anchor.w + 82.0f;
+        window_ = {
+            x,
+            std::clamp(m_anchor.y + 24.0f, 8.0f, std::max(8.0f, sh - h - 8.0f)),
+            std::min(w, std::max(220.0f, sw - x - 8.0f)), h
+        };
+    }
+
     [[nodiscard]] static projected_agent project_agent(
         const systems::model_preview::agent_pose_snapshot& pose) {
-        static constexpr std::array<std::uint32_t, 16> bone_map{{
-            cstypes::bone_ids::head, cstypes::bone_ids::neck,
-            cstypes::bone_ids::spine_4, cstypes::bone_ids::pelvis,
-            cstypes::bone_ids::left_shoulder, cstypes::bone_ids::left_elbow,
-            cstypes::bone_ids::left_hand, cstypes::bone_ids::right_shoulder,
-            cstypes::bone_ids::right_elbow, cstypes::bone_ids::right_hand,
-            cstypes::bone_ids::left_hip, cstypes::bone_ids::left_knee,
-            cstypes::bone_ids::left_foot, cstypes::bone_ids::right_hip,
-            cstypes::bone_ids::right_knee, cstypes::bone_ids::right_foot
+        static constexpr std::array<std::uint32_t, 21> bone_map{{
+            cstypes::bone_ids::head,           // 0
+            cstypes::bone_ids::neck,           // 1
+            cstypes::bone_ids::spine_4,        // 2
+            cstypes::bone_ids::spine_3,        // 3
+            cstypes::bone_ids::spine_2,        // 4
+            cstypes::bone_ids::spine_1,        // 5
+            cstypes::bone_ids::pelvis,         // 6
+            cstypes::bone_ids::left_clavicle,  // 7
+            cstypes::bone_ids::left_shoulder,  // 8
+            cstypes::bone_ids::left_elbow,     // 9
+            cstypes::bone_ids::left_hand,      // 10
+            cstypes::bone_ids::right_clavicle, // 11
+            cstypes::bone_ids::right_shoulder, // 12
+            cstypes::bone_ids::right_elbow,    // 13
+            cstypes::bone_ids::right_hand,     // 14
+            cstypes::bone_ids::left_hip,       // 15
+            cstypes::bone_ids::left_knee,      // 16
+            cstypes::bone_ids::left_foot,      // 17
+            cstypes::bone_ids::right_hip,      // 18
+            cstypes::bone_ids::right_knee,     // 19
+            cstypes::bone_ids::right_foot      // 20
         }};
         projected_agent result{};
         float min_x = pose.right, min_y = pose.bottom;
@@ -66,7 +90,7 @@ class agent_preview_window final : public xui::overlay {
         }
 
         if (!pose.valid || valid_points < 10 || !result.bone_valid[0] ||
-            !result.bone_valid[3] || !result.bone_valid[12] || !result.bone_valid[15] ||
+            !result.bone_valid[6] || !result.bone_valid[17] || !result.bone_valid[20] ||
             pose.right <= pose.left || pose.bottom <= pose.top)
             return result;
         result.bounds = {pose.left, pose.top, pose.right - pose.left, pose.bottom - pose.top};
@@ -141,27 +165,20 @@ class agent_preview_window final : public xui::overlay {
 public:
     agent_preview_window(const xui::rect& menu)
         : overlay(agent_window_id, menu) {
-        const auto [sw, sh] = xdraw::viewport_size();
-        constexpr float w = 378.0f, h = 568.0f;
-        // Reserve room for the side trigger; the preview always docks to the right.
-        const float x = menu.x + menu.w + 82.0f;
-        window_ = {
-            x,
-            std::clamp(menu.y + 24.0f, 8.0f, std::max(8.0f, sh - h - 8.0f)),
-            std::min(w, std::max(220.0f, sw - x - 8.0f)), h
-        };
+        update_layout();
         auto team = systems::g_local.get().team;
         if (team != 2 && team != 3) team = 3;
         select_agent(team == 3 ? 2 : 3);
     }
 
     [[nodiscard]] bool hit_test(float x, float y) const override {
-        return !m_closed && (dragging_window_ || window_.contains(x, y));
+        return !m_closed && window_.contains(x, y);
     }
 
     [[nodiscard]] bool blocks_background() const noexcept override { return false; }
 
     bool process_input(const xui::input_state& input) override {
+        update_layout();
         if (m_closing) {
             systems::g_model_preview.hide();
             force_close();
@@ -173,23 +190,6 @@ public:
                 force_close();
                 return true;
             }
-        }
-        if (!input.mouse_down)
-            dragging_window_ = false;
-        const xui::rect title_drag_area{
-            window_.x, window_.y, std::max(0.0f, window_.w - 50.0f), 38.0f
-        };
-        if (input.mouse_clicked && title_drag_area.contains(input.mouse_x, input.mouse_y)) {
-            dragging_window_ = true;
-            grab_x_ = input.mouse_x - window_.x;
-            grab_y_ = input.mouse_y - window_.y;
-        }
-        if (dragging_window_ && input.mouse_down) {
-            const auto [screen_w, screen_h] = xdraw::viewport_size();
-            window_.x = std::clamp(input.mouse_x - grab_x_, 0.0f,
-                std::max(0.0f, screen_w - window_.w));
-            window_.y = std::clamp(input.mouse_y - grab_y_, 0.0f,
-                std::max(0.0f, screen_h - window_.h));
         }
         const auto area = body();
         if (!input.rmb_down) rotating_ = false;
@@ -207,6 +207,7 @@ public:
             force_close();
             return;
         }
+        update_layout();
         const auto dt = xdraw::delta_time();
         open_anim_ = std::min(open_anim_ + dt * 2.8f, 1.0f);
         const bool preview_connected = systems::g_model_preview.connected();
@@ -310,9 +311,17 @@ public:
             if (esp.m_skeleton.enabled.value) {
                 const auto color = esp.m_skeleton.visible_color.value;
                 const float thickness = std::clamp(esp.m_skeleton.thickness.value, 0.5f, 5.0f);
-                static constexpr std::array<std::pair<std::size_t, std::size_t>, 14> edges{{
-                    {0, 1}, {1, 2}, {2, 3}, {1, 4}, {4, 5}, {5, 6}, {1, 7},
-                    {7, 8}, {8, 9}, {3, 10}, {10, 11}, {11, 12}, {3, 13}, {13, 14}
+                static constexpr std::array<std::pair<std::size_t, std::size_t>, 20> edges{{
+                    // Spine
+                    {0, 1}, {1, 2}, {2, 3}, {3, 4}, {4, 5}, {5, 6},
+                    // Left arm
+                    {2, 7}, {7, 8}, {8, 9}, {9, 10},
+                    // Right arm
+                    {2, 11}, {11, 12}, {12, 13}, {13, 14},
+                    // Left leg
+                    {6, 15}, {15, 16}, {16, 17},
+                    // Right leg
+                    {6, 18}, {18, 19}, {19, 20}
                 }};
                 for (const auto& [from, to] : edges) {
                     if (!projected.bone_valid[from] || !projected.bone_valid[to])
@@ -321,14 +330,9 @@ public:
                     const auto& b = projected.bones[to];
                     dl.line(a.x, a.y, b.x, b.y, color, thickness);
                 }
-                if (projected.bone_valid[14] && projected.bone_valid[15]) {
-                    const auto& knee = projected.bones[14];
-                    const auto& foot = projected.bones[15];
-                    dl.line(knee.x, knee.y, foot.x, foot.y, color, thickness);
-                }
                 if (projected.bone_valid[0]) {
                     const auto& head = projected.bones[0];
-                    dl.circle(head.x, head.y, std::max(3.0f, viewport.w * 0.018f), color, thickness);
+                    dl.circle(head.x, head.y, std::clamp(box.w * 0.08f, 5.0f, 12.0f), color, thickness);
                 }
             }
             if (esp.m_health_bar.enabled.value) {

@@ -18,6 +18,44 @@ namespace systems {
 				address <= 0x00007FFFFFFFFFFFull;
 		}
 
+		[[nodiscard]] std::uint32_t get_entity_handle( std::uintptr_t entity ) noexcept
+		{
+			if ( !valid_runtime_address( entity ) ) return 0xffffffff;
+			const auto identity = memory::safe_read<std::uintptr_t>( entity + 0x10 ).value_or( 0 );
+			if ( !valid_runtime_address( identity ) ) return 0xffffffff;
+			const auto raw_index = memory::safe_read<std::uint32_t>( identity + 0x10 ).value_or( 0xffffffff );
+			if ( raw_index == 0xffffffff ) return 0xffffffff;
+			const auto flags = memory::safe_read<std::uint32_t>( identity + 0x30 ).value_or( 0 );
+			const std::uint32_t serial = ( raw_index >> 15 ) - ( flags & 1 );
+			const std::uint32_t index = raw_index & 0x7fff;
+			return ( serial << 15 ) | index;
+		}
+
+		[[nodiscard]] std::uintptr_t get_trace_filter_vtable( ) noexcept
+		{
+			static std::uintptr_t cached_vtable = 0;
+			if ( cached_vtable ) return cached_vtable;
+
+			const auto init_fn = PATTERN( patterns::trace_filter_init );
+			if ( init_fn )
+			{
+				// In trace_filter_init, lea rax, [rip + disp32] is at offset 0x2a: 48 8D 05 [disp32]
+				const auto disp = memory::safe_read<std::int32_t>( init_fn + 0x2a + 3 ).value_or( 0 );
+				if ( disp )
+				{
+					cached_vtable = init_fn + 0x2a + 7 + disp;
+					return cached_vtable;
+				}
+			}
+
+			const auto client = memory::get_module_base( "client.dll" );
+			if ( client )
+			{
+				cached_vtable = client + 0x1acfc48;
+			}
+			return cached_vtable;
+		}
+
 		void report_invalid_filter( )
 		{
 			static std::atomic_bool reported{};
@@ -224,17 +262,45 @@ namespace systems {
 	tracing::filter tracing::make_filter( std::uintptr_t skip_entity, std::uintptr_t mask, std::uint8_t layer, int type ) const
 	{
 		filter filter{};
-		if ( !PATTERN( patterns::trace_filter_init ) )
+		const auto init_fn = PATTERN( patterns::trace_filter_init );
+
+		// Always call trace_filter_init with skip_entity = 0.
+		// Passing an entity directly invokes virtual methods on player pawns, which
+		// crashes with an Access Violation when executed on threadpool worker threads.
+		if ( init_fn )
 		{
-			return filter;
+			__try
+			{
+				memory::call<void>( init_fn, &filter, static_cast<std::uintptr_t>( 0 ), mask, layer, type );
+			}
+			__except ( EXCEPTION_EXECUTE_HANDLER )
+			{
+			}
 		}
 
-		__try
+		// Ensure vtable and core fields are valid even if engine call failed
+		if ( !filter.valid( ) )
 		{
-			memory::call<void>(PATTERN (patterns::trace_filter_init), &filter, skip_entity, mask, layer, type );
+			filter.vtable = get_trace_filter_vtable( );
+			filter.mask = mask;
+			filter.v1 = { 0, 0 };
+			filter.skip_handles = { -1, -1, -1, -1 };
+			filter.collisions = { 0, 0 };
+			*reinterpret_cast<std::uint32_t*>( reinterpret_cast<std::uintptr_t>( &filter ) + 0x34 ) = 0x0f00ffff;
+			filter.flags = static_cast<std::uint8_t>( type );
+			filter.layer = layer;
+			filter.v6 = 0x49;
+			filter.v7 = 0;
 		}
-		__except ( EXCEPTION_EXECUTE_HANDLER )
+
+		// Safely populate skip handle without invoking any virtual functions
+		if ( skip_entity )
 		{
+			const auto handle = get_entity_handle( skip_entity );
+			if ( handle != 0xffffffff )
+			{
+				filter.skip_handles[ 0 ] = static_cast<int>( handle );
+			}
 		}
 
 		if ( !filter.valid( ) )
@@ -247,26 +313,7 @@ namespace systems {
 
 	tracing::filter tracing::make_filter( std::uintptr_t skip_entity, std::uintptr_t mask, std::uint8_t layer ) const
 	{
-		filter filter{};
-		if ( !PATTERN( patterns::trace_filter_init ) )
-		{
-			return filter;
-		}
-
-		__try
-		{
-			memory::call<void>(PATTERN (patterns::trace_filter_init), &filter, skip_entity, mask, layer, 7 );
-		}
-		__except ( EXCEPTION_EXECUTE_HANDLER )
-		{
-		}
-
-		if ( !filter.valid( ) )
-		{
-			report_invalid_filter( );
-		}
-
-		return filter;
+		return this->make_filter( skip_entity, mask, layer, 7 );
 	}
 
 	tracing::player_movement_filter tracing::make_player_movement_filter( std::uintptr_t entity, std::uintptr_t mask, std::uint8_t collision_group ) const
@@ -329,7 +376,11 @@ namespace systems {
 			return;
 		}
 
-		memory::call<void>(PATTERN (patterns::trace_bullet_data_init), trace_data, start, delta, filter, penetration_count, trace_world );
+		auto trace_filter = filter;
+		trace_filter.v1[ 0 ] |= 0x4000000000ull;
+		trace_filter.v6 |= 2;
+
+		memory::call<void>(PATTERN (patterns::trace_bullet_data_init), trace_data, start, delta, trace_filter, penetration_count, trace_world );
 	}
 
 	void tracing::init_result( result* trace_result ) const

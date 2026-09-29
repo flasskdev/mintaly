@@ -20,7 +20,7 @@ inline constexpr const char* bootstrap = R"MINTALY_JS(
     for (var ci = 0; ci < chain.length; ++ci) {
         try {
             var old = chain[ci].Data().mintalyNativePreview;
-            if (old && old.version !== 20) {
+            if (old && old.version !== 22) {
                 if (old.panel && old.panel.IsValid()) old.panel.DeleteAsync(0);
                 if (old.background && old.background.IsValid()) old.background.DeleteAsync(0);
                 if (old.anchor && old.anchor.IsValid()) old.anchor.DeleteAsync(0);
@@ -32,8 +32,8 @@ inline constexpr const char* bootstrap = R"MINTALY_JS(
     // anchor below because this root can report a zero layout size in-game.
     var host = root;
     var data = root.Data();
-    if (data.mintalyNativePreview && data.mintalyNativePreview.version === 20) return;
-    var state = { version: 20, panel: null, background: null, anchor: null, generation: '', touched: 0, args: null };
+    if (data.mintalyNativePreview && data.mintalyNativePreview.version === 22) return;
+    var state = { version: 22, panel: null, background: null, anchor: null, generation: '', touched: 0, args: null };
     data.mintalyNativePreview = state;
     function logMsg(msg) {
         try {
@@ -144,6 +144,7 @@ inline constexpr const char* bootstrap = R"MINTALY_JS(
         // Panorama's angle vector is pitch, yaw, roll. Keep horizontal drag on
         // yaw so it turns the character around instead of pitching it forward.
         optional(p, 'SetRotation', [a.pitch, a.yaw, 0]);
+        optional(p, 'SetSceneAngles', [a.pitch, a.yaw, 0]);
     }
     function applyLayout() {
         var p = state.panel, bg = state.background, a = state.args;
@@ -182,17 +183,29 @@ inline constexpr const char* bootstrap = R"MINTALY_JS(
         }
         destroy();
         try {
+        function getAgentMap() {
+            var bg = '';
+            try {
+                if (typeof GameInterfaceAPI !== 'undefined' && typeof GameInterfaceAPI.GetSettingString === 'function') {
+                    bg = GameInterfaceAPI.GetSettingString('ui_inspect_bkgnd_map');
+                    if (!bg || bg === 'mainmenu') {
+                        bg = GameInterfaceAPI.GetSettingString('ui_mainmenu_bkgnd_movie');
+                    }
+                }
+            } catch (_) {}
+            if (bg && bg !== 'mainmenu') {
+                return bg + '_vanity';
+            }
+            return 'warehouse_vanity';
+        }
         var agent = a.kind === 'agent', id = '', active = 0, camera = 'cam_default';
-        var targetCamera = '';
+        var loadedMap = 'ui/acknowledge_item';
         if (agent) {
             if (a.def > 0) id = faux(a.def, 0);
             active = 5;
-            // Start in the game's steady wide character camera. Beginning in
-            // the intro camera can leave the agent zoomed in and clipped when
-            // the panel is created in a narrow, portrait layout.
-            camera = 'cam_char_inspect_wide';
-            targetCamera = 'cam_char_inspect_wide';
-            } else {
+            camera = 'cam_char_inspect_wide_intro';
+            loadedMap = getAgentMap();
+        } else {
                 var def = a.def, paint = a.paint;
                 if (a.kind === 'music') {
                     try { def = InventoryAPI.GetItemDefinitionIndexFromDefinitionName('musickit'); } catch (_) {}
@@ -224,22 +237,18 @@ inline constexpr const char* bootstrap = R"MINTALY_JS(
             bg.hittestchildren = false;
             var panelAttributes = {
                 'require-composition-layer': 'true',
-                // The inspect camera is wide, while this panel is portrait. Pin
-                // horizontal FOV so the vertical field expands to fit the full agent.
-                'pin-fov': 'horizontal',
+                'pin-fov': 'vertical',
                 'transparent-background': 'true',
                 'disable-depth-of-field': true,
-                map: 'ui/acknowledge_item',
+                map: loadedMap,
                 camera: camera,
                 player: 'true',
-                // Keep this model preview separate from the lobby's global
-                // vanity_character. Reusing that name lets the preview panel
-                // share the lobby actor and its pose/render scene.
-                playername: agent ? 'mintaly_agent_preview_actor' : 'vanity_character',
-                animgraphcharactermode: a.animation || 'inventory-inspect',
+                initial_entity: 'item',
+                playername: 'vanity_character',
+                animgraphcharactermode: 'inventory-inspect',
                 animgraphturns: 'false',
                 sync_spawn_addons: 'true',
-                csm_split_plane0_distance_override: '250.0',
+                csm_split_plane0_distance_override: '200.0',
                 hide_while_waiting_for_composite_materials: 'false',
                 mouse_rotate: false,
                 rotation_limit_x: 360,
@@ -247,12 +256,6 @@ inline constexpr const char* bootstrap = R"MINTALY_JS(
                 auto_rotate_x: 0,
                 auto_rotate_y: 0,
             };
-            // Keep the panel's initial entity as "item". The game switches it
-            // to the selected agent through SetActiveCharacter and
-            // CharacterAnims.PlayAnimsOnPanel; forcing "player" here skips the
-            // item-map's expected startup path and can leave the composition
-            // empty in the lobby.
-            panelAttributes.initial_entity = 'item';
             panelAttributes.class = 'full-width full-height';
             var p = $.CreatePanel(panelType, anchor, 'MintalyNativePreview', panelAttributes);
             if (!p) {
@@ -265,7 +268,7 @@ inline constexpr const char* bootstrap = R"MINTALY_JS(
             p.Data().itemId = id;
             p.Data().active_item_idx = active;
             if (agent) p.Data().weaponItemId = pistolId;
-            p.Data().loadedMap = 'ui/acknowledge_item';
+            p.Data().loadedMap = loadedMap;
             p.hittest = false;
             p.hittestchildren = false;
             p.style.opacity = '0.0';
@@ -289,7 +292,7 @@ inline constexpr const char* bootstrap = R"MINTALY_JS(
                 if (!p.IsValid() || state.panel !== p) return;
                 try {
                     if (agent) {
-                        optional(p, 'SetActiveCharacter', [active]);
+                        optional(p, 'SetActiveCharacter', [5]);
                         var configuredByGameHelpers = false;
                         try {
                             if (typeof ItemInfo !== 'undefined' &&
@@ -328,18 +331,15 @@ inline constexpr const char* bootstrap = R"MINTALY_JS(
                         else if (a.model) optional(p, 'SetItemModel', [a.model]);
                     }
                     if (agent) {
-                        // Mirror the game's _TransitionCamera sequence: start
-                        // from the valid intro camera, then settle on the wide
-                        // character camera. Later async model refreshes must
-                        // restore only the steady camera, never replay the intro.
                         if (attempt === 1) {
-                            optional(p, 'TransitionToCamera', [camera, 0]);
+                            optional(p, 'TransitionToCamera', ['cam_char_inspect_wide_intro', 0]);
                             $.Schedule(0.25, function () {
-                                if (p.IsValid() && state.panel === p && state.generation === generation)
-                                    optional(p, 'TransitionToCamera', [targetCamera, 1]);
+                                if (p.IsValid() && state.panel === p) {
+                                    optional(p, 'TransitionToCamera', ['cam_char_inspect_wide', 1]);
+                                }
                             });
                         } else {
-                            optional(p, 'TransitionToCamera', [targetCamera, 0]);
+                            optional(p, 'TransitionToCamera', ['cam_char_inspect_wide', 0]);
                         }
                     } else if (attempt === 1) {
                         optional(p, 'TransitionToCamera', [camera, 0.15]);
@@ -353,8 +353,8 @@ inline constexpr const char* bootstrap = R"MINTALY_JS(
                     optional(p, 'SetBackgroundColor', [(rgb >> 16) & 255, (rgb >> 8) & 255, rgb & 255, 0]);
                     optional(p, 'SetCSMSplitPlane0DistanceOverride', [200.0]);
                     optional(p, 'SetBarnlightShadowScaleOverride', [1.0]);
-                    for (var i = 0; i <= 8; ++i) {
-                        optional(p, 'FireEntityInput', ['light_item' + i, i === active ? 'Enable' : 'Disable']);
+                    for (var i = 0; i <= 10; ++i) {
+                        optional(p, 'FireEntityInput', ['light_item' + i, (agent || i !== active) ? 'Disable' : 'Enable']);
                         optional(p, 'FireEntityInput', ['light_item_new' + i, 'Disable']);
                     }
                     applyRotation();
@@ -367,6 +367,7 @@ inline constexpr const char* bootstrap = R"MINTALY_JS(
                         ' helper=' + (configuredByGameHelpers ? 'yes' : 'fallback') +
                         ' pistol=' + (pistolId ? 'yes' : 'no') +
                         ' camera=' + camera +
+                        ' map=' + loadedMap +
                         ' model=' + (a.model || '<from-item>'));
                 } catch (ce) {
                     logMsg('configure pass=' + attempt + ' error: ' + ce);
