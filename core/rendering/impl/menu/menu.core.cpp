@@ -1242,7 +1242,21 @@ namespace rendering {
                 return;
             }
             const auto menu_reveal = xui::ease::smoothstep(this->m_open_anim);
-            if (!xui::begin_window("##menu", this->m_x, this->m_y, this->m_w, this->m_h, false, 200.0f, 200.0f, menu_reveal))
+            xui::rect inventory_preview_aperture{};
+            const xui::rect* window_aperture = nullptr;
+            if (this->m_open && this->m_tab == static_cast<int>(tab::skins))
+            {
+                const auto content_x = this->m_x + tokens::gap + menu::k_sidebar_w + tokens::gap;
+                const auto content_y = this->m_y + tokens::gap;
+                const auto content_w = this->m_w - tokens::gap * 2.0f - menu::k_sidebar_w - 16.0f;
+                const auto content_h = this->m_h - tokens::gap * 2.0f;
+                const auto body_y = content_y + tokens::subtab_bar_h + tokens::gap;
+                const auto body_h = content_h - tokens::subtab_bar_h - tokens::gap;
+                const auto preview_h = std::clamp(body_h * 0.5f, 138.0f, 340.0f);
+                inventory_preview_aperture = {content_x, body_y, content_w, preview_h};
+                window_aperture = &inventory_preview_aperture;
+            }
+            if (!xui::begin_window("##menu", this->m_x, this->m_y, this->m_w, this->m_h, false, 200.0f, 200.0f, menu_reveal, window_aperture))
             {
                 return;
             }

@@ -8,10 +8,12 @@
 #include <protection/game_addresses.hpp>
 #include <utilities/threadpool/threadpool.hpp>
 #include <utilities/performance.hpp>
+#include <utilities/rage_scan_diagnostics.hpp>
 
 namespace features::combat {
 
     namespace perf = utilities::performance;
+    namespace rd = utilities::rage_scan_diagnostics;
 
     namespace {
         // Margin above the required hitchance that a shot must clear before it is
@@ -30,6 +32,25 @@ namespace features::combat {
             const auto now = std::chrono::steady_clock::now();
             if (now - last < std::chrono::seconds(5)) return;
             last = now;
+            rd::report();
+            // Snapshot of the current weapon/config, not the entire five-second interval.
+            const auto& shared_ctx = g_shared.ctx();
+            if (shared_ctx.valid)
+            {
+                const auto& cfg = settings::g_combat.m_ragebot.get_group(shared_ctx.weapon_type, shared_ctx.item_def_idx);
+                const auto& wd = g_shared.pen().get_weapon_data();
+                char config_line[768]{};
+                _snprintf_s(config_line, sizeof(config_line), _TRUNCATE,
+                    "[rage-diag:config] patch=scan-v1 item=%d no_spread=%d max_fov=%.2f min_damage=%.2f damage_override=%d override_value=%.2f weapon_damage=%.2f range=%.2f penetration=%.2f range_modifier=%.4f",
+                    static_cast<int>(shared_ctx.item_def_idx), static_cast<int>(cfg.no_spread.value),
+                    static_cast<double>(static_cast<float>(cfg.max_fov)),
+                    static_cast<double>(static_cast<float>(cfg.min_damage)),
+                    static_cast<int>(cfg.min_damage_override.value),
+                    static_cast<double>(static_cast<float>(cfg.min_damage_override_value)),
+                    static_cast<double>(wd.damage), static_cast<double>(wd.range),
+                    static_cast<double>(wd.penetration), static_cast<double>(wd.range_modifier));
+                diag::write(diag::level::debug, config_line);
+            }
             const auto samples = perf::take_samples();
             for (std::size_t i = 0; i < samples.size(); ++i)
             {
@@ -57,7 +78,15 @@ namespace features::combat {
         // Scan storage belongs to this command and is not re-entrant.
         static std::mutex command_mutex;
         std::lock_guard command_lock(command_mutex);
+        static bool diagnostic_build_logged = false;
+        if (!diagnostic_build_logged)
+        {
+            diagnostic_build_logged = true;
+            diag::write(diag::level::info,
+                "[rage-diag:build] patch=scan-v1 patch_base=8bb666b compiled=" __DATE__ " " __TIME__);
+        }
         report_rage_timings();
+        rd::mark(rd::event::entry);
         perf::scope total_timer{perf::stage::rage_total};
         auto& ctx = g_shared.ctx();
         const auto local = systems::g_local.get();
@@ -469,6 +498,7 @@ namespace features::combat {
         if (!settings::g_combat.m_ragebot.enabled)
             return false;
 
+        rd::mark(rd::event::gun_calls);
         diag::exception_scope rage_scope{ "rage: run_gun / configuration" };
         auto& shared_ctx = g_shared.ctx();
         const auto& config = settings::g_combat.m_ragebot.get_group(shared_ctx.weapon_type, shared_ctx.item_def_idx);
@@ -480,13 +510,17 @@ namespace features::combat {
         this->m_hitchance_used = 0;
         this->build_targets(ctx, local, s_candidates_buf);
         auto& candidates = s_candidates_buf;
+        rd::mark(rd::event::targets, static_cast<std::uint64_t>(candidates.size()));
         {
             std::lock_guard lock(m_debug_mtx);
             m_debug_points.clear();
         }
 
         if (candidates.empty())
+        {
+            rd::mark(rd::event::no_targets);
             return false;
+        }
 
         diag::set_exception_phase("rage: run_gun / eye_candidates");
         auto eye_candidates = g_shared.sh().get_candidates();
@@ -523,6 +557,8 @@ namespace features::combat {
                     if (found_direct)
                         break;
                 }
+                rd::mark(hits_out.empty() ? rd::event::scan_empty : rd::event::scan_nonempty);
+                rd::mark(rd::event::scan_hits, static_cast<std::uint64_t>(hits_out.size()));
             };
 
         diag::set_exception_phase("rage: run_gun / movement_and_selection");
@@ -854,13 +890,20 @@ namespace features::combat {
         int health, float min_damage, float max_fov, const shared::penetration::run_context& pen_ctx,
         const aim_context& ctx, const systems::local::snapshot& local, scan_hit& out) const
     {
+        rd::mark(rd::event::points);
         if (point.hitbox_index < 0 || point.hitbox_index >= 19)
+        {
+            rd::mark(rd::event::invalid_hitbox);
             return false;
+        }
 
         const auto aim = math::helpers::calculate_angle(eye, point.position);
         const auto fov = math::helpers::angle_distance(ctx.view_angles, aim);
         if (fov > max_fov)
+        {
+            rd::mark(rd::event::fov);
             return false;
+        }
 
         // Shared penetration budget (160 traces per command). Reserve the slot
         // with a CAS loop so parallel workers cannot overshoot the cap.
@@ -868,7 +911,10 @@ namespace features::combat {
         while (true)
         {
             if (used >= k_penetration_budget)
+            {
+                rd::mark(rd::event::budget);
                 return false;
+            }
             if (this->m_penetration_used.compare_exchange_weak(used, used + 1, std::memory_order_relaxed))
                 break;
         }
@@ -876,14 +922,23 @@ namespace features::combat {
         const auto penetration = g_shared.pen(); // Immutable weapon-data snapshot.
         shared::penetration::result pen{};
         if (!penetration.run(eye, point.position, pen_ctx, local.pawn, local.team, pen))
+        {
+            rd::mark(rd::event::penetration_failed);
             return false;
+        }
         if (pen.damage < min_damage)
+        {
+            rd::mark(rd::event::damage);
             return false;
+        }
         // A multipoint only counts for the requested hitbox: bonus points that
         // landed on another group must not be reported as a head hit.
         if (!point.is_center && point.hitbox_index == 0 &&
             pen.hitgroup != systems::g_hitboxes.hitgroup_from_hitbox(0))
+        {
+            rd::mark(rd::event::headgroup);
             return false;
+        }
 
         out = {};
         out.position = point.position;
@@ -900,6 +955,7 @@ namespace features::combat {
         out.pawn = pawn;
         out.health = health;
         out.record = pen_ctx.record;
+        rd::mark(rd::event::accepted);
         return true;
     }
 
@@ -973,6 +1029,7 @@ namespace features::combat {
             for (auto ri = 0; ri < cand.record_count && !m_candidate_done.front(); ++ri)
             {
                 this->prepare_scan(eye, inaccuracy, ctx, cand, cand.records[ri], work, false);
+                rd::mark(rd::event::prepared_points, static_cast<std::uint64_t>(work.point_count));
 
                 rage_scan scan{};
                 scan.pawn = cand.pawn;
@@ -1033,6 +1090,7 @@ namespace features::combat {
                 const auto centers_only_record = !detailed_target && ri > 0;
                 if (centers_only_record) continue;
                 this->prepare_scan(eye, inaccuracy, ctx, cand, cand.records[ri], work, !detailed_target);
+                rd::mark(rd::event::prepared_points, static_cast<std::uint64_t>(work.point_count));
                 if (prefer_visible && !detailed_target && cand.order >= detailed)
                 {
                     // Keep fallback targets centers-only even if config disables it.
@@ -1113,11 +1171,15 @@ namespace features::combat {
     void rage::prepare_scan(const math::vector3& eye, float inaccuracy, const aim_context& ctx, const candidate& cand, shared::lagcomp::record* record, scan_work& work, bool centers_only) const
     {
         perf::scope timer{perf::stage::prepare_scan};
+        rd::mark(rd::event::prepare_calls);
         work.point_count = 0;
         diag::exception_scope player_scope{ "rage: prepare_scan / validation" };
         if (!cand.pawn || cand.record_count <= 0 || cand.health <= 0 ||
             !record || !record->valid || record->bone_count <= 0)
+        {
+            rd::mark(rd::event::prepare_invalid);
             return;
+        }
 
         const auto& shared_ctx = g_shared.ctx();
         const auto& config = settings::g_combat.m_ragebot.get_group(shared_ctx.weapon_type, shared_ctx.item_def_idx);
@@ -1126,13 +1188,19 @@ namespace features::combat {
         const auto to_cand = math::helpers::calculate_angle(eye, record->origin);
         const auto base_fov = math::helpers::angle_distance(ctx.view_angles, to_cand);
         if (config.max_fov < 180.0f && base_fov > config.max_fov + 30.0f)
+        {
+            rd::mark(rd::event::prepare_fov);
             return;
+        }
 
         diag::set_exception_phase("rage: scan_player / prepare_target");
         work.penetration = g_shared.pen().prepare_target(cand.pawn, record);
         const auto& pen_ctx = work.penetration;
         if (pen_ctx.geometry_count <= 0)
+        {
+            rd::mark(rd::event::prepare_geometry);
             return;
+        }
 
         const auto& hitbox_set = pen_ctx.hitboxes;
         diag::set_exception_phase("rage: scan_player / multipoints");
@@ -1293,6 +1361,7 @@ namespace features::combat {
         // run_fire_pass validates the same numbers select used.
         if (best.valid)
         {
+            rd::mark(rd::event::selected);
             best.required_hitchance = aim_ctx.required_hitchance;
             best.allow_force = aim_ctx.allow_force;
         }
@@ -1302,6 +1371,7 @@ namespace features::combat {
     rage::target rage::select_best(const aim_context& aim_ctx, const std::vector<scan_hit>& hits, float eval_inaccuracy) const
     {
         perf::scope selection_timer{perf::stage::selection};
+        rd::mark(rd::event::selection);
         auto hitgroup_priority = [](int hitbox_index) -> int
             {
                 if (hitbox_index == 0) return 4; // Head
@@ -1748,6 +1818,7 @@ namespace features::combat {
 
     void rage::fire_gun(systems::input::usercmd* cmd, const target& tgt, bool was_forced, const math::vector3& shoot_eye, const systems::local::snapshot& local)
     {
+        rd::mark(rd::event::fire_calls);
         this->m_firing_this_tick = false;
         if (!cmd || !tgt.hit.record || !tgt.hit.record->valid)
             return;
@@ -1931,6 +2002,7 @@ namespace features::combat {
         cmd->buttons.value |= attack_button;
         cmd->buttons.value_changed |= attack_button;
         cmd->buttons.value_scroll |= attack_button;
+        rd::mark(rd::event::attack_set);
 
         if (history_size > 0)
         {

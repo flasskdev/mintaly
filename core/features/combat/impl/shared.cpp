@@ -5,8 +5,16 @@
 #include <core/systems/systems.hpp>
 #include <core/features/features.hpp>
 #include <protection/game_addresses.hpp>
+#include <utilities/rage_scan_diagnostics.hpp>
+#include <array>
+#include <atomic>
+#include <chrono>
+#include <cstddef>
+#include <cstdint>
 
 namespace features::combat {
+
+        namespace rd = utilities::rage_scan_diagnostics;
 
         namespace detail {
 
@@ -21,6 +29,172 @@ namespace features::combat {
                         std::uint8_t can_penetrate;
                         std::uint8_t pad[ 3 ];
                 };
+
+
+                // Diagnostic snapshots only. Never use index-only resolution below
+                // to accept a shot or to weaken entities::lookup's serial checks.
+                static_assert(sizeof(bullet_trace_record) == 0x18);
+                static_assert(offsetof(bullet_trace_record, enter_contact_ix) == 0x10);
+                static_assert(offsetof(bullet_trace_record, can_penetrate) == 0x14);
+
+                struct contact_entity_snapshot
+                {
+                        std::uintptr_t entity{};
+                        std::uintptr_t identity{};
+                        std::uint32_t raw{ 0xffffffffu };
+                        std::uint32_t flags{ 0xffffffffu };
+                        std::uint32_t normalized{ 0xffffffffu };
+                        bool readable{};
+                };
+
+                bool contact_pointer_valid(std::uintptr_t value)
+                {
+                        return value >= 0x10000ull && value <= 0x00007FFFFFFFFFFFull;
+                }
+
+                contact_entity_snapshot snapshot_contact_entity(std::uintptr_t entity)
+                {
+                        contact_entity_snapshot result{};
+                        result.entity = entity;
+                        if (!contact_pointer_valid(entity)) return result;
+                        result.identity = memory::safe_read<std::uintptr_t>(entity + 0x10).value_or(0);
+                        if (!contact_pointer_valid(result.identity)) return result;
+                        const auto raw = memory::safe_read<std::uint32_t>(result.identity + 0x10);
+                        const auto flags = memory::safe_read<std::uint32_t>(result.identity + 0x30);
+                        if (!raw || !flags) return result;
+                        result.raw = *raw;
+                        result.flags = *flags;
+                        result.readable = true;
+                        if (*raw != 0xffffffffu)
+                                result.normalized = (((*raw >> 15) - (*flags & 1u)) << 15) | (*raw & 0x7fffu);
+                        return result;
+                }
+
+                // Read-only slot inspection. Unlike get_by_index(), this helper
+                // never touches the entity cache from a worker thread.
+                std::uintptr_t contact_index_entity_for_log(std::uint32_t token)
+                {
+                        if (token == 0xffffffffu || !addresses::globals::entity_list) return 0;
+                        const auto list = memory::safe_read<std::uintptr_t>(addresses::globals::entity_list).value_or(0);
+                        if (!contact_pointer_valid(list)) return 0;
+                        const auto index = token & 0x7fffu;
+                        const auto chunk = memory::safe_read<std::uintptr_t>(list + 0x10 + 8ull * (index >> 9)).value_or(0);
+                        if (!contact_pointer_valid(chunk)) return 0;
+                        const auto identity = chunk + 112ull * (index & 0x1ffu);
+                        const auto entity = memory::safe_read<std::uintptr_t>(identity).value_or(0);
+                        if (!contact_pointer_valid(entity)) return 0;
+                        if (memory::safe_read<std::uintptr_t>(entity + 0x10).value_or(0) != identity) return 0;
+                        return entity;
+                }
+
+                void report_rejected_contacts(const systems::tracing::trace_data& trace,
+                        int original_count, std::uintptr_t original_hits, std::uintptr_t original_surfaces,
+                        std::uintptr_t target, std::uintptr_t local,
+                        const math::vector3& start, const math::vector3& end)
+                {
+                        // Four snapshots per DLL load, at least two seconds apart.
+                        // The CAS winner alone formats logs; no per-point spam.
+                        static std::atomic<unsigned> emitted{};
+                        static std::atomic<std::uint64_t> next_ms{};
+                        if (emitted.load(std::memory_order_relaxed) >= 4u) return;
+                        const auto now = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+                                std::chrono::steady_clock::now().time_since_epoch()).count());
+                        auto next = next_ms.load(std::memory_order_relaxed);
+                        if (now < next || !next_ms.compare_exchange_strong(next, now + 2000, std::memory_order_relaxed)) return;
+                        const auto id = emitted.fetch_add(1, std::memory_order_relaxed) + 1;
+                        if (id > 4u) return;
+
+                        char line[1024]{};
+                        _snprintf_s(line, sizeof(line), _TRUNCATE,
+                                "[rage-contact:v2] sample=%u patch=contact-v2 compiled=" __DATE__ " " __TIME__
+                                " records_before=%d records_after=%d hits_ptr_changed=%d surfaces_ptr_changed=%d start=(%.3f,%.3f,%.3f) end=(%.3f,%.3f,%.3f)",
+                                id, original_count, trace.num_hits,
+                                static_cast<int>(original_hits != reinterpret_cast<std::uintptr_t>(trace.hit_array_pointer)),
+                                static_cast<int>(original_surfaces != reinterpret_cast<std::uintptr_t>(trace.array_pointer)),
+                                static_cast<double>(start.x), static_cast<double>(start.y), static_cast<double>(start.z),
+                                static_cast<double>(end.x), static_cast<double>(end.y), static_cast<double>(end.z));
+                        diag::write(diag::level::debug, line);
+
+                        for (unsigned which = 0; which < 2; ++which)
+                        {
+                                const auto entity = snapshot_contact_entity(which == 0 ? target : local);
+                                const auto strict_raw = entity.readable ? systems::g_entities.lookup(entity.raw) : 0;
+                                const auto strict_normalized = entity.readable ? systems::g_entities.lookup(entity.normalized) : 0;
+                                _snprintf_s(line, sizeof(line), _TRUNCATE,
+                                        "[rage-contact:v2] sample=%u role=%s entity=%p identity=%p readable=%d raw=%08x flags=%08x normalized=%08x strict_raw=%p strict_normalized=%p",
+                                        id, which == 0 ? "target" : "local", reinterpret_cast<void*>(entity.entity),
+                                        reinterpret_cast<void*>(entity.identity), static_cast<int>(entity.readable),
+                                        static_cast<unsigned>(entity.raw), static_cast<unsigned>(entity.flags), static_cast<unsigned>(entity.normalized),
+                                        reinterpret_cast<void*>(strict_raw), reinterpret_cast<void*>(strict_normalized));
+                                diag::write(diag::level::debug, line);
+                        }
+
+                        // Inspect all of the first three records, INCLUDING records
+                        // that run() skips because can_penetrate has bit 0 set.
+                        for (int i = 0; i < original_count && i < 3; ++i)
+                        {
+                                if (!contact_pointer_valid(original_hits)) break;
+                                const auto hit = memory::safe_read<bullet_trace_record>(original_hits + sizeof(bullet_trace_record) * i);
+                                if (!hit)
+                                {
+                                        _snprintf_s(line, sizeof(line), _TRUNCATE,
+                                                "[rage-contact:v2] sample=%u record=%d record_readable=0", id, i);
+                                        diag::write(diag::level::debug, line);
+                                        continue;
+                                }
+                                _snprintf_s(line, sizeof(line), _TRUNCATE,
+                                        "[rage-contact:v2] sample=%u record=%d damage=%.4f enter=%.6f exit=%.6f team=%d enter_ix=%04x exit_ix=%04x bits=%02x",
+                                        id, i, static_cast<double>(hit->damage_applied), static_cast<double>(hit->enter_fraction),
+                                        static_cast<double>(hit->exit_fraction), hit->team_at_contact,
+                                        static_cast<unsigned>(hit->enter_contact_ix), static_cast<unsigned>(hit->exit_contact_ix),
+                                        static_cast<unsigned>(hit->can_penetrate));
+                                diag::write(diag::level::debug, line);
+
+                                const auto index = hit->enter_contact_ix & 0x7fffu;
+                                // Conservative diagnostic bound: never scan beyond
+                                // the known 128-element inline capacity.
+                                if (!contact_pointer_valid(original_surfaces) || index >= trace.elements.size())
+                                {
+                                        _snprintf_s(line, sizeof(line), _TRUNCATE,
+                                                "[rage-contact:v2] sample=%u record=%d surface_snapshot_skipped=1 index=%u", id, i, index);
+                                        diag::write(diag::level::debug, line);
+                                        continue;
+                                }
+                                const auto holder = original_surfaces + sizeof(systems::tracing::trace_array_element) * index;
+                                const auto words = memory::safe_read<std::array<std::uint32_t, 14>>(holder);
+                                if (!words)
+                                {
+                                        _snprintf_s(line, sizeof(line), _TRUNCATE,
+                                                "[rage-contact:v2] sample=%u record=%d surface_readable=0", id, i);
+                                        diag::write(diag::level::debug, line);
+                                        continue;
+                                }
+                                const auto& w = *words;
+                                const auto token = w[11]; // Existing run() interpretation: +0x2c.
+                                const auto strict = systems::g_entities.lookup(token);
+                                const auto by_index = contact_index_entity_for_log(token);
+                                const auto entity = snapshot_contact_entity(by_index);
+                                const auto owner_offset = SCHEMA("C_BaseEntity", "m_hOwnerEntity"_hash);
+                                const auto owner = by_index && owner_offset
+                                        ? memory::safe_read<std::uint32_t>(by_index + owner_offset).value_or(0xffffffffu) : 0xffffffffu;
+                                const auto strict_owner = systems::g_entities.lookup(owner);
+                                const auto index_owner = contact_index_entity_for_log(owner);
+                                _snprintf_s(line, sizeof(line), _TRUNCATE,
+                                        "[rage-contact:v2] sample=%u record=%d token_2c=%08x strict=%p by_index=%p slot_raw=%08x slot_flags=%08x slot_normalized=%08x owner=%08x owner_strict=%p owner_by_index=%p",
+                                        id, i, static_cast<unsigned>(token), reinterpret_cast<void*>(strict), reinterpret_cast<void*>(by_index),
+                                        static_cast<unsigned>(entity.raw), static_cast<unsigned>(entity.flags), static_cast<unsigned>(entity.normalized),
+                                        static_cast<unsigned>(owner), reinterpret_cast<void*>(strict_owner), reinterpret_cast<void*>(index_owner));
+                                diag::write(diag::level::debug, line);
+                                _snprintf_s(line, sizeof(line), _TRUNCATE,
+                                        "[rage-contact:v2] sample=%u record=%d raw14=%08x %08x %08x %08x %08x %08x %08x %08x %08x %08x %08x %08x %08x %08x",
+                                        id, i, static_cast<unsigned>(w[0]), static_cast<unsigned>(w[1]), static_cast<unsigned>(w[2]),
+                                        static_cast<unsigned>(w[3]), static_cast<unsigned>(w[4]), static_cast<unsigned>(w[5]),
+                                        static_cast<unsigned>(w[6]), static_cast<unsigned>(w[7]), static_cast<unsigned>(w[8]),
+                                        static_cast<unsigned>(w[9]), static_cast<unsigned>(w[10]), static_cast<unsigned>(w[11]),
+                                        static_cast<unsigned>(w[12]), static_cast<unsigned>(w[13]));
+                                diag::write(diag::level::debug, line);
+                        }
+                }
 
         } // namespace detail
 
@@ -119,8 +293,10 @@ namespace features::combat {
 
         bool shared::penetration::run( const math::vector3& start, const math::vector3& end, const run_context& ctx, std::uintptr_t local_pawn, int local_team, result& out ) const
         {
+                rd::mark(rd::event::pen_calls);
                 if ( this->m_weapon_data.damage <= 0.0f )
                 {
+                        rd::mark(rd::event::no_weapon_damage);
                         return false;
                 }
 
@@ -128,6 +304,7 @@ namespace features::combat {
                 const auto trace_delta = direction * this->m_weapon_data.range;
 
                 auto filter = systems::g_tracing.make_filter( local_pawn, 0x1c300b, 3, 15 );
+                if (!filter.valid()) rd::mark(rd::event::invalid_filter);
                 // Rage scanning calls this hundreds of times in a frame.
                 systems::tracing::trace_data trace_storage{};
                 auto* trace = &trace_storage;
@@ -136,7 +313,11 @@ namespace features::combat {
 
                 // Dynamic TLS for autowall state (manual-map compatible)
                 auto& tls_slot = g_shared.g_autowall_tls_slot;
-                if ( tls_slot.ensure( ) == TLS_OUT_OF_INDEXES ) return false;
+                if ( tls_slot.ensure( ) == TLS_OUT_OF_INDEXES )
+                {
+                        rd::mark(rd::event::tls_failed);
+                        return false;
+                }
                 autowall_state_t state{ true, ctx.record };
                 {
                         struct restore_tls
@@ -156,10 +337,12 @@ namespace features::combat {
 
                 if ( num_hits <= 0 )
                 {
+                        rd::mark(rd::event::no_trace_hits);
                         out = {};
                         return false;
                 }
 
+                rd::mark(rd::event::contacts, static_cast<std::uint64_t>(num_hits));
                 const auto surface_array = reinterpret_cast< std::uintptr_t >( trace->array_pointer );
 
                 memory::call<void> (PATTERN (patterns::trace_bullet), trace, this->m_weapon_data.damage, this->m_weapon_data.penetration, this->m_weapon_data.range_modifier, 4, local_team, static_cast<std::uintptr_t>(0));
@@ -178,6 +361,7 @@ namespace features::combat {
 
                         if ( damage <= 0.0f )
                         {
+                                rd::mark(rd::event::damage_exhausted);
                                 break;
                         }
 
@@ -202,6 +386,7 @@ namespace features::combat {
                                 const auto owner_handle = hit_entity ? memory::safe_read<std::uint32_t>( hit_entity + SCHEMA( "C_BaseEntity", "m_hOwnerEntity"_hash ) ).value_or( 0 ) : 0;
                                 if ( !owner_handle || systems::g_entities.lookup( owner_handle ) != ctx.target_pawn )
                                 {
+                                        rd::mark(rd::event::contact_mismatch);
                                         continue;
                                 }
                         }
@@ -213,6 +398,9 @@ namespace features::combat {
 
                 if ( target_hit_idx < 0 )
                 {
+                        rd::mark(rd::event::no_target_hit);
+                        detail::report_rejected_contacts(*trace, num_hits, hit_array, surface_array,
+                                ctx.target_pawn, local_pawn, start, end);
                         out = {};
                         return false;
                 }
@@ -330,6 +518,7 @@ namespace features::combat {
 
                 if ( actual_hitbox < 0 )
                 {
+                        rd::mark(rd::event::geometry_miss);
                         out = {};
                         return false;
                 }
@@ -341,6 +530,7 @@ namespace features::combat {
 
                 this->scale_damage( out.hitgroup, ctx.target_armor, ctx.has_helmet, ctx.target_team, ctx.armor_ratio, ctx.headshot_multiplier, ctx.scales, out.damage );
 
+                rd::mark(rd::event::pen_success);
                 return true;
         }
 

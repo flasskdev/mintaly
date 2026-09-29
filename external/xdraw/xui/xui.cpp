@@ -3232,7 +3232,7 @@ namespace xui {
 		return feed_wndproc( pending_input, msg, wp, lp );
 	}
 
-	bool begin_window( std::string_view title, float& x, float& y, float& w, float& h, bool resizable, float min_w, float min_h, float reveal )
+	bool begin_window( std::string_view title, float& x, float& y, float& w, float& h, bool resizable, float min_w, float min_h, float reveal, const rect* aperture )
 	{
 		auto& c = get_ctx( );
 		const auto id = make_id( title );
@@ -3300,30 +3300,56 @@ namespace xui {
 		auto window_border = s.window_border;
 		window_border.a = static_cast< std::uint8_t >( window_border.a * reveal_clamped );
 
-		const auto blur_alpha = static_cast< std::uint8_t >( 170.0f * reveal_clamped );
 		const auto shell_rounding = xdraw::corner_radius{ r };
-		dl.rect_filled_blurred( draw_x, draw_y, draw_w, draw_h, shell_rounding, xdraw::color{ 52, 56, 68, blur_alpha } );
-
-		// Base fill, then a soft vertical falloff so the shell reads as a lit surface.
-		dl.rect_filled( draw_x, draw_y, draw_w, draw_h, window_bg, shell_rounding );
-
 		const auto shell_top = lighten( window_bg, 1.75f );
 		const auto shell_bottom = darken( window_bg, 0.72f );
-		dl.rect_filled_gradient( draw_x, draw_y, draw_w, draw_h,
-			shell_top, shell_top, shell_bottom, shell_bottom, shell_rounding );
+		const bool use_aperture = aperture && reveal_clamped >= 0.98f &&
+			aperture->right( ) > draw_x && aperture->bottom( ) > draw_y &&
+			aperture->x < draw_x + draw_w && aperture->y < draw_y + draw_h;
+		if ( use_aperture )
+		{
+			const auto hole_left = std::clamp( aperture->x, draw_x, draw_x + draw_w );
+			const auto hole_top = std::clamp( aperture->y, draw_y, draw_y + draw_h );
+			const auto hole_right = std::clamp( aperture->right( ), draw_x, draw_x + draw_w );
+			const auto hole_bottom = std::clamp( aperture->bottom( ), draw_y, draw_y + draw_h );
+			const auto fill = [&]( float x0, float y0, float width, float height, xdraw::corner_radius rounding = {} )
+			{
+				if ( width <= 0.0f || height <= 0.0f ) return;
+				dl.rect_filled_gradient( x0, y0, width, height,
+					shell_top, shell_top, shell_bottom, shell_bottom, rounding );
+			};
+
+			// Leave the preview window transparent so Panorama's 3D composition can
+			// show through the menu surface.
+			fill( draw_x, draw_y, draw_w, hole_top - draw_y, xdraw::corner_radius::top( r ) );
+			fill( draw_x, hole_bottom, draw_w, draw_y + draw_h - hole_bottom, xdraw::corner_radius::bottom( r ) );
+			fill( draw_x, hole_top, hole_left - draw_x, hole_bottom - hole_top );
+			fill( hole_right, hole_top, draw_x + draw_w - hole_right, hole_bottom - hole_top );
+		}
+		else
+		{
+			const auto blur_alpha = static_cast< std::uint8_t >( 170.0f * reveal_clamped );
+			dl.rect_filled_blurred( draw_x, draw_y, draw_w, draw_h, shell_rounding, xdraw::color{ 52, 56, 68, blur_alpha } );
+			dl.rect_filled( draw_x, draw_y, draw_w, draw_h, window_bg, shell_rounding );
+			dl.rect_filled_gradient( draw_x, draw_y, draw_w, draw_h,
+				shell_top, shell_top, shell_bottom, shell_bottom, shell_rounding );
+		}
 
 		// Violet aurora bleeding in from the top corners - keeps the dark
 		// gray-purple look of the reference regardless of the picked theme.
-		auto aurora = tokens::col_aurora;
-		aurora.a = static_cast< std::uint8_t >( 30.0f * reveal_clamped );
-		const auto aurora_off = xdraw::color{ aurora.r, aurora.g, aurora.b, 0 };
-		const auto aurora_h = std::min( draw_h, 300.0f );
-		const auto aurora_w = draw_w * 0.62f;
-		dl.rect_filled_gradient( draw_x, draw_y, aurora_w, aurora_h,
-			aurora, aurora_off, aurora_off, aurora_off, xdraw::corner_radius::top( r ) );
-		const auto aurora_w2 = draw_w * 0.45f;
-		dl.rect_filled_gradient( draw_x + draw_w - aurora_w2, draw_y, aurora_w2, aurora_h * 0.6f,
-			aurora_off, aurora, aurora_off, aurora_off, xdraw::corner_radius::top( r ) );
+		if ( !use_aperture )
+		{
+			auto aurora = tokens::col_aurora;
+			aurora.a = static_cast< std::uint8_t >( 30.0f * reveal_clamped );
+			const auto aurora_off = xdraw::color{ aurora.r, aurora.g, aurora.b, 0 };
+			const auto aurora_h = std::min( draw_h, 300.0f );
+			const auto aurora_w = draw_w * 0.62f;
+			dl.rect_filled_gradient( draw_x, draw_y, aurora_w, aurora_h,
+				aurora, aurora_off, aurora_off, aurora_off, xdraw::corner_radius::top( r ) );
+			const auto aurora_w2 = draw_w * 0.45f;
+			dl.rect_filled_gradient( draw_x + draw_w - aurora_w2, draw_y, aurora_w2, aurora_h * 0.6f,
+				aurora_off, aurora, aurora_off, aurora_off, xdraw::corner_radius::top( r ) );
+		}
 
 		// Specular rim highlight on top, soft shade at the bottom edge.
 		dl.line( draw_x + r, draw_y + 0.5f, draw_x + draw_w - r, draw_y + 0.5f,

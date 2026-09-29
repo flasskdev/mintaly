@@ -20,7 +20,8 @@ inline constexpr const char* bootstrap = R"MINTALY_JS(
     for (var ci = 0; ci < chain.length; ++ci) {
         try {
             var old = chain[ci].Data().mintalyNativePreview;
-            if (old && old.version !== 22) {
+            if (old && old.version !== 23) {
+                if (old.anchor && old.anchor.IsValid()) old.anchor.style.visibility = 'hidden';
                 if (old.panel && old.panel.IsValid()) old.panel.DeleteAsync(0);
                 if (old.background && old.background.IsValid()) old.background.DeleteAsync(0);
                 if (old.anchor && old.anchor.IsValid()) old.anchor.DeleteAsync(0);
@@ -32,8 +33,8 @@ inline constexpr const char* bootstrap = R"MINTALY_JS(
     // anchor below because this root can report a zero layout size in-game.
     var host = root;
     var data = root.Data();
-    if (data.mintalyNativePreview && data.mintalyNativePreview.version === 22) return;
-    var state = { version: 22, panel: null, background: null, anchor: null, generation: '', touched: 0, args: null };
+    if (data.mintalyNativePreview && data.mintalyNativePreview.version === 23) return;
+    var state = { version: 23, panel: null, background: null, anchor: null, generation: '', touched: 0, args: null };
     data.mintalyNativePreview = state;
     function logMsg(msg) {
         try {
@@ -65,6 +66,9 @@ inline constexpr const char* bootstrap = R"MINTALY_JS(
     }
     inspectTree();
     function destroy() {
+        // DeleteAsync is deferred by Panorama. Collapse the full-screen host
+        // first so a closed menu can never leave its old preview on screen.
+        if (state.anchor && state.anchor.IsValid()) state.anchor.style.visibility = 'hidden';
         if (state.panel && state.panel.IsValid()) state.panel.DeleteAsync(0);
         if (state.background && state.background.IsValid()) state.background.DeleteAsync(0);
         if (state.anchor && state.anchor.IsValid()) state.anchor.DeleteAsync(0);
