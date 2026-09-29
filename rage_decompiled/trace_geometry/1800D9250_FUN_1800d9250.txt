@@ -1,0 +1,137 @@
+// function: FUN_1800d9250
+// ea: 1800d9250
+// category: trace_geometry
+// depth: 1, via: FUN_1800aae50 @1800ab797
+// size: 863 bytes
+// anchors: trace_geometry, hitbox_backtrack
+// ----------------------------------------------------
+
+undefined8 FUN_1800d9250(longlong param_1)
+
+{
+  int iVar1;
+  ulonglong uVar2;
+  ulonglong uVar3;
+  longlong lVar4;
+  ulonglong uVar5;
+  int *piVar6;
+  undefined8 uVar7;
+  longlong lVar8;
+  double dVar9;
+  double dVar10;
+  float fVar11;
+  undefined8 in_stack_fffffffffffffb68;
+  undefined4 uVar12;
+  undefined1 local_488 [1032];
+  longlong local_80;
+  longlong local_78;
+  longlong local_70;
+  longlong local_68;
+  longlong local_60;
+  undefined4 local_54;
+  longlong local_50;
+  undefined8 local_48;
+  
+  uVar12 = (undefined4)((ulonglong)in_stack_fffffffffffffb68 >> 0x20);
+  local_48 = 0xfffffffffffffffe;
+  FUN_18023b870(local_488,0,0x400);
+  lVar8 = *(longlong *)(param_1 + -8);
+  local_50 = param_1;
+  if (*(char *)(lVar8 + 0xc2) == '\x01') {
+                    /* WARNING: Subroutine does not return */
+    FUN_1800e24d0("script is closing");
+  }
+  iVar1 = *(int *)(lVar8 + 0xa8);
+  *(int *)(lVar8 + 0xa8) = iVar1 + 1;
+  if (iVar1 < 0x8000) {
+    uVar2 = FUN_180184cfc();
+    uVar3 = FUN_180184ce0();
+    if (uVar2 == 24000000) {
+      lVar4 = (((longlong)uVar3 % 24000000) * 1000000000) / 24000000 +
+              ((longlong)uVar3 / 24000000) * 1000000000;
+    }
+    else if (uVar2 == 10000000) {
+      lVar4 = uVar3 * 100;
+    }
+    else {
+      if ((uVar3 | uVar2) >> 0x20 == 0) {
+        uVar5 = (uVar3 & 0xffffffff) / (uVar2 & 0xffffffff);
+        uVar3 = (uVar3 & 0xffffffff) % (uVar2 & 0xffffffff);
+      }
+      else {
+        uVar5 = (longlong)uVar3 / (longlong)uVar2;
+        uVar3 = (longlong)uVar3 % (longlong)uVar2;
+      }
+      uVar3 = uVar3 * 1000000000;
+      if ((uVar2 | uVar3) >> 0x20 == 0) {
+        uVar3 = (uVar3 & 0xffffffff) / (uVar2 & 0xffffffff);
+      }
+      else {
+        uVar3 = (longlong)uVar3 / (longlong)uVar2;
+      }
+      lVar4 = uVar3 + uVar5 * 1000000000;
+    }
+    if (lVar4 <= *(longlong *)(lVar8 + 0xb0)) {
+      lVar8 = *(longlong *)(param_1 + -8);
+      if (*(longlong *)(lVar8 + 0x58) == 5) {
+        if (*(ulonglong *)(lVar8 + 0x60) < 0x10) {
+          piVar6 = (int *)(lVar8 + 0x48);
+        }
+        else {
+          piVar6 = *(int **)(lVar8 + 0x48);
+        }
+        if ((char)piVar6[1] == 't' && *piVar6 == 0x6e696170) {
+          uVar7 = FUN_1801304f0(0);
+          FUN_1800e9c00(&local_70,param_1);
+          FUN_1800e7ac0(&local_54,param_1,2);
+          iVar1 = FUN_18016c6d0(local_50,3);
+          if (iVar1 < 1) {
+            fVar11 = 1.0;
+          }
+          else {
+            iVar1 = FUN_18016c6d0(local_50,3);
+            if (iVar1 != 3) {
+                    /* WARNING: Subroutine does not return */
+              FUN_1800e24d0("expected number");
+            }
+            dVar9 = (double)FUN_18016c710(local_50,3,0);
+            if ((0x7fefffffffffffff < (ulonglong)ABS(dVar9)) || (1000000000000.0 < ABS(dVar9))) {
+                    /* WARNING: Subroutine does not return */
+              FUN_1800e24d0("number out of range");
+            }
+            dVar10 = 0.1;
+            if (0.1 <= dVar9) {
+              dVar10 = dVar9;
+            }
+            fVar11 = (float)(double)(-(ulonglong)(100.0 < dVar9) & 0x4059000000000000 |
+                                    ~-(ulonglong)(100.0 < dVar9) & (ulonglong)dVar10);
+          }
+          iVar1 = FUN_18016c7b0(local_50,4);
+          local_78 = local_68 - local_70 >> 2;
+          local_80 = local_70;
+          FUN_180128830(uVar7,&local_80,local_54,iVar1 != 0,CONCAT44(uVar12,fVar11),1);
+          if (local_70 != 0) {
+            uVar3 = local_60 - local_70;
+            lVar8 = local_70;
+            if (0xfff < uVar3) {
+              lVar8 = *(longlong *)(local_70 + -8);
+              if (0x1f < (ulonglong)((local_70 + -8) - lVar8)) {
+                    /* WARNING: Subroutine does not return */
+                _invoke_watson((wchar_t *)0x0,(wchar_t *)0x0,(wchar_t *)0x0,0,0);
+              }
+              uVar3 = uVar3 + 0x27;
+            }
+            FUN_1801695f0(lVar8,uVar3);
+          }
+          return 0;
+        }
+      }
+                    /* WARNING: Subroutine does not return */
+      FUN_1800e24d0("render drawing is only available in paint");
+    }
+  }
+                    /* WARNING: Subroutine does not return */
+  FUN_1800e24d0("callback budget exceeded");
+}
+
+

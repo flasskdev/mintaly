@@ -1,0 +1,29 @@
+// function: FUN_18021bc80
+// ea: 18021bc80
+// category: pipeline
+// depth: 1, via: FUN_180039560 @1800396c0
+// size: 155 bytes
+// anchors: pipeline, autowall_damage
+// ----------------------------------------------------
+
+float FUN_18021bc80(float param_1)
+
+{
+  float fVar1;
+  
+  if (((uint)param_1 & 0x7f800000) == 0x7f800000) {
+    if (((uint)param_1 & 0x7fffff) != 0) {
+      fVar1 = (float)FUN_18022bc20(param_1);
+      return fVar1;
+    }
+    if ((int)param_1 < 0) goto LAB_18021bcb7;
+  }
+  if (-1 < (int)param_1 || ABS(param_1) == 0.0) {
+    return SQRT(param_1);
+  }
+LAB_18021bcb7:
+  fVar1 = (float)FUN_18022bc30("sqrtf",5,0xffc00000,1,8,0x21,param_1,0,1);
+  return fVar1;
+}
+
+

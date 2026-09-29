@@ -1,0 +1,24 @@
+// function: FUN_18007a5d0
+// ea: 18007a5d0
+// category: pipeline
+// depth: 2, via: FUN_1800798e0 @180079b80
+// size: 118 bytes
+// anchors: pipeline
+// ----------------------------------------------------
+
+undefined8 FUN_18007a5d0(void)
+
+{
+  if (*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+              0x2638) < DAT_1804726d8) {
+    FUN_180183614(&DAT_1804726d8);
+    if (DAT_1804726d8 == -1) {
+      DAT_1804726d0 = FUN_1801642a0(DAT_180471968,0xad8af3df);
+      _Init_thread_footer(&DAT_1804726d8);
+      return DAT_1804726d0;
+    }
+  }
+  return DAT_1804726d0;
+}
+
+

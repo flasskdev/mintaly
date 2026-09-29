@@ -15,6 +15,7 @@
 #include <utilities/loader_session.hpp>
 #include <utilities/steam/steam.hpp>
 #include <utilities/lobby_music_queue.hpp>
+#include <utilities/tls/tls.hpp>
 #include <core/features/changer/preview_scene.hpp>
 #include <core/features/changer/preview_item.hpp>
 #include "../hooks.hpp"
@@ -23,6 +24,426 @@ namespace hooks {
 
 	namespace detail {
 		inline lobby_music::queue g_lobby_music_requests;
+		inline std::atomic_bool g_generate_primitives_player_chams_applied{};
+		// The recovered prototypes disagree between void*, __int64 and no
+		// declared return. uintptr_t preserves the 64-bit RAX value for either
+		// pointer- or integer-style declarations without changing the argument ABI.
+		using generate_primitives_fn = std::uintptr_t( __fastcall* )( std::uintptr_t, std::uintptr_t, std::uintptr_t, std::uintptr_t );
+		struct generate_primitives_thread_state
+		{
+			generate_primitives_fn original{};
+			std::uintptr_t result{};
+		};
+		inline utilities::tls::local<generate_primitives_thread_state> g_generate_primitives_state{};
+
+		std::uintptr_t __fastcall call_generate_primitives_original(
+			std::uintptr_t desc, std::uintptr_t scene_object, std::uintptr_t scene_view, std::uintptr_t primitive_buffer )
+		{
+			auto* state = g_generate_primitives_state.get( );
+			if ( !state || !state->original )
+				return 0;
+
+			state->result = state->original(
+				desc, scene_object, scene_view, primitive_buffer );
+			return state->result;
+		}
+
+		[[nodiscard]] inline bool valid_runtime_pointer( std::uintptr_t address ) noexcept
+		{
+			return address >= 0x100000000ull &&
+				address <= 0x00007FFFFFFFFFFFull &&
+				( address & ( alignof( std::uintptr_t ) - 1 ) ) == 0;
+		}
+
+		[[nodiscard]] inline bool readable_runtime_range( std::uintptr_t address, std::size_t size ) noexcept
+		{
+			constexpr auto max_user_address = std::uintptr_t{ 0x00007FFFFFFFFFFFull };
+			if ( !valid_runtime_pointer( address ) || !size || size - 1 > max_user_address - address )
+				return false;
+
+			const auto end = address + size;
+			auto current = address;
+			while ( current < end )
+			{
+				MEMORY_BASIC_INFORMATION mbi{};
+				if ( VirtualQuery( reinterpret_cast<const void*>( current ), &mbi, sizeof( mbi ) ) != sizeof( mbi ) ||
+					mbi.State != MEM_COMMIT || ( mbi.Protect & ( PAGE_GUARD | PAGE_NOACCESS ) ) )
+				{
+					return false;
+				}
+
+				const auto protection = mbi.Protect & 0xffu;
+				const bool readable = protection == PAGE_READONLY || protection == PAGE_READWRITE ||
+					protection == PAGE_WRITECOPY || protection == PAGE_EXECUTE_READ ||
+					protection == PAGE_EXECUTE_READWRITE || protection == PAGE_EXECUTE_WRITECOPY;
+				const auto region_end = reinterpret_cast<std::uintptr_t>( mbi.BaseAddress ) + mbi.RegionSize;
+				if ( !readable || region_end <= current )
+					return false;
+
+				current = ( std::min )( end, region_end );
+			}
+
+			return true;
+		}
+
+		struct render_owner_cache_entry
+		{
+			std::uintptr_t owner{};
+			std::uint32_t schema_hash{};
+			std::uint32_t owner_value{ 0xffffffffu };
+			std::size_t owner_offset{ 0x178 };
+			std::chrono::steady_clock::time_point expires{};
+		};
+
+		struct render_entity_cache_entry
+		{
+			std::uintptr_t entity{};
+			std::uint32_t schema_hash{};
+			std::chrono::steady_clock::time_point expires{};
+		};
+
+		// GeneratePrimitives is called for every scene draw. Keep its worker-local
+		// cache in FLS so manual mapping does not depend on static TLS callbacks.
+		struct render_thread_cache
+		{
+			std::unordered_map<std::uintptr_t, render_owner_cache_entry> owner_cache{};
+			bool owner_cache_reserved{};
+			std::array<std::uintptr_t, 8192> owner_cache_order{};
+			std::size_t owner_cache_cursor{};
+			std::unordered_map<std::uint32_t, render_entity_cache_entry> entity_cache{};
+			std::array<std::uint32_t, 512> entity_cache_order{};
+			std::size_t entity_cache_cursor{};
+			std::chrono::steady_clock::time_point chams_refresh{};
+			bool chams_active{};
+		};
+		inline utilities::tls::local<render_thread_cache> g_render_thread_cache{};
+		inline std::atomic_bool g_render_owner_index_logged{};
+		inline std::atomic_bool g_render_owner_miss_logged{};
+
+		[[nodiscard]] inline bool is_player_pawn_hash( std::uint32_t hash ) noexcept
+		{
+			return hash == "C_CSPlayerPawn"_hash || hash == "C_CSPlayerPawnBase"_hash ||
+				hash == "C_BasePlayerPawn"_hash || hash == "C_CSGO_PreviewPlayer"_hash ||
+				hash == "C_CSGO_PreviewPlayerAlias_csgo_player_previewmodel"_hash ||
+				hash == "C_CSGO_TeamPreviewModel"_hash;
+		}
+
+		[[nodiscard]] inline bool is_renderable_owner_hash( std::uint32_t hash )
+		{
+			return is_player_pawn_hash( hash ) || hash == "C_CS2HudModelArms"_hash ||
+				hash == "C_CS2HudModelWeapon"_hash ||
+				features::esp::item::g_chams.get_item_group( hash ) != UINT32_MAX;
+		}
+
+		[[nodiscard]] inline bool is_viewmodel_owner_hash( std::uint32_t hash ) noexcept
+		{
+			return hash == "C_CS2HudModelArms"_hash || hash == "C_CS2HudModelWeapon"_hash;
+		}
+
+		struct render_owner_info
+		{
+			std::uintptr_t entity{};
+			std::uint32_t schema_hash{};
+			std::uint32_t owner_value{ 0xffffffffu };
+			std::size_t owner_offset{ 0x178 };
+		};
+
+		// Pawns are intentionally absent from the gameplay entity cache: that cache's
+		// player entries are controllers. Validate an uncached entity through its live
+		// identity handle before walking its schema chain.
+		[[nodiscard]] inline std::optional<std::uint32_t> get_render_owner_schema_hash( std::uintptr_t entity )
+		{
+			if ( !valid_runtime_pointer( entity ) || !readable_runtime_range( entity, 0x18 ) )
+				return std::nullopt;
+
+			const auto identity = memory::safe_read<std::uintptr_t>( entity + 0x10 ).value_or( 0 );
+			if ( !valid_runtime_pointer( identity ) || !readable_runtime_range( identity, 0x18 ) )
+				return std::nullopt;
+
+			const auto handle = memory::safe_read<std::uint32_t>( identity + 0x10 ).value_or( 0 );
+			if ( !handle || handle == 0xffffffffu || systems::g_entities.lookup( handle ) != entity )
+				return std::nullopt;
+
+			if ( const auto cached_hash = systems::g_entities.get_cached_schema_hash( entity );
+				cached_hash && *cached_hash )
+			{
+				if ( !is_renderable_owner_hash( *cached_hash ) )
+					return std::nullopt;
+				return cached_hash;
+			}
+
+			const auto schema_name = systems::g_entities.get_schema_name( entity );
+			if ( !schema_name )
+				return std::nullopt;
+
+			const auto schema_hash = fnv1a::runtime_hash( schema_name );
+			if ( !is_renderable_owner_hash( schema_hash ) )
+				return std::nullopt;
+
+			return schema_hash;
+		}
+
+		[[nodiscard]] inline render_owner_info resolve_render_owner_entity(
+			std::uint32_t owner_value, std::size_t owner_offset, std::chrono::steady_clock::time_point now )
+		{
+			if ( !owner_value || owner_value == 0xffffffffu )
+				return {};
+
+			const auto entity_index = static_cast<std::int32_t>( owner_value & 0x7fffu );
+			std::uintptr_t entity{};
+			if ( owner_value <= 0x7fffu )
+			{
+				entity = systems::g_entities.get_by_index( entity_index );
+			}
+			else
+			{
+				entity = systems::g_entities.lookup( owner_value );
+				if ( !entity )
+					entity = systems::g_entities.get_by_index( entity_index );
+			}
+
+			if ( !valid_runtime_pointer( entity ) )
+				return {};
+
+			auto* thread_cache = g_render_thread_cache.get( );
+			if ( !thread_cache )
+				return {};
+			auto& g_render_entity_cache = thread_cache->entity_cache;
+			auto& g_render_entity_cache_order = thread_cache->entity_cache_order;
+			auto& g_render_entity_cache_cursor = thread_cache->entity_cache_cursor;
+
+			if ( const auto cached = g_render_entity_cache.find( owner_value );
+				cached != g_render_entity_cache.end( ) && cached->second.entity == entity &&
+				now < cached->second.expires && cached->second.schema_hash )
+			{
+				return { entity, cached->second.schema_hash, owner_value, owner_offset };
+			}
+
+			const auto schema_hash = get_render_owner_schema_hash( entity );
+			if ( !schema_hash || !*schema_hash )
+				return {};
+
+			constexpr std::size_t cache_capacity = 512;
+			const auto cached = g_render_entity_cache.find( owner_value );
+			if ( cached != g_render_entity_cache.end( ) )
+			{
+				cached->second = { entity, *schema_hash, now + std::chrono::milliseconds( 250 ) };
+			}
+			else
+			{
+				if ( g_render_entity_cache.size( ) >= cache_capacity )
+				{
+					const auto evicted = g_render_entity_cache_order[ g_render_entity_cache_cursor ];
+					if ( evicted )
+						g_render_entity_cache.erase( evicted );
+				}
+				g_render_entity_cache_order[ g_render_entity_cache_cursor ] = owner_value;
+				g_render_entity_cache_cursor = ( g_render_entity_cache_cursor + 1 ) % cache_capacity;
+				g_render_entity_cache.emplace( owner_value,
+					render_entity_cache_entry{ entity, *schema_hash, now + std::chrono::milliseconds( 250 ) } );
+			}
+
+			return { entity, *schema_hash, owner_value, owner_offset };
+		}
+
+		// CSceneAnimatableObject::m_hOwnerIndex is a 15-bit entity slot on some
+		// builds and a serial-bearing handle on others. Resolve known owner fields
+		// only: probing every aligned dword in a render object performs hundreds
+		// of entity/schema lookups per miss and can stall the render thread.
+		[[nodiscard]] inline render_owner_info resolve_render_owner_uncached(
+			std::uintptr_t scene_object, std::chrono::steady_clock::time_point now )
+		{
+			// Each owner field is guarded below. Querying the full object pages on
+			// every uncached model adds a costly kernel transition to this hot path.
+			if ( !valid_runtime_pointer( scene_object ) )
+				return {};
+
+			render_owner_info owner{};
+			std::uint32_t last_owner_value{ 0xffffffffu };
+			std::size_t last_owner_offset{ 0x178 };
+			const auto resolve_owner_value = [ & ]( std::size_t offset )
+			{
+				const auto value = memory::safe_read<std::uint32_t>( scene_object + offset ).value_or( 0xffffffffu );
+				last_owner_value = value;
+				last_owner_offset = offset;
+				if ( !value || value == 0xffffffffu )
+					return render_owner_info{};
+				return resolve_render_owner_entity( value, offset, now );
+			};
+			const auto log_owner = [ & ]( const render_owner_info& resolved )
+			{
+				if ( !g_render_owner_index_logged.exchange( true, std::memory_order_relaxed ) )
+				{
+					const auto entity_index = static_cast<std::int32_t>( resolved.owner_value & 0x7fffu );
+					diag::writef( diag::level::info,
+						"[chams-owner] render owner resolved at scene+0x%zX value=0x%X index=0x%X entity=%p schema=0x%08X",
+						resolved.owner_offset, resolved.owner_value, static_cast<unsigned>( entity_index ),
+						reinterpret_cast<void*>( resolved.entity ), resolved.schema_hash );
+				}
+			};
+
+			// A viewmodel scene can expose its local pawn at +0x178 and the HUD
+			// model entity at +0xc0. Prefer the model entity when both handles are
+			// valid, or arms/weapon chams get routed through player chams.
+			const auto current_owner = resolve_owner_value( 0x178 );
+			if ( is_viewmodel_owner_hash( current_owner.schema_hash ) )
+			{
+				log_owner( current_owner );
+				return current_owner;
+			}
+
+			// The legacy field is only needed when the current field is absent or
+			// resolves to the carrying pawn. Avoid a second entity/schema lookup for
+			// ordinary player and item scene objects on this hot path.
+			const auto should_probe_legacy_owner = !current_owner.entity || is_player_pawn_hash( current_owner.schema_hash );
+			const auto legacy_owner = should_probe_legacy_owner ? resolve_owner_value( 0xc0 ) : render_owner_info{};
+			if ( is_viewmodel_owner_hash( legacy_owner.schema_hash ) )
+			{
+				log_owner( legacy_owner );
+				return legacy_owner;
+			}
+
+			owner = current_owner.entity ? current_owner : legacy_owner;
+			if ( owner.entity )
+			{
+				log_owner( owner );
+				return owner;
+			}
+
+			if ( !g_render_owner_miss_logged.exchange( true, std::memory_order_relaxed ) )
+			{
+				constexpr std::size_t diagnostic_owner_offset = 0x178;
+				const auto owner_value = memory::safe_read<std::uint32_t>( scene_object + diagnostic_owner_offset ).value_or( 0xffffffffu );
+				const auto owner_index = owner_value == 0xffffffffu ? -1 : static_cast<int>( owner_value & 0x7fffu );
+				const auto indexed_entity = owner_index >= 0 ? systems::g_entities.get_by_index( owner_index ) : 0;
+				const auto indexed_schema = indexed_entity ? get_render_owner_schema_hash( indexed_entity ) : std::nullopt;
+				diag::writef( diag::level::warning,
+					"[chams-owner] no renderable owner scene=%p offset=0x%zX owner_value=0x%08X index=%d slot_entity=%p slot_schema=0x%08X",
+					reinterpret_cast<void*>( scene_object ), diagnostic_owner_offset, owner_value, owner_index,
+					reinterpret_cast<void*>( indexed_entity ), indexed_schema.value_or( 0 ) );
+			}
+
+			return { 0, 0, last_owner_value, last_owner_offset };
+		}
+
+		[[nodiscard]] inline render_owner_info resolve_render_owner( std::uintptr_t scene_object )
+		{
+			if ( !valid_runtime_pointer( scene_object ) )
+				return {};
+
+			auto* thread_cache = g_render_thread_cache.get( );
+			if ( !thread_cache )
+				return {};
+			auto& g_render_owner_cache = thread_cache->owner_cache;
+			auto& g_render_owner_cache_reserved = thread_cache->owner_cache_reserved;
+			auto& g_render_owner_cache_order = thread_cache->owner_cache_order;
+			auto& g_render_owner_cache_cursor = thread_cache->owner_cache_cursor;
+
+			constexpr std::size_t cache_capacity = 8192;
+
+			const auto now = std::chrono::steady_clock::now();
+			if ( !g_render_owner_cache_reserved )
+			{
+				g_render_owner_cache.reserve(cache_capacity);
+				g_render_owner_cache_reserved = true;
+			}
+			auto cached = g_render_owner_cache.find( scene_object );
+			if ( cached != g_render_owner_cache.end( ) )
+			{
+				if ( now < cached->second.expires )
+				{
+					return { cached->second.owner, cached->second.schema_hash,
+						cached->second.owner_value, cached->second.owner_offset };
+				}
+
+				// Scene objects are queried every render pass. Validate the owner
+				// handle only when the cache expires instead of safe-reading it on
+				// every draw for every world object.
+				const auto current_owner_value = memory::safe_read<std::uint32_t>(
+					scene_object + cached->second.owner_offset ).value_or( 0xffffffffu );
+				if ( current_owner_value == cached->second.owner_value )
+				{
+					cached->second.expires = now + std::chrono::milliseconds( 250 );
+					return { cached->second.owner, cached->second.schema_hash,
+						cached->second.owner_value, cached->second.owner_offset };
+				}
+			}
+
+			const auto owner = resolve_render_owner_uncached( scene_object, now );
+			if ( cached != g_render_owner_cache.end( ) )
+			{
+				cached->second = { owner.entity, owner.schema_hash, owner.owner_value,
+					owner.owner_offset, now + std::chrono::milliseconds(250) };
+
+			}
+			else
+			{
+				
+				if ( g_render_owner_cache.size( ) >= cache_capacity )
+				{
+					const auto evicted = g_render_owner_cache_order[ g_render_owner_cache_cursor ];
+					if ( evicted )
+						g_render_owner_cache.erase( evicted );
+				}
+				g_render_owner_cache_order[ g_render_owner_cache_cursor ] = scene_object;
+				g_render_owner_cache_cursor = ( g_render_owner_cache_cursor + 1 ) % cache_capacity;
+				g_render_owner_cache.emplace( scene_object,
+					render_owner_cache_entry{ owner.entity, owner.schema_hash, owner.owner_value,
+						owner.owner_offset, now + std::chrono::milliseconds(250) });
+			}
+			return owner;
+		}
+
+		[[nodiscard]] inline bool has_active_chams( const settings::esp::chams_config& cfg )
+		{
+			return cfg.enabled.value && ( cfg.primary.enabled.value || cfg.secondary.enabled.value || cfg.overlay.enabled.value );
+		}
+
+		[[nodiscard]] inline bool scan_render_chams_active( )
+		{
+			const auto& esp = settings::g_esp;
+			const auto& player = esp.m_player.m_chams;
+			if ( has_active_chams( player.enemy ) || has_active_chams( player.team ) ||
+				has_active_chams( player.local ) || has_active_chams( player.enemy_ragdoll ) ||
+				has_active_chams( player.team_ragdoll ) || has_active_chams( player.local_ragdoll ) ||
+				has_active_chams( player.backtrack ) || has_active_chams( player.onshot ) )
+				return true;
+
+			if ( has_active_chams( esp.m_viewmodel.arms ) || has_active_chams( esp.m_viewmodel.weapon ) )
+				return true;
+			for ( const auto& weapon : esp.m_viewmodel.individual.weapons )
+				if ( weapon.override_default.value && has_active_chams( weapon.cfg ) )
+					return true;
+
+			const auto& item = esp.m_item.m_chams;
+			if ( item.enabled.value )
+			{
+				for ( std::uint32_t group = 0; group < item.groups.size( ); ++group )
+					if ( item.is_active( group ) && has_active_chams( item.groups[ group ] ) )
+						return true;
+				for ( const auto& weapon : item.individual.weapons )
+					if ( weapon.override_default.value && has_active_chams( weapon.cfg ) )
+						return true;
+			}
+
+			return false;
+		}
+
+		[[nodiscard]] inline bool any_render_chams_active( )
+		{
+			static constexpr auto refresh_interval = std::chrono::milliseconds( 100 );
+			auto* thread_cache = g_render_thread_cache.get( );
+			if ( !thread_cache )
+				return scan_render_chams_active( );
+
+			const auto now = std::chrono::steady_clock::now( );
+			if ( now < thread_cache->chams_refresh )
+				return thread_cache->chams_active;
+
+			thread_cache->chams_active = scan_render_chams_active( );
+			thread_cache->chams_refresh = now + refresh_interval;
+			return thread_cache->chams_active;
+		}
 
 		// Preview scenes are engine-owned. Do not automatically apply loadout
 		// overrides to lobby/party or detached presentation models. Actual match
@@ -52,6 +473,145 @@ namespace hooks {
 			}
 			__except ( EXCEPTION_EXECUTE_HANDLER ) { return false; }
 		}
+
+		using present_fn = HRESULT( __fastcall* )( IDXGISwapChain*, UINT, UINT );
+		using resize_fn = HRESULT( __fastcall* )(
+			IDXGISwapChain*, UINT, UINT, UINT, DXGI_FORMAT, UINT );
+
+		inline present_fn g_original_present{};
+		inline resize_fn g_original_resize_buffers{};
+		inline std::uintptr_t g_patched_vtable{};
+		constexpr std::size_t k_swapchain_vtable_slots{ 14 };
+		// Present and ResizeBuffers touch the same D3D11 resources. DXGI may call
+		// them from different threads during a mode/map transition.
+		inline std::recursive_mutex g_swapchain_mutex{};
+
+		bool install_swapchain_vtable( IDXGISwapChain* swap_chain )
+		{
+			if ( !swap_chain )
+				return false;
+
+			auto* const vtable = *reinterpret_cast<void***>( swap_chain );
+			if ( !vtable )
+				return false;
+
+			if ( !g_original_present )
+				g_original_present = reinterpret_cast<present_fn>( vtable[ 8 ] );
+			if ( !g_original_resize_buffers )
+				g_original_resize_buffers = reinterpret_cast<resize_fn>( vtable[ 13 ] );
+
+			if ( !g_original_present || !g_original_resize_buffers )
+				return false;
+
+			const auto present_detour = reinterpret_cast<std::uintptr_t>( &cheat::present );
+			const auto resize_detour = reinterpret_cast<std::uintptr_t>( &cheat::resize_buffers );
+			if ( vtable[ 8 ] == reinterpret_cast<void*>( present_detour ) &&
+				vtable[ 13 ] == reinterpret_cast<void*>( resize_detour ) )
+			{
+				g_patched_vtable = reinterpret_cast<std::uintptr_t>( vtable );
+				return true;
+			}
+
+			DWORD old_protect{};
+			const auto bytes = sizeof( void* ) * k_swapchain_vtable_slots;
+			if ( !VirtualProtect( vtable, bytes, PAGE_READWRITE, &old_protect ) )
+				return false;
+
+			vtable[ 13 ] = reinterpret_cast<void*>( resize_detour );
+			vtable[ 8 ] = reinterpret_cast<void*>( present_detour );
+			VirtualProtect( vtable, bytes, old_protect, &old_protect );
+			FlushInstructionCache( GetCurrentProcess(), vtable, bytes );
+			g_patched_vtable = reinterpret_cast<std::uintptr_t>( vtable );
+
+			diag::writef(
+				diag::level::info,
+				"DXGI swap-chain vtable patched: vtable=%p present=%p resize=%p",
+				vtable,
+				reinterpret_cast<void*>( g_original_present ),
+				reinterpret_cast<void*>( g_original_resize_buffers ) );
+			return true;
+		}
+
+		bool is_vtable_patched( IDXGISwapChain* swap_chain )
+		{
+			return swap_chain &&
+				*reinterpret_cast<void***>( swap_chain ) ==
+				reinterpret_cast<void**>( g_patched_vtable );
+		}
+		void uninstall_swapchain_vtable( )
+		{
+			if ( !g_patched_vtable || !g_original_present || !g_original_resize_buffers )
+				return;
+
+			auto* const vtable = reinterpret_cast<void**>( g_patched_vtable );
+			DWORD old_protect{};
+			const auto bytes = sizeof( void* ) * k_swapchain_vtable_slots;
+			if ( VirtualProtect( vtable, bytes, PAGE_READWRITE, &old_protect ) )
+			{
+				vtable[ 13 ] = reinterpret_cast<void*>( g_original_resize_buffers );
+				vtable[ 8 ] = reinterpret_cast<void*>( g_original_present );
+				VirtualProtect( vtable, bytes, old_protect, &old_protect );
+				FlushInstructionCache( GetCurrentProcess(), vtable, bytes );
+			}
+			g_patched_vtable = 0;
+		}
+
+
+
+		// SEH-safe swap chain validation: returns true if the swap chain is valid.
+		// Must be in a separate function without C++ destructors (MSVC C2712).
+		bool is_swap_chain_valid( IDXGISwapChain* swap_chain )
+		{
+			if ( !swap_chain )
+				return false;
+
+			// Check vtable pointer
+			__try
+			{
+				if ( !*reinterpret_cast<std::uintptr_t*>( swap_chain ) )
+					return false;
+			}
+			__except ( EXCEPTION_EXECUTE_HANDLER )
+			{
+				return false;
+			}
+
+			// Check device pointer - a destroyed swap chain may have valid vtable but NULL device
+			ID3D11Device* device = nullptr;
+			__try
+			{
+				if ( FAILED( swap_chain->GetDevice( __uuidof( ID3D11Device ), reinterpret_cast< void** >( &device ) ) ) || !device )
+					return false;
+				device->Release( );
+			}
+			__except ( EXCEPTION_EXECUTE_HANDLER )
+			{
+				return false;
+			}
+
+			return true;
+		}
+
+		// SEH-safe original Present call: wraps the trampoline call in SEH to catch
+		// any access violations inside the original Present function.
+		// Must be in a separate function without C++ destructors (MSVC C2712).
+		HRESULT call_present_safe( hooking::jmp& hook, IDXGISwapChain* thisptr, UINT sync_interval, UINT flags )
+		{
+			__try
+			{
+				return hook.call<HRESULT>( thisptr, sync_interval, flags );
+			}
+			__except ( EXCEPTION_EXECUTE_HANDLER )
+			{
+				// Mark Present as permanently broken so we never call it again
+				extern bool g_present_permanently_broken;
+				g_present_permanently_broken = true;
+				return E_FAIL;
+			}
+		}
+
+		// Global flag: set to true if original Present ever crashes
+		bool g_present_permanently_broken = false;
 
 		struct viewmodel_anim_state
 		{
@@ -168,14 +728,23 @@ namespace hooks {
 		m_level_shutting_down.store( false, std::memory_order_release );
 		m_was_connected = false;
 		m_seen_disconnected = false;
+		diag::writef(
+			diag::level::info,
+			"DXGI bootstrap target: get_desc=%p present=%p resize=%p",
+			reinterpret_cast<void*>( addresses::functions::get_desc ),
+			reinterpret_cast<void*>( addresses::functions::present ),
+			reinterpret_cast<void*>( addresses::functions::resize_buffers ) );
 		if (!hooking::manager::create ({
-			{ &m_present, &present, xs ("present"), addresses::functions::present },
-			{ &m_resize_buffers, &resize_buffers, xs ("resize_buffers"), addresses::functions::resize_buffers }
+			{ &m_get_desc, &get_desc, xs ("get_desc"), addresses::functions::get_desc }
 			})) {
 			return false;
 		}
-
-		const bool preview_ready = false;
+		diag::writef(
+			diag::level::info,
+			"DXGI bootstrap hook created: target=%p len=%zu trampoline=%p",
+			m_get_desc.get_target(),
+			m_get_desc.get_original_length(),
+			m_get_desc.get_trampoline() );
 
 		const hooking::manager::entry feature_hooks[] {
 			{ &m_cmd_interpreter, &cmd_interpreter, "cmd_interpreter", PATTERN (patterns::cmd_interpreter) },
@@ -192,6 +761,7 @@ namespace hooks {
 			{ &m_is_glowing, &is_glowing, "is_glowing", PATTERN (patterns::is_glowing) },
 			{ &m_get_glow_color, &get_glow_color, "get_glow_color", PATTERN (patterns::get_glow_color) },
 			{ &m_generate_primitives, &generate_primitives, "generate_primitives", PATTERN (patterns::generate_primitives) },
+			{ &m_generate_animatable_primitives, &generate_animatable_primitives, "generate_animatable_primitives", PATTERN (patterns::generate_animatable_primitives) },
 			{ &m_parse_report_hit, &parse_report_hit, "parse_report_hit", PATTERN (patterns::parse_report_hit) },
 			{ &m_vote_start, &vote_start, "vote_start", PATTERN (patterns::vote_start) },
 			{ &m_vote_pass, &vote_pass, "vote_pass", PATTERN (patterns::vote_pass) },
@@ -234,9 +804,17 @@ namespace hooks {
 		}
 
 		features::changer::g_inspect_preview.set_available(m_frame_stage_notify.is_enabled());
-		systems::g_model_preview.set_capture_available(preview_ready && m_frame_stage_notify.is_enabled());
-        features::changer::preview_scene::set_lifecycle_observed(
+		systems::g_model_preview.set_capture_available(m_frame_stage_notify.is_enabled());
+		features::changer::preview_scene::set_lifecycle_observed(
             m_add_entity.is_enabled() && m_remove_entity.is_enabled());
+		diag::writef( diag::level::info,
+			"[hooks] generate_primitives base=%d target=%p trampoline=%p animatable=%d target=%p trampoline=%p",
+			static_cast<int>( m_generate_primitives.is_enabled( ) ),
+			reinterpret_cast<void*>( m_generate_primitives.get_target( ) ),
+			reinterpret_cast<void*>( m_generate_primitives.get_trampoline( ) ),
+			static_cast<int>( m_generate_animatable_primitives.is_enabled( ) ),
+			reinterpret_cast<void*>( m_generate_animatable_primitives.get_target( ) ),
+			reinterpret_cast<void*>( m_generate_animatable_primitives.get_trampoline( ) ) );
 
 		if (unavailable_hooks) {
 			logging::console::print (
@@ -249,7 +827,10 @@ namespace hooks {
 
 	void cheat::shutdown( )
 	{
+		detail::uninstall_swapchain_vtable( );
 		m_wnd_proc.reset( );
+		m_wnd_proc.reset( );
+		m_get_desc.reset( );
 		m_present.reset( );
 		m_resize_buffers.reset( );
 		m_cmd_interpreter.reset( );
@@ -266,6 +847,7 @@ namespace hooks {
 		m_is_glowing.reset( );
 		m_get_glow_color.reset( );
 		m_generate_primitives.reset( );
+		m_generate_animatable_primitives.reset( );
 		m_preview_resource_view.reset( );
 		systems::g_model_preview.set_capture_available(false);
 		m_parse_report_hit.reset( );
@@ -305,35 +887,40 @@ namespace hooks {
 		detail::reset_fullbright_shadows( );
 	}
 
+	HRESULT __fastcall cheat::get_desc( IDXGISwapChain* thisptr, DXGI_SWAP_CHAIN_DESC* desc )
+	{
+		diag::exception_scope scope{ "get_desc" };
+		const auto result = m_get_desc.call<HRESULT>( thisptr, desc );
+		if ( SUCCEEDED( result ) )
+		{
+			detail::install_swapchain_vtable( thisptr );
+		}
+		return result;
+	}
+
+	namespace detail { void autosave_setting_changes( ); }
+
 	HRESULT __fastcall cheat::present( IDXGISwapChain* thisptr, UINT sync_interval, UINT flags )
 	{
 		diag::exception_scope scope{ "present" };
-		if ( lifecycle::is_unloading( ) )
+		const std::lock_guard lock( detail::g_swapchain_mutex );
+		if ( lifecycle::is_unloading( ) || !thisptr || !detail::g_original_present )
 		{
-			return m_present.call<HRESULT>( thisptr, sync_interval, flags );
+			return detail::g_original_present
+				? detail::g_original_present( thisptr, sync_interval, flags )
+				: E_FAIL;
 		}
 
-		static auto last_sub_check = std::chrono::steady_clock::now( );
-		const auto now = std::chrono::steady_clock::now( );
-		if ( now - last_sub_check >= std::chrono::seconds( 60 ) )
-		{
-			last_sub_check = now;
-			if ( loader_session::check_access( ) != loader_session::access_status::granted )
-			{
-				diag::write( diag::level::info, "subscription expired during present, requesting unload" );
-				lifecycle::request_unload( );
-				return m_present.call<HRESULT>( thisptr, sync_interval, flags );
-			}
-		}
-
+		// Render overlays before the real Present. The real Present must run on
+		// every frame: returning S_OK without calling it breaks DXGI frame
+		// pacing and leaves CS2 waiting on a frame that was never submitted.
 		rendering::g_context.on_present( thisptr );
+		detail::autosave_setting_changes( );
 		features::misc::g_auto_accept.run( );
 
 		if ( !memory::safe_read<std::uintptr_t>( addresses::globals::local_player_controller ).value_or( 0 ) )
 		{
 			const auto configured = settings::g_changer.music.id;
-			// Retrying publication is cheap and does not restart a successfully
-			// dispatched selection. Missing definitions are retried next frame.
 			trigger_lobby_music( configured > 0 && configured < 0xffff
 				? static_cast<std::uint16_t>( configured ) : 0 );
 		}
@@ -346,20 +933,24 @@ namespace hooks {
 			}
 		}
 
-		return m_present.call<HRESULT>( thisptr, sync_interval, flags );
+		return detail::g_original_present( thisptr, sync_interval, flags );
 	}
+
 
 	HRESULT __fastcall cheat::resize_buffers( IDXGISwapChain* thisptr, UINT buffer_count, UINT width, UINT height, DXGI_FORMAT new_format, UINT swap_chain_flags )
 	{
-		if ( lifecycle::is_unloading( ) )
+		const std::lock_guard lock( detail::g_swapchain_mutex );
+		if ( lifecycle::is_unloading( ) || !thisptr || !detail::g_original_resize_buffers )
 		{
-			return m_resize_buffers.call<long>( thisptr, buffer_count, width, height, new_format, swap_chain_flags );
+			return detail::g_original_resize_buffers
+				? detail::g_original_resize_buffers( thisptr, buffer_count, width, height, new_format, swap_chain_flags )
+				: E_FAIL;
 		}
 
 		systems::g_model_preview.reset();
 		rendering::g_context.on_resize_buffers( );
 
-		const auto result = m_resize_buffers.call<long>( thisptr, buffer_count, width, height, new_format, swap_chain_flags );
+		const auto result = detail::g_original_resize_buffers( thisptr, buffer_count, width, height, new_format, swap_chain_flags );
 		if ( SUCCEEDED( result ) )
 		{
 			rendering::g_context.on_resize_buffers_post( thisptr );
@@ -549,9 +1140,34 @@ namespace hooks {
 		}
 
 		m_was_connected = true;
-		if ( systems::g_entities.is_empty( ) )
+		// The AddEntity callback can miss entities that were created before it
+		// went live, and a stale cache never heals on its own: get_by_type(player)
+		// then stays empty for the whole session, which leaves reveal radar with
+		// "controllers=0" and every controller-driven feature dead. Rebuild from
+		// the entity list whenever the player entries are missing.
 		{
-			systems::g_entities.force_update( );
+			const auto missing_players =
+				systems::g_entities.count_of( systems::entities::type::player ) == 0;
+			if ( systems::g_entities.is_empty( ) || missing_players )
+			{
+				static auto next_rebuild = std::chrono::steady_clock::time_point{};
+				static auto next_report = std::chrono::steady_clock::time_point{};
+				const auto now = std::chrono::steady_clock::now( );
+				if ( systems::g_entities.is_empty( ) || now >= next_rebuild )
+				{
+					next_rebuild = now + std::chrono::seconds( 2 );
+					systems::g_entities.force_update( );
+					if ( now >= next_report )
+					{
+						next_report = now + std::chrono::seconds( 5 );
+						diag::writef( diag::level::warning,
+							"[entities] rebuild players=%zu items=%zu projectiles=%zu",
+							systems::g_entities.count_of( systems::entities::type::player ),
+							systems::g_entities.count_of( systems::entities::type::item ),
+							systems::g_entities.count_of( systems::entities::type::projectile ) );
+					}
+				}
+			}
 		}
 		systems::g_local.update( );
 
@@ -601,12 +1217,28 @@ namespace hooks {
 			features::world::g_smoke.on_frame_stage_notify( );
 		}
 
+		// Some client builds clear EntitySpottedState while dispatching the
+		// network-stage callback. Publish once before and once after the original
+		// callback so radar reveal is not dependent on that ordering detail.
+		if ( stage == 6 || stage == 7 )
+		{
+			features::misc::g_other.do_reveal_radar( );
+		}
+
 		m_frame_stage_notify.call<void>( thisptr, stage );
 
 		// The original callback may itself trigger LevelShutdown.
 		if ( is_level_shutting_down( ) )
 		{
 			return;
+		}
+
+		// Radar state is consumed after the network update. Refresh it on both
+		// update stages so the engine cannot immediately clear the spotted bit,
+		// and do it independently of the camera/HUD feature pass.
+		if ( stage == 6 || stage == 7 )
+		{
+			features::misc::g_other.do_reveal_radar( );
 		}
 
 		// One cosmetic pass after render-start has committed the network/model state.
@@ -639,8 +1271,6 @@ namespace hooks {
 			features::world::g_smoke.on_frame_stage_notify( );
 		}
 
-		// Scoreboard presence needs controllers and a HUD, not a spawned local
-		// pawn or a camera matrix (team selection / spectator mode).
 		if ( stage == 6 )
 		{
 			features::misc::g_scoreboard_weapons.on_frame_stage_notify( );
@@ -673,13 +1303,6 @@ namespace hooks {
 			return m_create_move.call<void>( thisptr, slot, active );
 		}
 
-		const auto cmd = systems::g_input.get_current_cmd( local.controller );
-		if ( cmd && systems::g_input.is_subtick_overwrite( cmd ) )
-		{
-			systems::g_input.set_weapon_select( cmd, thisptr );
-			return;
-		}
-
 		m_create_move.call<void>( thisptr, slot, active );
 
 		{
@@ -693,8 +1316,10 @@ namespace hooks {
 			return;
 		}
 
-		const auto movement_services = memory::read<std::uintptr_t>( local.pawn + SCHEMA( "C_BasePlayerPawn", "m_pMovementServices"_hash ) );
-		if ( !movement_services )
+		const auto movement_services = memory::safe_read<std::uintptr_t>( local.pawn + SCHEMA( "C_BasePlayerPawn", "m_pMovementServices"_hash ) ).value_or( 0 );
+		if ( movement_services < 0x10000ull ||
+			movement_services == ( std::numeric_limits<std::uintptr_t>::max )( ) ||
+			movement_services > 0x00007FFFFFFFFFFFull )
 		{
 			return;
 		}
@@ -782,8 +1407,9 @@ namespace hooks {
 				}
 			}
 
-			diag::set_exception_phase( "create_move: post-combat movement" );
+			diag::set_exception_phase( "create_move: duckpeek" );
 			features::combat::g_misc.duckpeek( ).on_create_move( current_cmd );
+			diag::set_exception_phase( "create_move: airstrafe" );
 			features::movement::g_test_strafer.on_create_move( current_cmd );
 			if ( trace )
 			{
@@ -872,7 +1498,7 @@ namespace hooks {
 			return;
 		}
 
-        features::changer::preview_scene::on_entity_changed(entity);
+		features::changer::preview_scene::on_entity_changed(entity);
 		systems::g_entities.on_remove_entity( entity, handle );
 
 		m_remove_entity.call<void>( thisptr, entity, handle );
@@ -944,6 +1570,14 @@ namespace hooks {
 
 	void __fastcall cheat::draw_scene_object_array( std::uintptr_t thisptr, std::uintptr_t a2, std::uintptr_t object_array )
 	{
+		static std::atomic_bool first_draw_array_call{};
+		if ( !first_draw_array_call.exchange( true, std::memory_order_relaxed ) )
+		{
+			diag::writef( diag::level::info,
+				"[chams-hook] draw_scene_object_array first call this=%p array=%p",
+				reinterpret_cast<void*>( thisptr ), reinterpret_cast<void*>( object_array ) );
+		}
+
 		m_draw_scene_object_array.call<void>( thisptr, a2, object_array );
 
 		if ( lifecycle::is_unloading( ) || !object_array || !settings::g_world.m_scene.world_setting.value )
@@ -962,7 +1596,7 @@ namespace hooks {
 			{
 				for ( int i = 0; i < count; ++i )
 				{
-					const auto address = batch + static_cast<std::size_t>( i ) * 0x70 + 0x50;
+					const auto address = batch + static_cast<std::size_t>( i ) * 0x50 + 0x28;
 					out[ i ] = { address, *reinterpret_cast<const std::uint32_t*>( address ) };
 				}
 				return true;
@@ -986,15 +1620,113 @@ namespace hooks {
 			{
 			}
 		}
+
+		// The menu writes settings on this same (render) thread and there is no
+		// central "changed" callback, so a throttled fingerprint scan stands in
+		// for one. Without it a toggle only lived in memory: the profile on disk
+		// kept its old values, so the next injection silently restored them.
+		// The write waits for the edits to settle, because a slider drag would
+		// otherwise rewrite the whole profile on every tick.
+		inline void autosave_setting_changes( )
+		{
+			static bool seeded{ false };
+			static bool pending{ false };
+			static std::uint64_t baseline{};
+			static auto next_check = std::chrono::steady_clock::now( );
+			static auto next_write = std::chrono::steady_clock::time_point{};
+			const auto now = std::chrono::steady_clock::now( );
+			if ( seeded && now < next_check )
+			{
+				return;
+			}
+			next_check = now + std::chrono::seconds( 2 );
+
+			const auto current = config::registry::fingerprint( );
+			if ( !seeded )
+			{
+				seeded = true;
+				baseline = current;
+				return;
+			}
+
+			const bool changed = current != baseline;
+			if ( changed )
+			{
+				baseline = current;
+			}
+
+			// A slider drag produces a new fingerprint every tick, so wait for a
+			// quiet tick before writing. The rate limit keeps a setting that some
+			// feature rewrites continuously from postponing the write forever.
+			if ( changed && now < next_write )
+			{
+				pending = true;
+				return;
+			}
+			if ( !changed && !pending )
+			{
+				return;
+			}
+
+			pending = false;
+			if ( config::registry::save_active( ) )
+			{
+				next_write = now + std::chrono::seconds( 15 );
+				diag::writef( diag::level::debug, "[config] settings saved to the active profile" );
+			}
+		}
 	} // namespace detail
 
 	std::uintptr_t __fastcall cheat::draw_scene_object( std::uintptr_t a1, std::uintptr_t a2, std::uintptr_t batch, int batch_count, int a5, std::uintptr_t a6, std::uintptr_t a7, std::uintptr_t a8 )
 	{
+		static std::atomic_bool first_draw_call{};
+		if ( !first_draw_call.exchange( true, std::memory_order_relaxed ) )
+		{
+			diag::writef( diag::level::info,
+				"[chams-hook] draw_scene_object first call a1=%p a2=%p batch=%p count=%d",
+				reinterpret_cast<void*>( a1 ), reinterpret_cast<void*>( a2 ),
+				reinterpret_cast<void*>( batch ), batch_count );
+		}
+
 		const auto& scene = settings::g_world.m_scene;
 		const bool tint_active = ( scene.fullbright.value || scene.world_setting.value || scene.skybox.custom_color.value ||
 			settings::g_misc.m_smoke_and_fire_color.custom_molotov.value );
+		const auto& player_chams = settings::g_esp.m_player.m_chams;
+		const bool player_chams_requested = player_chams.enemy.enabled.value || player_chams.team.enabled.value ||
+			player_chams.local.enabled.value || player_chams.enemy_ragdoll.enabled.value ||
+			player_chams.team_ragdoll.enabled.value || player_chams.local_ragdoll.enabled.value;
+		// Never rewrite DrawSceneObject's transient mesh batch as a fallback. The
+		// batch layout is not a stable player-primitive interface; repeated owner
+		// probing and temporary mutation here can cause bad overlays, frame drops,
+		// and render crashes.
+		static std::atomic_bool chams_hook_warning_reported{};
+		if ( player_chams_requested &&
+			!detail::g_generate_primitives_player_chams_applied.load( std::memory_order_relaxed ) &&
+			!chams_hook_warning_reported.exchange( true, std::memory_order_relaxed ) )
+		{
+			diag::writef( diag::level::warning,
+				"[chams] player chams not applied: GeneratePrimitives has not confirmed a player draw; DrawSceneObject batch fallback is disabled" );
+		}
+		const auto local_pawn_for_state = systems::g_local.get( ).view_pawn( );
+		const auto chams_state = ( player_chams.enemy.enabled.value ? 1u : 0u ) |
+			( player_chams.team.enabled.value ? 1u << 1 : 0u ) |
+			( player_chams.local.enabled.value ? 1u << 2 : 0u ) |
+			( player_chams.enemy_ragdoll.enabled.value ? 1u << 3 : 0u ) |
+			( player_chams.team_ragdoll.enabled.value ? 1u << 4 : 0u ) |
+			( player_chams.local_ragdoll.enabled.value ? 1u << 5 : 0u ) |
+			( local_pawn_for_state ? 1u << 6 : 0u );
+		static std::atomic_uint32_t last_chams_state{ ( std::numeric_limits<std::uint32_t>::max )( ) };
+		if ( last_chams_state.exchange( chams_state, std::memory_order_relaxed ) != chams_state )
+		{
+			detail::g_generate_primitives_player_chams_applied.store( false, std::memory_order_relaxed );
+			diag::writef( diag::level::info,
+				"[chams-state] enabled-mask=0x%02X local-pawn=%p generate-hook=%d",
+				chams_state, reinterpret_cast<void*>( local_pawn_for_state ),
+				static_cast<int>( m_generate_primitives.is_enabled( ) || m_generate_animatable_primitives.is_enabled( ) ) );
+		}
 
-		if ( lifecycle::is_unloading( ) || !batch || batch_count <= 0 || batch_count > ( 1 << 16 ) || !tint_active )
+		if ( lifecycle::is_unloading( ) || !batch || batch_count <= 0 || batch_count > ( 1 << 16 ) ||
+			!tint_active )
 		{
 			return m_draw_scene_object.call<std::uintptr_t>( a1, a2, batch, batch_count, a5, a6, a7, a8 );
 		}
@@ -1011,7 +1743,7 @@ namespace hooks {
 		}
 
 		bool tinted = false;
-		if ( detail::read_batch_colors( batch, batch_count, colors_data ) )
+		if ( tint_active && detail::read_batch_colors( batch, batch_count, colors_data ) )
 		{
 			diag::exception_scope exception_scope{ "world: primitive tint" };
 			features::world::g_scene.on_draw_scene_object( batch, batch_count );
@@ -1129,50 +1861,104 @@ namespace hooks {
         return srv;
     }
 
-	void __fastcall cheat::generate_primitives( std::uintptr_t thisptr, std::uintptr_t scene_object, std::uintptr_t scene_view, std::uintptr_t primitive_buffer )
+	namespace detail
 	{
-		if ( lifecycle::is_unloading( ) || is_level_shutting_down( ) )
+		std::uintptr_t handle_generate_primitives(
+			generate_primitives_fn original_fn,
+			bool animatable,
+			std::uintptr_t target,
+			std::uintptr_t desc,
+			std::uintptr_t object,
+			std::uintptr_t a3,
+			std::uintptr_t render_buffer )
 		{
-			m_generate_primitives.call<void>( thisptr, scene_object, scene_view, primitive_buffer );
-			return;
-		}
+			if ( !original_fn )
+				return 0;
 
-		if ( scene_object )
-		{
-			if ( features::esp::player::g_chams.bt( ).is_active( scene_object ) )
+			static std::atomic_bool first_base_generate_call{};
+			static std::atomic_bool first_animatable_generate_call{};
+			auto& first_generate_call = animatable
+				? first_animatable_generate_call : first_base_generate_call;
+			if ( !first_generate_call.exchange( true, std::memory_order_relaxed ) )
 			{
-				return;
+				diag::writef( diag::level::info,
+					"[chams-hook] GeneratePrimitives first call hook=%s target=%p desc=%p object=%p a3=%p buffer=%p",
+					animatable ? "animatable" : "base", reinterpret_cast<void*>( target ), reinterpret_cast<void*>( desc ),
+					reinterpret_cast<void*>( object ), reinterpret_cast<void*>( a3 ),
+					reinterpret_cast<void*>( render_buffer ) );
 			}
 
-			// Hit highlighting uses the victim's actual scene object, not a clone.
-			const auto owner_handle = memory::safe_read<std::uint32_t>( scene_object + 0xc0 ).value_or( 0 );
-			if ( owner_handle )
+			if ( lifecycle::is_unloading( ) || cheat::is_level_shutting_down( ) )
+				return original_fn( desc, object, a3, render_buffer );
+
+			const bool render_chams_active = any_render_chams_active( );
+			const bool preview_pose_active = systems::g_model_preview.wants_agent_pose( );
+			if ( object && ( render_chams_active || preview_pose_active ) )
 			{
-				const auto owner_entity = systems::g_entities.lookup( owner_handle );
-				if ( owner_entity )
+				if ( render_chams_active && settings::g_esp.m_player.m_chams.backtrack.enabled.value &&
+					features::esp::player::g_chams.bt( ).is_active( object ) )
+					return 0;
+
+				const auto owner = resolve_render_owner( object );
+				if ( owner.entity && owner.schema_hash )
 				{
-					const auto schema_name = systems::g_entities.get_schema_name( owner_entity );
-					if ( schema_name )
+					const auto owner_hash = owner.schema_hash;
+					if ( preview_pose_active && owner_hash == "C_CSGO_PreviewPlayer"_hash )
 					{
-						const auto owner_hash = fnv1a::runtime_hash( schema_name );
-						if ( owner_hash )
+						systems::g_model_preview.capture_agent_pose( owner.entity );
+					}
+
+					if ( render_chams_active )
+					{
+						auto* generate_state = g_generate_primitives_state.get( );
+						if ( generate_state )
 						{
-							if ( features::esp::player::g_chams.on_generate_primitives( owner_entity, owner_hash, scene_object, primitive_buffer, m_generate_primitives.original<void( __fastcall* )( std::uintptr_t, std::uintptr_t, std::uintptr_t, std::uintptr_t )>( ), thisptr, scene_view ) )
+							generate_state->original = original_fn;
+							generate_state->result = 0;
+							if ( features::esp::player::g_chams.on_generate_primitives(
+								owner.entity, owner_hash, object, render_buffer,
+								&call_generate_primitives_original, desc, a3 ) )
 							{
-								return;
+								if ( is_player_pawn_hash( owner_hash ) )
+									g_generate_primitives_player_chams_applied.store( true, std::memory_order_relaxed );
+								const auto result = generate_state->result;
+								generate_state->original = nullptr;
+								return result;
 							}
 
-							if ( features::esp::item::g_chams.on_generate_primitives( owner_entity, owner_hash, scene_object, primitive_buffer, m_generate_primitives.original<void( __fastcall* )( std::uintptr_t, std::uintptr_t, std::uintptr_t, std::uintptr_t )>( ), thisptr, scene_view ) )
+							generate_state->result = 0;
+							if ( features::esp::item::g_chams.on_generate_primitives(
+								owner.entity, owner_hash, object, render_buffer,
+								&call_generate_primitives_original, desc, a3 ) )
 							{
-								return;
+								const auto result = generate_state->result;
+								generate_state->original = nullptr;
+								return result;
 							}
+							generate_state->original = nullptr;
 						}
 					}
 				}
 			}
-		}
 
-		m_generate_primitives.call<void>( thisptr, scene_object, scene_view, primitive_buffer );
+			return original_fn( desc, object, a3, render_buffer );
+		}
+	}
+
+	std::uintptr_t __fastcall cheat::generate_primitives( std::uintptr_t desc, std::uintptr_t object, std::uintptr_t a3, std::uintptr_t render_buffer )
+	{
+		return detail::handle_generate_primitives(
+			m_generate_primitives.original<detail::generate_primitives_fn>( ),
+			false, reinterpret_cast<std::uintptr_t>( m_generate_primitives.get_target( ) ),
+			desc, object, a3, render_buffer );
+	}
+
+	std::uintptr_t __fastcall cheat::generate_animatable_primitives( std::uintptr_t desc, std::uintptr_t object, std::uintptr_t a3, std::uintptr_t render_buffer )
+	{
+		return detail::handle_generate_primitives(
+			m_generate_animatable_primitives.original<detail::generate_primitives_fn>( ),
+			true, reinterpret_cast<std::uintptr_t>( m_generate_animatable_primitives.get_target( ) ),
+			desc, object, a3, render_buffer );
 	}
 
 	std::uintptr_t __fastcall cheat::parse_report_hit( std::uintptr_t thisptr, std::uint8_t deleting )
@@ -1461,6 +2247,12 @@ namespace hooks {
 	void __fastcall cheat::sort_primitives( std::uintptr_t thisptr, std::uintptr_t a2, std::uintptr_t a3, std::uint32_t a4 )
 	{
 		m_sort_primitives.call<void>( thisptr, a2, a3, a4 );
+
+		if ( lifecycle::is_unloading( ) || cheat::is_level_shutting_down( ) )
+			return;
+
+		diag::exception_scope exception_scope{ "chams: sort primitives" };
+		features::esp::player::g_chams.on_sort_primitives( a3, a4 );
 	}
 
 	float __fastcall cheat::get_inaccuracy( std::uintptr_t thisptr, float* a2, float* a3 )
@@ -1557,6 +2349,7 @@ namespace hooks {
 
 		features::changer::preview_scene::reset( );
 		features::changer::preview_item::reset( );
+		detail::g_generate_primitives_player_chams_applied.store( false, std::memory_order_relaxed );
 		// Stop publishing the old level before entering engine destructors.
 		systems::g_local.reset( );
 		systems::g_view.reset( );
@@ -1733,59 +2526,30 @@ namespace hooks {
 
 	char __fastcall cheat::set_info( std::uintptr_t rcx, std::uintptr_t a2 )
 	{
-		if ( lifecycle::is_unloading( ) )
+		if ( !lifecycle::is_unloading( ) )
 		{
-			return m_set_info.call<char>( rcx, a2 );
-		}
-
-		const auto& cfg = settings::g_misc.m_name_changer;
-		const auto should_override = cfg.clantag.value || cfg.override_name.value || features::misc::other::s_name_change_pending || !features::misc::other::s_display_name.empty();
-		if ( should_override && a2 )
-		{
-			const auto arg_list = memory::safe_read<std::uintptr_t>( a2 + 0x440 ).value_or( 0 );
-			const auto key = arg_list
-				? memory::safe_read<const char*>( arg_list + 0x8 ).value_or( nullptr )
-				: nullptr;
-
-			if ( key && _stricmp( key, "name" ) == 0 )
+			const auto& cfg = settings::g_misc.m_name_changer;
+			const auto should_override = cfg.clantag.value || cfg.override_name.value ||
+				cfg.anim_nickname.value || features::misc::other::s_name_change_pending;
+			if ( should_override && addresses::globals::cvar )
 			{
-				constexpr std::uint64_t fcvar_protected = 1ull << 5;
-				constexpr std::uint64_t fcvar_userinfo = 1ull << 9;
-				constexpr std::uint64_t fcvar_registry_restricted = 1ull << 10;
-
-				if ( addresses::globals::cvar )
+				if ( const auto name_cvar = addresses::globals::cvar->find( "name"_hash ) )
 				{
-					if ( const auto name_cvar = addresses::globals::cvar->find( "name"_hash ) )
+					constexpr std::uint64_t fcvar_protected = 1ull << 5;
+					constexpr std::uint64_t fcvar_userinfo = 1ull << 9;
+					constexpr std::uint64_t fcvar_registry_restricted = 1ull << 10;
+					const auto flags_address = reinterpret_cast<std::uintptr_t>( name_cvar ) + offsetof( c_convar, m_flags );
+					if ( const auto flags = memory::safe_read<std::uint64_t>( flags_address ) )
 					{
-						const auto flags_address = reinterpret_cast<std::uintptr_t>( name_cvar ) + offsetof( c_convar, m_flags );
-						if ( const auto flags = memory::safe_read<std::uint64_t>( flags_address ) )
-						{
-							static_cast<void>( memory::safe_write<std::uint64_t>( flags_address,
-								( *flags | fcvar_userinfo ) & ~( fcvar_protected | fcvar_registry_restricted ) ) );
-						}
+						(void)memory::safe_write<std::uint64_t>( flags_address,
+							( *flags | fcvar_userinfo ) & ~( fcvar_protected | fcvar_registry_restricted ) );
 					}
 				}
-
-				static char s_display_name_buf[ 256 ]{};
-				std::string final_name = features::misc::other::s_display_name;
-				if ( final_name.empty( ) || final_name == "x" )
-				{
-					if ( const auto* steam_p = steam::friends::get_persona_name( ); steam_p && *steam_p && std::strcmp( steam_p, "x" ) != 0 )
-					{
-						final_name = steam_p;
-					}
-				}
-
-				if ( !final_name.empty( ) && final_name != "x" )
-				{
-					std::strncpy( s_display_name_buf, final_name.c_str( ), sizeof( s_display_name_buf ) - 1 );
-					s_display_name_buf[ sizeof( s_display_name_buf ) - 1 ] = '\0';
-					static_cast<void>( memory::safe_write<const char*>( arg_list + 0x10, s_display_name_buf ) );
-				}
-				features::misc::other::s_name_change_pending = false;
 			}
 		}
 
+		// Do not inspect or rewrite a2: its layout was never verified, and the
+		// old guessed pointer write corrupted the engine's KeyValues lookup.
 		return m_set_info.call<char>( rcx, a2 );
 	}
 

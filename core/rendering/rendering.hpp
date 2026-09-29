@@ -41,6 +41,7 @@ namespace rendering {
             {
                 this->m_search_open = false;
                 this->m_user_popup_open = false;
+                this->m_config_popup_open = false;
             }
         }
         [[nodiscard]] bool is_open() const { return this->m_open; }
@@ -51,13 +52,15 @@ namespace rendering {
         void reset_user_avatar();
         enum class tab : int
         {
-            ragebot, legitbot, movement, visuals, skins, misc, config, count
+            ragebot, legitbot, movement, visuals, skins, misc, count
         };
         static constexpr float k_sidebar_w = tokens::sidebar_w;
+        static constexpr float k_panel_header_h{ 22.0f };
     private:
         bool draw_intro();
         void draw_side_bar(float h); // Оставляем один аргумент
         void draw_top_bar(float w);
+        void draw_config_shortcut(float x, float y, float w, float h, bool interactive);
         void try_load_user_avatar();
         void sync_theme_style() const;
         void draw_search_results(float x, float y, float w, float h);
@@ -78,11 +81,13 @@ namespace rendering {
         void draw_skins(float group_w);
         void draw_skins_browser(float group_w) const;
         void draw_misc(float group_w) const;
-        void draw_config(float group_w);
+        // Section header above a panel: bold title only.
+        void draw_column_header(float x, const char* title) const;
+        // Config profiles are no longer a tab: the single list lives in the top bar
+        // and opens this dropdown panel with the full profile manager.
+        void draw_config_dropdown();
         bool m_open{ true };
-        bool m_config_modal_open{};
-        bool m_config_cloud_refresh_pending{};
-        bool m_config_advanced_open{};
+        bool m_config_popup_open{};
         bool m_last_open{ true };
         float m_open_anim{ 1.0f };
         std::uint8_t m_saved_relative_mouse{};
@@ -94,8 +99,8 @@ namespace rendering {
         bool m_binding_menu_key{ false };
         float m_x{ 100.0f };
         float m_y{ 100.0f };
-        float m_w{ 920.0f };
-        float m_h{ 680.0f };
+        float m_w{ 1000.0f };
+        float m_h{ 620.0f };
         float m_body_x{};
         float m_body_y{};
         float m_body_w{};
@@ -170,8 +175,7 @@ namespace rendering {
             { { "general" }, 1 },
             { { "enemy", "team", "local" }, 3 },
             { { "guns", "knives", "gloves", "agents", "music" }, 5 },
-            { { "main", "view", "hud", "effects" }, 4 },
-            { { "general" }, 1 }
+            { { "main", "view", "hud", "effects" }, 4 }
         };
     };
     class widgets

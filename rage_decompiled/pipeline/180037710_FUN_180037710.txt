@@ -1,0 +1,20 @@
+// function: FUN_180037710
+// ea: 180037710
+// category: pipeline
+// depth: 1, via: FUN_180087f70 @18008828f
+// size: 26 bytes
+// anchors: pipeline
+// ----------------------------------------------------
+
+void FUN_180037710(longlong param_1,longlong param_2)
+
+{
+  if (param_2 != 0) {
+    *(ulonglong *)(param_1 + 0x20) = (ulonglong)((uint)*(undefined8 *)(param_2 + 0x60) & 0x618);
+    return;
+  }
+  *(undefined8 *)(param_1 + 0x20) = 0;
+  return;
+}
+
+

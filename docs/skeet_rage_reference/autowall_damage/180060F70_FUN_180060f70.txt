@@ -1,0 +1,190 @@
+// function: FUN_180060f70
+// ea: 180060f70
+// category: autowall_damage
+// depth: 1, via: FUN_180044dc0 @180047e7d
+// size: 1052 bytes
+// anchors: autowall_damage, hitbox_backtrack
+// ----------------------------------------------------
+
+undefined8 * FUN_180060f70(undefined8 *param_1,undefined8 *param_2,int *param_3)
+
+{
+  undefined8 *puVar1;
+  byte bVar2;
+  undefined1 uVar3;
+  undefined2 uVar4;
+  undefined4 uVar5;
+  int iVar6;
+  int iVar7;
+  int iVar8;
+  undefined8 uVar9;
+  undefined4 uVar10;
+  undefined8 uVar11;
+  undefined8 uVar12;
+  undefined8 uVar13;
+  undefined8 uVar14;
+  undefined8 uVar15;
+  undefined8 uVar16;
+  undefined8 *puVar17;
+  undefined8 *puVar18;
+  int iVar19;
+  int iVar20;
+  int iVar21;
+  undefined8 *puVar22;
+  undefined4 local_68;
+  undefined4 uStack_64;
+  undefined4 uStack_60;
+  
+  if ((param_1 != param_2) && (puVar1 = param_1 + 8, puVar1 != param_2)) {
+    puVar18 = puVar1;
+    puVar22 = param_1;
+    do {
+      puVar17 = puVar18;
+      uVar9 = *puVar17;
+      uVar5 = *(undefined4 *)(puVar17 + 1);
+      iVar6 = *(int *)((longlong)puVar22 + 0x4c);
+      uVar11 = puVar22[10];
+      uVar12 = puVar22[0xb];
+      uStack_60 = (undefined4)puVar22[0xd];
+      puVar18 = (undefined8 *)((longlong)puVar22 + 0x6c);
+      uVar10 = *(undefined4 *)puVar18;
+      uVar15 = *puVar18;
+      uVar13 = *puVar18;
+      uVar16 = *(undefined8 *)((longlong)puVar22 + 0x74);
+      uVar14 = *(undefined8 *)((longlong)puVar22 + 0x74);
+      bVar2 = *(byte *)((longlong)puVar22 + 0x7c);
+      uVar3 = *(undefined1 *)((longlong)puVar22 + 0x7f);
+      uVar4 = *(undefined2 *)((longlong)puVar22 + 0x7d);
+      iVar7 = *param_3;
+      iVar21 = 1;
+      iVar19 = 1;
+      if (iVar6 != 3) {
+        if (iVar6 == 0) {
+          iVar19 = ((byte)~bVar2 & 1) * 2;
+        }
+        else {
+          iVar19 = 9;
+          if (iVar6 - 7U < 6) {
+            iVar19 = ((iVar6 - iVar7) + 6) % 6 + 3;
+          }
+        }
+      }
+      iVar8 = *(int *)((longlong)param_1 + 0xc);
+      if (iVar8 != 3) {
+        if (iVar8 == 0) {
+          iVar21 = ((byte)~*(byte *)((longlong)param_1 + 0x3c) & 1) * 2;
+        }
+        else {
+          iVar21 = 9;
+          if (iVar8 - 7U < 6) {
+            iVar21 = ((iVar8 - iVar7) + 6) % 6 + 3;
+          }
+        }
+      }
+      local_68 = (undefined4)puVar22[0xc];
+      uStack_64 = (undefined4)((ulonglong)puVar22[0xc] >> 0x20);
+      if (iVar19 < iVar21) {
+        FUN_18023b1d0(puVar1,param_1,(longlong)puVar17 - (longlong)param_1);
+        *param_1 = uVar9;
+        *(undefined4 *)(param_1 + 1) = uVar5;
+        *(int *)((longlong)param_1 + 0xc) = iVar6;
+        param_1[2] = uVar11;
+        param_1[3] = uVar12;
+        *(undefined4 *)(param_1 + 4) = local_68;
+        *(undefined4 *)((longlong)param_1 + 0x24) = uStack_64;
+        *(undefined4 *)(param_1 + 5) = uStack_60;
+        *(undefined4 *)((longlong)param_1 + 0x2c) = uVar10;
+        *(undefined8 *)((longlong)param_1 + 0x2c) = uVar13;
+        *(undefined8 *)((longlong)param_1 + 0x34) = uVar14;
+        puVar18 = param_1;
+      }
+      else {
+        iVar19 = ((byte)~bVar2 & 1) * 2;
+        puVar18 = puVar17;
+        if (iVar6 - 7U < 6) {
+          while( true ) {
+            iVar21 = 1;
+            if ((iVar6 != 3) && (iVar21 = iVar19, iVar6 != 0)) {
+              iVar21 = ((iVar6 + 6) - iVar7) % 6 + 3;
+            }
+            iVar20 = 1;
+            iVar8 = *(int *)((longlong)puVar18 + -0x34);
+            if (iVar8 != 3) {
+              if (iVar8 == 0) {
+                iVar20 = ((byte)~*(byte *)((longlong)puVar18 + -4) & 1) * 2;
+              }
+              else {
+                iVar20 = 9;
+                if (iVar8 - 7U < 6) {
+                  iVar20 = ((iVar8 - iVar7) + 6) % 6 + 3;
+                }
+              }
+            }
+            if (iVar20 <= iVar21) break;
+            puVar18[6] = puVar18[-2];
+            puVar18[7] = puVar18[-1];
+            puVar18[4] = puVar18[-4];
+            puVar18[5] = puVar18[-3];
+            puVar18[2] = puVar18[-6];
+            puVar18[3] = puVar18[-5];
+            *puVar18 = puVar18[-8];
+            puVar18[1] = puVar18[-7];
+            iVar7 = *param_3;
+            puVar18 = puVar18 + -8;
+          }
+        }
+        else {
+          while( true ) {
+            iVar21 = 1;
+            if ((iVar6 != 3) && (iVar21 = iVar19, iVar6 != 0)) {
+              iVar21 = 9;
+            }
+            iVar20 = 1;
+            iVar8 = *(int *)((longlong)puVar18 + -0x34);
+            if (iVar8 != 3) {
+              if (iVar8 == 0) {
+                iVar20 = ((byte)~*(byte *)((longlong)puVar18 + -4) & 1) * 2;
+              }
+              else {
+                iVar20 = 9;
+                if (iVar8 - 7U < 6) {
+                  iVar20 = ((iVar8 - iVar7) + 6) % 6 + 3;
+                }
+              }
+            }
+            if (iVar20 <= iVar21) break;
+            puVar18[6] = puVar18[-2];
+            puVar18[7] = puVar18[-1];
+            puVar18[4] = puVar18[-4];
+            puVar18[5] = puVar18[-3];
+            puVar18[2] = puVar18[-6];
+            puVar18[3] = puVar18[-5];
+            *puVar18 = puVar18[-8];
+            puVar18[1] = puVar18[-7];
+            iVar7 = *param_3;
+            puVar18 = puVar18 + -8;
+          }
+        }
+        *(undefined4 *)(puVar18 + 1) = uVar5;
+        *puVar18 = uVar9;
+        *(int *)((longlong)puVar18 + 0xc) = iVar6;
+        puVar18[2] = uVar11;
+        puVar18[3] = uVar12;
+        *(undefined4 *)(puVar18 + 4) = local_68;
+        *(undefined4 *)((longlong)puVar18 + 0x24) = uStack_64;
+        *(undefined4 *)(puVar18 + 5) = uStack_60;
+        *(undefined4 *)((longlong)puVar18 + 0x2c) = uVar10;
+        *(undefined8 *)((longlong)puVar18 + 0x2c) = uVar15;
+        *(undefined8 *)((longlong)puVar18 + 0x34) = uVar16;
+      }
+      *(byte *)((longlong)puVar18 + 0x3c) = bVar2;
+      *(undefined1 *)((longlong)puVar18 + 0x3f) = uVar3;
+      *(undefined2 *)((longlong)puVar18 + 0x3d) = uVar4;
+      puVar18 = puVar17 + 8;
+      puVar22 = puVar17;
+    } while (puVar17 + 8 != param_2);
+  }
+  return param_2;
+}
+
+

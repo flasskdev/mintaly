@@ -1,0 +1,45 @@
+// function: FUN_18006aee0
+// ea: 18006aee0
+// category: pipeline
+// depth: 1, via: FUN_180039560 @180039f76
+// size: 162 bytes
+// anchors: pipeline, autowall_damage
+// ----------------------------------------------------
+
+undefined8 * FUN_18006aee0(longlong param_1,undefined8 *param_2)
+
+{
+  int *piVar1;
+  int *piVar2;
+  int iVar3;
+  longlong lVar4;
+  longlong lVar5;
+  longlong local_40;
+  byte local_38;
+  code *local_30;
+  byte local_28;
+  
+  *param_2 = 0;
+  *(undefined4 *)(param_2 + 1) = 0;
+  lVar4 = *(longlong *)(param_1 + 8);
+  if (lVar4 != 0) {
+    lVar5 = *(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8);
+    piVar1 = (int *)(lVar5 + 4);
+    piVar2 = (int *)(lVar5 + 4);
+    *piVar2 = *piVar2 + 1;
+    FUN_180019fe0(&local_40,lVar4);
+    iVar3 = *piVar1;
+    *piVar1 = iVar3 + -1;
+    if (((local_38 & 1) != 0) && (local_40 != 0)) {
+      *piVar1 = iVar3;
+      FUN_180019fe0(&local_30,local_40 + 0x100);
+      *piVar1 = *piVar1 + -1;
+      if (((local_28 & 1) != 0) && (local_30 != (code *)0x0)) {
+        (*local_30)(lVar4,param_2);
+      }
+    }
+  }
+  return param_2;
+}
+
+

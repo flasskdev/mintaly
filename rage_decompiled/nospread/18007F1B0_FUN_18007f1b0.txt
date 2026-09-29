@@ -1,0 +1,31 @@
+// function: FUN_18007f1b0
+// ea: 18007f1b0
+// category: nospread
+// depth: 3, via: FUN_18007ea00 @18007eb0a
+// size: 63 bytes
+// anchors: nospread, trace_geometry, hitbox_backtrack
+// ----------------------------------------------------
+
+uint FUN_18007f1b0(char *param_1)
+
+{
+  uint uVar1;
+  char cVar2;
+  
+  if (param_1 == (char *)0x0) {
+    return 0;
+  }
+  cVar2 = *param_1;
+  if (cVar2 != '\0') {
+    uVar1 = 0x811c9dc5;
+    do {
+      param_1 = param_1 + 1;
+      uVar1 = ((int)cVar2 ^ uVar1) * 0x1000193;
+      cVar2 = *param_1;
+    } while (cVar2 != '\0');
+    return uVar1;
+  }
+  return 0x811c9dc5;
+}
+
+

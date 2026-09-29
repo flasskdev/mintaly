@@ -1,0 +1,101 @@
+// function: FUN_18001bd70
+// ea: 18001bd70
+// category: nospread
+// depth: 3, via: FUN_180019ff0 @18001b111
+// size: 1034 bytes
+// anchors: nospread, trace_geometry, hitbox_backtrack
+// ----------------------------------------------------
+
+void FUN_18001bd70(longlong param_1,longlong param_2,longlong param_3,undefined4 param_4)
+
+{
+  undefined4 local_34;
+  longlong local_30 [2];
+  
+  local_34 = param_4;
+  FUN_18001d6b0(param_1 + 0x10,local_30,&local_34);
+  if ((*(char *)(local_30[0] + 0x40) != '\x01') || (*(longlong *)(local_30[0] + 0x18) != param_2)) {
+    *(undefined8 *)(local_30[0] + 0x25) = 0;
+    *(undefined8 *)(local_30[0] + 0x20) = 0;
+    *(undefined8 *)(local_30[0] + 0x30) = 0;
+    *(undefined8 *)(local_30[0] + 0x38) = 0;
+    *(undefined1 *)(local_30[0] + 0x40) = 0;
+    *(longlong *)(local_30[0] + 0x18) = param_2;
+    if (*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+                0x2638) < DAT_18047155c) {
+      FUN_180183614(&DAT_18047155c);
+      if (DAT_18047155c == -1) {
+        DAT_180471558 = FUN_180114bb0("C_EconItemView",0x373ee446);
+        _Init_thread_footer(&DAT_18047155c);
+      }
+    }
+    *(undefined4 *)(local_30[0] + 0x20) = *(undefined4 *)(DAT_180471558 + param_3);
+    if (*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+                0x2638) < DAT_180471564) {
+      FUN_180183614(&DAT_180471564);
+      if (DAT_180471564 == -1) {
+        DAT_180471560 = FUN_180114bb0("C_EconItemView",0xdf29c2c);
+        _Init_thread_footer(&DAT_180471564);
+      }
+    }
+    *(undefined4 *)(local_30[0] + 0x24) = *(undefined4 *)(DAT_180471560 + param_3);
+    if (*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+                0x2638) < DAT_18047156c) {
+      FUN_180183614(&DAT_18047156c);
+      if (DAT_18047156c == -1) {
+        DAT_180471568 = FUN_180114bb0("C_EconItemView",0xc65de986);
+        _Init_thread_footer(&DAT_18047156c);
+      }
+    }
+    *(undefined4 *)(local_30[0] + 0x28) = *(undefined4 *)(DAT_180471568 + param_3);
+    if (*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+                0x2638) < DAT_180471574) {
+      FUN_180183614(&DAT_180471574);
+      if (DAT_180471574 == -1) {
+        DAT_180471570 = FUN_180114bb0("C_EconItemView",0x710abdd);
+        _Init_thread_footer(&DAT_180471574);
+      }
+    }
+    *(undefined1 *)(local_30[0] + 0x2c) = *(undefined1 *)(DAT_180471570 + param_3);
+    if (*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+                0x2638) < DAT_18047157c) {
+      FUN_180183614(&DAT_18047157c);
+      if (DAT_18047157c == -1) {
+        DAT_180471578 = FUN_180114bb0("C_EconEntity",0xa12d48f);
+        _Init_thread_footer(&DAT_18047157c);
+      }
+    }
+    *(undefined4 *)(local_30[0] + 0x30) = *(undefined4 *)(DAT_180471578 + param_2);
+    if (*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+                0x2638) < DAT_180471584) {
+      FUN_180183614(&DAT_180471584);
+      if (DAT_180471584 == -1) {
+        DAT_180471580 = FUN_180114bb0("C_EconEntity",0xa1b165b2);
+        _Init_thread_footer(&DAT_180471584);
+      }
+    }
+    *(undefined4 *)(local_30[0] + 0x34) = *(undefined4 *)(DAT_180471580 + param_2);
+    if (*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+                0x2638) < DAT_18047158c) {
+      FUN_180183614(&DAT_18047158c);
+      if (DAT_18047158c == -1) {
+        DAT_180471588 = FUN_180114bb0("C_EconEntity",0x86253266);
+        _Init_thread_footer(&DAT_18047158c);
+      }
+    }
+    *(undefined4 *)(local_30[0] + 0x38) = *(undefined4 *)(DAT_180471588 + param_2);
+    if (*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+                0x2638) < DAT_180471594) {
+      FUN_180183614(&DAT_180471594);
+      if (DAT_180471594 == -1) {
+        DAT_180471590 = FUN_180114bb0("C_EconEntity",0x67ecc1e7);
+        _Init_thread_footer(&DAT_180471594);
+      }
+    }
+    *(undefined4 *)(local_30[0] + 0x3c) = *(undefined4 *)(DAT_180471590 + param_2);
+    *(undefined1 *)(local_30[0] + 0x40) = 1;
+  }
+  return;
+}
+
+

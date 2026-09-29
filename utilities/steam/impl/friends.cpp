@@ -16,11 +16,12 @@ namespace steam {
         return detail::friends_interface != 0;
     }
 
-    const char* friends::get_persona_name() {
-        if (!initialize()) return nullptr;
+    std::string friends::get_persona_name() {
+        if (!initialize()) return {};
         const auto fn = MODULE_EXPORT("steam_api64.dll:SteamAPI_ISteamFriends_GetPersonaName");
-        if (!fn) return nullptr;
-        return memory::safe_call<const char*>(fn, detail::friends_interface);
+        if (!fn) return {};
+        const auto* name = memory::safe_call<const char*>(fn, detail::friends_interface);
+        return name ? memory::read_string(reinterpret_cast<std::uintptr_t>(name), 127) : std::string{};
     }
 
     constexpr std::uint64_t k_steam_id_base = 76561197960265728ull;

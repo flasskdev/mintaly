@@ -1,0 +1,45 @@
+// function: FUN_18014bd00
+// ea: 18014bd00
+// category: hitchance
+// depth: 2, via: FUN_180145230 @1801461ad
+// size: 179 bytes
+// anchors: hitchance, nospread, autowall_damage
+// ----------------------------------------------------
+
+void FUN_18014bd00(void)
+
+{
+  undefined8 *puVar1;
+  undefined8 *puVar2;
+  longlong lVar3;
+  ulonglong uVar4;
+  
+  if (DAT_180495738 != 0) {
+    uVar4 = DAT_180495748 - DAT_180495738;
+    lVar3 = DAT_180495738;
+    if (0xfff < uVar4) {
+      lVar3 = *(longlong *)(DAT_180495738 + -8);
+      if (0x1f < (ulonglong)((DAT_180495738 + -8) - lVar3)) {
+                    /* WARNING: Subroutine does not return */
+        _invoke_watson((wchar_t *)0x0,(wchar_t *)0x0,(wchar_t *)0x0,0,0);
+      }
+      uVar4 = uVar4 + 0x27;
+    }
+    FUN_1801695f0(lVar3,uVar4);
+    DAT_180495738 = 0;
+    uRam0000000180495740 = 0;
+    DAT_180495748 = 0;
+  }
+  puVar2 = DAT_180495728;
+  *(undefined8 *)DAT_180495728[1] = 0;
+  puVar2 = (undefined8 *)*puVar2;
+  while (puVar2 != (undefined8 *)0x0) {
+    puVar1 = (undefined8 *)*puVar2;
+    FUN_1801695f0(puVar2,0x20);
+    puVar2 = puVar1;
+  }
+  FUN_1801695f0(DAT_180495728,0x20);
+  return;
+}
+
+

@@ -1,0 +1,74 @@
+// function: FUN_180114310
+// ea: 180114310
+// category: pipeline
+// depth: 3, via: FUN_18010f6b0 @180110230
+// size: 306 bytes
+// anchors: pipeline
+// ----------------------------------------------------
+
+void FUN_180114310(longlong param_1,undefined8 param_2,ulonglong param_3)
+
+{
+  longlong lVar1;
+  ulonglong uVar2;
+  undefined8 *puVar3;
+  ulonglong uVar4;
+  ulonglong local_40;
+  longlong local_30;
+  
+  local_40 = 0;
+  local_30 = 0;
+  if (param_3 == 0) {
+    uVar4 = 0;
+    lVar1 = 0;
+    puVar3 = *(undefined8 **)(param_1 + 8);
+    if (puVar3 == *(undefined8 **)(param_1 + 0x10)) goto LAB_180114375;
+  }
+  else {
+    if ((longlong)param_3 < 0) {
+                    /* WARNING: Subroutine does not return */
+      FUN_18000bd30();
+    }
+    if (param_3 < 0x1000) {
+      uVar4 = FUN_1801695a0(param_3);
+    }
+    else {
+      lVar1 = FUN_1801695a0(param_3 + 0x27);
+      uVar4 = lVar1 + 0x27U & 0xffffffffffffffe0;
+      *(longlong *)(uVar4 - 8) = lVar1;
+    }
+    lVar1 = uVar4 + param_3;
+    FUN_18023b870(uVar4,0,param_3);
+    puVar3 = *(undefined8 **)(param_1 + 8);
+    local_40 = uVar4;
+    local_30 = lVar1;
+    if (puVar3 == *(undefined8 **)(param_1 + 0x10)) {
+LAB_180114375:
+      FUN_180114770(param_1);
+      if (local_40 != 0) {
+        uVar2 = local_30 - local_40;
+        uVar4 = local_40;
+        if (0xfff < uVar2) {
+          uVar4 = *(ulonglong *)(local_40 - 8);
+          if (0x1f < (local_40 - 8) - uVar4) {
+                    /* WARNING: Subroutine does not return */
+            _invoke_watson((wchar_t *)0x0,(wchar_t *)0x0,(wchar_t *)0x0,0,0);
+          }
+          uVar2 = uVar2 + 0x27;
+        }
+        FUN_1801695f0(uVar4,uVar2);
+      }
+      goto LAB_180114405;
+    }
+  }
+  *puVar3 = param_2;
+  puVar3[1] = uVar4;
+  puVar3[2] = lVar1;
+  puVar3[3] = lVar1;
+  *(longlong *)(param_1 + 8) = *(longlong *)(param_1 + 8) + 0x20;
+LAB_180114405:
+  FUN_18023b1d0(*(undefined8 *)(*(longlong *)(param_1 + 8) + -0x18),param_2,param_3);
+  return;
+}
+
+

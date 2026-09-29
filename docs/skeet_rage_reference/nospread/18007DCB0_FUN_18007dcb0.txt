@@ -1,0 +1,53 @@
+// function: FUN_18007dcb0
+// ea: 18007dcb0
+// category: nospread
+// depth: 2, via: FUN_180087d10 @180087dce
+// size: 185 bytes
+// anchors: nospread, trace_geometry, hitbox_backtrack
+// ----------------------------------------------------
+
+void FUN_18007dcb0(longlong *param_1)
+
+{
+  int iVar1;
+  byte bVar2;
+  longlong lVar3;
+  longlong lVar4;
+  int iVar5;
+  
+  AcquireSRWLockShared((PSRWLOCK)&DAT_180471378);
+  bVar2 = DAT_180471370;
+  lVar4 = DAT_180471350;
+  ReleaseSRWLockShared((PSRWLOCK)&DAT_180471378);
+  if ((lVar4 == 0) || ((bVar2 & 1) == 0)) {
+    param_1[0xb] = 0;
+    *(undefined4 *)(param_1 + 0xc) = 0xffffffff;
+  }
+  else if (DAT_180470390 == '\x01') {
+    lVar4 = *param_1;
+    if (lVar4 != param_1[1]) {
+      iVar1 = (int)((ulonglong)(param_1[1] - lVar4) >> 6);
+      iVar5 = 0;
+      if (0 < DAT_1804703f0) {
+        iVar5 = DAT_1804703f0;
+      }
+      if (iVar1 <= DAT_1804703f0) {
+        iVar5 = iVar1 + -1;
+      }
+      if (iVar5 != (int)param_1[0xc]) {
+        lVar3 = (longlong)iVar5 * 0x40;
+        if (*(ulonglong *)(lVar4 + 0x38 + lVar3) < 0x10) {
+          lVar4 = lVar4 + lVar3 + 0x20;
+        }
+        else {
+          lVar4 = *(longlong *)(lVar4 + 0x20 + lVar3);
+        }
+        FUN_18007dd70(param_1,lVar4);
+        *(int *)(param_1 + 0xc) = iVar5;
+      }
+    }
+  }
+  return;
+}
+
+

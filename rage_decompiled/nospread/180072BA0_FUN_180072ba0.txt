@@ -1,0 +1,40 @@
+// function: FUN_180072ba0
+// ea: 180072ba0
+// category: nospread
+// depth: 2, via: FUN_180088940 @180088966
+// size: 179 bytes
+// anchors: nospread, trace_geometry, hitbox_backtrack
+// ----------------------------------------------------
+
+void FUN_180072ba0(longlong param_1,longlong param_2)
+
+{
+  uint uVar1;
+  longlong lVar2;
+  longlong lVar3;
+  float fVar4;
+  double dVar5;
+  
+  if (param_2 != 0) {
+    if (*(longlong *)(param_1 + 0x90) == param_2) {
+      lVar3 = 0x9c;
+      lVar2 = 0x98;
+    }
+    else {
+      if (*(longlong *)(param_1 + 0xb8) != param_2) {
+        return;
+      }
+      lVar3 = 0xc4;
+      lVar2 = 0xc0;
+    }
+    uVar1 = *(uint *)(param_1 + lVar2);
+    dVar5 = (double)FUN_1802174f0(0x3ff0000000000000,(int)uVar1 >> 0x18);
+    fVar4 = (float)dVar5 * *(float *)(param_1 + lVar3) * 0.003921569;
+    *(float *)(param_2 + 0xe4) = (float)(uVar1 & 0xff) * fVar4;
+    *(float *)(param_2 + 0xe8) = (float)(uVar1 >> 8 & 0xff) * fVar4;
+    *(float *)(param_2 + 0xec) = (float)(uVar1 >> 0x10 & 0xff) * fVar4;
+  }
+  return;
+}
+
+

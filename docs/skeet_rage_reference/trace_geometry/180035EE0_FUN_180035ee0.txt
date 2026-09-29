@@ -1,0 +1,39 @@
+// function: FUN_180035ee0
+// ea: 180035ee0
+// category: trace_geometry
+// depth: 2, via: FUN_1800c45b0 @1800c4823
+// size: 193 bytes
+// anchors: trace_geometry, hitbox_backtrack
+// ----------------------------------------------------
+
+bool FUN_180035ee0(undefined8 param_1,longlong param_2)
+
+{
+  longlong lVar1;
+  bool bVar2;
+  
+  lVar1 = DAT_1804709e0;
+  bVar2 = true;
+  if (((param_2 != 0) &&
+      (((*(uint *)(param_2 + 0x68) | *(uint *)(param_2 + 0x60) | *(uint *)(param_2 + 0x70)) & 0x20)
+       == 0)) && (DAT_180355049 == '\0')) {
+    if (DAT_180470a1e != '\x01') {
+      return false;
+    }
+    bVar2 = false;
+    if ((DAT_1804709e0 != 0) && (DAT_1804709f8 == 9)) {
+      if (*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+                  0x2638) < DAT_180471aa4) {
+        FUN_180183614(&DAT_180471aa4);
+        if (DAT_180471aa4 == -1) {
+          DAT_180471aa0 = FUN_180114bb0("C_BaseCSGrenade",0x57c1b8da);
+          _Init_thread_footer(&DAT_180471aa4);
+        }
+      }
+      bVar2 = 0.0 < *(float *)(lVar1 + DAT_180471aa0);
+    }
+  }
+  return bVar2;
+}
+
+

@@ -1,0 +1,15 @@
+// function: FUN_1801665d0
+// ea: 1801665d0
+// category: pipeline
+// depth: 2, via: FUN_180037730 @180037afd
+// size: 9 bytes
+// anchors: pipeline
+// ----------------------------------------------------
+
+float FUN_1801665d0(float param_1)
+
+{
+  return param_1 * 0.017453292;
+}
+
+

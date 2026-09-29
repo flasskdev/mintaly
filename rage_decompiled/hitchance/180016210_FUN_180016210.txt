@@ -1,0 +1,68 @@
+// function: FUN_180016210
+// ea: 180016210
+// category: hitchance
+// depth: 2, via: FUN_180145230 @1801461a8
+// size: 270 bytes
+// anchors: hitchance, nospread, autowall_damage
+// ----------------------------------------------------
+
+undefined4 * FUN_180016210(undefined4 *param_1,undefined4 *param_2)
+
+{
+  longlong lVar1;
+  longlong lVar2;
+  longlong *plVar3;
+  longlong lVar4;
+  ulonglong uVar5;
+  
+  *param_1 = *param_2;
+  *(undefined8 *)(param_1 + 2) = 0;
+  *(undefined8 *)(param_1 + 4) = 0;
+  lVar2 = FUN_1801695a0(0x20);
+  *(longlong *)lVar2 = lVar2;
+  *(longlong *)(lVar2 + 8) = lVar2;
+  *(longlong *)(param_1 + 2) = lVar2;
+  *(undefined8 *)(param_1 + 6) = 0;
+  *(undefined8 *)(param_1 + 8) = 0;
+  *(undefined8 *)(param_1 + 10) = 0;
+  *(undefined8 *)(param_1 + 0xc) = 7;
+  *(undefined8 *)(param_1 + 0xe) = 8;
+  *param_1 = 0x3f800000;
+  plVar3 = (longlong *)FUN_1801695a0(0x80);
+  lVar1 = *(longlong *)(param_1 + 6);
+  uVar5 = *(longlong *)(param_1 + 10) - lVar1;
+  if (uVar5 != 0) {
+    lVar4 = lVar1;
+    if (0xfff < uVar5) {
+      lVar4 = *(longlong *)(lVar1 + -8);
+      if (0x1f < (ulonglong)((lVar1 + -8) - lVar4)) {
+                    /* WARNING: Subroutine does not return */
+        _invoke_watson((wchar_t *)0x0,(wchar_t *)0x0,(wchar_t *)0x0,0,0);
+      }
+      uVar5 = uVar5 + 0x27;
+    }
+    FUN_1801695f0(lVar4,uVar5);
+  }
+  *(longlong **)(param_1 + 6) = plVar3;
+  *(longlong **)(param_1 + 8) = plVar3 + 0x10;
+  *(longlong **)(param_1 + 10) = plVar3 + 0x10;
+  *plVar3 = lVar2;
+  plVar3[1] = lVar2;
+  plVar3[2] = lVar2;
+  plVar3[3] = lVar2;
+  plVar3[4] = lVar2;
+  plVar3[5] = lVar2;
+  plVar3[6] = lVar2;
+  plVar3[7] = lVar2;
+  plVar3[8] = lVar2;
+  plVar3[9] = lVar2;
+  plVar3[10] = lVar2;
+  plVar3[0xb] = lVar2;
+  plVar3[0xc] = lVar2;
+  plVar3[0xd] = lVar2;
+  plVar3[0xe] = lVar2;
+  plVar3[0xf] = lVar2;
+  return param_1;
+}
+
+

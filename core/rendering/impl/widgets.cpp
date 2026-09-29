@@ -1506,8 +1506,10 @@ namespace rendering {
 							continue;
 						}
 
-						const auto name_ptr = memory::safe_read<std::uintptr_t>( player.ptr + SCHEMA( "CCSPlayerController", "m_sSanitizedPlayerName"_hash ) ).value_or( 0 );
-						if ( !name_ptr )
+						const auto name_offset = SCHEMA( "CCSPlayerController", "m_sSanitizedPlayerName"_hash );
+						const auto name_ptr = name_offset && player.ptr >= 0x10000
+							? memory::safe_read<std::uintptr_t>( player.ptr + name_offset ).value_or( 0 ) : 0;
+						if ( name_ptr < 0x10000 )
 						{
 							continue;
 						}

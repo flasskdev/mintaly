@@ -1,0 +1,41 @@
+// function: FUN_180076320
+// ea: 180076320
+// category: nospread
+// depth: 2, via: FUN_180088fd0 @180088fee
+// size: 153 bytes
+// anchors: nospread, trace_geometry, hitbox_backtrack
+// ----------------------------------------------------
+
+void FUN_180076320(undefined8 param_1,longlong param_2)
+
+{
+  uint uVar1;
+  longlong lVar2;
+  ulonglong uVar3;
+  char *pcVar4;
+  uint uVar5;
+  char cVar6;
+  
+  if (((DAT_18046f678 == '\x01') && (lVar2 = *(longlong *)(param_2 + 0x20), lVar2 != 0)) &&
+     (uVar1 = *(uint *)(param_2 + 0x18), (ulonglong)uVar1 != 0)) {
+    uVar3 = 0;
+    do {
+      pcVar4 = *(char **)(uVar3 * 0x40 + 0x28 + lVar2);
+      if ((pcVar4 != (char *)0x0) && (cVar6 = *pcVar4, cVar6 != '\0')) {
+        uVar5 = 0x811c9dc5;
+        do {
+          pcVar4 = pcVar4 + 1;
+          uVar5 = ((int)cVar6 ^ uVar5) * 0x1000193;
+          cVar6 = *pcVar4;
+        } while (cVar6 != '\0');
+        if ((uVar5 == 0x64c6e976) || (uVar5 == 0xd98203a7)) {
+          *(undefined4 *)(uVar3 * 0x40 + lVar2) = 0xc0c00000;
+        }
+      }
+      uVar3 = uVar3 + 1;
+    } while (uVar3 != uVar1);
+  }
+  return;
+}
+
+

@@ -2,6 +2,7 @@
 #include <core/settings.hpp>
 #include <core/features/features.hpp>
 #include "../../rendering.hpp"
+#include "menu.chams_common.hpp"
 // #include "../../map_images.hpp" // УДАЛЕНО: Больше не нужны текстуры карт
 namespace rendering {
     namespace {
@@ -39,52 +40,29 @@ namespace rendering {
         auto& other = settings::g_esp.m_other;
         const auto wx = this->m_x;
         const auto wy = this->m_y;
-        const auto content_x = wx + tokens::gap + tokens::sidebar_w + tokens::gap;
-        const auto body_y = wy + tokens::gap + tokens::subtab_bar_h + tokens::gap;
-        const auto content_w = this->m_w - tokens::gap * 2.0f - tokens::sidebar_w - tokens::gap;
+        const auto content_x = this->m_body_x;
+        const auto body_y = this->m_body_y;
+        const auto content_w = this->m_body_w;
         const auto col_w = (content_w - tokens::gap) * 0.5f;
         const auto right_x = content_x + col_w + tokens::gap;
+        constexpr float k_col_header_h = menu::k_panel_header_h;
+        auto draw_col_title = [&](float x, const char* title) {
+            this->draw_column_header(x, title);
+        };
+        draw_col_title(content_x, "ITEMS ESP");
+        draw_col_title(right_x, "PROJECTILES");
         constexpr const char* display_types[]{ "text", "icon", "text + icon" };
         auto draw_chams_layer = [&](const char* label, const char* popup_id, settings::esp::chams_layer& layer, bool is_through_wall = false)
             {
                 xui::checkbox(label, layer.enabled);
                 if (xui::begin_popup(popup_id, 220.0f))
                 {
-                    const bool is_outline = settings::esp::is_outline_material(layer.material.value);
                     const bool is_glow_outline = (layer.material.value == settings::esp::cham_ids::outline_glow ||
                         layer.material.value == settings::esp::cham_ids::outline_glow_ignorez);
                     const auto prev_mat = layer.material.value;
-                    if (is_through_wall)
-                    {
-                        int mat_idx = settings::esp::get_iz_index(layer.material.value);
-                        if (xui::combo("material", mat_idx, settings::esp::k_iz_material_names, settings::esp::k_iz_material_count))
-                        {
-                            layer.material.value = settings::esp::k_iz_materials[mat_idx];
-                            if ((layer.material.value == settings::esp::cham_ids::outline_glow || layer.material.value == settings::esp::cham_ids::outline_glow_ignorez) &&
-                                (prev_mat != settings::esp::cham_ids::outline_glow && prev_mat != settings::esp::cham_ids::outline_glow_ignorez))
-                            {
-                                layer.filled.value = true;
-                            }
-                        }
-                    }
-                    else
-                    {
-                        int mat_idx = settings::esp::get_non_iz_index(layer.material.value);
-                        if (xui::combo("material", mat_idx, settings::esp::k_non_iz_material_names, settings::esp::k_non_iz_material_count))
-                        {
-                            layer.material.value = settings::esp::k_non_iz_materials[mat_idx];
-                            if ((layer.material.value == settings::esp::cham_ids::outline_glow || layer.material.value == settings::esp::cham_ids::outline_glow_ignorez) &&
-                                (prev_mat != settings::esp::cham_ids::outline_glow && prev_mat != settings::esp::cham_ids::outline_glow_ignorez))
-                            {
-                                layer.filled.value = true;
-                            }
-                        }
-                    }
-                    xui::color_picker("color", layer.color, 0.0f, true, is_outline ? &layer.filled.value : nullptr);
-                    if (is_outline)
-                    {
-                        xui::checkbox("filled", layer.filled);
-                    }
+                    if (detail::draw_chams_material_combo("material", layer.material, is_through_wall))
+                        detail::reset_filled_for_new_outline(layer, prev_mat);
+                    xui::color_picker("color", layer.color);
                     if (is_glow_outline)
                     {
                         xui::layout::spacing(5.0f);
@@ -109,8 +87,8 @@ namespace rendering {
                 }
             };
         // Left Column: Items ESP & Ambience Button
-        xui::layout::set_cursor(content_x - wx, body_y - wy);
-        if (xui::begin_child("##esp_items", col_w, this->m_body_h, true))
+        xui::layout::set_cursor(content_x - wx, body_y + k_col_header_h - wy);
+        if (xui::begin_child("##esp_items", col_w, this->m_body_h - k_col_header_h, true))
         {
             static int item_group{};
             xui::combo("group##item_sel", item_group, settings::esp::item::k_group_names, settings::esp::item::k_group_count);
@@ -200,8 +178,8 @@ namespace rendering {
             xui::end_child();
         }
         // Right Column: Projectiles & Bomb Timer
-        xui::layout::set_cursor(right_x - wx, body_y - wy);
-        if (xui::begin_child("##esp_projectiles", col_w, this->m_body_h, true))
+        xui::layout::set_cursor(right_x - wx, body_y + k_col_header_h - wy);
+        if (xui::begin_child("##esp_projectiles", col_w, this->m_body_h - k_col_header_h, true))
         {
             static auto proj_group{ 0 };
             xui::combo("group##proj_sel", proj_group, settings::esp::projectile::k_group_names, settings::esp::projectile::k_group_count);
@@ -335,7 +313,7 @@ namespace rendering {
         // Close triggers (only process when open)
         if (this->m_ambience_open)
         {
-            const bool close_hovered = input_ref.in_rect(close_rect) && !xui::overlays::has_any();
+            const bool close_hovered = input_ref.in_rect(close_rect) && !xui::overlays::blocks_background();
             if (close_hovered && input_ref.mouse_clicked)
             {
                 this->m_ambience_open = false;
@@ -353,7 +331,7 @@ namespace rendering {
                 }
             }
             // Close when clicking outside modal window (only if no popup/combobox is open)
-            if (!xui::overlays::has_any() && input_ref.mouse_clicked && this->m_ambience_open)
+            if (!xui::overlays::blocks_background() && input_ref.mouse_clicked && this->m_ambience_open)
             {
                 if (!input_ref.in_rect({ final_x, final_y, final_w, final_h }))
                 {
@@ -388,7 +366,7 @@ namespace rendering {
         modal_dl.text(final_x + 20.0f, final_y + 11.0f, "AMBIENCE", tokens::col_text);
         xdraw::pop_font();
         // Close Button Visual
-        const bool close_hovered = this->m_ambience_open && input_ref.in_rect(close_rect) && !xui::overlays::has_any();
+        const bool close_hovered = this->m_ambience_open && input_ref.in_rect(close_rect) && !xui::overlays::blocks_background();
         const auto close_anim = xui::anim::lerp(xui::fnv1a("amb_close_btn"), close_hovered ? 1.0f : 0.0f, 14.0f);
         if (close_anim > 0.01f)
         {

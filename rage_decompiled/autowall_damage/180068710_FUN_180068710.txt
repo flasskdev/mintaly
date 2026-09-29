@@ -1,0 +1,136 @@
+// function: FUN_180068710
+// ea: 180068710
+// category: autowall_damage
+// depth: 1, via: FUN_1800cba90 @1800cbdb5
+// size: 711 bytes
+// anchors: autowall_damage
+// ----------------------------------------------------
+
+longlong * FUN_180068710(longlong param_1,longlong *param_2,ulonglong param_3)
+
+{
+  ulonglong *puVar1;
+  longlong *plVar2;
+  longlong *plVar3;
+  char cVar4;
+  int iVar5;
+  ulonglong uVar6;
+  int iVar7;
+  ulonglong uVar8;
+  byte bVar10;
+  longlong *plVar9;
+  ulonglong uVar11;
+  ulonglong uVar12;
+  longlong *plVar13;
+  ulonglong uVar14;
+  longlong lVar15;
+  ulonglong uVar16;
+  longlong lVar17;
+  ulonglong local_58;
+  PSRWLOCK local_50;
+  longlong *local_48;
+  
+  uVar16 = param_3 >> 0x18 & 0xff;
+  local_50 = (PSRWLOCK)(param_1 + 0x40);
+  local_48 = param_2;
+  AcquireSRWLockShared(local_50);
+  plVar3 = local_48;
+  *local_48 = 0;
+  local_48[1] = 0;
+  local_48[2] = 0;
+  bVar10 = (byte)(param_3 >> 8);
+  uVar12 = param_3 >> 0x10 & 0xff;
+  uVar14 = param_3 >> 0x20 & 0xff;
+  uVar11 = param_3 >> 0x28 & 0xff;
+  uVar6 = param_3 >> 0x30 & 0xff;
+  uVar8 = ((((((((param_3 & 0xff ^ 0xcbf29ce484222325) * 0x100000001b3 ^ (ulonglong)bVar10) *
+                0x100000001b3 ^ uVar12) * 0x100000001b3 ^ uVar16) * 0x100000001b3 ^ uVar14) *
+             0x100000001b3 ^ uVar11) * 0x100000001b3 ^ uVar6) * 0x100000001b3 ^ param_3 >> 0x38) *
+          0x100000001b3 & *(ulonglong *)(param_1 + 0x30);
+  lVar17 = *(longlong *)(*(longlong *)(param_1 + 0x18) + 8 + uVar8 * 0x10);
+  if (lVar17 != *(longlong *)(param_1 + 8)) {
+    uVar6 = (ulonglong)bVar10 << 8 |
+            (ulonglong)(uint)((int)uVar12 << 0x10) |
+            (ulonglong)(uint)((int)uVar16 << 0x18) |
+            uVar14 << 0x20 | uVar11 << 0x28 | uVar6 << 0x30 | param_3 & 0xff00000000000000 |
+            param_3 & 0xff;
+    if (uVar6 != *(ulonglong *)(lVar17 + 0x10)) {
+      do {
+        if (lVar17 == *(longlong *)(*(longlong *)(param_1 + 0x18) + uVar8 * 0x10))
+        goto LAB_180068990;
+        lVar17 = *(longlong *)(lVar17 + 8);
+      } while (uVar6 != *(ulonglong *)(lVar17 + 0x10));
+    }
+    if (lVar17 != *(longlong *)(param_1 + 8)) {
+      local_58 = *(ulonglong *)(lVar17 + 0x38);
+      if (local_58 != 0) {
+        if (local_58 >> 0x3d != 0) {
+                    /* WARNING: Subroutine does not return */
+          FUN_18000bd30();
+        }
+        FUN_18006c5c0(local_48,&local_58);
+        lVar15 = *(longlong *)(lVar17 + 0x38);
+        if (lVar15 != 0) {
+          plVar9 = *(longlong **)(lVar17 + 0x18);
+          uVar8 = *(ulonglong *)(lVar17 + 0x30);
+          do {
+            uVar6 = *(ulonglong *)
+                     (*(longlong *)(*plVar9 + 8) + (*(longlong *)(*plVar9 + 0x10) - 1U & uVar8) * 8)
+            ;
+            cVar4 = FUN_1800675f0(uVar6);
+            if (cVar4 != '\0') {
+              puVar1 = (ulonglong *)plVar3[1];
+              local_58 = uVar6;
+              if (puVar1 == (ulonglong *)plVar3[2]) {
+                FUN_1800274c0(plVar3,puVar1,&local_58);
+              }
+              else {
+                *puVar1 = uVar6;
+                plVar3[1] = plVar3[1] + 8;
+              }
+            }
+            uVar8 = uVar8 + 1;
+            lVar15 = lVar15 + -1;
+          } while (lVar15 != 0);
+        }
+      }
+      plVar9 = (longlong *)*plVar3;
+      plVar2 = (longlong *)plVar3[1];
+      if (plVar9 != plVar2) {
+        iVar7 = 1;
+        if (1 < DAT_18046e7f8) {
+          iVar7 = DAT_18046e7f8;
+        }
+        iVar5 = 0x10;
+        if (iVar7 < 0x10) {
+          iVar5 = iVar7;
+        }
+        iVar7 = *(int *)(*plVar9 + 0x2048);
+        do {
+          if (iVar5 < iVar7 - *(int *)(*plVar9 + 0x2048)) break;
+          plVar9 = plVar9 + 1;
+        } while (plVar9 != plVar2);
+        plVar13 = plVar9 + 1;
+        if (plVar13 != plVar2 && plVar9 != plVar2) {
+          do {
+            if (iVar7 - *(int *)(*plVar13 + 0x2048) <= iVar5) {
+              *plVar9 = *plVar13;
+              plVar9 = plVar9 + 1;
+            }
+            plVar13 = plVar13 + 1;
+          } while (plVar13 != plVar2);
+        }
+        if (plVar9 != plVar2) {
+          lVar17 = plVar3[1];
+          FUN_18023b1d0(plVar9,plVar2,lVar17 - (longlong)plVar2);
+          plVar3[1] = (lVar17 - (longlong)plVar2) + (longlong)plVar9;
+        }
+      }
+    }
+  }
+LAB_180068990:
+  ReleaseSRWLockShared(local_50);
+  return plVar3;
+}
+
+

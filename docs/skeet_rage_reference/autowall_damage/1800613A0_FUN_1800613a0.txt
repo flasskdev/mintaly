@@ -1,0 +1,36 @@
+// function: FUN_1800613a0
+// ea: 1800613a0
+// category: autowall_damage
+// depth: 1, via: FUN_180044dc0 @180047f1e
+// size: 253 bytes
+// anchors: autowall_damage, hitbox_backtrack
+// ----------------------------------------------------
+
+void FUN_1800613a0(longlong param_1,undefined8 param_2,ulonglong param_3,undefined8 param_4,
+                  longlong param_5,undefined8 param_6)
+
+{
+  longlong lVar1;
+  longlong lVar2;
+  ulonglong uVar3;
+  
+  if ((longlong)param_3 < 0x21) {
+    FUN_180060f70(param_1,param_2,param_6);
+    return;
+  }
+  uVar3 = param_3 >> 1;
+  lVar1 = param_3 - uVar3;
+  lVar2 = lVar1 * 0x40 + param_1;
+  if (param_5 < lVar1) {
+    FUN_1800613a0(param_1,lVar2,lVar1,param_4,param_5,param_6);
+    FUN_1800613a0(lVar2,param_2,uVar3,param_4,param_5,param_6);
+  }
+  else {
+    FUN_1800614a0(param_1,lVar2,lVar1,param_4,param_6);
+    FUN_1800614a0(lVar2,param_2,uVar3,param_4,param_6);
+  }
+  FUN_180061bc0(param_1,lVar2,param_2,lVar1,uVar3,param_4,param_5,param_6);
+  return;
+}
+
+

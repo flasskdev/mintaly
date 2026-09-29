@@ -1,4 +1,4 @@
-#include <pch/pch.hpp>
+﻿#include <pch/pch.hpp>
 
 #include <cstdio>
 
@@ -19,6 +19,7 @@
 #include <utilities/diag.hpp>
 #include <utilities/lifecycle.hpp>
 #include <utilities/loader_session.hpp>
+#include <utilities/tls/tls.hpp>
 
 namespace {
 
@@ -329,7 +330,26 @@ namespace {
 		diag::step ("stage: config");
 		config::initialize ();
 		config::apply_blank_profile ();
-		settings::finalize_binds ();
+		// Restore the active profile for its non-toggle settings and bind
+		// assignments, then start with all toggle values switched off.
+		{
+			const auto startup_profile = config::registry::load_startup ();
+			const auto reset_toggle_count = config::registry::reset_all_toggles ();
+			settings::finalize_binds ();
+			char profile_utf8 [128] {};
+			if ( !startup_profile.empty () )
+			{
+				WideCharToMultiByte (CP_UTF8, 0, startup_profile.c_str (), -1,
+					profile_utf8, sizeof (profile_utf8), nullptr, nullptr);
+			}
+			diag::writef (diag::level::info,
+				"[config] startup profile=%s toggles_reset=%zu reveal_radar=%d chams_enemy=%d chams_local=%d",
+				startup_profile.empty () ? "<factory defaults>" : profile_utf8,
+				reset_toggle_count,
+				static_cast<int>(settings::g_misc.reveal_radar.value),
+				static_cast<int>(settings::g_esp.m_player.m_chams.enemy.enabled.value),
+				static_cast<int>(settings::g_esp.m_player.m_chams.local.enabled.value));
+		}
 
 		diag::step ("stage: regions");
 		security::regions::add_module (module_handle);
@@ -539,7 +559,7 @@ void start_subscription_monitor( HMODULE module_handle )
 			// TEMP-DIAG: hang triage (see diag::watchdog_check).
 			diag::watchdog_check( );
 
-			// [BYPASSED] subscription check disabled — do not unload on revoked/unavailable access
+			// [BYPASSED] subscription check disabled вЂ” do not unload on revoked/unavailable access
 			// if ( loader_session::check_access() != loader_session::access_status::granted )
 			// {
 			// 	diag::write( diag::level::info, "subscription monitor: access revoked" );
@@ -620,6 +640,7 @@ extern "C" int __stdcall entry (HMODULE module_handle, DWORD reason, LPVOID rese
 
 		features::changer::g_econ_item_system.shutdown ();
 		threadpool::shutdown ();
+		utilities::tls::shutdown_all ();
 		diag::shutdown ();
 
 #if defined( DEV )
@@ -629,3 +650,4 @@ extern "C" int __stdcall entry (HMODULE module_handle, DWORD reason, LPVOID rese
 
 	return 1;
 }
+

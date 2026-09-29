@@ -177,8 +177,23 @@ inline catalog items;
 
 inline void panel(const xui::rect& r) {
     auto& dl = xui::draw::current();
-    dl.rect_filled(r.x, r.y, r.w, r.h, tokens::col_card, xdraw::corner_radius{12.0f});
-    dl.rect(r.x, r.y, r.w, r.h, tokens::col_border.alpha(140), xdraw::corner_radius{12.0f});
+    const auto rounding = xdraw::corner_radius{12.0f};
+    // Soft drop shadow, then the same frosted / bloom / rim treatment the main
+    // content panels use so the inventory workspace matches the rest of the menu.
+    dl.rect_filled_blurred(r.x - 4.0f, r.y - 2.0f, r.w + 8.0f, r.h + 7.0f,
+        xdraw::corner_radius{15.0f}, xdraw::color{0, 0, 0, 60});
+    dl.rect_filled_blurred(r.x, r.y, r.w, r.h, rounding, xdraw::color{42, 46, 58, 150});
+    const auto top = xui::lighten(tokens::col_card, 1.07f);
+    const auto bottom = xui::darken(tokens::col_card, 0.72f);
+    dl.rect_filled_gradient(r.x, r.y, r.w, r.h, top, top, bottom, bottom, rounding);
+    auto bloom = tokens::col_aurora;
+    bloom.a = 13;
+    const auto bloom_off = xdraw::color{bloom.r, bloom.g, bloom.b, 0};
+    dl.rect_filled_gradient(r.x, r.y, r.w * 0.6f, std::min(r.h, 150.0f),
+        bloom, bloom_off, bloom_off, bloom_off, xdraw::corner_radius{12.0f, 0.0f, 0.0f, 0.0f});
+    dl.line(r.x + 12.0f, r.y + 0.5f, r.x + r.w - 12.0f, r.y + 0.5f, xdraw::color{255, 255, 255, 16}, 1.0f);
+    dl.line(r.x + 12.0f, r.y + r.h - 1.5f, r.x + r.w - 12.0f, r.y + r.h - 1.5f, xdraw::color{0, 0, 0, 55}, 1.0f);
+    dl.rect(r.x, r.y, r.w, r.h, tokens::col_border.alpha(140), rounding);
 }
 
 inline bool button(const xui::rect& r, const char* label, bool selected = false, bool enabled = true) {
@@ -202,24 +217,31 @@ inline bool image(const xui::rect& r, const econ_type::skin_image* img) {
     return true;
 }
 
+// CT / T faction glyphs: a shield badge for the Counter-Terrorists and the C4 pack
+// for the Terrorists, drawn with the same stroke weight as the sidebar icons.
 inline void team_icon(float x, float y, int side) {
     auto& dl = xui::draw::current();
     if (side == 3) {
         const auto col = xdraw::color{100, 175, 255};
-        const std::array<float, 10> shield{
-            x - 7.0f, y - 8.0f,
-            x + 7.0f, y - 8.0f,
-            x + 6.0f, y + 3.0f,
-            x,        y + 9.0f,
-            x - 6.0f, y + 3.0f
+        const std::array<float, 14> shield{
+            x - 7.5f, y - 7.0f,
+            x + 7.5f, y - 7.0f,
+            x + 7.5f, y + 0.5f,
+            x + 4.2f, y + 5.2f,
+            x,        y + 8.5f,
+            x - 4.2f, y + 5.2f,
+            x - 7.5f, y + 0.5f
         };
         dl.polyline(shield, col, true, 1.8f);
-        dl.circle_filled(x, y - 1.0f, 2.0f, col);
+        dl.line(x - 3.4f, y - 2.8f, x, y + 0.8f, col, 1.6f);
+        dl.line(x, y + 0.8f, x + 3.4f, y - 2.8f, col, 1.6f);
     } else {
         const auto col = xdraw::color{240, 190, 75};
-        dl.line(x - 6.0f, y - 6.0f, x + 6.0f, y + 6.0f, col, 2.0f);
-        dl.line(x + 6.0f, y - 6.0f, x - 6.0f, y + 6.0f, col, 2.0f);
-        dl.circle(x, y, 7.5f, col.alpha(160), 1.2f);
+        dl.rect(x - 6.0f, y - 3.0f, 12.0f, 10.0f, col, xdraw::corner_radius{2.5f}, 1.8f);
+        dl.line(x - 3.4f, y + 0.6f, x + 3.4f, y + 0.6f, col.alpha(170), 1.2f);
+        dl.line(x + 2.5f, y - 3.0f, x + 2.5f, y - 7.5f, col, 1.6f);
+        dl.line(x + 2.5f, y - 7.5f, x + 5.2f, y - 6.0f, col, 1.6f);
+        dl.circle_filled(x + 5.9f, y - 5.6f, 1.4f, col);
     }
 }
 
@@ -232,7 +254,6 @@ inline bool sidebar(const xui::rect& r, int category) {
     panel(main);
 
     // Cosmetics are part of the active global CFG. No second source of truth.
-    dl.text(r.x + 14.0f, r.y + 13.0f, "Saved with the main config", tokens::col_text_dim);
 
     // 2. Bottom Section of main panel: CT/T Loadouts in a single row with animated width & transitions
     constexpr float btn_h = 32.0f;
@@ -303,12 +324,13 @@ inline bool sidebar(const xui::rect& r, int category) {
         dl.pop_clip();
     }
 
-    // 2D Skin / Weapon / Item Preview
-    const float prev_y = r.y + 36.0f;
+    // 2D Skin / Weapon / Item Preview: the artwork floats directly on the panel
+    // background, only the name / rarity lines sit underneath it.
+    const float prev_y = r.y + 14.0f;
     const float prev_h = std::max(80.0f, loadout_top - 10.0f - prev_y);
     const xui::rect preview{r.x + 14.0f, prev_y, r.w - 28.0f, prev_h};
-    const xui::rect canvas{preview.x + 8.0f, preview.y + 28.0f,
-        std::max(1.0f, preview.w - 16.0f), std::max(1.0f, preview.h - 76.0f)};
+    const xui::rect canvas{preview.x + 8.0f, preview.y + 8.0f,
+        std::max(1.0f, preview.w - 16.0f), std::max(1.0f, preview.h - 60.0f)};
 
     std::string title;
     const econ_type::skin_image* artwork = nullptr;
@@ -373,12 +395,6 @@ inline bool sidebar(const xui::rect& r, int category) {
     }
 
     dl.push_clip(preview.x, preview.y, preview.w, preview.h);
-    dl.rect_filled(preview.x, preview.y, preview.w, preview.h,
-        tokens::col_dark.alpha(175), xdraw::corner_radius{8.0f});
-    dl.rect(preview.x, preview.y, preview.w, preview.h,
-        tokens::col_border.alpha(100), xdraw::corner_radius{8.0f});
-
-    dl.text(preview.x + 10.0f, preview.y + 8.0f, "ITEM PREVIEW", tokens::col_text_dim);
 
     dl.push_clip(canvas.x, canvas.y, canvas.w, canvas.h);
     if (!image(canvas, artwork)) {

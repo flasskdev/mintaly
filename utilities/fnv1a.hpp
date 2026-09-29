@@ -22,15 +22,27 @@ namespace fnv1a {
 			return 0;
 		}
 
-		std::uint32_t hash{ 2166136261u };
-
-		while ( *str )
+		__try
 		{
-			hash ^= static_cast< std::uint32_t >( *str++ );
-			hash *= 16777619u;
+			std::uint32_t hash{ 2166136261u };
+			constexpr std::size_t max_length{ 128 };
+
+			for ( std::size_t i = 0; i < max_length; ++i )
+			{
+				const auto c = str[ i ];
+				if ( c == '\0' )
+					return hash;
+
+				hash ^= static_cast< std::uint32_t >( c );
+				hash *= 16777619u;
+			}
+		}
+		__except ( EXCEPTION_EXECUTE_HANDLER )
+		{
+			return 0;
 		}
 
-		return hash;
+		return 0;
 	}
 
 } // namespace fnv1a

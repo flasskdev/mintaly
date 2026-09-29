@@ -11,15 +11,26 @@ void menu::draw_player(float group_w, int subtab) const
 auto& esp = settings::g_esp;
 auto& p = esp.m_player;
 const auto col_w = (this->m_body_w - tokens::gap) * 0.5f;
+constexpr float k_header_h = menu::k_panel_header_h;
 subtab = std::clamp(subtab, 0, 2);
 const auto has_overlay = (subtab <= 1);
+auto draw_panel_title = [&](float x, const char* title) {
+this->draw_column_header(x, title);
+};
+draw_panel_title(this->m_body_x, has_overlay ? "PLAYER ESP" : "LOCAL CHAMS");
+draw_panel_title(this->m_body_x + col_w + tokens::gap, has_overlay ? "PLAYER CHAMS" : "VIEWMODEL");
 auto& glow = (subtab == 0) ? p.m_glow.enemy : p.m_glow.team;
 auto& glow_ragdoll = (subtab == 0) ? p.m_glow.enemy_ragdoll : p.m_glow.team_ragdoll;
-xui::layout::set_cursor(this->m_body_x - this->m_x, this->m_body_y - this->m_y);
+// The left column stacks two panels (ESP + Glow). Split the column height so the
+// Glow panel keeps a bounded slice instead of collapsing into a sliver.
+const auto column_h = this->m_body_h - k_header_h;
+const auto glow_h = std::clamp(column_h * 0.24f, 104.0f, 150.0f);
+const auto esp_h = std::max(120.0f, column_h - glow_h - xui::ctx().style.item_spacing_y);
+xui::layout::set_cursor(this->m_body_x - this->m_x, this->m_body_y + k_header_h - this->m_y);
 if (has_overlay)
 {
 auto& ov = p.m_overlay[subtab];
-if (xui::begin_child("##player_esp", col_w, this->m_body_h, true))
+if (xui::begin_child("##player_esp", col_w, esp_h, true))
 {
 xui::toggle("enable", ov.enabled);
 char popup_enable_id[32]{};
@@ -140,7 +151,7 @@ xui::color_picker("occluded color##oof", ov.m_oof_arrow.occluded_color);
 xui::end_popup();
 }
 xui::end_child();
-if (xui::begin_child("##player_glow", col_w, this->m_body_h, true)) {
+if (xui::begin_child("##player_glow", col_w, glow_h, true)) {
 xui::toggle("glow", glow.enabled);
 if (xui::begin_popup("##glow_popup", 220.0f)) {
 xui::color_picker("color##glow", glow.color);
@@ -157,7 +168,7 @@ xui::end_child();
 }
 		else
 		{
-			if (xui::begin_child("##local_chams_glow", col_w, this->m_body_h, true))
+            if (xui::begin_child("##local_chams_glow", col_w, this->m_body_h - k_header_h, true))
 			{
 				detail::draw_chams_config("chams", "local_main", p.m_chams.local);
 				xui::layout::separator();
@@ -186,34 +197,23 @@ xui::end_child();
 				xui::end_child();
 			}
 		}
-xui::layout::set_cursor(this->m_body_x - this->m_x + col_w + tokens::gap, this->m_body_y - this->m_y);
+xui::layout::set_cursor(this->m_body_x - this->m_x + col_w + tokens::gap, this->m_body_y + k_header_h - this->m_y);
 if (has_overlay)
 {
 auto& chams = (subtab == 0) ? p.m_chams.enemy : p.m_chams.team;
 auto& chams_ragdoll = (subtab == 0) ? p.m_chams.enemy_ragdoll : p.m_chams.team_ragdoll;
-if (xui::begin_child("##player_chams", col_w, this->m_body_h, true))
+if (xui::begin_child("##player_chams", col_w, this->m_body_h - k_header_h, true))
 {
 xui::toggle("player chams", chams.enabled);
 chams.primary.enabled.value = chams.enabled.value;
 if (xui::begin_popup("##player_chams_popup", 235.0f))
 {
-const bool is_vis_outline = settings::esp::is_outline_material(chams.primary.material.value);
 const bool is_vis_glow = ( chams.primary.material.value == settings::esp::cham_ids::outline_glow || chams.primary.material.value == settings::esp::cham_ids::outline_glow_ignorez );
 const auto prev_vis_mat = chams.primary.material.value;
-xui::color_picker("color##visible", chams.primary.color, 0.0f, true, is_vis_outline ? &chams.primary.filled.value : nullptr);
-int vis_mat_idx = settings::esp::get_non_iz_index(chams.primary.material.value);
-if ( xui::combo("material##visible", vis_mat_idx, settings::esp::k_non_iz_material_names, settings::esp::k_non_iz_material_count) )
+xui::color_picker("color##visible", chams.primary.color);
+if ( detail::draw_chams_material_combo("material##visible", chams.primary.material, false) )
 {
-chams.primary.material.value = settings::esp::k_non_iz_materials[vis_mat_idx];
-if ( ( chams.primary.material.value == settings::esp::cham_ids::outline_glow || chams.primary.material.value == settings::esp::cham_ids::outline_glow_ignorez ) &&
-( prev_vis_mat != settings::esp::cham_ids::outline_glow && prev_vis_mat != settings::esp::cham_ids::outline_glow_ignorez ) )
-{
-chams.primary.filled.value = true;
-}
-}
-if (is_vis_outline)
-{
-xui::checkbox("filled##visible", chams.primary.filled);
+detail::reset_filled_for_new_outline( chams.primary, prev_vis_mat );
 }
 if (is_vis_glow)
 {
@@ -228,23 +228,12 @@ xui::layout::spacing(5.0f);
 xui::checkbox("through wall", chams.secondary.enabled);
 if (chams.secondary.enabled)
 {
-const bool is_wall_outline = settings::esp::is_outline_material(chams.secondary.material.value);
 const bool is_wall_glow = ( chams.secondary.material.value == settings::esp::cham_ids::outline_glow || chams.secondary.material.value == settings::esp::cham_ids::outline_glow_ignorez );
 const auto prev_wall_mat = chams.secondary.material.value;
-xui::color_picker("color##wall", chams.secondary.color, 0.0f, true, is_wall_outline ? &chams.secondary.filled.value : nullptr);
-int wall_mat_idx = settings::esp::get_iz_index(chams.secondary.material.value);
-if (xui::combo("material##wall", wall_mat_idx, settings::esp::k_iz_material_names, settings::esp::k_iz_material_count))
+xui::color_picker("color##wall", chams.secondary.color);
+if ( detail::draw_chams_material_combo("material##wall", chams.secondary.material, true) )
 {
-chams.secondary.material.value = settings::esp::k_iz_materials[wall_mat_idx];
-if ( ( chams.secondary.material.value == settings::esp::cham_ids::outline_glow || chams.secondary.material.value == settings::esp::cham_ids::outline_glow_ignorez ) &&
-( prev_wall_mat != settings::esp::cham_ids::outline_glow && prev_wall_mat != settings::esp::cham_ids::outline_glow_ignorez ) )
-{
-chams.secondary.filled.value = true;
-}
-}
-if (is_wall_outline)
-{
-xui::checkbox("filled##wall", chams.secondary.filled);
+detail::reset_filled_for_new_outline( chams.secondary, prev_wall_mat );
 }
 if (is_wall_glow)
 {
@@ -260,25 +249,14 @@ xui::layout::spacing(5.0f);
 xui::checkbox("overlay", chams.overlay.enabled);
 if (chams.overlay.enabled)
 {
-const bool is_ov_outline = settings::esp::is_outline_material(chams.overlay.material.value);
 const bool is_ov_glow = ( chams.overlay.material.value == settings::esp::cham_ids::outline_glow || chams.overlay.material.value == settings::esp::cham_ids::outline_glow_ignorez );
 const auto prev_ov_mat = chams.overlay.material.value;
-xui::color_picker("color##overlay", chams.overlay.color, 0.0f, true, is_ov_outline ? &chams.overlay.filled.value : nullptr);
-int ov_mat_idx = settings::esp::get_non_iz_index(chams.overlay.material.value);
-if ( xui::combo("material##overlay", ov_mat_idx, settings::esp::k_non_iz_material_names, settings::esp::k_non_iz_material_count) )
+xui::color_picker("color##overlay", chams.overlay.color);
+if ( detail::draw_chams_material_combo("material##overlay", chams.overlay.material, false) )
 {
-chams.overlay.material.value = settings::esp::k_non_iz_materials[ov_mat_idx];
-if ( ( chams.overlay.material.value == settings::esp::cham_ids::outline_glow || chams.overlay.material.value == settings::esp::cham_ids::outline_glow_ignorez ) &&
-( prev_ov_mat != settings::esp::cham_ids::outline_glow && prev_ov_mat != settings::esp::cham_ids::outline_glow_ignorez ) )
-{
-chams.overlay.filled.value = true;
+detail::reset_filled_for_new_outline( chams.overlay, prev_ov_mat );
 }
-}
-if (is_ov_outline)
-{
-xui::checkbox("filled##overlay", chams.overlay.filled);
-						}
-						if (is_ov_glow)
+if (is_ov_glow)
 						{
 							xui::layout::spacing( 5.0f );
 							xui::layout::separator( );
@@ -294,7 +272,6 @@ xui::checkbox("filled##overlay", chams.overlay.filled);
 				if (subtab == 0)
 				{
 					xui::layout::separator();
-					detail::draw_chams_config("backtrack chams", "bt", p.m_chams.backtrack, false);
 					/*					xui::layout::separator (); not enough menu space with this*/
 					detail::draw_chams_config("onshot chams", "os", p.m_chams.onshot, false, true, &p.m_chams.onshot_fade_time.value);
 				}
@@ -303,7 +280,7 @@ xui::checkbox("filled##overlay", chams.overlay.filled);
 		}
 		else
 		{
-			if (xui::begin_child("##viewmodel", col_w, this->m_body_h, true))
+            if (xui::begin_child("##viewmodel", col_w, this->m_body_h - k_header_h, true))
 			{
 				static int weapon_selection = 0;
 				xui::combo("weapon##chams", weapon_selection, chams_weapons::names.data(), static_cast<int>(chams_weapons::names.size()));

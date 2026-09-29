@@ -1,0 +1,19 @@
+// function: FUN_18016cf00
+// ea: 18016cf00
+// category: hitchance
+// depth: 2, via: FUN_1800e4140 @1800e4180
+// size: 27 bytes
+// anchors: hitchance
+// ----------------------------------------------------
+
+void FUN_18016cf00(undefined8 param_1,undefined8 param_2,undefined8 param_3)
+
+{
+  undefined8 uVar1;
+  
+  uVar1 = FUN_18016dca0();
+  FUN_18016dd10(param_1,uVar1,param_3);
+  return;
+}
+
+

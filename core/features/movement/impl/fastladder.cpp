@@ -9,7 +9,7 @@ namespace features::movement {
 
 	void fastladder::on_create_move( systems::input::usercmd* cmd ) const
 	{
-		if ( !settings::g_movement.fastladder.value )
+		if ( !cmd || !settings::g_movement.fastladder.value )
 		{
 			return;
 		}
@@ -20,7 +20,10 @@ namespace features::movement {
 			return;
 		}
 
-		const auto move_type = memory::read<std::uint8_t>( local.pawn + SCHEMA( "C_BaseEntity", "m_nActualMoveType"_hash ) );
+		const auto move_type_offset = SCHEMA( "C_BaseEntity", "m_nActualMoveType"_hash );
+		if ( !move_type_offset )
+			return;
+		const auto move_type = memory::safe_read<std::uint8_t>( local.pawn + move_type_offset ).value_or( 0 );
 		if ( move_type != cstypes::move_type::ladder )
 		{
 			return;
@@ -67,9 +70,12 @@ namespace features::movement {
 		buttons |= going_up ? cstypes::command_buttons::in_moveleft : cstypes::command_buttons::in_moveright;
 		cmd->buttons.value = buttons;
 
-		base->mutable_viewangles( )->set_x( modified.x );
-		base->mutable_viewangles( )->set_y( modified.y );
-		base->mutable_viewangles( )->set_z( 0.0f );
+		const auto viewangles = base->mutable_viewangles( );
+		if ( !viewangles )
+			return;
+		viewangles->set_x( modified.x );
+		viewangles->set_y( modified.y );
+		viewangles->set_z( 0.0f );
 	}
 
 } // namespace features::movement

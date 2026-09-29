@@ -19,14 +19,17 @@ namespace features::misc {
 
                 [[nodiscard]] std::string controller_name(std::uintptr_t controller)
                 {
-                        if (!controller)
+                        if (!controller || controller < 0x10000)
                         {
                                 return {};
                         }
 
+                        const auto offset = SCHEMA("CCSPlayerController", "m_sSanitizedPlayerName"_hash);
+                        if (!offset)
+                                return {};
                         const auto name_ptr = memory::safe_read<std::uintptr_t>(
-                                controller + SCHEMA("CCSPlayerController", "m_sSanitizedPlayerName"_hash)).value_or(0);
-                        return memory::read_string(name_ptr, 127);
+                                controller + offset).value_or(0);
+                        return name_ptr >= 0x10000 ? memory::read_string(name_ptr, 127) : std::string{};
                 }
 
                 [[nodiscard]] std::string random_match_player_name(const std::string& exclude = {})
@@ -38,9 +41,14 @@ namespace features::misc {
                                 if (!player.ptr || player.ptr == local.controller)
                                         continue;
 
+                                if ( player.ptr < 0x10000 )
+                                        continue;
+                                const auto offset = SCHEMA("CCSPlayerController", "m_sSanitizedPlayerName"_hash);
+                                if (!offset)
+                                        continue;
                                 const auto name_ptr = memory::safe_read<std::uintptr_t>(
-                                        player.ptr + SCHEMA("CCSPlayerController", "m_sSanitizedPlayerName"_hash)).value_or(0);
-                                if (!name_ptr)
+                                        player.ptr + offset).value_or(0);
+                                if (name_ptr < 0x10000)
                                         continue;
 
                                 auto pname = memory::read_string(name_ptr, 127);
@@ -60,6 +68,116 @@ namespace features::misc {
                         return names[static_cast<std::size_t>(random::integer(0, static_cast<int>(names.size()) - 1))];
                 }
 
+                void repair_native_radar_hud()
+                {
+                        // Level transitions can recreate the HUD and restore
+                        // its ConVars, so verify periodically instead of
+                        // consuming a process-wide one-shot during loading.
+                        static auto next_check = std::chrono::steady_clock::time_point{};
+                        static auto next_report = std::chrono::steady_clock::time_point{};
+                        const auto now = std::chrono::steady_clock::now();
+                        if ( now < next_check )
+                                return;
+                        next_check = now + std::chrono::seconds( 1 );
+
+                        const auto draw_hud = CONVAR("cl_drawhud");
+                        const auto force_radar = CONVAR("cl_drawhud_force_radar");
+                        const auto death_notices_only = CONVAR("cl_draw_only_deathnotices");
+                        const auto hud_radar_scale = CONVAR("cl_hud_radar_scale");
+                        const auto radar_map_additive = CONVAR("cl_hud_radar_map_additive");
+                        const auto radar_background_alpha = CONVAR("cl_hud_radar_background_alpha");
+                        const auto radar_scale = CONVAR("cl_radar_scale");
+                        const auto radar_icon_scale = CONVAR("cl_radar_icon_scale_min");
+                        const auto radar_centered = CONVAR("cl_radar_always_centered");
+
+                        // ConVars may not exist during the first network-stage
+                        // callback after injection. Keep trying until the HUD
+                        // has initialized instead of permanently consuming the
+                        // one-shot repair before there is anything to repair.
+                        if ( !hud_radar_scale || !radar_scale || !radar_icon_scale )
+                                return;
+
+                        bool changed = false;
+                        if ( draw_hud && draw_hud->m_value.i1 == 0 )
+                        {
+                                draw_hud->m_value.i1 = true;
+                                ++draw_hud->m_change_count;
+                                changed = true;
+                        }
+                        if ( force_radar && force_radar->m_value.i32 < 0 )
+                        {
+                                // -1 explicitly suppresses the native radar,
+                                // independently from cl_drawhud.
+                                force_radar->m_value.i32 = 0;
+                                ++force_radar->m_change_count;
+                                changed = true;
+                        }
+                        if ( death_notices_only && death_notices_only->m_value.i1 != 0 )
+                        {
+                                death_notices_only->m_value.i1 = 0;
+                                ++death_notices_only->m_change_count;
+                                changed = true;
+                        }
+                        if ( hud_radar_scale && ( hud_radar_scale->m_value.fl <= 0.0f || hud_radar_scale->m_value.fl > 5.0f ) )
+                        {
+                                hud_radar_scale->m_value.fl = 1.0f;
+                                ++hud_radar_scale->m_change_count;
+                                changed = true;
+                        }
+                        if ( radar_scale && ( radar_scale->m_value.fl <= 0.0f || radar_scale->m_value.fl > 1.0f ) )
+                        {
+                                radar_scale->m_value.fl = 0.7f;
+                                ++radar_scale->m_change_count;
+                                changed = true;
+                        }
+                        if ( radar_icon_scale && ( radar_icon_scale->m_value.fl <= 0.0f || radar_icon_scale->m_value.fl > 2.0f ) )
+                        {
+                                radar_icon_scale->m_value.fl = 0.6f;
+                                ++radar_icon_scale->m_change_count;
+                                changed = true;
+                        }
+                        // Restore the stock overview-map blend mode if a profile
+                        // or game update disabled it.
+                        if ( radar_map_additive && !radar_map_additive->m_value.i1 )
+                        {
+                                radar_map_additive->m_value.i1 = true;
+                                ++radar_map_additive->m_change_count;
+                                changed = true;
+                        }
+                        if ( radar_background_alpha && ( radar_background_alpha->m_value.fl < 0.0f || radar_background_alpha->m_value.fl > 1.0f ) )
+                        {
+                                radar_background_alpha->m_value.fl = 0.627f;
+                                ++radar_background_alpha->m_change_count;
+                                changed = true;
+                        }
+                        if ( radar_centered && !radar_centered->m_value.i1 )
+                        {
+                                // Restore the stock behavior and undo the earlier
+                                // forced scrolling mode that moved the player icon
+                                // away from the center of the radar.
+                                radar_centered->m_value.i1 = true;
+                                ++radar_centered->m_change_count;
+                                changed = true;
+                        }
+
+                        if ( changed && now >= next_report )
+                        {
+                                next_report = now + std::chrono::seconds( 30 );
+                                diag::writef( diag::level::info,
+                                        "[radar-hud] drawhud=%d force_radar=%d death_only=%d hud_scale=%.3f map_additive=%d bg_alpha=%.3f radar_scale=%.3f icon_scale=%.3f centered=%d repaired=%d",
+                                        draw_hud ? draw_hud->m_value.i1 : -1,
+                                        force_radar ? force_radar->m_value.i32 : -2,
+                                        death_notices_only ? death_notices_only->m_value.i1 : -1,
+                                        hud_radar_scale ? hud_radar_scale->m_value.fl : -1.0f,
+                                        radar_map_additive ? radar_map_additive->m_value.i1 : -1,
+                                        radar_background_alpha ? radar_background_alpha->m_value.fl : -1.0f,
+                                        radar_scale ? radar_scale->m_value.fl : -1.0f,
+                                        radar_icon_scale ? radar_icon_scale->m_value.fl : -1.0f,
+                                        radar_centered ? radar_centered->m_value.i1 : -1,
+                                        static_cast<int>( changed ) );
+                        }
+                }
+
                 [[nodiscard]] std::string make_random_nickname()
                 {
                         static constexpr const char* const k_parts[][ 16 ]{
@@ -74,30 +192,36 @@ namespace features::misc {
 
                 [[nodiscard]] std::string get_steam_nickname(std::uintptr_t controller = 0)
                 {
-                        if (const auto* persona = steam::friends::get_persona_name(); persona && *persona)
+                        if (auto persona = steam::friends::get_persona_name(); !persona.empty())
                         {
-                                std::string name(persona);
-                                if (!name.empty() && name != "x")
+                                if (persona != "x")
                                 {
-                                        return name;
+                                        return persona;
                                 }
                         }
 
                         if (controller)
                         {
-                                const auto name_ptr = memory::safe_read<std::uintptr_t>(
-                                        controller + SCHEMA("CCSPlayerController", "m_sSanitizedPlayerName"_hash)).value_or(0);
-                                auto name = memory::read_string(name_ptr, 127);
-                                if (!name.empty() && name != "x")
+                                const auto offset = SCHEMA("CCSPlayerController", "m_sSanitizedPlayerName"_hash);
+                                const auto name_ptr = offset
+                                        ? memory::safe_read<std::uintptr_t>(controller + offset).value_or(0) : 0;
+                                if (name_ptr >= 0x10000)
                                 {
-                                        return name;
+                                        auto name = memory::read_string(name_ptr, 127);
+                                        if (!name.empty() && name != "x")
+                                        {
+                                                return name;
+                                        }
                                 }
 
-                                auto raw_name = memory::read_string(
-                                        controller + SCHEMA("CBasePlayerController", "m_iszPlayerName"_hash), 127);
-                                if (!raw_name.empty() && raw_name != "x")
+                                const auto raw_offset = SCHEMA("CBasePlayerController", "m_iszPlayerName"_hash);
+                                if (raw_offset)
                                 {
-                                        return raw_name;
+                                        auto raw_name = memory::read_string(controller + raw_offset, 127);
+                                        if (!raw_name.empty() && raw_name != "x")
+                                        {
+                                                return raw_name;
+                                        }
                                 }
                         }
 
@@ -106,10 +230,15 @@ namespace features::misc {
 
                 void submit_name_change(const std::string& display_name)
                 {
-                        if (display_name.empty())
+                        if (display_name.empty() || display_name.size() > 127)
                         {
                                 return;
                         }
+
+                        const auto engine = addresses::globals::source2engine_to_client;
+                        const auto command_fn = PATTERN(patterns::engine_client_cmd);
+                        if (!engine || engine < 0x10000 || !command_fn)
+                                return;
 
                         std::string sanitized = display_name;
                         std::erase(sanitized, '"');
@@ -117,11 +246,11 @@ namespace features::misc {
                         std::erase(sanitized, '\r');
                         std::erase(sanitized, ';');
 
-                        other::s_display_name = display_name;
+                        other::s_display_name = sanitized;
                         other::s_name_change_pending = true;
 
                         const auto cmd = std::format("setinfo name \"{}\"", sanitized);
-                        memory::call<void>(PATTERN(patterns::engine_client_cmd), addresses::globals::source2engine_to_client, 0, cmd.c_str(), 0x7ffef001);
+                        memory::safe_call<void>(command_fn, engine, 0, cmd.c_str(), 0x7ffef001);
                 }
 
                 inline bool is_local_player( std::uintptr_t ent, const systems::local::snapshot& local )
@@ -291,7 +420,10 @@ namespace features::misc {
                         std::replace(text.begin(), text.end(), '"', '\'');
                         std::replace(text.begin(), text.end(), ';', ' ');
                         const auto cmd = std::format("say \"{}\"", text);
-                        memory::call<void>(PATTERN(patterns::engine_client_cmd), addresses::globals::source2engine_to_client, 0, cmd.c_str(), 0x7ffef001);
+                        const auto engine = addresses::globals::source2engine_to_client;
+                        const auto command_fn = PATTERN(patterns::engine_client_cmd);
+                        if ( engine && engine >= 0x10000 && command_fn )
+                                memory::safe_call<void>(command_fn, engine, 0, cmd.c_str(), 0x7ffef001);
                 }
         }
 
@@ -304,50 +436,153 @@ namespace features::misc {
                 }
 
                 this->do_player_alpha_changing();
-                this->do_reveal_radar();
                 this->do_name_changing();
                 this->do_chat_spam();
         }
 
         void other::do_reveal_radar() const
         {
-                if (!settings::g_misc.reveal_radar.value)
+                const auto report = []( const char* reason, std::uint32_t state = 0,
+                        std::uint32_t spotted = 0, std::uint32_t mask = 0,
+                        std::uint32_t team = 0, std::size_t controllers = 0,
+                        std::size_t alive = 0, std::size_t candidates = 0,
+                        std::size_t written = 0 )
                 {
-                        return;
-                }
+                        static std::string_view last_reason{};
+                        // Disabled radar is the normal idle state, so it should
+                        // not emit one diagnostic per second from the frame hook.
+                        if ( !settings::g_misc.reveal_radar.value )
+                        {
+                                last_reason = "setting-disabled";
+                                return;
+                        }
+                        // Report state transitions only. Counts can change every
+                        // frame and are not useful as a reason to repeat the same
+                        // diagnostic continuously.
+                        if ( last_reason == reason ) return;
+                        last_reason = reason;
+                        diag::writef( diag::level::info,
+                                "[radar] reason=%s enabled=%d local=%d controllers=%zu alive=%zu candidates=%zu written=%zu offsets=state:%u spotted:%u mask:%u team:%u",
+                                reason, static_cast<int>( settings::g_misc.reveal_radar.value ),
+                                static_cast<int>( systems::g_local.get().is_valid() ), controllers,
+                                alive, candidates, written, state, spotted, mask, team );
+                };
 
                 const auto local = systems::g_local.get();
+
+                // Only repair HUD when reveal radar is enabled.
+                // When disabled, keep the stock minimap usable.
+                if (settings::g_misc.reveal_radar.value)
+                {
+                        repair_native_radar_hud();
+                }
+
+                if (!settings::g_misc.reveal_radar.value)
+                {
+                        report( "setting-disabled" ); // records the state transition without writing a log line
+                        return;
+                }
                 if (!local.is_valid())
                 {
+                        report( "local-invalid" );
                         return;
                 }
 
-                const auto spotted_state_offset = SCHEMA("C_CSPlayerPawn", "m_entitySpottedState"_hash);
+                // This field can be declared on the pawn base after a game update.
+                // Never write with a zero/unresolved schema offset: pawn + 0 is
+                // the object header/vtable and corrupting it breaks the radar
+                // and usually crashes client.dll during rendering.
+                auto spotted_state_offset = SCHEMA("C_CSPlayerPawn", "m_entitySpottedState"_hash);
+                if (!spotted_state_offset)
+                {
+                        spotted_state_offset = SCHEMA("C_CSPlayerPawnBase", "m_entitySpottedState"_hash);
+                }
                 const auto spotted_offset = SCHEMA("EntitySpottedState_t", "m_bSpotted"_hash);
+                const auto spotted_mask_offset = SCHEMA("EntitySpottedState_t", "m_bSpottedByMask"_hash);
 
+                if (!spotted_state_offset || !spotted_offset)
+                {
+                        static std::atomic_bool warned{};
+                        if (!warned.exchange(true, std::memory_order_relaxed))
+                        {
+                                diag::write(diag::level::warning,
+                                        "reveal radar disabled: m_entitySpottedState/m_bSpotted schema unresolved");
+                        }
+                        report( "spotted-schema-missing", spotted_state_offset,
+                                spotted_offset, spotted_mask_offset );
+                        return;
+                }
+
+                const auto alive_offset = SCHEMA( "CCSPlayerController", "m_bPawnIsAlive"_hash );
+                const auto player_pawn_handle_offset = SCHEMA( "CCSPlayerController", "m_hPlayerPawn"_hash );
+                const auto pawn_handle_offset = SCHEMA( "CBasePlayerController", "m_hPawn"_hash );
+                const auto team_offset = SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash );
+                if ( !alive_offset || ( !player_pawn_handle_offset && !pawn_handle_offset ) )
+                {
+                        report( "controller-schema-missing", spotted_state_offset,
+                                spotted_offset, spotted_mask_offset, team_offset );
+                        return;
+                }
+
+                std::size_t controllers = 0;
+                std::size_t alive_players = 0;
+                std::size_t candidate_pawns = 0;
+                std::size_t spotted_players = 0;
                 for (const auto& player : systems::g_entities.get_by_type(systems::entities::type::player))
                 {
+                        ++controllers;
                         const auto controller = player.ptr;
-                        if (!controller || !memory::read<bool>(controller + SCHEMA("CCSPlayerController", "m_bPawnIsAlive"_hash)))
+                        if (!controller || !memory::safe_read<bool>( controller + alive_offset ).value_or( false ))
                         {
                                 continue;
                         }
+                        ++alive_players;
 
-                        const auto pawn_handle = memory::read<std::uint32_t>(controller + SCHEMA("CBasePlayerController", "m_hPawn"_hash));
+                        auto pawn_handle = player_pawn_handle_offset
+                                ? memory::safe_read<std::uint32_t>( controller + player_pawn_handle_offset ).value_or( 0 )
+                                : 0;
+                        if ( ( !pawn_handle || pawn_handle == 0xffffffffu ) && pawn_handle_offset )
+                        {
+                                pawn_handle = memory::safe_read<std::uint32_t>( controller + pawn_handle_offset ).value_or( 0 );
+                        }
                         const auto pawn = systems::g_entities.lookup(pawn_handle);
                         if (!pawn || pawn == local.view_pawn())
                         {
                                 continue;
                         }
+                        ++candidate_pawns;
 
-                        const auto team = memory::read<std::uint8_t>(pawn + SCHEMA("C_BaseEntity", "m_iTeamNum"_hash));
-                        if (!local.is_this_other_team(team))
+                        // If the team schema is unavailable or the field read
+                        // fails, do not silently discard the player. The
+                        // previous hard filter made the feature a no-op on
+                        // builds where m_iTeamNum moved to a derived class.
+                        if ( team_offset )
                         {
-                                continue;
+                                const auto team = memory::safe_read<std::uint8_t>( pawn + team_offset ).value_or( 0 );
+                                if ( ( team == 2 || team == 3 ) && !local.is_this_other_team(team) )
+                                {
+                                        continue;
+                                }
                         }
 
-                        memory::write<bool>(pawn + spotted_state_offset + spotted_offset, true);
+                        if ( memory::safe_write<bool>(pawn + spotted_state_offset + spotted_offset, true) )
+                        {
+                                ++spotted_players;
+                        }
+                        if ( spotted_mask_offset )
+                        {
+                                // The mask is two 32-bit controller masks in
+                                // EntitySpottedState_t. Set both halves so the
+                                // marker is visible to every HUD radar owner,
+                                // not only the local controller.
+                                memory::safe_write<std::uint32_t>( pawn + spotted_state_offset + spotted_mask_offset, 0xffffffffu );
+                                memory::safe_write<std::uint32_t>( pawn + spotted_state_offset + spotted_mask_offset + sizeof( std::uint32_t ), 0xffffffffu );
+                        }
                 }
+
+                report( "updated", spotted_state_offset, spotted_offset,
+                        spotted_mask_offset, team_offset, controllers, alive_players,
+                        candidate_pawns, spotted_players );
         }
 
         void other::do_autobuy() const
@@ -410,7 +645,10 @@ namespace features::misc {
 
                 if (!cmd.empty())
                 {
-                        memory::call<void>(PATTERN(patterns::engine_client_cmd), addresses::globals::source2engine_to_client, 0, cmd.c_str(), 0x7ffef001);
+                        const auto engine = addresses::globals::source2engine_to_client;
+                        const auto command_fn = PATTERN(patterns::engine_client_cmd);
+                        if ( engine && engine >= 0x10000 && command_fn )
+                                memory::safe_call<void>(command_fn, engine, 0, cmd.c_str(), 0x7ffef001);
                 }
         }
 
@@ -703,7 +941,10 @@ namespace features::misc {
                 }
 
                 const auto cmd = std::format( "callvote kick {}", local_slot );
-                memory::call<void>( PATTERN( patterns::engine_client_cmd ), addresses::globals::source2engine_to_client, 0, cmd.c_str(), 0x7ffef001 );
+                const auto engine = addresses::globals::source2engine_to_client;
+                const auto command_fn = PATTERN( patterns::engine_client_cmd );
+                if ( engine && engine >= 0x10000 && command_fn )
+                        memory::safe_call<void>( command_fn, engine, 0, cmd.c_str( ), 0x7ffef001 );
         }
 
         void other::do_chat_spam()
@@ -745,13 +986,19 @@ namespace features::misc {
                 if (send_all)
                 {
                         const auto cmd = std::format("say \"{}\"", text);
-                        memory::call<void>(PATTERN(patterns::engine_client_cmd), addresses::globals::source2engine_to_client, 0, cmd.c_str(), 0x7ffef001);
+                        const auto engine = addresses::globals::source2engine_to_client;
+                        const auto command_fn = PATTERN(patterns::engine_client_cmd);
+                        if ( engine && engine >= 0x10000 && command_fn )
+                                memory::safe_call<void>(command_fn, engine, 0, cmd.c_str(), 0x7ffef001);
                 }
 
                 if (send_team)
                 {
                         const auto cmd = std::format("say_team \"{}\"", text);
-                        memory::call<void>(PATTERN(patterns::engine_client_cmd), addresses::globals::source2engine_to_client, 0, cmd.c_str(), 0x7ffef001);
+                        const auto engine = addresses::globals::source2engine_to_client;
+                        const auto command_fn = PATTERN(patterns::engine_client_cmd);
+                        if ( engine && engine >= 0x10000 && command_fn )
+                                memory::safe_call<void>(command_fn, engine, 0, cmd.c_str(), 0x7ffef001);
                 }
         }
 

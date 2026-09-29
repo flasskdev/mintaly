@@ -1,0 +1,22 @@
+// function: FUN_1800887c0
+// ea: 1800887c0
+// category: nospread
+// depth: 1, via: FUN_180084040 @180084bf1
+// size: 68 bytes
+// anchors: nospread, trace_geometry, hitbox_backtrack
+// ----------------------------------------------------
+
+void FUN_1800887c0(undefined8 param_1,undefined8 param_2,undefined4 param_3)
+
+{
+  FUN_180109420(&DAT_180355000);
+  if (DAT_180472ee0 != (code *)0x0) {
+                    /* WARNING: Could not recover jumptable at 0x0001800887f8. Too many branches */
+                    /* WARNING: Treating indirect jump as call */
+    (*DAT_180472ee0)(param_1,param_2,param_3);
+    return;
+  }
+  return;
+}
+
+

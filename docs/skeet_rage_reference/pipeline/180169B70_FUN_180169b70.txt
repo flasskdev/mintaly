@@ -1,0 +1,151 @@
+// function: FUN_180169b70
+// ea: 180169b70
+// category: pipeline
+// depth: 3, via: FUN_180169a60 @180169a9c
+// size: 811 bytes
+// anchors: pipeline
+// ----------------------------------------------------
+
+uint FUN_180169b70(uint *param_1)
+
+{
+  uint *puVar1;
+  uint *puVar2;
+  uint uVar3;
+  uint uVar4;
+  uint uVar5;
+  uint uVar6;
+  uint uVar7;
+  uint uVar8;
+  uint uVar9;
+  uint uVar10;
+  uint uVar11;
+  uint uVar12;
+  uint uVar13;
+  uint uVar14;
+  uint uVar15;
+  uint uVar16;
+  longlong lVar17;
+  uint uVar18;
+  uint uVar19;
+  
+  uVar18 = *param_1;
+  if (uVar18 == 0x270) {
+    lVar17 = -0x270;
+    uVar18 = param_1[1];
+    do {
+      puVar1 = param_1 + lVar17 + 0x272;
+      uVar3 = *puVar1;
+      uVar4 = puVar1[1];
+      uVar5 = puVar1[2];
+      uVar6 = puVar1[3];
+      puVar1 = param_1 + lVar17 + 0x3fe;
+      uVar7 = puVar1[1];
+      uVar8 = puVar1[2];
+      uVar9 = puVar1[3];
+      puVar2 = param_1 + lVar17 + 0x4e1;
+      *puVar2 = *puVar1 ^ (int)(uVar3 << 0x1f) >> 0x1f & 0x9908b0dfU ^
+                (uVar3 & 0x7ffffffe | uVar18 & 0x80000000) >> 1;
+      puVar2[1] = uVar7 ^ (int)(uVar4 << 0x1f) >> 0x1f & 0x9908b0dfU ^
+                  (uVar4 & 0x7ffffffe | uVar3 & 0x80000000) >> 1;
+      puVar2[2] = uVar8 ^ (int)(uVar5 << 0x1f) >> 0x1f & 0x9908b0dfU ^
+                  (uVar5 & 0x7ffffffe | uVar4 & 0x80000000) >> 1;
+      puVar2[3] = uVar9 ^ (int)(uVar6 << 0x1f) >> 0x1f & 0x9908b0dfU ^
+                  (uVar6 & 0x7ffffffe | uVar5 & 0x80000000) >> 1;
+      lVar17 = lVar17 + 4;
+      uVar18 = uVar6;
+    } while (lVar17 != 0);
+    uVar18 = 0x270;
+  }
+  else if (0x4df < uVar18) {
+    uVar18 = param_1[0x271];
+    lVar17 = 0;
+    do {
+      puVar1 = param_1 + lVar17 + 0x272;
+      uVar3 = *puVar1;
+      uVar4 = puVar1[1];
+      uVar5 = puVar1[2];
+      uVar6 = puVar1[3];
+      uVar19 = uVar18 & 0x80000000;
+      puVar1 = param_1 + lVar17 + 0x276;
+      uVar7 = *puVar1;
+      uVar8 = puVar1[1];
+      uVar9 = puVar1[2];
+      uVar18 = puVar1[3];
+      puVar2 = param_1 + lVar17 + 0x3fe;
+      uVar10 = puVar2[1];
+      uVar11 = puVar2[2];
+      uVar12 = puVar2[3];
+      puVar1 = param_1 + lVar17 + 0x402;
+      uVar13 = *puVar1;
+      uVar14 = puVar1[1];
+      uVar15 = puVar1[2];
+      uVar16 = puVar1[3];
+      puVar1 = param_1 + lVar17 + 1;
+      *puVar1 = *puVar2 ^ (int)(uVar3 << 0x1f) >> 0x1f & 0x9908b0dfU ^
+                (uVar3 & 0x7ffffffe | uVar19) >> 1;
+      puVar1[1] = uVar10 ^ (int)(uVar4 << 0x1f) >> 0x1f & 0x9908b0dfU ^
+                  (uVar4 & 0x7ffffffe | uVar3 & 0x80000000) >> 1;
+      puVar1[2] = uVar11 ^ (int)(uVar5 << 0x1f) >> 0x1f & 0x9908b0dfU ^
+                  (uVar5 & 0x7ffffffe | uVar4 & 0x80000000) >> 1;
+      puVar1[3] = uVar12 ^ (int)(uVar6 << 0x1f) >> 0x1f & 0x9908b0dfU ^
+                  (uVar6 & 0x7ffffffe | uVar5 & 0x80000000) >> 1;
+      puVar1 = param_1 + lVar17 + 5;
+      *puVar1 = uVar13 ^ (int)(uVar7 << 0x1f) >> 0x1f & 0x9908b0dfU ^
+                (uVar7 & 0x7ffffffe | uVar6 & 0x80000000) >> 1;
+      puVar1[1] = uVar14 ^ (int)(uVar8 << 0x1f) >> 0x1f & 0x9908b0dfU ^
+                  (uVar8 & 0x7ffffffe | uVar7 & 0x80000000) >> 1;
+      puVar1[2] = uVar15 ^ (int)(uVar9 << 0x1f) >> 0x1f & 0x9908b0dfU ^
+                  (uVar9 & 0x7ffffffe | uVar8 & 0x80000000) >> 1;
+      puVar1[3] = uVar16 ^ (int)(uVar18 << 0x1f) >> 0x1f & 0x9908b0dfU ^
+                  (uVar18 & 0x7ffffffe | uVar9 & 0x80000000) >> 1;
+      lVar17 = lVar17 + 8;
+    } while (lVar17 != 0xe0);
+    uVar3 = param_1[0x352];
+    uVar4 = param_1[0x353];
+    param_1[0xe1] =
+         -(uVar3 & 1) & 0x9908b0df ^ param_1[0x4de] ^
+         (uVar3 & 0x7ffffffe | uVar18 & 0x80000000) >> 1;
+    param_1[0xe2] =
+         -(uVar4 & 1) & 0x9908b0df ^ param_1[0x4df] ^ (uVar4 & 0x7ffffffe | uVar3 & 0x80000000) >> 1
+    ;
+    uVar18 = param_1[0x354];
+    param_1[0xe3] =
+         -(uVar18 & 1) & 0x9908b0df ^ param_1[0x4e0] ^
+         (uVar18 & 0x7ffffffe | uVar4 & 0x80000000) >> 1;
+    lVar17 = 0;
+    do {
+      puVar1 = param_1 + lVar17 + 0x355;
+      uVar3 = *puVar1;
+      uVar4 = puVar1[1];
+      uVar5 = puVar1[2];
+      uVar6 = puVar1[3];
+      puVar1 = param_1 + lVar17 + 1;
+      uVar7 = puVar1[1];
+      uVar8 = puVar1[2];
+      uVar9 = puVar1[3];
+      puVar2 = param_1 + lVar17 + 0xe4;
+      *puVar2 = *puVar1 ^ (int)(uVar3 << 0x1f) >> 0x1f & 0x9908b0dfU ^
+                (uVar3 & 0x7ffffffe | uVar18 & 0x80000000) >> 1;
+      puVar2[1] = uVar7 ^ (int)(uVar4 << 0x1f) >> 0x1f & 0x9908b0dfU ^
+                  (uVar4 & 0x7ffffffe | uVar3 & 0x80000000) >> 1;
+      puVar2[2] = uVar8 ^ (int)(uVar5 << 0x1f) >> 0x1f & 0x9908b0dfU ^
+                  (uVar5 & 0x7ffffffe | uVar4 & 0x80000000) >> 1;
+      puVar2[3] = uVar9 ^ (int)(uVar6 << 0x1f) >> 0x1f & 0x9908b0dfU ^
+                  (uVar6 & 0x7ffffffe | uVar5 & 0x80000000) >> 1;
+      lVar17 = lVar17 + 4;
+      uVar18 = uVar6;
+    } while (lVar17 != 0x18c);
+    param_1[0x270] =
+         -(param_1[1] & 1) & 0x9908b0df ^ param_1[0x18d] ^
+         (param_1[1] & 0x7ffffffe | param_1[0x4e0] & 0x80000000) >> 1;
+    uVar18 = 0;
+  }
+  *param_1 = uVar18 + 1;
+  uVar18 = param_1[(ulonglong)uVar18 + 1] >> 0xb & param_1[0x4e1] ^ param_1[(ulonglong)uVar18 + 1];
+  uVar18 = (uVar18 & 0x13a58ad) << 7 ^ uVar18;
+  uVar18 = (uVar18 & 0x1df8c) << 0xf ^ uVar18;
+  return uVar18 >> 0x12 ^ uVar18;
+}
+
+

@@ -1,0 +1,78 @@
+// function: FUN_180127fc0
+// ea: 180127fc0
+// category: trace_geometry
+// depth: 2, via: FUN_1800d6c30 @1800d6fc6
+// size: 589 bytes
+// anchors: trace_geometry, hitbox_backtrack
+// ----------------------------------------------------
+
+void FUN_180127fc0(undefined8 param_1,float param_2,float param_3,float param_4,uint param_5,
+                  uint param_6)
+
+{
+  longlong lVar1;
+  uint uVar2;
+  ulonglong uVar3;
+  ulonglong uVar4;
+  ulonglong uVar5;
+  ulonglong uVar6;
+  float fVar7;
+  float fVar8;
+  float fVar9;
+  
+  if (param_5 < 0x1000000 || param_4 <= 0.0) {
+    return;
+  }
+  if ((int)param_6 < 1) {
+    fVar9 = (float)FUN_1802139c0((param_4 * 6.2831855) / 1.5);
+    uVar2 = 0x18;
+    if (0x18 < (int)fVar9) {
+      uVar2 = (int)fVar9;
+    }
+    param_6 = 0x80;
+    if ((int)uVar2 < 0x80) {
+      param_6 = uVar2;
+    }
+    fVar9 = 6.2831855 / (float)(int)param_6;
+    uVar4 = (ulonglong)(param_6 * 2);
+    uVar5 = (ulonglong)(param_6 * 8);
+  }
+  else {
+    fVar9 = 6.2831855 / (float)(int)param_6;
+    uVar4 = (ulonglong)(param_6 * 2);
+    uVar5 = uVar4 * 4;
+    if (0x1ff < param_6) {
+      lVar1 = FUN_1801695a0(uVar5 + 0x27);
+      uVar6 = lVar1 + 0x27U & 0xffffffffffffffe0;
+      *(longlong *)(uVar6 - 8) = lVar1;
+      goto LAB_180128110;
+    }
+  }
+  uVar6 = FUN_1801695a0(uVar5);
+LAB_180128110:
+  uVar3 = 0;
+  FUN_18023b870(uVar6,0,uVar5);
+  do {
+    fVar8 = (float)(int)uVar3 * fVar9;
+    fVar7 = (float)FUN_180214280(fVar8);
+    *(float *)(uVar6 + uVar3 * 8) = fVar7 * param_4 + param_2;
+    fVar7 = (float)FUN_18021b870(fVar8);
+    *(float *)(uVar6 + 4 + uVar3 * 8) = fVar7 * param_4 + param_3;
+    uVar3 = uVar3 + 1;
+  } while (param_6 != uVar3);
+  uVar4 = uVar4 * 4;
+  FUN_1801256d0();
+  uVar5 = uVar6;
+  if (0xfff < uVar4) {
+    uVar5 = *(ulonglong *)(uVar6 - 8);
+    if (0x1f < (uVar6 - 8) - uVar5) {
+                    /* WARNING: Subroutine does not return */
+      _invoke_watson((wchar_t *)0x0,(wchar_t *)0x0,(wchar_t *)0x0,0,0);
+    }
+    uVar4 = uVar4 + 0x27;
+  }
+  FUN_1801695f0(uVar5,uVar4);
+  return;
+}
+
+

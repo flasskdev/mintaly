@@ -1,0 +1,60 @@
+// function: FUN_18006ed30
+// ea: 18006ed30
+// category: nospread
+// depth: 2, via: FUN_180088b90 @180088c28
+// size: 406 bytes
+// anchors: nospread, trace_geometry, hitbox_backtrack
+// ----------------------------------------------------
+
+undefined8 FUN_18006ed30(undefined8 param_1,longlong param_2,int param_3,float *param_4)
+
+{
+  int iVar1;
+  byte *pbVar2;
+  byte bVar3;
+  bool bVar4;
+  
+  if ((param_3 == -0x78331fc2) && ((DAT_18046f3a0 != '\0' || (DAT_18046f408 == '\x01')))) {
+    AcquireSRWLockShared((PSRWLOCK)&DAT_180471378);
+    bVar3 = DAT_180471371;
+    iVar1 = DAT_18047136c;
+    ReleaseSRWLockShared((PSRWLOCK)&DAT_180471378);
+    if ((*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+                 0x2638) < DAT_1804722bc) && (FUN_180183614(&DAT_1804722bc), DAT_1804722bc == -1)) {
+      DAT_1804722b8 = FUN_180114bb0("C_BaseEntity",0xa5bfefb3);
+      _Init_thread_footer(&DAT_1804722bc);
+    }
+    bVar3 = bVar3 & iVar1 == *(int *)(DAT_1804722b8 + param_2);
+    pbVar2 = (byte *)&DAT_18046f3a0;
+    if (bVar3 != 0) {
+      pbVar2 = (byte *)&DAT_18046f408;
+    }
+    if ((*pbVar2 & 1) != 0) {
+      pbVar2 = &DAT_18046f400;
+      bVar4 = bVar3 != 0;
+      if (bVar4) {
+        pbVar2 = &DAT_18046f468;
+      }
+      *param_4 = (float)*pbVar2 / 255.0;
+      pbVar2 = &DAT_18046f401;
+      if (bVar4) {
+        pbVar2 = &DAT_18046f469;
+      }
+      param_4[1] = (float)*pbVar2 / 255.0;
+      pbVar2 = &DAT_18046f402;
+      if (bVar4) {
+        pbVar2 = &DAT_18046f46a;
+      }
+      param_4[2] = (float)*pbVar2 / 255.0;
+      pbVar2 = &DAT_18046f403;
+      if (bVar4) {
+        pbVar2 = &DAT_18046f46b;
+      }
+      param_4[3] = (float)*pbVar2 / 255.0;
+      return 1;
+    }
+  }
+  return 0;
+}
+
+

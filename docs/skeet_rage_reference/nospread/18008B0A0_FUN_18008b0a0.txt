@@ -1,0 +1,96 @@
+// function: FUN_18008b0a0
+// ea: 18008b0a0
+// category: nospread
+// depth: 3, via: FUN_18008b250 @18008b387
+// size: 428 bytes
+// anchors: nospread, trace_geometry, hitbox_backtrack
+// ----------------------------------------------------
+
+/* WARNING: Globals starting with '_' overlap smaller symbols at the same address */
+
+ulonglong FUN_18008b0a0(undefined8 *param_1,longlong *param_2)
+
+{
+  undefined8 uVar1;
+  char cVar2;
+  int iVar3;
+  undefined8 unaff_RSI;
+  ulonglong uVar4;
+  undefined1 auVar5 [16];
+  longlong *local_c8;
+  undefined8 local_c0;
+  undefined8 local_b8;
+  undefined8 uStack_b0;
+  ulonglong local_a8 [3];
+  undefined4 uStack_90;
+  undefined4 local_8c;
+  undefined4 uStack_88;
+  undefined8 uStack_84;
+  undefined8 local_78;
+  undefined8 uStack_70;
+  undefined8 local_68;
+  undefined8 uStack_60;
+  undefined8 local_58;
+  undefined8 uStack_50;
+  undefined8 local_48;
+  undefined8 uStack_40;
+  undefined8 local_38;
+  
+  uVar4 = CONCAT71((int7)((ulonglong)unaff_RSI >> 8),1);
+  if (*(char *)(param_1 + 4) == '\0') {
+    iVar3 = (**(code **)(*param_2 + 0x38))(param_2,&DAT_180248e70,param_1);
+    if (iVar3 < 0) {
+      uVar4 = 0;
+    }
+    else {
+      (**(code **)(*(longlong *)*param_1 + 0x140))((longlong *)*param_1,param_1 + 1);
+      local_48 = 0;
+      uStack_40 = 0;
+      local_58 = 0;
+      uStack_50 = 0;
+      local_68 = 0;
+      uStack_60 = 0;
+      local_78 = 0;
+      uStack_70 = 0;
+      local_38 = 0;
+      (**(code **)(*param_2 + 0x60))(param_2,&local_78);
+      param_1[3] = local_48;
+      local_c8 = (longlong *)0x0;
+      iVar3 = (**(code **)(*param_2 + 0x48))(param_2,0,&DAT_180248e80,&local_c8);
+      if (-1 < iVar3) {
+        (**(code **)(*(longlong *)*param_1 + 0x48))((longlong *)*param_1,local_c8,0,param_1 + 2);
+        uStack_88 = 0;
+        uStack_84 = 0;
+        local_a8[2] = 0;
+        uStack_90 = 0;
+        local_8c = 0;
+        local_a8[0] = 0;
+        local_a8[1] = 0;
+        (**(code **)(*local_c8 + 0x50))(local_c8,local_a8);
+        auVar5._0_8_ = local_a8[0] & 0xffffffff;
+        auVar5._8_4_ = (int)(local_a8[0] >> 0x20);
+        auVar5._12_4_ = 0;
+        local_b8 = CONCAT44((float)(SUB168(auVar5 | _DAT_180248e60,8) - DAT_180248e60._8_8_),
+                            (float)(SUB168(auVar5 | _DAT_180248e60,0) - (double)DAT_180248e60));
+        local_c0 = 0;
+        uStack_b0 = 0x3f80000000000000;
+        (**(code **)(*(longlong *)param_1[1] + 0x160))((longlong *)param_1[1],1,&local_c0);
+        (**(code **)(*local_c8 + 0x10))();
+      }
+      uVar1 = param_1[3];
+      cVar2 = FUN_18012c190(*param_1,param_1[1]);
+      if (cVar2 != '\0') {
+        FUN_18013e830(uVar1);
+      }
+      FUN_1800f6ed0(&DAT_180471c60);
+      if (*(char *)((longlong)param_1 + 0x21) == '\0') {
+        FUN_18008b4b0(&DAT_180471dd8);
+        *(undefined1 *)((longlong)param_1 + 0x21) = 1;
+      }
+      *(undefined1 *)(param_1 + 4) = 1;
+    }
+  }
+  return uVar4 & 0xffffffff;
+}
+
+

@@ -171,10 +171,35 @@ namespace features::esp::other {
 			return;
 		}
 
-		const auto planted_c4 = memory::read<std::uintptr_t>( addresses::globals::planted_c4 );
-		const auto global_vars = memory::read<std::uintptr_t>( addresses::globals::global_vars );
+		const auto planted_c4_head = memory::safe_read<std::uintptr_t>( addresses::globals::planted_c4 ).value_or( 0 );
+		const auto global_vars = memory::safe_read<std::uintptr_t>( addresses::globals::global_vars ).value_or( 0 );
 
-		if ( !planted_c4 || !global_vars )
+		if ( !planted_c4_head || !global_vars )
+		{
+			return;
+		}
+
+		// dwPlantedC4 is the head of the C_PlantedC4 intrusive list now. It is
+		// no longer an array/count pair; the link and ticking flag live in the
+		// entity at the current offsets.
+		std::uintptr_t planted_c4{};
+		for ( auto node = planted_c4_head, i = std::size_t{ 0 }; node && i < 64; ++i )
+		{
+			if ( node < 0x10000ull || node == ( std::numeric_limits<std::uintptr_t>::max )( ) )
+			{
+				break;
+			}
+
+			if ( memory::safe_read<bool>( node + 0x1288 ).value_or( false ) )
+			{
+				planted_c4 = node;
+				break;
+			}
+
+			node = memory::safe_read<std::uintptr_t>( node + 0x1280 ).value_or( 0 );
+		}
+
+		if ( !planted_c4 )
 		{
 			return;
 		}

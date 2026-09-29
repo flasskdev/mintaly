@@ -1,0 +1,142 @@
+// function: FUN_1800d7570
+// ea: 1800d7570
+// category: trace_geometry
+// depth: 1, via: FUN_1800aae50 @1800ab6ff
+// size: 1001 bytes
+// anchors: trace_geometry, hitbox_backtrack
+// ----------------------------------------------------
+
+undefined8 FUN_1800d7570(longlong param_1)
+
+{
+  longlong lVar1;
+  int iVar2;
+  ulonglong uVar3;
+  ulonglong uVar4;
+  longlong lVar5;
+  ulonglong uVar6;
+  int *piVar7;
+  double dVar8;
+  double dVar9;
+  double dVar10;
+  undefined1 local_4b8 [1024];
+  undefined1 local_b8 [8];
+  undefined8 uStack_b0;
+  undefined4 local_a8;
+  undefined4 uStack_a4;
+  undefined4 uStack_a0;
+  undefined4 uStack_9c;
+  undefined1 local_90 [8];
+  undefined8 uStack_88;
+  undefined8 local_80;
+  undefined8 uStack_78;
+  longlong local_70;
+  undefined8 local_68;
+  
+  local_68 = 0xfffffffffffffffe;
+  FUN_18023b870(local_4b8,0,0x400);
+  lVar1 = *(longlong *)(param_1 + -8);
+  local_70 = param_1;
+  if (*(char *)(lVar1 + 0xc2) == '\x01') {
+                    /* WARNING: Subroutine does not return */
+    FUN_1800e24d0("script is closing");
+  }
+  iVar2 = *(int *)(lVar1 + 0xa8);
+  *(int *)(lVar1 + 0xa8) = iVar2 + 1;
+  if (iVar2 < 0x8000) {
+    uVar3 = FUN_180184cfc();
+    uVar4 = FUN_180184ce0();
+    if (uVar3 == 24000000) {
+      lVar5 = (((longlong)uVar4 % 24000000) * 1000000000) / 24000000 +
+              ((longlong)uVar4 / 24000000) * 1000000000;
+    }
+    else if (uVar3 == 10000000) {
+      lVar5 = uVar4 * 100;
+    }
+    else {
+      if ((uVar4 | uVar3) >> 0x20 == 0) {
+        uVar6 = (uVar4 & 0xffffffff) / (uVar3 & 0xffffffff);
+        uVar4 = (uVar4 & 0xffffffff) % (uVar3 & 0xffffffff);
+      }
+      else {
+        uVar6 = (longlong)uVar4 / (longlong)uVar3;
+        uVar4 = (longlong)uVar4 % (longlong)uVar3;
+      }
+      uVar4 = uVar4 * 1000000000;
+      if ((uVar3 | uVar4) >> 0x20 == 0) {
+        uVar4 = (uVar4 & 0xffffffff) / (uVar3 & 0xffffffff);
+      }
+      else {
+        uVar4 = (longlong)uVar4 / (longlong)uVar3;
+      }
+      lVar5 = uVar4 + uVar6 * 1000000000;
+    }
+    if (lVar5 <= *(longlong *)(lVar1 + 0xb0)) {
+      lVar1 = *(longlong *)(param_1 + -8);
+      if (*(longlong *)(lVar1 + 0x58) == 5) {
+        if (*(ulonglong *)(lVar1 + 0x60) < 0x10) {
+          piVar7 = (int *)(lVar1 + 0x48);
+        }
+        else {
+          piVar7 = *(int **)(lVar1 + 0x48);
+        }
+        if ((char)piVar7[1] == 't' && *piVar7 == 0x6e696170) {
+          FUN_1801304f0(0);
+          iVar2 = FUN_18016c6d0(local_70,2);
+          if (iVar2 != 3) {
+                    /* WARNING: Subroutine does not return */
+            FUN_1800e24d0("expected number");
+          }
+          dVar8 = (double)FUN_18016c710(local_70,2,0);
+          if ((0x7fefffffffffffff < (ulonglong)ABS(dVar8)) || (1000000000000.0 < ABS(dVar8))) {
+                    /* WARNING: Subroutine does not return */
+            FUN_1800e24d0("number out of range");
+          }
+          dVar9 = (double)FUN_180215100(dVar8);
+          if ((((4096.0 < dVar8) || (dVar8 < 1.0)) || (dVar8 != dVar9)) ||
+             (NAN(dVar8) || NAN(dVar9))) {
+                    /* WARNING: Subroutine does not return */
+            FUN_1800e24d0("integer out of range");
+          }
+          iVar2 = FUN_18016c6d0(local_70,3);
+          if (iVar2 != 3) {
+                    /* WARNING: Subroutine does not return */
+            FUN_1800e24d0("expected number");
+          }
+          dVar9 = (double)FUN_18016c710(local_70,3,0);
+          if (((ulonglong)ABS(dVar9) < 0x7ff0000000000000) && (ABS(dVar9) <= 1000000000000.0)) {
+            dVar10 = (double)FUN_180215100(dVar9);
+            if (((dVar9 <= 4096.0) && (1.0 <= dVar9)) &&
+               ((dVar9 == dVar10 && (!NAN(dVar9) && !NAN(dVar10))))) {
+              FUN_1800e9ae0(local_90);
+              if (local_80 == (longlong)(int)dVar9 * (longlong)(int)dVar8 * 4) {
+                local_a8 = (undefined4)local_80;
+                uStack_a4 = local_80._4_4_;
+                uStack_a0 = (undefined4)uStack_78;
+                uStack_9c = uStack_78._4_4_;
+                uStack_b0 = uStack_88;
+                local_80 = 0;
+                uStack_78 = 0xf;
+                local_90[0] = 0;
+                FUN_1800e8210(local_70,local_b8);
+                return 1;
+              }
+                    /* WARNING: Subroutine does not return */
+              FUN_1800e24d0("RGBA byte count must equal width * height * 4");
+            }
+                    /* WARNING: Subroutine does not return */
+            FUN_1800e24d0("integer out of range",local_70);
+          }
+                    /* WARNING: Subroutine does not return */
+          FUN_1800e24d0("number out of range");
+        }
+      }
+                    /* WARNING: Subroutine does not return */
+      FUN_1800e24d0("render drawing is only available in paint");
+    }
+  }
+                    /* WARNING: Subroutine does not return */
+  FUN_1800e24d0("callback budget exceeded");
+}
+
+

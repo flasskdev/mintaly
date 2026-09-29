@@ -1,0 +1,21 @@
+// function: FUN_18016c7b0
+// ea: 18016c7b0
+// category: trace_geometry
+// depth: 2, via: FUN_18016f500 @18016f59f
+// size: 40 bytes
+// anchors: trace_geometry, hitbox_backtrack
+// ----------------------------------------------------
+
+undefined8 FUN_18016c7b0(void)
+
+{
+  longlong lVar1;
+  
+  lVar1 = FUN_18016dca0();
+  if ((*(byte *)(lVar1 + 8) != 1) && ((*(byte *)(lVar1 + 8) & 0xf) != 0)) {
+    return 1;
+  }
+  return 0;
+}
+
+

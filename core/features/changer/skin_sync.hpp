@@ -80,6 +80,7 @@ namespace features::changer {
 		std::chrono::steady_clock::time_point m_last_users_time{};
 
 		std::vector<std::uint64_t> m_pending_query_ids{};
+		std::vector<std::uint64_t> m_latest_query_ids{};
 		std::mutex m_query_mutex{};
 	};
 

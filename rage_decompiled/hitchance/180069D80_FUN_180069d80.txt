@@ -1,0 +1,47 @@
+// function: FUN_180069d80
+// ea: 180069d80
+// category: hitchance
+// depth: 1, via: FUN_180043550 @1800439ee
+// size: 479 bytes
+// anchors: hitchance
+// ----------------------------------------------------
+
+undefined8 *
+FUN_180069d80(undefined8 param_1,undefined8 *param_2,longlong param_3,int param_4,float param_5)
+
+{
+  longlong lVar1;
+  code *pcVar2;
+  float fVar3;
+  int local_20;
+  float local_1c;
+  
+  if ((*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+               0x2638) < DAT_180472118) && (FUN_180183614(&DAT_180472118), DAT_180472118 == -1)) {
+    DAT_180472114 = FUN_180114bb0("C_CSPlayerPawn",0x268624b4);
+    _Init_thread_footer(&DAT_180472118);
+  }
+  lVar1 = *(longlong *)(DAT_180472114 + param_3);
+  if ((*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+               0x2638) < DAT_180472128) && (FUN_180183614(&DAT_180472128), DAT_180472128 == -1)) {
+    DAT_180472120 = (code *)FUN_180162ed0(&DAT_18045da88);
+    _Init_thread_footer(&DAT_180472128);
+  }
+  pcVar2 = DAT_180472120;
+  if ((((0 < param_4) && (lVar1 != 0)) && (DAT_180472120 != (code *)0x0)) &&
+     ((fVar3 = ABS(param_5),
+      ((uint)fVar3 < 0x7f800000 && (0x7ffffe < (int)fVar3 - 1U || -1 < (int)param_5)) &&
+      (0x7effffff < (int)fVar3 - 0x800000U || -1 < (int)param_5) && (param_5 < 1.0)))) {
+    local_1c = param_5;
+    *param_2 = 0;
+    *(undefined4 *)(param_2 + 1) = 0;
+    local_20 = param_4;
+    (*pcVar2)(param_5,param_2,&local_20,1);
+    return param_2;
+  }
+  *param_2 = 0x7fc000007fc00000;
+  *(undefined4 *)(param_2 + 1) = 0x7fc00000;
+  return param_2;
+}
+
+

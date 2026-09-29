@@ -1,0 +1,39 @@
+// function: FUN_1800b7680
+// ea: 1800b7680
+// category: pipeline
+// depth: 2, via: FUN_1800b7300 @1800b737b
+// size: 180 bytes
+// anchors: pipeline, hitbox_backtrack
+// ----------------------------------------------------
+
+undefined8 FUN_1800b7680(undefined8 param_1,undefined8 param_2,undefined4 param_3)
+
+{
+  ulonglong uVar1;
+  longlong lVar2;
+  longlong local_50 [3];
+  ulonglong local_38;
+  undefined1 local_29;
+  undefined8 local_28;
+  
+  local_28 = 0xfffffffffffffffe;
+  FUN_180012e50(local_50,param_3);
+  local_29 = 0x2e;
+  FUN_18009d730(param_1,"[json.exception.",param_2,&local_29,local_50,&DAT_18032b5bd);
+  if (0xf < local_38) {
+    uVar1 = local_38 + 1;
+    lVar2 = local_50[0];
+    if (0xfff < uVar1) {
+      lVar2 = *(longlong *)(local_50[0] + -8);
+      if (0x1f < (ulonglong)((local_50[0] + -8) - lVar2)) {
+                    /* WARNING: Subroutine does not return */
+        _invoke_watson((wchar_t *)0x0,(wchar_t *)0x0,(wchar_t *)0x0,0,0);
+      }
+      uVar1 = local_38 + 0x28;
+    }
+    FUN_1801695f0(lVar2,uVar1);
+  }
+  return param_1;
+}
+
+

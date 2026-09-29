@@ -1,0 +1,410 @@
+// function: FUN_18000aa70
+// ea: 18000aa70
+// category: autowall_damage
+// depth: 1, via: FUN_180009db0 @18000a310
+// size: 837 bytes
+// anchors: autowall_damage, hitbox_backtrack
+// ----------------------------------------------------
+
+void FUN_18000aa70(undefined8 param_1,undefined8 *param_2,undefined8 *param_3)
+
+{
+  undefined8 uVar1;
+  undefined8 uVar2;
+  ulonglong uVar3;
+  size_t sVar4;
+  ulonglong uVar5;
+  undefined8 ***pppuVar6;
+  ulonglong uVar7;
+  undefined8 ****ppppuVar8;
+  ulonglong uVar9;
+  uint local_1b0;
+  undefined1 local_1ac;
+  undefined8 local_1a8;
+  undefined4 local_1a0;
+  undefined8 ***local_198;
+  undefined8 uStack_190;
+  ulonglong local_188;
+  ulonglong uStack_180;
+  undefined8 ***local_178;
+  undefined8 uStack_170;
+  ulonglong local_168;
+  ulonglong uStack_160;
+  byte local_158 [280];
+  
+  uVar1 = *param_3;
+  uVar2 = *param_2;
+  uVar3 = param_2[1];
+  local_158[0xf0] = 0;
+  local_158[0xf1] = 0;
+  local_158[0xf2] = 0;
+  local_158[0xf3] = 0;
+  local_158[0xf4] = 0;
+  local_158[0xf5] = 0;
+  local_158[0xf6] = 0;
+  local_158[0xf7] = 0;
+  local_158[0xf8] = 0;
+  local_158[0xf9] = 0;
+  local_158[0xfa] = 0;
+  local_158[0xfb] = 0;
+  local_158[0xfc] = 0;
+  local_158[0xfd] = 0;
+  local_158[0xfe] = 0;
+  local_158[0xff] = 0;
+  local_158[0xe0] = 0;
+  local_158[0xe1] = 0;
+  local_158[0xe2] = 0;
+  local_158[0xe3] = 0;
+  local_158[0xe4] = 0;
+  local_158[0xe5] = 0;
+  local_158[0xe6] = 0;
+  local_158[0xe7] = 0;
+  local_158[0xe8] = 0;
+  local_158[0xe9] = 0;
+  local_158[0xea] = 0;
+  local_158[0xeb] = 0;
+  local_158[0xec] = 0;
+  local_158[0xed] = 0;
+  local_158[0xee] = 0;
+  local_158[0xef] = 0;
+  local_158[0xd0] = 0;
+  local_158[0xd1] = 0;
+  local_158[0xd2] = 0;
+  local_158[0xd3] = 0;
+  local_158[0xd4] = 0;
+  local_158[0xd5] = 0;
+  local_158[0xd6] = 0;
+  local_158[0xd7] = 0;
+  local_158[0xd8] = 0;
+  local_158[0xd9] = 0;
+  local_158[0xda] = 0;
+  local_158[0xdb] = 0;
+  local_158[0xdc] = 0;
+  local_158[0xdd] = 0;
+  local_158[0xde] = 0;
+  local_158[0xdf] = 0;
+  local_158[0xc0] = 0;
+  local_158[0xc1] = 0;
+  local_158[0xc2] = 0;
+  local_158[0xc3] = 0;
+  local_158[0xc4] = 0;
+  local_158[0xc5] = 0;
+  local_158[0xc6] = 0;
+  local_158[199] = 0;
+  local_158[200] = 0;
+  local_158[0xc9] = 0;
+  local_158[0xca] = 0;
+  local_158[0xcb] = 0;
+  local_158[0xcc] = 0;
+  local_158[0xcd] = 0;
+  local_158[0xce] = 0;
+  local_158[0xcf] = 0;
+  local_158[0xb0] = 0;
+  local_158[0xb1] = 0;
+  local_158[0xb2] = 0;
+  local_158[0xb3] = 0;
+  local_158[0xb4] = 0;
+  local_158[0xb5] = 0;
+  local_158[0xb6] = 0;
+  local_158[0xb7] = 0;
+  local_158[0xb8] = 0;
+  local_158[0xb9] = 0;
+  local_158[0xba] = 0;
+  local_158[0xbb] = 0;
+  local_158[0xbc] = 0;
+  local_158[0xbd] = 0;
+  local_158[0xbe] = 0;
+  local_158[0xbf] = 0;
+  local_158[0xa0] = 0;
+  local_158[0xa1] = 0;
+  local_158[0xa2] = 0;
+  local_158[0xa3] = 0;
+  local_158[0xa4] = 0;
+  local_158[0xa5] = 0;
+  local_158[0xa6] = 0;
+  local_158[0xa7] = 0;
+  local_158[0xa8] = 0;
+  local_158[0xa9] = 0;
+  local_158[0xaa] = 0;
+  local_158[0xab] = 0;
+  local_158[0xac] = 0;
+  local_158[0xad] = 0;
+  local_158[0xae] = 0;
+  local_158[0xaf] = 0;
+  local_158[0x90] = 0;
+  local_158[0x91] = 0;
+  local_158[0x92] = 0;
+  local_158[0x93] = 0;
+  local_158[0x94] = 0;
+  local_158[0x95] = 0;
+  local_158[0x96] = 0;
+  local_158[0x97] = 0;
+  local_158[0x98] = 0;
+  local_158[0x99] = 0;
+  local_158[0x9a] = 0;
+  local_158[0x9b] = 0;
+  local_158[0x9c] = 0;
+  local_158[0x9d] = 0;
+  local_158[0x9e] = 0;
+  local_158[0x9f] = 0;
+  local_158[0x80] = 0;
+  local_158[0x81] = 0;
+  local_158[0x82] = 0;
+  local_158[0x83] = 0;
+  local_158[0x84] = 0;
+  local_158[0x85] = 0;
+  local_158[0x86] = 0;
+  local_158[0x87] = 0;
+  local_158[0x88] = 0;
+  local_158[0x89] = 0;
+  local_158[0x8a] = 0;
+  local_158[0x8b] = 0;
+  local_158[0x8c] = 0;
+  local_158[0x8d] = 0;
+  local_158[0x8e] = 0;
+  local_158[0x8f] = 0;
+  local_158[0x70] = 0;
+  local_158[0x71] = 0;
+  local_158[0x72] = 0;
+  local_158[0x73] = 0;
+  local_158[0x74] = 0;
+  local_158[0x75] = 0;
+  local_158[0x76] = 0;
+  local_158[0x77] = 0;
+  local_158[0x78] = 0;
+  local_158[0x79] = 0;
+  local_158[0x7a] = 0;
+  local_158[0x7b] = 0;
+  local_158[0x7c] = 0;
+  local_158[0x7d] = 0;
+  local_158[0x7e] = 0;
+  local_158[0x7f] = 0;
+  local_158[0x60] = 0;
+  local_158[0x61] = 0;
+  local_158[0x62] = 0;
+  local_158[99] = 0;
+  local_158[100] = 0;
+  local_158[0x65] = 0;
+  local_158[0x66] = 0;
+  local_158[0x67] = 0;
+  local_158[0x68] = 0;
+  local_158[0x69] = 0;
+  local_158[0x6a] = 0;
+  local_158[0x6b] = 0;
+  local_158[0x6c] = 0;
+  local_158[0x6d] = 0;
+  local_158[0x6e] = 0;
+  local_158[0x6f] = 0;
+  local_158[0x50] = 0;
+  local_158[0x51] = 0;
+  local_158[0x52] = 0;
+  local_158[0x53] = 0;
+  local_158[0x54] = 0;
+  local_158[0x55] = 0;
+  local_158[0x56] = 0;
+  local_158[0x57] = 0;
+  local_158[0x58] = 0;
+  local_158[0x59] = 0;
+  local_158[0x5a] = 0;
+  local_158[0x5b] = 0;
+  local_158[0x5c] = 0;
+  local_158[0x5d] = 0;
+  local_158[0x5e] = 0;
+  local_158[0x5f] = 0;
+  local_158[0x40] = 0;
+  local_158[0x41] = 0;
+  local_158[0x42] = 0;
+  local_158[0x43] = 0;
+  local_158[0x44] = 0;
+  local_158[0x45] = 0;
+  local_158[0x46] = 0;
+  local_158[0x47] = 0;
+  local_158[0x48] = 0;
+  local_158[0x49] = 0;
+  local_158[0x4a] = 0;
+  local_158[0x4b] = 0;
+  local_158[0x4c] = 0;
+  local_158[0x4d] = 0;
+  local_158[0x4e] = 0;
+  local_158[0x4f] = 0;
+  local_158[0x30] = 0;
+  local_158[0x31] = 0;
+  local_158[0x32] = 0;
+  local_158[0x33] = 0;
+  local_158[0x34] = 0;
+  local_158[0x35] = 0;
+  local_158[0x36] = 0;
+  local_158[0x37] = 0;
+  local_158[0x38] = 0;
+  local_158[0x39] = 0;
+  local_158[0x3a] = 0;
+  local_158[0x3b] = 0;
+  local_158[0x3c] = 0;
+  local_158[0x3d] = 0;
+  local_158[0x3e] = 0;
+  local_158[0x3f] = 0;
+  local_158[0x20] = 0;
+  local_158[0x21] = 0;
+  local_158[0x22] = 0;
+  local_158[0x23] = 0;
+  local_158[0x24] = 0;
+  local_158[0x25] = 0;
+  local_158[0x26] = 0;
+  local_158[0x27] = 0;
+  local_158[0x28] = 0;
+  local_158[0x29] = 0;
+  local_158[0x2a] = 0;
+  local_158[0x2b] = 0;
+  local_158[0x2c] = 0;
+  local_158[0x2d] = 0;
+  local_158[0x2e] = 0;
+  local_158[0x2f] = 0;
+  local_158[0x10] = 0;
+  local_158[0x11] = 0;
+  local_158[0x12] = 0;
+  local_158[0x13] = 0;
+  local_158[0x14] = 0;
+  local_158[0x15] = 0;
+  local_158[0x16] = 0;
+  local_158[0x17] = 0;
+  local_158[0x18] = 0;
+  local_158[0x19] = 0;
+  local_158[0x1a] = 0;
+  local_158[0x1b] = 0;
+  local_158[0x1c] = 0;
+  local_158[0x1d] = 0;
+  local_158[0x1e] = 0;
+  local_158[0x1f] = 0;
+  local_158[0] = 0;
+  local_158[1] = 0;
+  local_158[2] = 0;
+  local_158[3] = 0;
+  local_158[4] = 0;
+  local_158[5] = 0;
+  local_158[6] = 0;
+  local_158[7] = 0;
+  local_158[8] = 0;
+  local_158[9] = 0;
+  local_158[10] = 0;
+  local_158[0xb] = 0;
+  local_158[0xc] = 0;
+  local_158[0xd] = 0;
+  local_158[0xe] = 0;
+  local_158[0xf] = 0;
+  uVar7 = 0x78;
+  if (uVar3 < 0x78) {
+    uVar7 = uVar3;
+  }
+  uVar5 = 0x78;
+  if ((ulonglong)param_3[1] < 0x78) {
+    uVar5 = param_3[1];
+  }
+  FUN_18023b1d0(local_158,uVar2,uVar7);
+  local_158[uVar7] = 0x2e;
+  FUN_18023b1d0(local_158 + uVar7 + 1,uVar1);
+  local_158[uVar5 + uVar7 + 1] = 0;
+  sVar4 = strlen((char *)local_158);
+  if (sVar4 == 0) {
+    local_1b0 = 0x84222325;
+  }
+  else {
+    uVar7 = (ulonglong)((uint)sVar4 & 3);
+    if (sVar4 < 4) {
+      local_1b0 = 0x84222325;
+      uVar5 = 0;
+    }
+    else {
+      local_1b0 = 0x84222325;
+      uVar5 = 0;
+      do {
+        local_1b0 = ((uint)local_158[uVar5 + 3] ^
+                    ((uint)local_158[uVar5 + 2] ^
+                    ((uint)local_158[uVar5 + 1] ^ (local_158[uVar5] ^ local_1b0) * 0x1b3) * 0x1b3) *
+                    0x1b3) * 0x1b3;
+        uVar5 = uVar5 + 4;
+      } while ((sVar4 & 0xfffffffffffffffc) != uVar5);
+    }
+    if (uVar7 != 0) {
+      uVar9 = 0;
+      do {
+        local_1b0 = (local_158[uVar9 + uVar5] ^ local_1b0) * 0x1b3;
+        uVar9 = uVar9 + 1;
+      } while (uVar7 != uVar9);
+    }
+  }
+  local_1ac = 7;
+  local_1a0 = 6;
+  local_198 = (undefined8 ****)0x0;
+  uStack_190 = 0;
+  local_188 = 0;
+  uStack_180 = 0;
+  local_1a8 = param_1;
+  if (-1 < (longlong)uVar3) {
+    if (uVar3 < 0x10) {
+      ppppuVar8 = &local_198;
+      uStack_180 = 0xf;
+    }
+    else {
+      uVar5 = uVar3 | 0xf;
+      uVar7 = 0x16;
+      if (0x16 < uVar5) {
+        uVar7 = uVar5;
+      }
+      if (uVar5 < 0xfff) {
+        ppppuVar8 = (undefined8 ****)FUN_1801695a0(uVar7 + 1);
+        local_198 = ppppuVar8;
+        uStack_180 = uVar7;
+      }
+      else {
+        pppuVar6 = (undefined8 ***)FUN_1801695a0(uVar7 + 0x28);
+        ppppuVar8 = (undefined8 ****)((longlong)pppuVar6 + 0x27U & 0xffffffffffffffe0);
+        ppppuVar8[-1] = pppuVar6;
+        local_198 = ppppuVar8;
+        uStack_180 = uVar7;
+      }
+    }
+    local_188 = uVar3;
+    FUN_18023b1d0(ppppuVar8,uVar2,uVar3);
+    *(undefined1 *)((longlong)ppppuVar8 + uVar3) = 0;
+    local_168 = 0;
+    uStack_160 = 0;
+    local_178 = (undefined8 ****)0x0;
+    uStack_170 = 0;
+    uVar3 = param_3[1];
+    if (-1 < (longlong)uVar3) {
+      uVar1 = *param_3;
+      if (uVar3 < 0x10) {
+        ppppuVar8 = &local_178;
+        uStack_160 = 0xf;
+      }
+      else {
+        uVar5 = uVar3 | 0xf;
+        uVar7 = 0x16;
+        if (0x16 < uVar5) {
+          uVar7 = uVar5;
+        }
+        if (uVar5 < 0xfff) {
+          ppppuVar8 = (undefined8 ****)FUN_1801695a0(uVar7 + 1);
+          local_178 = ppppuVar8;
+          uStack_160 = uVar7;
+        }
+        else {
+          pppuVar6 = (undefined8 ***)FUN_1801695a0(uVar7 + 0x28);
+          ppppuVar8 = (undefined8 ****)((longlong)pppuVar6 + 0x27U & 0xffffffffffffffe0);
+          ppppuVar8[-1] = pppuVar6;
+          local_178 = ppppuVar8;
+          uStack_160 = uVar7;
+        }
+      }
+      local_168 = uVar3;
+      FUN_18023b1d0(ppppuVar8,uVar1,uVar3);
+      *(undefined1 *)((longlong)ppppuVar8 + uVar3) = 0;
+      FUN_18000b330(&local_1b0);
+      return;
+    }
+  }
+                    /* WARNING: Subroutine does not return */
+  FUN_18000b110();
+}
+
+

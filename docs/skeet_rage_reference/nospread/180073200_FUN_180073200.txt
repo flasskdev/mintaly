@@ -1,0 +1,39 @@
+// function: FUN_180073200
+// ea: 180073200
+// category: nospread
+// depth: 3, via: FUN_18008b250 @18008b330
+// size: 260 bytes
+// anchors: nospread, trace_geometry, hitbox_backtrack
+// ----------------------------------------------------
+
+void FUN_180073200(undefined8 param_1,undefined8 param_2)
+
+{
+  longlong lVar1;
+  longlong lVar2;
+  byte bVar3;
+  char cVar4;
+  float fVar5;
+  int local_60;
+  int local_5c;
+  
+  if (((DAT_180471381 & 1) == 0) && ((DAT_180471382 & 1) == 0)) {
+    AcquireSRWLockShared((PSRWLOCK)&DAT_180471378);
+    bVar3 = DAT_180471370;
+    lVar2 = DAT_180471350;
+    lVar1 = DAT_180471348;
+    ReleaseSRWLockShared((PSRWLOCK)&DAT_180471378);
+    if (lVar1 != 0 && lVar2 != 0) {
+      cVar4 = FUN_180109b10(&DAT_180355000,lVar1);
+      if ((cVar4 != '\0') && ((bVar3 & 1) != 0)) {
+        FUN_1801312b0(&local_60);
+        fVar5 = (float)local_5c;
+        FUN_180073310(0x3f000000,param_2,(float)local_60 * 0.5,fVar5 * 0.5);
+        FUN_180073460(param_1,param_2,(float)local_60 * 0.5,fVar5 * 0.5,(float)local_5c,lVar2);
+      }
+    }
+  }
+  return;
+}
+
+

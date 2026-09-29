@@ -39,10 +39,24 @@ namespace addresses::globals {
 		weapon_recoil_data     = PATTERN (patterns::weapon_recoil_data);
 		hud                    = PATTERN (patterns::hud);
 		prediction_seed        = PATTERN (patterns::prediction_seed);
-		simulation_player      = PATTERN (patterns::simulation_player);
 		prediction_player      = PATTERN (patterns::prediction_player);
+		// Current client builds use one storage slot for both names. Keeping a
+		// second stale signature here makes prediction save/restore two unrelated
+		// globals and corrupts the movement state.
+		simulation_player      = prediction_player;
 		planted_c4             = PATTERN (patterns::planted_c4);
-		item_system            = PATTERN (patterns::item_system);
+		// GetEconItemSystem moved to Source2Client's virtual interface. The
+		// previous call-site pattern is no longer a callable accessor on current
+		// builds; keep item_system as the returned object, not the old function.
+		item_system            = 0;
+		if ( source2client )
+		{
+			const auto vtable = memory::safe_read<std::uintptr_t>( source2client ).value_or( 0 );
+			const auto get_econ_item_system = vtable
+				? memory::safe_read<std::uintptr_t>( vtable + 129 * sizeof( std::uintptr_t ) ).value_or( 0 )
+				: 0;
+			item_system = memory::safe_call<std::uintptr_t>( get_econ_item_system, source2client );
+		}
 		frame_input_ring_idx   = PATTERN (patterns::frame_input_ring_idx);
 		frame_input_ring_base  = PATTERN (patterns::frame_input_ring_base);
 		prediction_state       = PATTERN (patterns::prediction_state);

@@ -1,0 +1,24 @@
+// function: FUN_18007a2d0
+// ea: 18007a2d0
+// category: pipeline
+// depth: 2, via: FUN_1800798e0 @180079a34
+// size: 115 bytes
+// anchors: pipeline
+// ----------------------------------------------------
+
+undefined4 FUN_18007a2d0(void)
+
+{
+  if (*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+              0x2638) < DAT_18047269c) {
+    FUN_180183614(&DAT_18047269c);
+    if (DAT_18047269c == -1) {
+      DAT_180472698 = FUN_180114bb0("CGameSceneNode",0xe8b4eae5);
+      _Init_thread_footer(&DAT_18047269c);
+      return DAT_180472698;
+    }
+  }
+  return DAT_180472698;
+}
+
+

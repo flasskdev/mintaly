@@ -1,0 +1,15 @@
+// function: FUN_18022bc20
+// ea: 18022bc20
+// category: pipeline
+// depth: 2, via: FUN_18021bc80 @18021bcae
+// size: 9 bytes
+// anchors: pipeline, autowall_damage
+// ----------------------------------------------------
+
+uint FUN_18022bc20(uint param_1)
+
+{
+  return param_1 | 0x400000;
+}
+
+

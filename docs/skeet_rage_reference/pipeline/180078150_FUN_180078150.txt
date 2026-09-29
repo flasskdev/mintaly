@@ -1,0 +1,46 @@
+// function: FUN_180078150
+// ea: 180078150
+// category: pipeline
+// depth: 1, via: FUN_180087f70 @1800882f3
+// size: 260 bytes
+// anchors: pipeline
+// ----------------------------------------------------
+
+void FUN_180078150(undefined8 param_1,longlong param_2)
+
+{
+  longlong lVar1;
+  longlong lVar2;
+  byte bVar3;
+  
+  if (DAT_18046fe68 == '\x01') {
+    if (*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+                0x2638) < DAT_1804725d8) {
+      FUN_180183614(&DAT_1804725d8);
+      if (DAT_1804725d8 == -1) {
+        DAT_1804725d0 = FUN_1801642a0(DAT_180471968,0x6b8c9875);
+        _Init_thread_footer(&DAT_1804725d8);
+      }
+    }
+    if (*(char *)(DAT_1804725d0 + 0x58) == '\0') {
+      AcquireSRWLockShared((PSRWLOCK)&DAT_180471378);
+      bVar3 = DAT_180471370;
+      lVar2 = DAT_180471350;
+      lVar1 = DAT_180471348;
+      ReleaseSRWLockShared((PSRWLOCK)&DAT_180471378);
+      if ((((lVar2 != 0) && (lVar1 != 0)) && ((bVar3 & 1) != 0)) &&
+         ((*(ulonglong *)(param_2 + 0x60) & 2) != 0)) {
+        if (((byte)DAT_1804707c8 & 1) == 0) {
+          *(ulonglong *)(param_2 + 0x60) = *(ulonglong *)(param_2 + 0x60) & 0xfffffffffffffffd;
+          *(byte *)(param_2 + 0x68) = *(byte *)(param_2 + 0x68) & 0xfd;
+        }
+        else {
+          *(byte *)(param_2 + 0x68) = *(byte *)(param_2 + 0x68) | 2;
+        }
+      }
+    }
+  }
+  return;
+}
+
+

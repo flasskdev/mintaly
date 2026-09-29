@@ -3,10 +3,25 @@
 
 namespace features::movement {
 
+	// A failed guarded read can return the canonical -1 sentinel from an
+	// engine field. Treat it exactly like null before using a value as a
+	// pointer or as the base of another memory read.
+	[[nodiscard]] inline bool valid_runtime_address( std::uintptr_t address ) noexcept
+	{
+		return address >= 0x10000ull &&
+			address != ( std::numeric_limits<std::uintptr_t>::max )( ) &&
+			address <= 0x00007FFFFFFFFFFFull;
+	}
+
 	class bhop
 	{
 	public:
 		void on_create_move( systems::input::usercmd* cmd ) const;
+
+		[[nodiscard]] bool landing_ok_this_tick( ) const { return this->m_landing_ok; }
+
+	private:
+		mutable bool m_landing_ok{ false };
 	};
 
 	class fastladder
@@ -61,15 +76,12 @@ namespace features::movement {
 		[[nodiscard]] bool handled_this_tick( ) const { return this->m_handled_this_tick; }
 
 	private:
-		void quantized_path( systems::input::usercmd* cmd );
-		void antiaim_strafe_path( systems::input::usercmd* cmd );
-		[[nodiscard]] bool apply_yaw_subtick( proto::base_usercmd_pb* base, float when, float yaw_delta ) const;
+		[[nodiscard]] bool emit_step( proto::base_usercmd_pb* base, float when, float forward_delta, float left_delta ) const;
 		void check_button( std::uintptr_t current_buttons, std::uintptr_t button );
-		[[nodiscard]] static math::vector2 movement_from_buttons( std::uintptr_t pressed );
 
 		std::uintptr_t m_last_buttons{};
 		std::uintptr_t m_last_pressed{};
-		int m_substep_counter{};
+		bool m_side_toggle{};
 		bool m_handled_this_tick{};
 	};
 

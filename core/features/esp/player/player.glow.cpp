@@ -5,13 +5,24 @@
 #include <core/features/features.hpp>
 
 namespace features::esp::player {
+	namespace {
+		[[nodiscard]] bool is_preview_player_hash( std::uint32_t owner_hash )
+		{
+			// The custom MapPlayerPreviewPanel uses the base class. The alias and
+			// TeamPreviewModel classes belong to the lobby and must keep native glow.
+			return owner_hash == "C_CSGO_PreviewPlayer"_hash;
+		}
+	}
 
 	bool glow::on_is_glowing( std::uintptr_t owner_entity, std::uint32_t owner_hash ) const
 	{
-		if ( owner_hash != "C_CSPlayerPawn"_hash )
+		const bool is_preview_player = is_preview_player_hash( owner_hash );
+		if ( owner_hash != "C_CSPlayerPawn"_hash && !is_preview_player )
 		{
 			return false;
 		}
+		if ( is_preview_player && !systems::g_model_preview.is_agent_preview_entity( owner_entity ) )
+			return false;
 
 		const auto& cfg = settings::g_esp.m_player.m_glow;
 		if ( !cfg.enemy.enabled.value && !cfg.enemy_ragdoll.enabled.value && !cfg.team.enabled.value && !cfg.team_ragdoll.enabled.value && !cfg.local.enabled.value && !cfg.local_ragdoll.enabled.value )
@@ -20,12 +31,18 @@ namespace features::esp::player {
 		}
 
 		const auto local = systems::g_local.get( );
-		const auto team = memory::read<int>( owner_entity + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) );
-		const auto health = memory::read<int>( owner_entity + SCHEMA( "C_BaseEntity", "m_iHealth"_hash ) );
+		if ( !is_preview_player && !local.is_alive && !local.observer_pawn )
+			return false;
+		const auto team = is_preview_player ? 0 :
+			memory::read<std::uint8_t>( owner_entity + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) );
+		const auto health = is_preview_player ? 100 :
+			memory::read<int>( owner_entity + SCHEMA( "C_BaseEntity", "m_iHealth"_hash ) );
 
-		const auto is_other_team = local.is_this_other_team( team );
-		const auto is_local = owner_entity == local.view_pawn( );
-		const auto is_dead = health <= 0;
+		const auto is_other_team = is_preview_player
+			? systems::g_model_preview.is_enemy_preview( local.team )
+			: local.is_this_other_team( team );
+		const auto is_local = !is_preview_player && owner_entity == local.view_pawn( );
+		const auto is_dead = !is_preview_player && health <= 0;
 
 		if ( is_dead )
 		{
@@ -57,10 +74,13 @@ namespace features::esp::player {
 
 	bool glow::on_get_glow_color( std::uintptr_t owner_entity, std::uint32_t owner_hash, float* color ) const
 	{
-		if ( owner_hash != "C_CSPlayerPawn"_hash )
+		const bool is_preview_player = is_preview_player_hash( owner_hash );
+		if ( owner_hash != "C_CSPlayerPawn"_hash && !is_preview_player )
 		{
 			return false;
 		}
+		if ( is_preview_player && !systems::g_model_preview.is_agent_preview_entity( owner_entity ) )
+			return false;
 
 		const auto& cfg = settings::g_esp.m_player.m_glow;
 		if ( !cfg.enemy.enabled.value && !cfg.enemy_ragdoll.enabled.value && !cfg.team.enabled.value && !cfg.team_ragdoll.enabled.value && !cfg.local.enabled.value && !cfg.local_ragdoll.enabled.value )
@@ -69,12 +89,18 @@ namespace features::esp::player {
 		}
 
 		const auto local = systems::g_local.get( );
-		const auto team = memory::read<int>( owner_entity + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) );
-		const auto health = memory::read<int>( owner_entity + SCHEMA( "C_BaseEntity", "m_iHealth"_hash ) );
+		if ( !is_preview_player && !local.is_alive && !local.observer_pawn )
+			return false;
+		const auto team = is_preview_player ? 0 :
+			memory::read<std::uint8_t>( owner_entity + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) );
+		const auto health = is_preview_player ? 100 :
+			memory::read<int>( owner_entity + SCHEMA( "C_BaseEntity", "m_iHealth"_hash ) );
 
-		const auto is_other_team = local.is_this_other_team( team );
-		const auto is_local = owner_entity == local.view_pawn( );
-		const auto is_dead = health <= 0;
+		const auto is_other_team = is_preview_player
+			? systems::g_model_preview.is_enemy_preview( local.team )
+			: local.is_this_other_team( team );
+		const auto is_local = !is_preview_player && owner_entity == local.view_pawn( );
+		const auto is_dead = !is_preview_player && health <= 0;
 
 		const settings::esp::glow_target* target{ nullptr };
 

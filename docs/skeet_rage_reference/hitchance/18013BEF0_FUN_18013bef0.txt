@@ -1,0 +1,69 @@
+// function: FUN_18013bef0
+// ea: 18013bef0
+// category: hitchance
+// depth: 2, via: FUN_1801462d0 @180146a6f
+// size: 540 bytes
+// anchors: hitchance, nospread, autowall_damage
+// ----------------------------------------------------
+
+/* WARNING: Globals starting with '_' overlap smaller symbols at the same address */
+
+float FUN_18013bef0(ulonglong param_1,float param_2,float param_3,undefined4 param_4)
+
+{
+  ulonglong uVar1;
+  longlong lVar2;
+  float fVar3;
+  float fVar4;
+  undefined1 local_85;
+  undefined4 local_84;
+  undefined4 local_80;
+  undefined4 uStack_7c;
+  ulonglong local_70 [6];
+  
+  local_84 = param_4;
+  local_70[0] = param_1;
+  if ((*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+               0x2638) < DAT_180495760) && (FUN_180183614(&DAT_180495760), DAT_180495760 == -1)) {
+    local_80 = 0;
+    FUN_180016210(&DAT_180495720,&local_80,&local_85);
+    atexit(FUN_18014bd00);
+    _Init_thread_footer(&DAT_180495760);
+  }
+  uVar1 = ((param_1 >> 0x30 & 0xff ^
+           (param_1 >> 0x28 & 0xff ^
+           (param_1 >> 0x20 & 0xff ^
+           (param_1 >> 0x18 & 0xff ^
+           (param_1 >> 0x10 & 0xff ^
+           (param_1 >> 8 & 0xff ^ (param_1 & 0xff ^ 0xcbf29ce484222325) * 0x100000001b3) *
+           0x100000001b3) * 0x100000001b3) * 0x100000001b3) * 0x100000001b3) * 0x100000001b3) *
+           0x100000001b3 ^ param_1 >> 0x38) * 0x100000001b3 & _DAT_180495750;
+  lVar2 = *(longlong *)(DAT_180495738 + 8 + uVar1 * 0x10);
+  if (lVar2 == DAT_180495728) {
+    lVar2 = 0;
+  }
+  else if (*(ulonglong *)(lVar2 + 0x10) != param_1) {
+    do {
+      if (lVar2 == *(longlong *)(DAT_180495738 + uVar1 * 0x10)) goto LAB_18013c033;
+      lVar2 = *(longlong *)(lVar2 + 8);
+    } while (*(ulonglong *)(lVar2 + 0x10) != param_1);
+  }
+  if (lVar2 == 0) {
+    lVar2 = DAT_180495728;
+  }
+  if (lVar2 == DAT_180495728) {
+LAB_18013c033:
+    FUN_18013c110(&DAT_180495720,&local_80,local_70,&local_84);
+    lVar2 = CONCAT44(uStack_7c,local_80);
+  }
+  fVar3 = (float)FUN_180131770();
+  fVar4 = 1.0;
+  if (fVar3 * param_3 <= 1.0) {
+    fVar4 = fVar3 * param_3;
+  }
+  fVar4 = fVar4 * (param_2 - *(float *)(lVar2 + 0x18)) + *(float *)(lVar2 + 0x18);
+  *(float *)(lVar2 + 0x18) = fVar4;
+  return fVar4;
+}
+
+

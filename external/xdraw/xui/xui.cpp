@@ -1226,6 +1226,32 @@ namespace xui {
 			return false;
 		}
 
+		bool blocks_background( )
+		{
+			auto& store = get_overlays( );
+			for ( const auto& o : store.list )
+			{
+				if ( o && !o->is_closed( ) && o->blocks_background( ) )
+				{
+					return true;
+				}
+			}
+			return false;
+		}
+
+		bool blocks_background_except( std::uintptr_t exclude )
+		{
+			auto& store = get_overlays( );
+			for ( const auto& o : store.list )
+			{
+				if ( o && o->id( ) != exclude && !o->is_closed( ) && o->blocks_background( ) )
+				{
+					return true;
+				}
+			}
+			return false;
+		}
+
 		void process( const input_state& input )
 		{
 			auto& store = get_overlays( );
@@ -1573,10 +1599,10 @@ namespace xui {
 	{
 		if ( this->inside_overlay != null_id )
 		{
-			return overlays::has_any_except( this->inside_overlay );
+			return overlays::blocks_background_except( this->inside_overlay );
 		}
 
-		return overlays::has_any( ) || this->modal_blocking;
+		return overlays::blocks_background( ) || this->modal_blocking;
 	}
 
 	context& ctx( )
@@ -3148,7 +3174,7 @@ namespace xui {
 		// Outer soft drop shadow
 		dl.rect_filled( draw_x - 3.0f, draw_y - 2.0f, tip_w + 6.0f, tip_h + 6.0f, xdraw::color{ 0, 0, 0, static_cast<std::uint8_t>( 95.0f * ease_alpha ) }, xdraw::corner_radius{ 7.0f } );
 		// Backdrop blur
-		dl.rect_filled_blurred( draw_x, draw_y, tip_w, tip_h, xdraw::corner_radius{ 6.0f }, xdraw::color{ 255, 255, 255, static_cast<std::uint8_t>( 200.0f * ease_alpha ) } );
+		dl.rect_filled_blurred( draw_x, draw_y, tip_w, tip_h, xdraw::corner_radius{ 6.0f }, xdraw::color{ 45, 50, 60, static_cast< std::uint8_t >( 190.0f * ease_alpha ) } );
 		// Dark OLED base
 		dl.rect_filled( draw_x, draw_y, tip_w, tip_h, xdraw::color{ 16, 16, 20, static_cast<std::uint8_t>( 242.0f * ease_alpha ) }, xdraw::corner_radius{ 6.0f } );
 		// Border with accent tint
@@ -3275,13 +3301,39 @@ namespace xui {
 		window_border.a = static_cast< std::uint8_t >( window_border.a * reveal_clamped );
 
 		const auto blur_alpha = static_cast< std::uint8_t >( 170.0f * reveal_clamped );
-		dl.rect_filled_blurred( draw_x, draw_y, draw_w, draw_h, xdraw::corner_radius{ r }, xdraw::color{ 55, 60, 70, blur_alpha } );
+		const auto shell_rounding = xdraw::corner_radius{ r };
+		dl.rect_filled_blurred( draw_x, draw_y, draw_w, draw_h, shell_rounding, xdraw::color{ 52, 56, 68, blur_alpha } );
 
-		dl.rect_filled( draw_x, draw_y, draw_w, draw_h, window_bg, xdraw::corner_radius{ r } );
+		// Base fill, then a soft vertical falloff so the shell reads as a lit surface.
+		dl.rect_filled( draw_x, draw_y, draw_w, draw_h, window_bg, shell_rounding );
+
+		const auto shell_top = lighten( window_bg, 1.75f );
+		const auto shell_bottom = darken( window_bg, 0.72f );
+		dl.rect_filled_gradient( draw_x, draw_y, draw_w, draw_h,
+			shell_top, shell_top, shell_bottom, shell_bottom, shell_rounding );
+
+		// Violet aurora bleeding in from the top corners - keeps the dark
+		// gray-purple look of the reference regardless of the picked theme.
+		auto aurora = tokens::col_aurora;
+		aurora.a = static_cast< std::uint8_t >( 30.0f * reveal_clamped );
+		const auto aurora_off = xdraw::color{ aurora.r, aurora.g, aurora.b, 0 };
+		const auto aurora_h = std::min( draw_h, 300.0f );
+		const auto aurora_w = draw_w * 0.62f;
+		dl.rect_filled_gradient( draw_x, draw_y, aurora_w, aurora_h,
+			aurora, aurora_off, aurora_off, aurora_off, xdraw::corner_radius::top( r ) );
+		const auto aurora_w2 = draw_w * 0.45f;
+		dl.rect_filled_gradient( draw_x + draw_w - aurora_w2, draw_y, aurora_w2, aurora_h * 0.6f,
+			aurora_off, aurora, aurora_off, aurora_off, xdraw::corner_radius::top( r ) );
+
+		// Specular rim highlight on top, soft shade at the bottom edge.
+		dl.line( draw_x + r, draw_y + 0.5f, draw_x + draw_w - r, draw_y + 0.5f,
+			xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 24.0f * reveal_clamped ) }, 1.0f );
+		dl.line( draw_x + r, draw_y + draw_h - 0.5f, draw_x + draw_w - r, draw_y + draw_h - 0.5f,
+			xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 70.0f * reveal_clamped ) }, 1.0f );
 
 		if ( s.border_thickness > 0.0f )
 		{
-			dl.rect( draw_x, draw_y, draw_w, draw_h, window_border, xdraw::corner_radius{ r }, s.border_thickness );
+			dl.rect( draw_x, draw_y, draw_w, draw_h, window_border, shell_rounding, s.border_thickness );
 		}
 
 		dl.push_clip( draw_x, draw_y, draw_w, draw_h );
@@ -3355,18 +3407,49 @@ namespace xui {
 
 		if ( has_background )
 		{
-			dl.rect_filled_blurred( abs.x, abs.y, abs.w, abs.h, xdraw::corner_radius{ r }, xdraw::color{ 45, 50, 60, 150 } );
-			dl.rect_filled( abs.x, abs.y, abs.w, abs.h, s.child_bg, xdraw::corner_radius{ r } );
+			const auto rounding = xdraw::corner_radius{ r };
+			const auto bg_alpha = static_cast< float >( s.child_bg.a ) / 255.0f;
 
-			// Subtle liquid glass sheen overlay on child panels
-			dl.rect_filled_gradient( abs.x, abs.y, abs.w, std::min( abs.h, 24.0f ),
-				xdraw::color{ 255, 255, 255, 6 }, xdraw::color{ 255, 255, 255, 6 },
-				xdraw::color{ 255, 255, 255, 1 }, xdraw::color{ 255, 255, 255, 1 },
+			// Soft drop shadow: one extra blurred quad, biased downwards so the card
+			// lifts off the window background.
+			dl.rect_filled_blurred( abs.x - 4.0f, abs.y - 2.0f, abs.w + 8.0f, abs.h + 7.0f,
+				xdraw::corner_radius{ r + 3.0f }, xdraw::color{ 0, 0, 0, 60 } );
+
+			// Frosted glass base.
+			dl.rect_filled_blurred( abs.x, abs.y, abs.w, abs.h, rounding, xdraw::color{ 42, 46, 58, 150 } );
+
+			// Smooth vertical falloff instead of a flat card fill: the panel is
+			// slightly lit at the top and settles into the window colour below.
+			const auto panel_top = lighten( s.child_bg, 1.07f );
+			const auto panel_bottom = darken( s.child_bg, 0.72f );
+			dl.rect_filled_gradient( abs.x, abs.y, abs.w, abs.h,
+				panel_top, panel_top, panel_bottom, panel_bottom, rounding );
+
+			// Violet bloom bleeding in from the top-left corner, echoing the window
+			// shell so the cards read as part of the same surface.
+			auto bloom = tokens::col_aurora;
+			bloom.a = static_cast< std::uint8_t >( 13.0f * bg_alpha );
+			const auto bloom_off = xdraw::color{ bloom.r, bloom.g, bloom.b, 0 };
+			dl.rect_filled_gradient( abs.x, abs.y, abs.w * 0.6f, std::min( abs.h, 150.0f ),
+				bloom, bloom_off, bloom_off, bloom_off, xdraw::corner_radius{ r, 0.0f, 0.0f, 0.0f } );
+
+			// Very soft accent wash on the top edge (replaces the old accent stripe).
+			auto wash = s.accent;
+			wash.a = static_cast< std::uint8_t >( 18.0f * bg_alpha );
+			dl.rect_filled_gradient( abs.x, abs.y, abs.w, std::min( abs.h, 30.0f ),
+				wash, wash,
+				xdraw::color{ wash.r, wash.g, wash.b, 0 }, xdraw::color{ wash.r, wash.g, wash.b, 0 },
 				xdraw::corner_radius::top( r ) );
+
+			// Specular rim: lit along the top edge, shaded along the bottom.
+			dl.line( abs.x + r, abs.y + 0.5f, abs.x + abs.w - r, abs.y + 0.5f,
+				xdraw::color{ 255, 255, 255, 16 }, 1.0f );
+			dl.line( abs.x + r, abs.y + abs.h - 1.5f, abs.x + abs.w - r, abs.y + abs.h - 1.5f,
+				xdraw::color{ 0, 0, 0, 55 }, 1.0f );
 
 			if ( s.border_thickness > 0.0f )
 			{
-				dl.rect( abs.x, abs.y, abs.w, abs.h, s.child_border, xdraw::corner_radius{ r }, s.border_thickness );
+				dl.rect( abs.x, abs.y, abs.w, abs.h, s.child_border, rounding, s.border_thickness );
 			}
 		}
 
@@ -3564,7 +3647,7 @@ namespace xui {
 
 			if ( animated_h > 1.0f )
 			{
-				top_dl.rect_filled_blurred( popup_rect.x, popup_rect.y, popup_rect.w, animated_h, xdraw::corner_radius{ s.popup_rounding }, xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 210.0f * alpha_mult ) } );
+				top_dl.rect_filled_blurred( popup_rect.x, popup_rect.y, popup_rect.w, animated_h, xdraw::corner_radius{ s.popup_rounding }, xdraw::color{ 45, 50, 60, static_cast< std::uint8_t >( 185.0f * alpha_mult ) } );
 			}
 			top_dl.rect_filled( popup_rect.x, popup_rect.y, popup_rect.w, animated_h, bg, xdraw::corner_radius{ s.popup_rounding } );
 			top_dl.rect( popup_rect.x, popup_rect.y, popup_rect.w, animated_h, border, xdraw::corner_radius{ s.popup_rounding } );
@@ -3758,17 +3841,62 @@ namespace xui {
 			float size,
 			float t,
 			const style& st,
-			float alpha_mult = 1.0f )
+			float alpha_mult = 1.0f,
+			float hover = 0.0f )
 		{
+			const auto radius = xdraw::corner_radius{ st.checkbox_rounding };
+			const auto checked = std::clamp( t, 0.0f, 1.0f );
+			const auto hovered = std::clamp( hover, 0.0f, 1.0f );
+			const auto glow = std::max( checked, hovered * 0.7f );
+
+			// Soft accent halo while checking / hovering.
+			if ( glow > 0.01f )
+			{
+				auto halo = st.accent;
+				halo.a = static_cast< std::uint8_t >( 26.0f * glow * alpha_mult );
+				dl.rect_filled( x - 2.0f, y - 2.0f, size + 4.0f, size + 4.0f, halo,
+					xdraw::corner_radius{ st.checkbox_rounding + 2.0f } );
+			}
+
 			auto bg = st.checkbox_bg;
 			bg.a = static_cast< std::uint8_t >( bg.a * alpha_mult );
-			dl.rect_filled( x, y, size, size, bg, xdraw::corner_radius{ st.checkbox_rounding } );
+			dl.rect_filled( x, y, size, size, bg, radius );
 
-			if ( t > 0.01f )
+			if ( checked > 0.01f )
 			{
 				auto mark = st.checkbox_mark;
-				mark.a = static_cast< std::uint8_t >( mark.a * t * alpha_mult );
-				dl.rect_filled( x, y, size, size, mark, xdraw::corner_radius{ st.checkbox_rounding } );
+				mark.a = static_cast< std::uint8_t >( mark.a * checked * alpha_mult );
+				dl.rect_filled( x, y, size, size, mark, radius );
+			}
+
+			auto border = lerp( st.checkbox_border, st.accent, std::max( checked, hovered * 0.65f ) );
+			border.a = static_cast< std::uint8_t >( std::min( 255.0f, border.a * alpha_mult ) );
+			dl.rect( x, y, size, size, border, radius, 1.0f );
+
+			// The check mark draws itself in together with the toggle animation.
+			if ( checked > 0.05f )
+			{
+				auto mark_col = st.checkbox_mark_icon;
+				mark_col.a = static_cast< std::uint8_t >( mark_col.a * std::clamp( ( checked - 0.12f ) / 0.5f, 0.0f, 1.0f ) * alpha_mult );
+
+				const auto step = ease::out_cubic( std::clamp( ( checked - 0.18f ) / 0.55f, 0.0f, 1.0f ) );
+				const auto first = std::clamp( step * 2.0f, 0.0f, 1.0f );
+				const auto second = std::clamp( step * 2.0f - 1.0f, 0.0f, 1.0f );
+
+				const auto x0 = x + size * 0.26f, y0 = y + size * 0.53f;
+				const auto x1 = x + size * 0.44f, y1 = y + size * 0.71f;
+				const auto x2 = x + size * 0.77f, y2 = y + size * 0.30f;
+				const auto thickness = std::max( 1.6f, size * 0.115f );
+
+				if ( first > 0.0f )
+				{
+					dl.line( x0, y0, std::lerp( x0, x1, first ), std::lerp( y0, y1, first ), mark_col, thickness );
+				}
+
+				if ( second > 0.0f )
+				{
+					dl.line( x1, y1, std::lerp( x1, x2, second ), std::lerp( y1, y2, second ), mark_col, thickness );
+				}
 			}
 		}
 
@@ -3940,7 +4068,7 @@ namespace xui {
 
 				if ( animated_h > 1.0f )
 				{
-					dl.rect_filled_blurred( popup.x, popup.y, popup.w, animated_h, xdraw::corner_radius{ pr }, xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 210.0f * alpha_mult ) } );
+					dl.rect_filled_blurred( popup.x, popup.y, popup.w, animated_h, xdraw::corner_radius{ pr }, xdraw::color{ 45, 50, 60, static_cast< std::uint8_t >( 185.0f * alpha_mult ) } );
 				}
 				dl.rect_filled( popup.x, popup.y, popup.w, animated_h, bg, xdraw::corner_radius{ pr } );
 
@@ -4159,9 +4287,9 @@ namespace xui {
 			}
 		}
 
-		const auto check_anim = anim::lerp( id, s.value ? 1.0f : 0.0f, 8.0f );
-		const auto hover_anim = anim::lerp( id + 1, hovered ? 1.0f : 0.0f, 10.0f );
-		const auto ease_t = ease::smoothstep( check_anim );
+		const auto check_anim = anim::lerp( id, s.value ? 1.0f : 0.0f, 11.0f );
+		const auto hover_anim = anim::lerp( id + 1, hovered ? 1.0f : 0.0f, 12.0f );
+		const auto ease_t = ease::out_cubic( check_anim );
 
 		auto& dl = draw::current( );
 
@@ -4170,7 +4298,7 @@ namespace xui {
 		const auto is_highlighted = !hl.label.empty( ) && now < hl.expires_at && display == hl.label;
 		const auto highlight_anim = anim::lerp( id + 97, is_highlighted ? 1.0f : 0.0f, 18.0f );
 
-		draw_minimal_checkbox( dl, abs.x, abs.y, abs.w, ease_t, st );
+		draw_minimal_checkbox( dl, abs.x, abs.y, abs.w, ease_t, st, 1.0f, hover_anim );
 
 		if ( highlight_anim > 0.01f )
 		{
@@ -4439,8 +4567,8 @@ namespace xui {
             changed = true;
         }
 
-        const auto t = ease::smoothstep(anim::lerp(id, s.value ? 1.0f : 0.0f, 14.0f));
-        const auto hover = anim::lerp(id + 1, hovered ? 1.0f : 0.0f, 14.0f);
+        const auto t = ease::in_out_cubic(anim::lerp(id, s.value ? 1.0f : 0.0f, 11.0f));
+        const auto hover = anim::lerp(id + 1, hovered ? 1.0f : 0.0f, 12.0f);
         auto& dl = draw::current();
 
         const auto reserved_right = toggle_w + dot_area_w + 14.0f;
@@ -4483,13 +4611,20 @@ namespace xui {
                 dl.rect(px - i, py - i, toggle_w + i * 2.0f, toggle_h + i * 2.0f,
                     st.accent.alpha(static_cast<std::uint8_t>((18 - i * 4) * t)), xdraw::corner_radius{9.0f + i});
         }
-        dl.rect_filled(px, py, toggle_w, toggle_h, lerp(st.checkbox_bg, st.accent, 0.10f * t), radius);
+        // Track fills smoothly with the accent instead of staying almost static.
+        auto track_bg = lerp(st.checkbox_bg, st.accent, 0.62f * t);
+        track_bg = lerp(track_bg, st.accent, 0.10f * hover);
+        dl.rect_filled(px, py, toggle_w, toggle_h, track_bg, radius);
+        // Hairline inner highlight so the track reads as a liquid pill.
+        dl.line(px + toggle_h * 0.5f, py + 1.0f, px + toggle_w - toggle_h * 0.5f, py + 1.0f,
+            xdraw::color{ 255, 255, 255, static_cast<std::uint8_t>(12.0f + 22.0f * t) }, 1.0f);
         dl.rect(px, py, toggle_w, toggle_h,
-            lerp(st.checkbox_border, st.accent.alpha(170), std::max(t, hover * 0.5f)), radius);
+            lerp(st.checkbox_border, st.accent.alpha(190), std::max(t, hover * 0.6f)), radius);
         const auto cx = std::lerp(px + 9.0f, px + toggle_w - 9.0f, t);
         const auto cy = py + 9.0f;
         if (t > 0.01f) dl.circle_filled(cx, cy, thumb_r + 2.0f, st.accent.alpha(static_cast<std::uint8_t>(42.0f * t)));
-        dl.circle_filled(cx, cy, thumb_r, lerp(st.text_dim, st.accent, t));
+        dl.circle_filled(cx, cy, thumb_r, lerp(lerp(st.text_dim, st.text, hover * 0.6f), st.checkbox_mark_icon, t));
+        dl.circle(cx, cy, thumb_r + 0.9f, xdraw::color{ 0, 0, 0, static_cast<std::uint8_t>(30.0f * (1.0f - t)) }, 1.0f);
         return changed;
     }
 
@@ -5194,6 +5329,7 @@ namespace xui {
 				auto border = style.popup_border;
 				border.a = static_cast< std::uint8_t >( 180.0f * alpha_mult );
 
+				dl.rect_filled_blurred( popup.x, popup.y, popup.w, popup.h, xdraw::corner_radius{ 6.0f }, xdraw::color{ 45, 50, 60, static_cast< std::uint8_t >( 185.0f * alpha_mult ) } );
 				dl.rect_filled( popup.x, popup.y, popup.w, popup.h, bg, xdraw::corner_radius{ 6.0f } );
 				dl.rect( popup.x, popup.y, popup.w, popup.h, border, xdraw::corner_radius{ 6.0f } );
 
@@ -6101,7 +6237,7 @@ namespace xui {
 
 				if ( animated_h > 1.0f )
 				{
-					dl.rect_filled_blurred( dd.x, dd.y, dd.w, animated_h, xdraw::corner_radius{ pr }, xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 210.0f * alpha_mult ) } );
+					dl.rect_filled_blurred( dd.x, dd.y, dd.w, animated_h, xdraw::corner_radius{ pr }, xdraw::color{ 45, 50, 60, static_cast< std::uint8_t >( 185.0f * alpha_mult ) } );
 				}
 				dl.rect_filled( dd.x, dd.y, dd.w, animated_h, bg, xdraw::corner_radius{ pr } );
 				dl.rect( dd.x, dd.y, dd.w, animated_h, border, xdraw::corner_radius{ pr } );
@@ -6536,7 +6672,7 @@ namespace xui {
 
 				if ( animated_h > 1.0f )
 				{
-					dl.rect_filled_blurred( dd.x, dd.y, dd.w, animated_h, xdraw::corner_radius{ pr }, xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 210.0f * alpha_mult ) } );
+					dl.rect_filled_blurred( dd.x, dd.y, dd.w, animated_h, xdraw::corner_radius{ pr }, xdraw::color{ 45, 50, 60, static_cast< std::uint8_t >( 185.0f * alpha_mult ) } );
 				}
 				dl.rect_filled( dd.x, dd.y, dd.w, animated_h, bg, xdraw::corner_radius{ pr } );
 				dl.rect( dd.x, dd.y, dd.w, animated_h, border, xdraw::corner_radius{ pr } );
@@ -6989,6 +7125,7 @@ namespace xui {
 				auto border = style.picker_popup_border;
 				border.a = static_cast< std::uint8_t >( border.a * alpha_mult );
 
+				dl.rect_filled_blurred( sx, sy, sw, sh, xdraw::corner_radius{ pr }, xdraw::color{ 45, 50, 60, static_cast< std::uint8_t >( 185.0f * alpha_mult ) } );
 				dl.rect_filled( sx, sy, sw, sh, tint, xdraw::corner_radius{ pr } );
 				dl.rect( sx, sy, sw, sh, border, xdraw::corner_radius{ pr } );
 

@@ -34,7 +34,10 @@ namespace features::movement {
 			return;
 		}
 
-		const auto move_type = memory::read<std::uint8_t>( local.pawn + SCHEMA( "C_BaseEntity", "m_nActualMoveType"_hash ) );
+		const auto move_type_offset = SCHEMA( "C_BaseEntity", "m_nActualMoveType"_hash );
+		if ( !move_type_offset )
+			return;
+		const auto move_type = memory::safe_read<std::uint8_t>( local.pawn + move_type_offset ).value_or( 0 );
 		if ( move_type == cstypes::move_type::ladder || move_type == cstypes::move_type::noclip )
 		{
 			return;
@@ -78,8 +81,8 @@ namespace features::movement {
 		const auto cmd_left = left_input / input_len;
 
 		// 2. Obtain weapon / movement max speed & target speed
-		const auto movement_services = memory::read<std::uintptr_t>( local.pawn + SCHEMA( "C_BasePlayerPawn", "m_pMovementServices"_hash ) );
-		const auto max_speed = movement_services ? memory::read<float>( movement_services + SCHEMA( "CPlayer_MovementServices", "m_flMaxspeed"_hash ) ) : 250.0f;
+		const auto movement_services = memory::safe_read<std::uintptr_t>( local.pawn + SCHEMA( "C_BasePlayerPawn", "m_pMovementServices"_hash ) ).value_or( 0 );
+		const auto max_speed = valid_runtime_address( movement_services ) ? memory::read<float>( movement_services + SCHEMA( "CPlayer_MovementServices", "m_flMaxspeed"_hash ) ) : 250.0f;
 		const auto effective_max_speed = ( max_speed > 0.0f ) ? max_speed : 250.0f;
 
 		const auto target_speed = std::clamp( settings::g_movement.slowwalk_speed.value, 1.0f, effective_max_speed );
@@ -179,8 +182,8 @@ namespace features::movement {
 		const auto subtick_moves = base->mutable_subtick_moves( );
 		if ( subtick_moves )
 		{
-			const auto cur_cmd_fwd = movement_services ? memory::read<float>( movement_services + SCHEMA( "CPlayer_MovementServices", "m_flCmdForwardMove"_hash ) ) : prestate.last_movement_impulses.x;
-			const auto cur_cmd_left = movement_services ? memory::read<float>( movement_services + SCHEMA( "CPlayer_MovementServices", "m_flCmdLeftMove"_hash ) ) : prestate.last_movement_impulses.y;
+			const auto cur_cmd_fwd = valid_runtime_address( movement_services ) ? memory::read<float>( movement_services + SCHEMA( "CPlayer_MovementServices", "m_flCmdForwardMove"_hash ) ) : prestate.last_movement_impulses.x;
+			const auto cur_cmd_left = valid_runtime_address( movement_services ) ? memory::read<float>( movement_services + SCHEMA( "CPlayer_MovementServices", "m_flCmdLeftMove"_hash ) ) : prestate.last_movement_impulses.y;
 
 			if ( const auto step = systems::g_input.acquire_subtick_step( subtick_moves ) )
 			{

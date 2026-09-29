@@ -1,0 +1,75 @@
+// function: FUN_180135300
+// ea: 180135300
+// category: nospread
+// depth: 2, via: FUN_180132f60 @180133430
+// size: 363 bytes
+// anchors: nospread
+// ----------------------------------------------------
+
+/* WARNING: Type propagation algorithm not settling */
+
+double FUN_180135300(byte *param_1)
+
+{
+  double dVar1;
+  byte bVar2;
+  int iVar3;
+  longlong lVar4;
+  byte *pbVar5;
+  bool bVar6;
+  double dVar7;
+  uint uVar8;
+  byte *local_50 [7];
+  
+  local_50[0] = (byte *)0x0;
+  if (*param_1 == 0x2d) {
+    param_1 = param_1 + 1;
+    uVar8 = 0xbff00000;
+    bVar2 = *param_1;
+    if (0xf5 < (byte)(bVar2 - 0x3a)) goto LAB_18013536d;
+LAB_180135345:
+    bVar6 = false;
+  }
+  else {
+    uVar8 = 0x3ff00000;
+    if (*param_1 == 0x2b) {
+      param_1 = param_1 + 1;
+    }
+    bVar2 = *param_1;
+    if ((byte)(bVar2 - 0x3a) < 0xf6) goto LAB_180135345;
+LAB_18013536d:
+    lVar4 = FUN_18021d4c4(param_1,local_50,10);
+    bVar6 = param_1 != local_50[0];
+    param_1 = local_50[0];
+    if (bVar6) {
+      dVar1 = (double)lVar4;
+      bVar2 = *local_50[0];
+      goto joined_r0x000180135350;
+    }
+    bVar2 = *local_50[0];
+  }
+  dVar1 = 0.0;
+joined_r0x000180135350:
+  if (((bVar2 == 0x2e) &&
+      (pbVar5 = param_1 + 1, param_1 = param_1 + 1, 0xf5 < (byte)(*pbVar5 - 0x3a))) &&
+     (lVar4 = FUN_18021d4c4(param_1,local_50,10), pbVar5 = local_50[0], param_1 != local_50[0])) {
+    dVar7 = (double)FUN_180218750(0x4024000000000000,
+                                  (double)((longlong)local_50[0] - (longlong)param_1));
+    dVar1 = dVar1 + (double)lVar4 / dVar7;
+  }
+  else {
+    dVar7 = 0.0;
+    pbVar5 = param_1;
+    if (!bVar6) {
+      return 0.0;
+    }
+  }
+  if (((*pbVar5 | 0x20) == 0x65) &&
+     (iVar3 = FUN_18021d410(dVar7,local_50,10), pbVar5 + 1 != local_50[0])) {
+    dVar7 = (double)FUN_180218750(0x4024000000000000,(double)iVar3);
+    dVar1 = dVar1 * dVar7;
+  }
+  return (double)((ulonglong)uVar8 << 0x20) * dVar1;
+}
+
+

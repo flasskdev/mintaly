@@ -967,7 +967,11 @@ namespace features::misc {
 		}
 
 		// Callers pass a controller; do not reinterpret its memory as a pawn.
-		const auto name_ptr = memory::read<std::uintptr_t>( controller + SCHEMA( "CCSPlayerController", "m_sSanitizedPlayerName"_hash ) );
+		const auto name_offset = SCHEMA( "CCSPlayerController", "m_sSanitizedPlayerName"_hash );
+		if ( !name_offset )
+			return "unknown";
+		const auto name_ptr = controller >= 0x10000
+			? memory::safe_read<std::uintptr_t>( controller + name_offset ).value_or( 0 ) : 0;
 		if ( name_ptr )
 		{
 			auto name = memory::read_string( name_ptr, 127 );
@@ -978,7 +982,9 @@ namespace features::misc {
 			}
 		}
 
-		auto raw_name = memory::read_string( controller + SCHEMA( "CBasePlayerController", "m_iszPlayerName"_hash ), 127 );
+		const auto raw_name_offset = SCHEMA( "CBasePlayerController", "m_iszPlayerName"_hash );
+		auto raw_name = raw_name_offset && controller >= 0x10000
+			? memory::read_string( controller + raw_name_offset, 127 ) : std::string{};
 		if ( !raw_name.empty( ) )
 		{
 			std::transform( raw_name.begin( ), raw_name.end( ), raw_name.begin( ), ::tolower );

@@ -1,0 +1,65 @@
+// function: FUN_18008b4b0
+// ea: 18008b4b0
+// category: nospread
+// depth: 3, via: FUN_18008b250 @18008b275
+// size: 375 bytes
+// anchors: nospread, trace_geometry, hitbox_backtrack
+// ----------------------------------------------------
+
+void FUN_18008b4b0(longlong param_1)
+
+{
+  undefined8 uVar1;
+  undefined4 *puVar2;
+  undefined4 local_68;
+  undefined4 uStack_64;
+  undefined4 local_60;
+  undefined4 uStack_5c;
+  char *local_58;
+  undefined8 local_50;
+  char *local_48;
+  undefined8 local_40;
+  char *local_38;
+  undefined8 local_30;
+  
+  local_68 = 0x41300000;
+  uStack_64 = 0x41600000;
+  local_60 = 0x41880000;
+  local_38 = "Verdana";
+  local_30 = 7;
+  puVar2 = &local_68;
+  FUN_18008b630(param_1,param_1,&local_38,400,puVar2);
+  local_68 = 0x41300000;
+  uStack_64 = 0x41600000;
+  local_60 = 0x41880000;
+  local_48 = "Verdana";
+  local_40 = 7;
+  FUN_18008b630();
+  local_68 = 0x8035df30;
+  uStack_64 = 1;
+  local_60 = 0x6400;
+  uStack_5c = 0;
+  uVar1 = FUN_18012cee0(&local_68,0x41180000,0x400,0x400,puVar2);
+  *(undefined8 *)(param_1 + 0x30) = uVar1;
+  local_68 = 0x8035df30;
+  uStack_64 = 1;
+  local_60 = 0x6400;
+  uStack_5c = 0;
+  uVar1 = FUN_18012cee0(&local_68,0x41200000,0x400,0x400);
+  *(undefined8 *)(param_1 + 0x38) = uVar1;
+  local_68 = 0x8035df30;
+  uStack_64 = 1;
+  local_60 = 0x6400;
+  uStack_5c = 0;
+  uVar1 = FUN_18012cee0(&local_68,0x41680000,0x400,0x400);
+  *(undefined8 *)(param_1 + 0x40) = uVar1;
+  local_68 = 0x41000000;
+  uStack_64 = 0;
+  local_60 = 0;
+  local_58 = "Tahoma";
+  local_50 = 6;
+  FUN_18008b630();
+  return;
+}
+
+

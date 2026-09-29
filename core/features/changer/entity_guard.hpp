@@ -70,7 +70,7 @@ namespace features::changer::entity_guard {
         const auto skin = PATTERN(patterns::weapon_update_skin);
         if (!composite || !skin || !set_mesh(expected, mask)) return false;
         // Existing build-dependent composite-material subobject layout.
-        memory::call<void>(composite, expected.entity + 0x608, true);
+		memory::call<void>(composite, expected.entity + 0x610, true);
         if (!current(expected)) return false;
         memory::call_vfunc<void>(expected.entity, 10, 1);
         if (!current(expected)) return false;

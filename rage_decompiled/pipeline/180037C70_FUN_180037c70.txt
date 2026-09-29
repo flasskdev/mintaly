@@ -1,0 +1,24 @@
+// function: FUN_180037c70
+// ea: 180037c70
+// category: pipeline
+// depth: 2, via: FUN_180037730 @18003789a
+// size: 115 bytes
+// anchors: pipeline
+// ----------------------------------------------------
+
+undefined4 FUN_180037c70(void)
+
+{
+  if (*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+              0x2638) < DAT_180471ae8) {
+    FUN_180183614(&DAT_180471ae8);
+    if (DAT_180471ae8 == -1) {
+      DAT_180471ae4 = FUN_180114bb0("C_BasePlayerWeapon",0xd0250969);
+      _Init_thread_footer(&DAT_180471ae8);
+      return DAT_180471ae4;
+    }
+  }
+  return DAT_180471ae4;
+}
+
+

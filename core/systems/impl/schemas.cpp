@@ -8,6 +8,11 @@ namespace systems {
 
 	std::uint32_t schemas::lookup( const char* class_name, std::uint32_t field_hash )
 	{
+		if ( !class_name || !field_hash )
+		{
+			return 0;
+		}
+
 		const auto type_scope = memory::call_vfunc<std::uintptr_t>( addresses::globals::schema_system, 13, xs( "client.dll" ), nullptr );
 		if ( !type_scope )
 		{
@@ -22,10 +27,13 @@ namespace systems {
 			return 0;
 		}
 
-		const auto fields_ptr = memory::read<std::uintptr_t>( class_info + 0x30 );
-		const auto field_count = memory::read<std::uint16_t>( class_info + 0x24 );
+		// Schema metadata is rebuilt during level transitions.  Do not use raw
+		// reads here: a stale class_info/field entry must turn into a cache miss,
+		// not an access violation in the render thread.
+		const auto fields_ptr = memory::safe_read<std::uintptr_t>( class_info + 0x30 ).value_or( 0 );
+		const auto field_count = memory::safe_read<std::uint16_t>( class_info + 0x24 ).value_or( 0 );
 
-		if ( !fields_ptr || !field_count )
+		if ( !fields_ptr || !field_count || field_count > 512 )
 		{
 			return 0;
 		}
@@ -33,7 +41,7 @@ namespace systems {
 		for ( std::uint16_t i = 0; i < field_count; ++i )
 		{
 			const auto field_addr = fields_ptr + ( static_cast< std::size_t >( i ) * 0x20 );
-			const auto name_ptr = memory::read<std::uintptr_t>( field_addr );
+			const auto name_ptr = memory::safe_read<std::uintptr_t>( field_addr ).value_or( 0 );
 
 			if ( !name_ptr )
 			{
@@ -42,7 +50,7 @@ namespace systems {
 
 			if ( fnv1a::runtime_hash( reinterpret_cast< const char* >( name_ptr ) ) == field_hash )
 			{
-				return memory::read<std::uint32_t>( field_addr + 0x10 );
+				return memory::safe_read<std::uint32_t>( field_addr + 0x10 ).value_or( 0 );
 			}
 		}
 

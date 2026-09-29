@@ -1,0 +1,84 @@
+// function: FUN_18018a930
+// ea: 18018a930
+// category: pipeline
+// depth: 3, via: FUN_18016d570 @18016d675
+// size: 441 bytes
+// anchors: pipeline
+// ----------------------------------------------------
+
+void FUN_18018a930(longlong param_1,undefined8 param_2,undefined8 param_3,longlong param_4,
+                  undefined8 param_5)
+
+{
+  undefined1 uVar1;
+  undefined4 uVar2;
+  undefined8 uVar3;
+  undefined8 uVar4;
+  longlong lVar5;
+  char cVar6;
+  byte bVar7;
+  longlong *plVar8;
+  undefined1 auStack_198 [32];
+  longlong local_178;
+  char local_170;
+  undefined8 local_168 [34];
+  char local_58;
+  ulonglong local_48;
+  
+  local_48 = DAT_180469600 ^ (ulonglong)auStack_198;
+  uVar3 = *(undefined8 *)(param_1 + 0xa8);
+  uVar4 = *(undefined8 *)(param_1 + 0x20);
+  uVar1 = *(undefined1 *)(param_1 + 10);
+  *(undefined8 *)(param_1 + 0xa8) = param_5;
+  cVar6 = FUN_18018b080();
+  if (cVar6 != '\0') {
+    local_168[0] = *(undefined8 *)(param_1 + 0x58);
+    local_178 = *(longlong *)(param_1 + 0x30) + param_4;
+    *(undefined8 *)(param_1 + 0x20) = uVar4;
+    *(undefined1 *)(param_1 + 10) = uVar1;
+    uVar2 = *(undefined4 *)(param_1 + 0xb0);
+    *(undefined8 **)(param_1 + 0x58) = local_168;
+    local_58 = '\0';
+    local_170 = cVar6;
+    FUN_18018b110(param_1,local_168,&LAB_18018b630,&local_178);
+    *(undefined8 *)(param_1 + 0x58) = local_168[0];
+    *(undefined4 *)(param_1 + 0xb0) = uVar2;
+    cVar6 = local_170;
+    local_170 = local_58;
+    while (local_170 != '\0') {
+      *(undefined8 *)(param_1 + 0x20) = uVar4;
+      *(undefined1 *)(param_1 + 10) = uVar1;
+      local_168[0] = *(undefined8 *)(param_1 + 0x58);
+      local_178 = *(longlong *)(param_1 + 0x30) + param_4;
+      uVar2 = *(undefined4 *)(param_1 + 0xb0);
+      local_58 = '\0';
+      *(undefined8 **)(param_1 + 0x58) = local_168;
+      FUN_18018b110(param_1,local_168,&LAB_18018b630,&local_178);
+      *(undefined8 *)(param_1 + 0x58) = local_168[0];
+      *(undefined4 *)(param_1 + 0xb0) = uVar2;
+      cVar6 = local_170;
+      local_170 = local_58;
+    }
+    plVar8 = (longlong *)(*(longlong *)(param_1 + 0x30) + param_4);
+    if (cVar6 == '\x04') {
+      lVar5 = *(longlong *)(*(longlong *)(param_1 + 0x18) + 0x108);
+      *plVar8 = lVar5;
+      bVar7 = *(byte *)(lVar5 + 8) | 0x40;
+    }
+    else {
+      lVar5 = *(longlong *)(param_1 + 0x10);
+      *plVar8 = *(longlong *)(lVar5 + -0x10);
+      bVar7 = *(byte *)(lVar5 + -8);
+    }
+    *(byte *)(plVar8 + 1) = bVar7;
+    *(longlong **)(param_1 + 0x10) = plVar8 + 2;
+    local_58 = local_170;
+    local_170 = cVar6;
+    FUN_18018ae50(param_1);
+  }
+  *(undefined8 *)(param_1 + 0xa8) = uVar3;
+  FUN_180197320(local_48 ^ (ulonglong)auStack_198);
+  return;
+}
+
+

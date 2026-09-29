@@ -83,6 +83,7 @@ namespace addresses {
 
 
 		// cheat hooks
+		inline std::uintptr_t get_desc{};
 		inline std::uintptr_t present{};
 		inline std::uintptr_t resize_buffers{};
 

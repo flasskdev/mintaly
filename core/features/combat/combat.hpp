@@ -413,10 +413,21 @@ namespace features::combat {
                 [[nodiscard]] bool duckpeek_wants_reduck( ) const noexcept { return this->m_duckpeek_reduck; }
                 void clear_duckpeek_reduck( ) noexcept { this->m_duckpeek_reduck = false; this->m_duckpeek_reduck_ticks = 0; }
 
+                // Staged native pipeline (no Lua VM): targets -> scan -> select -> fire.
+                // Limits mirror docs/RAGEBOT.ru.md + rage_decompiled budgets:
+                // up to 13 targets, 2 detailed targets, 4 records per target,
+                // 160 total penetration traces, 128 points per scan,
+                // 32 hitchance queries per command.
+                static constexpr auto k_max_targets{ 13 };
+                static constexpr auto k_detailed_targets{ 2 };
+                static constexpr auto k_penetration_budget{ 160 };
+                static constexpr auto k_max_scan_points{ 128 };
+                static constexpr auto k_max_hitchance_queries{ 32 };
                 static constexpr auto k_max_lagcomp_records{ 16 };
-                // Scanning the newest and oldest valid records covers the useful lag-comp
-                // extremes without multiplying every penetration and hitchance test.
-                static constexpr auto k_max_scan_records{ 2 };
+                // Newest + oldest extremes plus up to two middle records so
+                // selection can compete recent vs aged poses without
+                // multiplying every penetration/hitchance test.
+                static constexpr auto k_max_scan_records{ 4 };
                 static constexpr auto k_max_multipoints{ 8 };
 
                 struct multipoint_result
@@ -431,6 +442,10 @@ namespace features::combat {
                         int health{};
                         int armor{};
                         float min_damage{};
+                        float distance_sq{};
+                        float fov{};
+                        bool in_fov{};
+                        int order{};
                         std::array<shared::lagcomp::record*, k_max_lagcomp_records> records{};
                         int record_count{};
                 };
@@ -443,6 +458,7 @@ namespace features::combat {
                         float score{};
                         float fov{};
                         int hitbox_index{};
+                        int requested_hitbox{};
                         int hitgroup{};
                         int bone_index{};
                         systems::hitboxes::entry hitbox{};
@@ -461,6 +477,9 @@ namespace features::combat {
                 {
                         scan_hit hit{};
                         float hitchance{};
+                        float required_hitchance{};
+                        bool allow_force{};
+                        bool forced{};
                         float score{};
                         bool valid{};
 
@@ -478,6 +497,9 @@ namespace features::combat {
 
                         float predicted_inaccuracy{};
                         float spread{};
+                        float required_hitchance{};
+                        bool no_spread{};
+                        bool allow_force{};
 
                         float weapon_max_speed{};
                         float accurate_threshold{};
@@ -518,6 +540,24 @@ namespace features::combat {
                         bool is_center{};
                 };
 
+                // One rage_scan pass: single target + single record + one eye.
+                // Field names mirror docs/RAGEBOT.ru.md rage_scan context.
+                struct rage_scan
+                {
+                        std::uintptr_t pawn{};
+                        int health{};
+                        float min_damage{};
+                        shared::lagcomp::record* record{};
+                        math::vector3 eye{};
+                        float inaccuracy{};
+                        float spread{};
+                        bool prediction{};
+                        bool centers_only{};
+                        int trace_budget{ k_penetration_budget };
+                        std::array<trace_point, k_max_scan_points> points{};
+                        int point_count{};
+                };
+
                 struct scan_work
                 {
                         shared::penetration::run_context penetration{};
@@ -531,9 +571,31 @@ namespace features::combat {
                 mutable std::vector<scan_task> m_scan_tasks{};
                 mutable std::vector<std::vector<scan_hit>> m_candidate_hits{};
                 mutable std::vector<std::uint8_t> m_candidate_done{};
+                // Shared per-command budgets (no Lua VM): penetration traces and
+                // hitchance evaluations are capped like the staged pipeline.
+                mutable std::atomic<int> m_penetration_used{ 0 };
+                mutable std::atomic<int> m_hitchance_used{ 0 };
+
+                // Single-point trace shared by the staged single-record pass and
+                // the batched parallel driver: FOV gate, shared trace budget,
+                // penetration run and hit assembly live in exactly one place.
+                [[nodiscard]] bool execute_scan_point( const math::vector3& eye, const trace_point& point,
+                        std::uintptr_t pawn, int health, float min_damage, float max_fov,
+                        const shared::penetration::run_context& pen_ctx, const aim_context& ctx,
+                        const systems::local::snapshot& local, scan_hit& out ) const;
+
+                // Staged native passes. Names mirror create_move -> targets ->
+                // scan -> select -> fire so behavior maps 1:1 to the spec.
+                void build_targets( const aim_context& ctx, const systems::local::snapshot& local, std::vector<candidate>& out );
+                // Single-target/single-record scan pass. Pass an already prepared
+                // pose context to avoid re-preparing the same record geometry.
+                void run_scan_pass( const rage_scan& scan, const aim_context& ctx, const systems::local::snapshot& local, std::vector<scan_hit>& out,
+                        const shared::penetration::run_context* prepared = nullptr ) const;
+                [[nodiscard]] target run_select_pass( const aim_context& aim_ctx, const std::vector<scan_hit>& hits, float eval_inaccuracy ) const;
+                [[nodiscard]] bool run_fire_pass( systems::input::usercmd* cmd, const target& tgt, const aim_context& ctx, const systems::local::snapshot& local );
 
                 void scan_players( const math::vector3& eye, float inaccuracy, const aim_context& ctx, std::vector<candidate>& candidates, const systems::local::snapshot& local, std::vector<scan_hit>& out ) const;
-                void prepare_scan( const math::vector3& eye, float inaccuracy, const aim_context& ctx, const candidate& cand, shared::lagcomp::record* record, scan_work& work ) const;
+                void prepare_scan( const math::vector3& eye, float inaccuracy, const aim_context& ctx, const candidate& cand, shared::lagcomp::record* record, scan_work& work, bool centers_only = false ) const;
                 [[nodiscard]] target select_best( const aim_context& aim_ctx, const std::vector<scan_hit>& hits, float eval_inaccuracy ) const;
                 [[nodiscard]] float evaluate_hitchance( const scan_hit& hit, const aim_context& ctx, float inaccuracy ) const;
                 [[nodiscard]] float get_standing_inaccuracy( const systems::local::snapshot& local, const aim_context& ctx ) const;

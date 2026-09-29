@@ -1,0 +1,46 @@
+// function: FUN_18013ce40
+// ea: 18013ce40
+// category: hitchance
+// depth: 2, via: FUN_1801462d0 @1801466e8
+// size: 231 bytes
+// anchors: hitchance, nospread, autowall_damage
+// ----------------------------------------------------
+
+void FUN_18013ce40(longlong param_1)
+
+{
+  longlong lVar1;
+  longlong *plVar2;
+  undefined1 local_12;
+  undefined1 local_11;
+  undefined4 local_10;
+  undefined4 local_c;
+  
+  plVar2 = DAT_1804957d8;
+  if ((*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+               0x2638) < DAT_180495870) &&
+     (FUN_180183614(&DAT_180495870), plVar2 = DAT_1804957d8, DAT_180495870 == -1)) {
+    DAT_1804957d8 = (longlong *)0x0;
+    DAT_1804957e0 = (longlong *)0x0;
+    DAT_1804957e8 = 0;
+    local_10 = 0;
+    FUN_18006ca00(&DAT_1804957f0,&local_10,&local_12);
+    local_c = 0;
+    FUN_18006ca00(&DAT_180495830,&local_c,&local_11);
+    atexit(FUN_18014bee0);
+    _Init_thread_footer(&DAT_180495870);
+    plVar2 = DAT_1804957d8;
+  }
+  while( true ) {
+    if (plVar2 == DAT_1804957e0) {
+      return;
+    }
+    lVar1 = *plVar2;
+    if ((lVar1 != 0) && (*(longlong *)(lVar1 + 8) == param_1)) break;
+    plVar2 = plVar2 + 1;
+  }
+  *(undefined1 *)(lVar1 + 0x20) = 1;
+  return;
+}
+
+

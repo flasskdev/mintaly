@@ -1,0 +1,31 @@
+// function: FUN_1801906d0
+// ea: 1801906d0
+// category: trace_geometry
+// depth: 3, via: FUN_18016ddc0 @18016de46
+// size: 150 bytes
+// anchors: trace_geometry, hitbox_backtrack
+// ----------------------------------------------------
+
+ulonglong FUN_1801906d0(longlong param_1,longlong param_2,undefined8 *param_3)
+
+{
+  ulonglong uVar1;
+  undefined8 *puVar2;
+  
+  if (-1 < *(char *)(param_2 + 0xb)) {
+    uVar1 = FUN_1801905a0();
+    return uVar1;
+  }
+  puVar2 = (undefined8 *)FUN_180192370();
+  if ((*(byte *)(puVar2 + 1) & 0xf) != 0) {
+    *puVar2 = *param_3;
+    *(undefined1 *)(puVar2 + 1) = *(undefined1 *)(param_3 + 1);
+    return 0;
+  }
+  if (*(byte *)(puVar2 + 1) == 0x20) {
+    return 1;
+  }
+  return (ulonglong)((int)(((longlong)puVar2 - *(longlong *)(param_1 + 0x18)) / 0x18) + 3);
+}
+
+

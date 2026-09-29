@@ -1,0 +1,189 @@
+// function: FUN_1800dad80
+// ea: 1800dad80
+// category: trace_geometry
+// depth: 1, via: FUN_1800aae50 @1800ab82e
+// size: 1239 bytes
+// anchors: trace_geometry, hitbox_backtrack
+// ----------------------------------------------------
+
+/* WARNING: Globals starting with '_' overlap smaller symbols at the same address */
+
+undefined8 FUN_1800dad80(longlong param_1)
+
+{
+  longlong lVar1;
+  int iVar2;
+  uint uVar3;
+  ulonglong uVar4;
+  ulonglong uVar5;
+  longlong lVar6;
+  ulonglong uVar7;
+  int *piVar8;
+  undefined8 uVar9;
+  int iVar10;
+  float fVar11;
+  double dVar12;
+  double dVar13;
+  double dVar14;
+  float fVar16;
+  undefined1 auVar15 [16];
+  undefined1 auVar17 [16];
+  undefined1 auVar19 [16];
+  double dVar20;
+  undefined1 auVar21 [16];
+  undefined4 uVar22;
+  undefined4 uVar23;
+  undefined1 local_488 [1032];
+  longlong local_80;
+  undefined8 local_78;
+  undefined1 auVar18 [16];
+  
+  local_78 = 0xfffffffffffffffe;
+  FUN_18023b870(local_488,0,0x400);
+  lVar1 = *(longlong *)(param_1 + -8);
+  local_80 = param_1;
+  if (*(char *)(lVar1 + 0xc2) == '\x01') {
+                    /* WARNING: Subroutine does not return */
+    FUN_1800e24d0("script is closing");
+  }
+  iVar2 = *(int *)(lVar1 + 0xa8);
+  *(int *)(lVar1 + 0xa8) = iVar2 + 1;
+  if (iVar2 < 0x8000) {
+    uVar4 = FUN_180184cfc();
+    uVar5 = FUN_180184ce0();
+    if (uVar4 == 24000000) {
+      lVar6 = (((longlong)uVar5 % 24000000) * 1000000000) / 24000000 +
+              ((longlong)uVar5 / 24000000) * 1000000000;
+    }
+    else if (uVar4 == 10000000) {
+      lVar6 = uVar5 * 100;
+    }
+    else {
+      if ((uVar5 | uVar4) >> 0x20 == 0) {
+        uVar7 = (uVar5 & 0xffffffff) / (uVar4 & 0xffffffff);
+        uVar5 = (uVar5 & 0xffffffff) % (uVar4 & 0xffffffff);
+      }
+      else {
+        uVar7 = (longlong)uVar5 / (longlong)uVar4;
+        uVar5 = (longlong)uVar5 % (longlong)uVar4;
+      }
+      uVar5 = uVar5 * 1000000000;
+      if ((uVar4 | uVar5) >> 0x20 == 0) {
+        uVar5 = (uVar5 & 0xffffffff) / (uVar4 & 0xffffffff);
+      }
+      else {
+        uVar5 = (longlong)uVar5 / (longlong)uVar4;
+      }
+      lVar6 = uVar5 + uVar7 * 1000000000;
+    }
+    if (lVar6 <= *(longlong *)(lVar1 + 0xb0)) {
+      lVar1 = *(longlong *)(param_1 + -8);
+      if (*(longlong *)(lVar1 + 0x58) == 5) {
+        if (*(ulonglong *)(lVar1 + 0x60) < 0x10) {
+          piVar8 = (int *)(lVar1 + 0x48);
+        }
+        else {
+          piVar8 = *(int **)(lVar1 + 0x48);
+        }
+        if ((char)piVar8[1] == 't' && *piVar8 == 0x6e696170) {
+          uVar9 = FUN_1801304f0(0);
+          if (0xf < *(uint *)(*(longlong *)(local_80 + -8) + 0x118)) {
+                    /* WARNING: Subroutine does not return */
+            FUN_1800e24d0("clip nesting limit is 16");
+          }
+          iVar2 = FUN_18016c6d0(local_80,1);
+          if (iVar2 != 3) {
+                    /* WARNING: Subroutine does not return */
+            FUN_1800e24d0("expected number");
+          }
+          dVar12 = (double)FUN_18016c710(local_80,1,0);
+          if ((0x7fefffffffffffff < (ulonglong)ABS(dVar12)) || (1000000000000.0 < ABS(dVar12))) {
+                    /* WARNING: Subroutine does not return */
+            FUN_1800e24d0("number out of range");
+          }
+          iVar2 = FUN_18016c6d0(local_80,2);
+          if (iVar2 != 3) {
+                    /* WARNING: Subroutine does not return */
+            FUN_1800e24d0("expected number");
+          }
+          dVar13 = (double)FUN_18016c710(local_80,2,0);
+          if ((0x7fefffffffffffff < (ulonglong)ABS(dVar13)) || (1000000000000.0 < ABS(dVar13))) {
+                    /* WARNING: Subroutine does not return */
+            FUN_1800e24d0("number out of range");
+          }
+          iVar2 = FUN_18016c6d0(local_80,3);
+          if (iVar2 != 3) {
+                    /* WARNING: Subroutine does not return */
+            FUN_1800e24d0("expected number");
+          }
+          dVar14 = (double)FUN_18016c710(local_80,3,0);
+          if ((0x7fefffffffffffff < (ulonglong)ABS(dVar14)) || (1000000000000.0 < ABS(dVar14))) {
+                    /* WARNING: Subroutine does not return */
+            FUN_1800e24d0("number out of range");
+          }
+          iVar2 = FUN_18016c6d0(local_80,4);
+          if (iVar2 != 3) {
+                    /* WARNING: Subroutine does not return */
+            FUN_1800e24d0("expected number");
+          }
+          auVar15._0_8_ = (double)FUN_18016c710(local_80,4,0);
+          if (((ulonglong)ABS(auVar15._0_8_) < 0x7ff0000000000000) &&
+             (ABS(auVar15._0_8_) <= 1000000000000.0)) {
+            auVar15._8_8_ = dVar14;
+            uVar22 = 0;
+            uVar23 = 0xc0f86a00;
+            dVar20 = -100000.0;
+            if (-100000.0 <= dVar13) {
+              dVar20 = dVar13;
+            }
+            if (-100000.0 <= dVar12) {
+              uVar22 = SUB84(dVar12,0);
+              uVar23 = (undefined4)((ulonglong)dVar12 >> 0x20);
+            }
+            auVar21 = maxpd(_DAT_18024a7e0,auVar15);
+            auVar17._0_8_ = ~-(ulonglong)(100000.0 < auVar15._0_8_) & auVar21._0_8_;
+            auVar17._8_8_ = ~-(ulonglong)(100000.0 < dVar14) & auVar21._8_8_;
+            auVar21._8_4_ = 0;
+            auVar21._0_8_ = -(ulonglong)(100000.0 < auVar15._0_8_) & 0x40f86a0000000000;
+            auVar21._12_4_ = (uint)(-(ulonglong)(100000.0 < dVar14) >> 0x20) & 0x40f86a00;
+            fVar11 = (float)SUB168(auVar17 | auVar21,0);
+            fVar16 = (float)SUB168(auVar17 | auVar21,8);
+            iVar2 = -(uint)(0.0 < fVar11);
+            iVar10 = -(uint)(0.0 < fVar16);
+            auVar19._4_4_ = iVar10;
+            auVar19._0_4_ = iVar2;
+            auVar19._8_4_ = iVar10;
+            auVar19._12_4_ = iVar10;
+            auVar18._8_8_ = auVar19._8_8_;
+            auVar18._4_4_ = iVar2;
+            auVar18._0_4_ = iVar2;
+            uVar3 = movmskpd(SUB84(ABS(auVar15._0_8_),0),auVar18);
+            if ((uVar3 & 2) == 0) {
+              fVar16 = 0.0;
+            }
+            if ((uVar3 & 1) == 0) {
+              fVar11 = 0.0;
+            }
+            FUN_180124b40(uVar9,(float)(double)(-(ulonglong)(100000.0 < dVar12) & 0x40f86a0000000000
+                                               | ~-(ulonglong)(100000.0 < dVar12) &
+                                                 CONCAT44(uVar23,uVar22)),
+                          (float)(double)(-(ulonglong)(100000.0 < dVar13) & 0x40f86a0000000000 |
+                                         ~-(ulonglong)(100000.0 < dVar13) & (ulonglong)dVar20),
+                          fVar16,fVar11);
+            piVar8 = (int *)(*(longlong *)(local_80 + -8) + 0x118);
+            *piVar8 = *piVar8 + 1;
+            return 0;
+          }
+                    /* WARNING: Subroutine does not return */
+          FUN_1800e24d0("number out of range");
+        }
+      }
+                    /* WARNING: Subroutine does not return */
+      FUN_1800e24d0("render drawing is only available in paint");
+    }
+  }
+                    /* WARNING: Subroutine does not return */
+  FUN_1800e24d0("callback budget exceeded");
+}
+
+

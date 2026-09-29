@@ -1,0 +1,24 @@
+// function: FUN_1800332c0
+// ea: 1800332c0
+// category: pipeline
+// depth: 2, via: FUN_180031d20 @1800323d4
+// size: 115 bytes
+// anchors: pipeline
+// ----------------------------------------------------
+
+undefined4 FUN_1800332c0(void)
+
+{
+  if (*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+              0x2638) < DAT_180471974) {
+    FUN_180183614(&DAT_180471974);
+    if (DAT_180471974 == -1) {
+      DAT_180471970 = FUN_180114bb0("CBasePlayerController",0x9a8c76d);
+      _Init_thread_footer(&DAT_180471974);
+      return DAT_180471970;
+    }
+  }
+  return DAT_180471970;
+}
+
+

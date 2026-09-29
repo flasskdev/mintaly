@@ -1,0 +1,103 @@
+// function: FUN_18005d0a0
+// ea: 18005d0a0
+// category: pipeline
+// depth: 2, via: FUN_18003e660 @18003e853
+// size: 494 bytes
+// anchors: pipeline, autowall_damage
+// ----------------------------------------------------
+
+undefined8 * FUN_18005d0a0(undefined8 *param_1,undefined8 *param_2)
+
+{
+  undefined8 uVar1;
+  byte bVar2;
+  byte bVar3;
+  undefined4 uVar4;
+  undefined8 uVar5;
+  undefined8 uVar6;
+  undefined8 uVar7;
+  undefined8 uVar8;
+  undefined8 *puVar9;
+  undefined8 *puVar10;
+  undefined8 *puVar11;
+  float fVar12;
+  float fVar13;
+  undefined1 local_6d;
+  undefined3 uStack_6c;
+  
+  if (param_1 != param_2) {
+    puVar10 = param_1 + 4;
+    puVar11 = param_1;
+    while (puVar9 = puVar10, puVar9 != param_2) {
+      uVar7 = *puVar9;
+      uVar5 = *puVar9;
+      uVar8 = puVar9[1];
+      uVar6 = puVar9[1];
+      uVar1 = puVar11[6];
+      fVar12 = (float)uVar1;
+      fVar13 = (float)((ulonglong)uVar1 >> 0x20);
+      bVar2 = *(byte *)(puVar11 + 7);
+      uStack_6c = (undefined3)((uint)*(undefined4 *)((longlong)puVar11 + 0x3c) >> 8);
+      uVar4 = *(undefined4 *)((longlong)puVar11 + 0x39);
+      if (bVar2 == *(byte *)(param_1 + 3)) {
+        if (ABS(fVar12 - *(float *)(param_1 + 2)) <= 0.01) {
+          if (*(float *)((longlong)param_1 + 0x14) <= fVar13) goto LAB_18005d1a7;
+          goto LAB_18005d0f0;
+        }
+        if (fVar12 < *(float *)(param_1 + 2)) goto LAB_18005d0f0;
+LAB_18005d1a7:
+        puVar11 = puVar9;
+        if ((bVar2 & 1) != 0) {
+          do {
+            if (bVar2 == *(byte *)(puVar11 + -1)) {
+              if (0.01 < ABS(fVar12 - *(float *)(puVar11 + -2))) {
+                if (*(float *)(puVar11 + -2) <= fVar12) goto LAB_18005d280;
+              }
+              else if (*(float *)((longlong)puVar11 + -0xc) <= fVar13) goto LAB_18005d280;
+            }
+            puVar11[2] = puVar11[-2];
+            puVar11[3] = puVar11[-1];
+            *puVar11 = puVar11[-4];
+            puVar11[1] = puVar11[-3];
+            puVar11 = puVar11 + -4;
+          } while( true );
+        }
+        bVar3 = *(byte *)(puVar9 + -1);
+        while (bVar2 == bVar3) {
+          if (0.01 < ABS(fVar12 - *(float *)(puVar11 + -2))) {
+            if (*(float *)(puVar11 + -2) <= fVar12) break;
+          }
+          else if (*(float *)((longlong)puVar11 + -0xc) <= fVar13) break;
+          puVar11[2] = puVar11[-2];
+          puVar11[3] = puVar11[-1];
+          *puVar11 = puVar11[-4];
+          puVar11[1] = puVar11[-3];
+          bVar3 = *(byte *)(puVar11 + -5);
+          puVar11 = puVar11 + -4;
+        }
+LAB_18005d280:
+        *puVar11 = uVar7;
+        puVar11[1] = uVar8;
+        puVar11[2] = uVar1;
+      }
+      else {
+        if ((bVar2 & 1) == 0) goto LAB_18005d1a7;
+LAB_18005d0f0:
+        FUN_18023b1d0(param_1 + 4,param_1,(longlong)puVar9 - (longlong)param_1);
+        *param_1 = uVar5;
+        param_1[1] = uVar6;
+        param_1[2] = uVar1;
+        puVar11 = param_1;
+      }
+      *(byte *)(puVar11 + 3) = bVar2;
+      local_6d = (undefined1)((uint)uVar4 >> 0x18);
+      *(undefined4 *)((longlong)puVar11 + 0x19) = uVar4;
+      *(uint *)((longlong)puVar11 + 0x1c) = CONCAT31(uStack_6c,local_6d);
+      puVar11 = puVar9;
+      puVar10 = puVar9 + 4;
+    }
+  }
+  return param_2;
+}
+
+

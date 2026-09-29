@@ -1,0 +1,139 @@
+// function: FUN_180152fa0
+// ea: 180152fa0
+// category: hitchance
+// depth: 2, via: FUN_180145230 @1801455d0
+// size: 672 bytes
+// anchors: hitchance, nospread, autowall_damage
+// ----------------------------------------------------
+
+longlong * FUN_180152fa0(float *param_1,longlong *param_2,byte *param_3)
+
+{
+  longlong lVar1;
+  undefined1 uVar2;
+  undefined8 *puVar3;
+  ulonglong uVar4;
+  ulonglong uVar5;
+  undefined8 *puVar6;
+  ulonglong uVar7;
+  undefined8 *puVar8;
+  undefined8 *puVar9;
+  undefined8 *puVar10;
+  ulonglong uVar11;
+  longlong lVar12;
+  float fVar13;
+  float fVar14;
+  
+  uVar11 = ((ulonglong)param_3[7] ^
+           ((ulonglong)param_3[6] ^
+           ((ulonglong)param_3[5] ^
+           ((ulonglong)param_3[4] ^
+           ((ulonglong)param_3[3] ^
+           ((ulonglong)param_3[2] ^
+           ((ulonglong)param_3[1] ^ ((ulonglong)*param_3 ^ 0xcbf29ce484222325) * 0x100000001b3) *
+           0x100000001b3) * 0x100000001b3) * 0x100000001b3) * 0x100000001b3) * 0x100000001b3) *
+           0x100000001b3) * 0x100000001b3;
+  puVar3 = *(undefined8 **)
+            (*(longlong *)(param_1 + 6) + 8 + (*(ulonglong *)(param_1 + 0xc) & uVar11) * 0x10);
+  puVar10 = *(undefined8 **)(param_1 + 2);
+  if (puVar3 != *(undefined8 **)(param_1 + 2)) {
+    if (*(longlong *)param_3 != puVar3[2]) {
+      do {
+        puVar10 = puVar3;
+        if (puVar3 == *(undefined8 **)
+                       (*(longlong *)(param_1 + 6) + (*(ulonglong *)(param_1 + 0xc) & uVar11) * 0x10
+                       )) goto LAB_180153079;
+        puVar3 = (undefined8 *)puVar3[1];
+      } while (*(longlong *)param_3 != puVar3[2]);
+    }
+    uVar2 = 0;
+    goto LAB_18015321b;
+  }
+LAB_180153079:
+  if (*(longlong *)(param_1 + 4) == 0x7ffffffffffffff) {
+                    /* WARNING: Subroutine does not return */
+    FUN_18018459c("unordered_map/set too long");
+  }
+  puVar3 = (undefined8 *)FUN_1801695a0(0x20);
+  lVar1 = *(longlong *)param_3;
+  puVar3[2] = lVar1;
+  *(undefined1 *)(puVar3 + 3) = 0;
+  uVar4 = *(longlong *)(param_1 + 4) + 1;
+  if ((longlong)uVar4 < 0) {
+    fVar13 = (float)uVar4;
+    fVar14 = *param_1;
+    uVar4 = *(ulonglong *)(param_1 + 0xe);
+    if ((longlong)uVar4 < 0) goto LAB_1801530c0;
+LAB_18015310b:
+    if (fVar14 < fVar13 / (float)(longlong)uVar4) {
+LAB_180153120:
+      fVar14 = (float)FUN_1802139c0(fVar13 / fVar14);
+      uVar7 = (longlong)(fVar14 - 9.223372e+18) & (longlong)fVar14 >> 0x3f | (longlong)fVar14;
+      uVar5 = 8;
+      if (8 < uVar7) {
+        uVar5 = uVar7;
+      }
+      uVar7 = uVar4;
+      if (uVar4 < uVar5) {
+        uVar7 = uVar4 * 8;
+        if (uVar7 < uVar5 || uVar7 - uVar5 == 0) {
+          uVar7 = uVar5;
+        }
+        if (0x1ff < uVar4) {
+          uVar7 = uVar5;
+        }
+      }
+      FUN_18006cdc0(param_1,uVar7);
+      puVar6 = *(undefined8 **)
+                (*(longlong *)(param_1 + 6) + 8 + (*(ulonglong *)(param_1 + 0xc) & uVar11) * 0x10);
+      puVar10 = *(undefined8 **)(param_1 + 2);
+      if (puVar6 != *(undefined8 **)(param_1 + 2)) {
+        if (lVar1 != puVar6[2]) {
+          do {
+            puVar10 = puVar6;
+            if (puVar6 == *(undefined8 **)
+                           (*(longlong *)(param_1 + 6) +
+                           (*(ulonglong *)(param_1 + 0xc) & uVar11) * 0x10)) goto LAB_1801531c7;
+            puVar6 = (undefined8 *)puVar6[1];
+          } while (lVar1 != puVar6[2]);
+        }
+        puVar10 = (undefined8 *)*puVar6;
+      }
+    }
+  }
+  else {
+    fVar13 = (float)(longlong)uVar4;
+    fVar14 = *param_1;
+    uVar4 = *(ulonglong *)(param_1 + 0xe);
+    if (-1 < (longlong)uVar4) goto LAB_18015310b;
+LAB_1801530c0:
+    if (fVar14 < fVar13 / (float)uVar4) goto LAB_180153120;
+  }
+LAB_1801531c7:
+  puVar6 = (undefined8 *)puVar10[1];
+  *(longlong *)(param_1 + 4) = *(longlong *)(param_1 + 4) + 1;
+  *puVar3 = puVar10;
+  puVar3[1] = puVar6;
+  *puVar6 = puVar3;
+  puVar10[1] = puVar3;
+  lVar1 = *(longlong *)(param_1 + 6);
+  lVar12 = (uVar11 & *(ulonglong *)(param_1 + 0xc)) * 0x10;
+  puVar9 = (undefined8 *)(lVar1 + lVar12 + 8);
+  if (*(undefined8 **)(lVar1 + lVar12) == *(undefined8 **)(param_1 + 2)) {
+    *(undefined8 *)(lVar1 + lVar12) = puVar3;
+    puVar8 = puVar9;
+  }
+  else {
+    puVar8 = (undefined8 *)(lVar1 + lVar12);
+    if ((*(undefined8 **)(lVar1 + lVar12) != puVar10) &&
+       (uVar2 = 1, puVar8 = puVar9, (undefined8 *)*puVar9 != puVar6)) goto LAB_18015321b;
+  }
+  *puVar8 = puVar3;
+  uVar2 = 1;
+LAB_18015321b:
+  *param_2 = (longlong)puVar3;
+  *(undefined1 *)(param_2 + 1) = uVar2;
+  return param_2;
+}
+
+

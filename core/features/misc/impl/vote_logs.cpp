@@ -12,6 +12,19 @@ namespace features::misc {
 
 	namespace {
 
+		inline std::string read_controller_name( std::uintptr_t controller )
+		{
+			if ( !controller || controller < 0x10000 )
+				return {};
+
+			const auto offset = SCHEMA( "CCSPlayerController", "m_sSanitizedPlayerName"_hash );
+			if ( !offset )
+				return {};
+
+			const auto name_ptr = memory::safe_read<std::uintptr_t>( controller + offset ).value_or( 0 );
+			return name_ptr >= 0x10000 ? memory::read_string( name_ptr, 127 ) : std::string{};
+		}
+
 		inline std::string read_protobuf_string( std::uintptr_t field_addr )
 		{
 			const auto str_obj = memory::safe_read<std::uintptr_t>( field_addr ).value_or( 0 );
@@ -52,26 +65,18 @@ namespace features::misc {
 
 			if ( controller )
 			{
-				const auto name_ptr = memory::read<std::uintptr_t>( controller + SCHEMA( "CCSPlayerController", "m_sSanitizedPlayerName"_hash ) );
-				if ( name_ptr )
-				{
-					auto name = memory::read_string( name_ptr, 127 );
-					if ( !name.empty( ) )
-						return name;
-				}
+				auto name = read_controller_name( controller );
+				if ( !name.empty( ) )
+					return name;
 			}
 
 			for ( const auto& player : systems::g_entities.get_by_type( systems::entities::type::player ) )
 			{
 				if ( player.ptr && ( player.index == slot + 1 || player.index == slot ) )
 				{
-					const auto name_ptr = memory::read<std::uintptr_t>( player.ptr + SCHEMA( "CCSPlayerController", "m_sSanitizedPlayerName"_hash ) );
-					if ( name_ptr )
-					{
-						auto name = memory::read_string( name_ptr, 127 );
-						if ( !name.empty( ) )
-							return name;
-					}
+					auto name = read_controller_name( player.ptr );
+					if ( !name.empty( ) )
+						return name;
 				}
 			}
 
@@ -141,7 +146,7 @@ namespace features::misc {
 			if ( !controller )
 				return "#888888";
 
-			const auto team_num = memory::safe_read<int>( controller + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) ).value_or( 0 );
+			const auto team_num = memory::safe_read<std::uint8_t>( controller + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) ).value_or( 0 );
 			switch ( team_num )
 			{
 			case 2:  return "#E9D18A"; // Terrorists 
@@ -274,8 +279,7 @@ namespace features::misc {
 				{
 					if ( player.ptr )
 					{
-						const auto name_ptr = memory::read<std::uintptr_t>( player.ptr + SCHEMA( "CCSPlayerController", "m_sSanitizedPlayerName"_hash ) );
-						if ( name_ptr && memory::read_string( name_ptr, 127 ) == target_name )
+						if ( read_controller_name( player.ptr ) == target_name )
 						{
 							target_controller = player.ptr;
 							break;
@@ -292,9 +296,7 @@ namespace features::misc {
 				target_comp_color = get_comp_teammate_color_hex( target_controller );
 				if ( target_name.empty( ) )
 				{
-					const auto name_ptr = memory::read<std::uintptr_t>( target_controller + SCHEMA( "CCSPlayerController", "m_sSanitizedPlayerName"_hash ) );
-					if ( name_ptr )
-						target_name = memory::read_string( name_ptr, 127 );
+					target_name = read_controller_name( target_controller );
 				}
 			}
 
@@ -365,8 +367,7 @@ namespace features::misc {
 					{
 						if ( player.ptr )
 						{
-							const auto name_ptr = memory::read<std::uintptr_t>( player.ptr + SCHEMA( "CCSPlayerController", "m_sSanitizedPlayerName"_hash ) );
-							if ( name_ptr && memory::read_string( name_ptr, 127 ) == target_name )
+							if ( read_controller_name( player.ptr ) == target_name )
 							{
 								target_controller = player.ptr;
 								break;
@@ -383,9 +384,7 @@ namespace features::misc {
 					target_comp_color = get_comp_teammate_color_hex( target_controller );
 					if ( target_name.empty( ) )
 					{
-						const auto name_ptr = memory::read<std::uintptr_t>( target_controller + SCHEMA( "CCSPlayerController", "m_sSanitizedPlayerName"_hash ) );
-						if ( name_ptr )
-							target_name = memory::read_string( name_ptr, 127 );
+						target_name = read_controller_name( target_controller );
 					}
 				}
 
@@ -469,11 +468,7 @@ namespace features::misc {
 		std::string player_name{};
 		if ( controller )
 		{
-			const auto name_ptr = memory::read<std::uintptr_t>( controller + SCHEMA( "CCSPlayerController", "m_sSanitizedPlayerName"_hash ) );
-			if ( name_ptr )
-			{
-				player_name = memory::read_string( name_ptr, 127 );
-			}
+			player_name = read_controller_name( controller );
 		}
 
 		if ( player_name.empty( ) && voter_slot >= 0 )
@@ -579,15 +574,11 @@ namespace features::misc {
 
 		if ( caller_controller )
 		{
-			const auto name_ptr = memory::read<std::uintptr_t>( caller_controller + SCHEMA( "CCSPlayerController", "m_sSanitizedPlayerName"_hash ) );
-			if ( name_ptr )
+			const auto name = read_controller_name( caller_controller );
+			if ( !name.empty( ) )
 			{
-				const auto name = memory::read_string( name_ptr, 127 );
-				if ( !name.empty( ) )
-				{
-					caller_name = name;
-					has_caller_player = true;
-				}
+				caller_name = name;
+				has_caller_player = true;
 			}
 			caller_team_color = get_team_color_hex( caller_controller );
 			caller_comp_color = get_comp_teammate_color_hex( caller_controller );
@@ -606,8 +597,7 @@ namespace features::misc {
 				{
 					if ( player.ptr )
 					{
-						const auto name_ptr = memory::read<std::uintptr_t>( player.ptr + SCHEMA( "CCSPlayerController", "m_sSanitizedPlayerName"_hash ) );
-						if ( name_ptr && memory::read_string( name_ptr, 127 ) == target_name )
+						if ( read_controller_name( player.ptr ) == target_name )
 						{
 							target_controller = player.ptr;
 							break;

@@ -1,0 +1,24 @@
+// function: FUN_18016ebc0
+// ea: 18016ebc0
+// category: pipeline
+// depth: 3, via: FUN_1800b8000 @1800b82cf
+// size: 105 bytes
+// anchors: pipeline
+// ----------------------------------------------------
+
+void FUN_18016ebc0(undefined8 param_1,undefined8 param_2,int param_3)
+
+{
+  undefined4 uVar1;
+  
+  if (-1 < param_3) {
+    uVar1 = FUN_18016c350();
+    FUN_18016d040(param_1,uVar1,1);
+    FUN_18016d3d0(param_1,uVar1,(longlong)param_3);
+    FUN_18016cb30(param_1,(longlong)param_3);
+    FUN_18016d3d0(param_1,uVar1,1);
+  }
+  return;
+}
+
+

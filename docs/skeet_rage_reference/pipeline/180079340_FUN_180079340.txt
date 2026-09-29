@@ -1,0 +1,24 @@
+// function: FUN_180079340
+// ea: 180079340
+// category: pipeline
+// depth: 2, via: FUN_180078ef0 @18007900f
+// size: 115 bytes
+// anchors: pipeline
+// ----------------------------------------------------
+
+undefined4 FUN_180079340(void)
+
+{
+  if (*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+              0x2638) < DAT_18047265c) {
+    FUN_180183614(&DAT_18047265c);
+    if (DAT_18047265c == -1) {
+      DAT_180472658 = FUN_180114bb0("C_BasePlayerPawn",0xcf73e28a);
+      _Init_thread_footer(&DAT_18047265c);
+      return DAT_180472658;
+    }
+  }
+  return DAT_180472658;
+}
+
+

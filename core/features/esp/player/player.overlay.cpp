@@ -3,6 +3,7 @@
 #include <core/rendering/rendering.hpp>
 #include <core/settings.hpp>
 #include <core/features/features.hpp>
+#include <utilities/cstypes.hpp>
 
 namespace features::esp::player {
 
@@ -848,7 +849,7 @@ namespace features::esp::player {
 		const auto show_icon = cfg.display == settings::esp::player::overlay::weapon::display_type::icon || cfg.display == settings::esp::player::overlay::weapon::display_type::text_and_icon;
 		const auto show_text = cfg.display == settings::esp::player::overlay::weapon::display_type::text || cfg.display == settings::esp::player::overlay::weapon::display_type::text_and_icon;
 		auto total_height{ 0.0f };
-		const auto weapon_name = ( info.weapon.name == "knife_ct" || info.weapon.name == "knife_t" ) ? std::string{ "knife" } : info.weapon.name;
+		const auto& weapon_name = info.weapon.display_name.empty( ) ? info.weapon.name : info.weapon.display_name;
 
 		if ( show_icon )
 		{
@@ -1104,7 +1105,12 @@ namespace features::esp::player {
 		if ( trace_visibility || cfg.m_skeleton.enabled.value || cfg.m_oof_arrow.enabled.value )
 			info.bones = systems::g_bones.get_skeleton( info.pawn );
 		if ( trace_visibility )
-			info.is_visible = systems::g_tracing.is_visible( systems::g_view.origin( ), info.bones[ cstypes::bone_ids::head ].position, info.pawn, local.view_pawn( ) );
+		{
+			// The current trace_ray ABI is not compatible with this CS2 build. Do
+			// not enter client.dll from the Present path until its signature is
+			// refreshed; an unresolved trace used to dereference nullptr + 0x10.
+			info.is_visible = false;
+		}
 
 		// Sound only admits the overlay. It must not change trace visibility,
 		// visible/occluded colors, chams, or any combat visibility checks.
@@ -1116,8 +1122,10 @@ namespace features::esp::player {
 
 		// Hidden, non-audible players have already returned. Do not allocate
 		// names or resolve optional service pointers for rejected overlays.
-		const auto name_ptr = cfg.m_name.enabled.value ? memory::read<std::uintptr_t>( info.controller + SCHEMA( "CCSPlayerController", "m_sSanitizedPlayerName"_hash ) ) : 0;
-		if ( name_ptr )
+		const auto name_offset = cfg.m_name.enabled.value ? SCHEMA( "CCSPlayerController", "m_sSanitizedPlayerName"_hash ) : 0;
+		const auto name_ptr = ( info.controller && info.controller >= 0x10000 && name_offset )
+			? memory::safe_read<std::uintptr_t>( info.controller + name_offset ).value_or( 0 ) : 0;
+		if ( name_ptr >= 0x10000 )
 		{
 			info.name = memory::read_string( name_ptr, 128 );
 			std::ranges::transform( info.name, info.name.begin( ), [ ]( unsigned char c ) { return std::tolower( c ); } );
@@ -1156,6 +1164,27 @@ namespace features::esp::player {
 							if ( info.weapon.name.starts_with( "weapon_" ) )
 							{
 								info.weapon.name.erase( 0, 7 );
+							}
+
+							// m_szName is an internal economy name (for example
+							// "hkp2000"). Keep it for icon lookup, but use the
+							// canonical weapon label in the text ESP.
+							const auto item = info.weapon.ptr + SCHEMA( "C_EconEntity", "m_AttributeManager"_hash ) +
+								SCHEMA( "C_AttributeContainer", "m_Item"_hash );
+							const auto def = memory::safe_read<std::uint16_t>(
+								item + SCHEMA( "C_EconItemView", "m_iItemDefinitionIndex"_hash ) ).value_or( 0 );
+							const auto weapon_index = cstypes::weapons::get_weapon_index( def );
+							if ( weapon_index >= 0 )
+							{
+								info.weapon.display_name = cstypes::weapons::k_weapons[ static_cast<std::size_t>( weapon_index ) ].name;
+							}
+							else if ( info.weapon.name == "knife_ct" || info.weapon.name == "knife_t" )
+							{
+								info.weapon.display_name = "Knife";
+							}
+							else
+							{
+								info.weapon.display_name = info.weapon.name;
 							}
 						}
 					}

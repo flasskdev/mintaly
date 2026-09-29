@@ -34,16 +34,13 @@ namespace rendering {
 		const auto content_x = wx + tokens::gap + menu::k_sidebar_w + tokens::gap;
 		const auto body_y = wy + tokens::gap + tokens::subtab_bar_h + tokens::gap;
 		const auto body_h = this->m_body_h;
-		const auto content_w = this->m_w - tokens::gap * 2.0f - menu::k_sidebar_w - tokens::gap;
+		const auto content_w = this->m_body_w;
 		const auto col_w = ( content_w - tokens::gap ) * 0.5f;
 		const auto right_x = content_x + col_w + tokens::gap;
 
 		constexpr float k_header_h = 22.0f;
 		auto draw_col_title = [&]( float x, const char* title ) {
-			auto& dl = xui::draw::current( );
-			xdraw::push_font( rendering::g_fonts.inter_bold[ rendering::fonts::size::petite ] );
-			dl.text( x + 2.0f, body_y + 2.0f, title, tokens::col_text );
-			xdraw::pop_font( );
+			this->draw_column_header( x, title );
 		};
 
 		// LEFT COLUMN: LEGITBOT MAIN

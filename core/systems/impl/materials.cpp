@@ -1,7 +1,9 @@
 #include <pch/pch.hpp>
 #include <utilities/memory/memory.hpp>
 #include <utilities/addresses/addresses.hpp>
+#include <utilities/diag.hpp>
 #include <utilities/logging/logging.hpp>
+#include <utilities/tls/tls.hpp>
 #include <protection/game_addresses.hpp>
 #include "../systems.hpp"
 
@@ -106,39 +108,23 @@ namespace systems {
             {
                 shader = "csgo_character.vfx"
 
-                F_IRIDESCENCE = 1
-                F_CLOTH_SHADING = 1
                 F_RENDER_BACKFACES = 1
                 F_DISABLE_Z_PREPASS = 1
-                F_TRANSLUCENT = 1
-                F_ADDITIVE_BLEND = 1
 
                 g_vColorTint = [1.0, 1.0, 1.0]
                 g_flModelTintAmount = 1.0
                 g_flOpacityScale = 1.0
 
-                g_vTexCoordScrollSpeed = [0.05, 0.02]
                 g_vTexCoordScale = [1.2, 1.2]
-
-                g_flIridescentStrength = 2.0
-                g_flIridescentFresnelStrength = 15.0
-                g_flIridescentHueShift = 0.5
-
-                g_flSheenScale = 10.0
-                g_flSheenTintColor = [1.0, 1.0, 1.0]
-
-                g_fContrast = 0.5
-                g_fBrightness = 1.5
-                g_fSaturation = 1.5
-
+                g_flToolsVisCubemapReflectionRoughness = 0.08
+                g_flBeginMixingRoughness = 0.08
                 g_flAmbientOcclusionMasking = 0.0
                 g_bFogEnabled = 0
 
                 g_tColor = resource:"materials/dev/primary_white_color_tga_21186c76.vtex"
-                g_tNormal = resource:"materials/dev/water_waves.vtex"
-                g_tMetalness = resource:"materials/dev/water_waves.vtex"
+                g_tNormal = resource:"materials/default/default_normal_tga_7652cb.vtex"
+                g_tMetalness = resource:"materials/dev/primary_white_color_tga_21186c76.vtex"
                 g_tAmbientOcclusion = resource:"materials/default/default_mask_tga_fde710a5.vtex"
-                g_tIridescentThickness_Mask = resource:"materials/dev/primary_white_color_tga_21186c76.vtex"
             })#";
 
 		static constexpr char matte[ ] = R"#(<!-- kv3 encoding:text:version{e21c7f3c-8a33-41c5-9977-a76d3a32aa0d}
@@ -152,11 +138,14 @@ namespace systems {
                 g_tNormal = resource:"materials/default/default_normal_tga_7652cb.vtex"
             })#";
 
-		// TODO
 		static constexpr char matte_ignorez[ ] = R"#(<!-- kv3 encoding:text:version{e21c7f3c-8a33-41c5-9977-a76d3a32aa0d}
             format:generic:version{7412167c-06e9-4698-aff2-e63eb59037e7} -->
             {
                 shader = "generic.vfx"
+
+                F_IGNOREZ = 1
+                F_DISABLE_Z_BUFFERING = 1
+                F_DISABLE_Z_WRITE = 1
 
                 g_vColorTint = [1.0, 1.0, 1.0, 1.0]
 
@@ -225,17 +214,21 @@ namespace systems {
             {
                 shader = "csgo_effects.vfx"
 
-                F_ADDITIVE_BLEND = 1
+                F_ADDITIVE_BLEND = 0
                 F_BLEND_MODE = 1
                 F_TRANSLUCENT = 1
+                F_IGNOREZ = 0
+                F_DISABLE_Z_BUFFERING = 0
+                F_DISABLE_Z_WRITE = 1
+                F_RENDER_BACKFACES = 0
 
-                g_vColorTint = [1.0, 1.0, 1.0, 0.0]
-                g_flOpacityScale = 0.45
-                g_flFresnelExponent = 0.75
-                g_flFresnelFalloff = 1.0
+                g_vColorTint = [1.0, 1.0, 1.0, 1.0]
+                g_flOpacityScale = 1.0
+				g_flFresnelExponent = 1.2
+				g_flFresnelFalloff = 4.0
                 g_flFresnelMax = 0.0
                 g_flFresnelMin = 1.0
-				g_flColorBoost = 2.25
+				g_flColorBoost = 1.0
                 g_flToolsVisCubemapReflectionRoughness = 1.0
                 g_flBeginMixingRoughness = 1.0
 
@@ -251,19 +244,21 @@ namespace systems {
             {
                 shader = "csgo_effects.vfx"
 
-                F_ADDITIVE_BLEND = 1
+                F_ADDITIVE_BLEND = 0
                 F_BLEND_MODE = 1
                 F_TRANSLUCENT = 1
+                F_IGNOREZ = 1
                 F_DISABLE_Z_BUFFERING = 1
                 F_DISABLE_Z_WRITE = 1
+                F_RENDER_BACKFACES = 0
 
-                g_vColorTint = [1.0, 1.0, 1.0, 0.0]
-                g_flOpacityScale = 0.45
-                g_flFresnelExponent = 0.75
-                g_flFresnelFalloff = 1.0
+                g_vColorTint = [1.0, 1.0, 1.0, 1.0]
+                g_flOpacityScale = 1.0
+				g_flFresnelExponent = 1.2
+				g_flFresnelFalloff = 4.0
                 g_flFresnelMax = 0.0
                 g_flFresnelMin = 1.0
-				g_flColorBoost = 2.25
+				g_flColorBoost = 1.0
                 g_flToolsVisCubemapReflectionRoughness = 1.0
                 g_flBeginMixingRoughness = 1.0
 
@@ -287,17 +282,17 @@ namespace systems {
                 F_RENDER_BACKFACES = 0
 
                 g_vColorTint = [1.0, 1.0, 1.0, 1.0]
-				g_flFresnelExponent = 1.5
-				g_flFresnelFalloff = 5.0
-				g_flFresnelMax = 0.0
-				g_flFresnelMin = 1.0
-				g_flColorBoost = 20.0
-				g_flOpacityScale = 0.6
+				g_flFresnelExponent = 2.4
+				g_flFresnelFalloff = 1.5
+				g_flFresnelMax = 1.0
+				g_flFresnelMin = 0.15
+				g_flColorBoost = 12.0
+				g_flOpacityScale = 0.5
 
                 g_tColor = resource:"materials/dev/primary_white_color_tga_21186c76.vtex"
-                g_tMask1 = resource:"materials/default/default_mask_tga_344101f8.vtex"
-                g_tMask2 = resource:"materials/default/default_mask_tga_344101f8.vtex"
-                g_tMask3 = resource:"materials/default/default_mask_tga_344101f8.vtex"
+                g_tMask1 = resource:"materials/dev/primary_white_color_tga_21186c76.vtex"
+                g_tMask2 = resource:"materials/dev/primary_white_color_tga_21186c76.vtex"
+                g_tMask3 = resource:"materials/dev/primary_white_color_tga_21186c76.vtex"
             })#";
 
 		static constexpr char glow_ignorez[ ] = R"#(<!-- kv3 encoding:text:version{e21c7f3c-8a33-41c5-9977-a76d3a32aa0d}
@@ -314,17 +309,17 @@ namespace systems {
                 F_RENDER_BACKFACES = 0
 
                 g_vColorTint = [1.0, 1.0, 1.0, 1.0]
-				g_flFresnelExponent = 1.5
-				g_flFresnelFalloff = 5.0
-				g_flFresnelMax = 0.0
-				g_flFresnelMin = 1.0
-				g_flColorBoost = 20.0
-				g_flOpacityScale = 0.6
+				g_flFresnelExponent = 2.4
+				g_flFresnelFalloff = 1.5
+				g_flFresnelMax = 1.0
+				g_flFresnelMin = 0.15
+				g_flColorBoost = 12.0
+				g_flOpacityScale = 0.5
 
                 g_tColor = resource:"materials/dev/primary_white_color_tga_21186c76.vtex"
-                g_tMask1 = resource:"materials/default/default_mask_tga_344101f8.vtex"
-                g_tMask2 = resource:"materials/default/default_mask_tga_344101f8.vtex"
-                g_tMask3 = resource:"materials/default/default_mask_tga_344101f8.vtex"
+                g_tMask1 = resource:"materials/dev/primary_white_color_tga_21186c76.vtex"
+                g_tMask2 = resource:"materials/dev/primary_white_color_tga_21186c76.vtex"
+                g_tMask3 = resource:"materials/dev/primary_white_color_tga_21186c76.vtex"
             })#";
 
 		static constexpr char hologram[ ] = R"#(<!-- kv3 encoding:text:version{e21c7f3c-8a33-41c5-9977-a76d3a32aa0d}
@@ -500,8 +495,8 @@ namespace systems {
 
                 g_vColorTint = [1.0, 1.0, 1.0, 0.0]
                 g_flOpacityScale = 1.0
-                g_flFresnelExponent = 1.2
-                g_flFresnelFalloff = 4.0
+				g_flFresnelExponent = 1.2
+				g_flFresnelFalloff = 4.0
                 g_flFresnelMax = 0.0
                 g_flFresnelMin = 1.0
                 g_flColorBoost = 18.0
@@ -528,8 +523,8 @@ namespace systems {
 
                 g_vColorTint = [1.0, 1.0, 1.0, 0.0]
                 g_flOpacityScale = 1.0
-                g_flFresnelExponent = 1.2
-                g_flFresnelFalloff = 4.0
+				g_flFresnelExponent = 1.2
+				g_flFresnelFalloff = 4.0
                 g_flFresnelMax = 0.0
                 g_flFresnelMin = 1.0
                 g_flColorBoost = 18.0
@@ -545,55 +540,62 @@ namespace systems {
 
 	bool materials::initialize( )
 	{
-		const auto liquid_ignorez_ptr = load( detail::liquid_ignorez, xs( "materials/dev/liquid_ignorez.vmat" ) );
 		const auto matte_ignorez_ptr = load( detail::matte_ignorez, xs( "materials/dev/matte_ignorez.vmat" ) );
 		const auto flat_ignorez_ptr = load( detail::flat_ignorez, xs( "materials/dev/flat_ignorez.vmat" ) );
-		const auto bloom_ignorez_ptr = load( detail::bloom_ignorez, xs( "materials/dev/bloom_ignorez.vmat" ) );
 		const auto outlines_ignorez_ptr = load( detail::outlines_ignorez, xs( "materials/dev/outlines_ignorez.vmat" ) );
 		const auto glow_ignorez_ptr = load( detail::glow_ignorez, xs( "materials/dev/glow_ignorez.vmat" ) );
-		const auto distortion_ignorez_ptr = load( detail::distortion_ignorez, xs( "materials/dev/distortion_ignorez.vmat" ) );
-		const auto hologram_ignorez_ptr = load( detail::hologram_ignorez, xs( "materials/dev/hologram_ignorez.vmat" ) );
 		const auto outline_glow_ignorez_ptr = load( detail::outline_glow_ignorez, xs( "materials/dev/outline_glow_ignorez.vmat" ) );
 
-		const auto liquid_ptr = load( detail::liquid, xs( "materials/dev/liquid.vmat" ) );
 		const auto metallic_ptr = load( detail::metallic, xs( "materials/dev/metallic.vmat" ) );
 		const auto matte_ptr = load( detail::matte, xs( "materials/dev/matte.vmat" ) );
 		const auto flat_ptr = load( detail::flat, xs( "materials/dev/flat.vmat" ) );
-		const auto bloom_ptr = load( detail::bloom, xs( "materials/dev/bloom.vmat" ) );
 		const auto outlines_ptr = load( detail::outlines, xs( "materials/dev/outlines.vmat" ) );
 		const auto glow_ptr = load( detail::glow, xs( "materials/dev/glow.vmat" ) );
-		const auto electric_ptr = load( detail::electric, xs( "materials/dev/electric.vmat" ) );
-		const auto distortion_ptr = load( detail::distortion, xs( "materials/dev/distortion.vmat" ) );
-		const auto hologram_ptr = load( detail::hologram, xs( "materials/dev/hologram.vmat" ) );
-		const auto pearl_ptr = load( detail::pearl, xs( "materials/dev/pearl.vmat" ) );
 		const auto outline_glow_ptr = load( detail::outline_glow, xs( "materials/dev/outline_glow.vmat" ) );
 
-		if ( !liquid_ptr || !metallic_ptr || !matte_ptr || !flat_ptr || !bloom_ptr || !outlines_ptr || !glow_ptr || !electric_ptr || !distortion_ptr || !hologram_ptr || !pearl_ptr || !liquid_ignorez_ptr || !matte_ignorez_ptr || !flat_ignorez_ptr || !bloom_ignorez_ptr || !outlines_ignorez_ptr || !glow_ignorez_ptr || !distortion_ignorez_ptr || !hologram_ignorez_ptr || !outline_glow_ptr || !outline_glow_ignorez_ptr )
+		// A missing optional material stays unavailable so the UI can omit it;
+		// silently substituting flat made unsupported presets look selectable.
+		const auto store = [ & ]( settings::esp::cham_ids id, std::uintptr_t material )
 		{
+			m_loaded[ static_cast< std::size_t >( id ) ] = material;
+		};
+
+		store( settings::esp::cham_ids::metallic, metallic_ptr );
+		store( settings::esp::cham_ids::matte, matte_ptr );
+		store( settings::esp::cham_ids::flat, flat_ptr );
+		store( settings::esp::cham_ids::outlines, outlines_ptr );
+		store( settings::esp::cham_ids::glow, glow_ptr );
+		store( settings::esp::cham_ids::matte_ignorez, matte_ignorez_ptr );
+		store( settings::esp::cham_ids::flat_ignorez, flat_ignorez_ptr );
+		store( settings::esp::cham_ids::outlines_ignorez, outlines_ignorez_ptr );
+		store( settings::esp::cham_ids::glow_ignorez, glow_ignorez_ptr );
+		store( settings::esp::cham_ids::outline_glow, outline_glow_ptr );
+		store( settings::esp::cham_ids::outline_glow_ignorez, outline_glow_ignorez_ptr );
+
+		const auto core_ready = flat_ptr && flat_ignorez_ptr;
+		diag::writef( diag::level::info,
+			"[materials] flat=%p flat_ignorez=%p metallic=%p outlines=%p glow=%p loaded_core=%d",
+			reinterpret_cast<void*>( flat_ptr ),
+			reinterpret_cast<void*>( flat_ignorez_ptr ),
+			reinterpret_cast<void*>( metallic_ptr ),
+			reinterpret_cast<void*>( outlines_ptr ),
+			reinterpret_cast<void*>( glow_ptr ),
+			static_cast<int>( core_ready ) );
+		if ( !core_ready )
+		{
+			logging::console::print( xs( "[materials] chams disabled: flat material compilation failed" ) );
 			return false;
 		}
 
-		m_loaded[ static_cast< std::size_t >( settings::esp::cham_ids::liquid ) ] = liquid_ptr;
-		m_loaded[ static_cast< std::size_t >( settings::esp::cham_ids::metallic ) ] = metallic_ptr;
-		m_loaded[ static_cast< std::size_t >( settings::esp::cham_ids::matte ) ] = matte_ptr;
-		m_loaded[ static_cast< std::size_t >( settings::esp::cham_ids::flat ) ] = flat_ptr;
-		m_loaded[ static_cast< std::size_t >( settings::esp::cham_ids::bloom ) ] = bloom_ptr;
-		m_loaded[ static_cast< std::size_t >( settings::esp::cham_ids::outlines ) ] = outlines_ptr;
-		m_loaded[ static_cast< std::size_t >( settings::esp::cham_ids::glow ) ] = glow_ptr;
-		m_loaded[ static_cast< std::size_t >( settings::esp::cham_ids::electric ) ] = electric_ptr;
-		m_loaded[ static_cast< std::size_t >( settings::esp::cham_ids::distortion ) ] = distortion_ptr;
-		m_loaded[ static_cast< std::size_t >( settings::esp::cham_ids::hologram ) ] = hologram_ptr;
-		m_loaded[ static_cast< std::size_t >( settings::esp::cham_ids::pearl ) ] = pearl_ptr;
-		m_loaded[ static_cast< std::size_t >( settings::esp::cham_ids::liquid_ignorez ) ] = liquid_ignorez_ptr;
-		m_loaded[ static_cast< std::size_t >( settings::esp::cham_ids::matte_ignorez ) ] = matte_ignorez_ptr;
-		m_loaded[ static_cast< std::size_t >( settings::esp::cham_ids::flat_ignorez ) ] = flat_ignorez_ptr;
-		m_loaded[ static_cast< std::size_t >( settings::esp::cham_ids::bloom_ignorez ) ] = bloom_ignorez_ptr;
-		m_loaded[ static_cast< std::size_t >( settings::esp::cham_ids::outlines_ignorez ) ] = outlines_ignorez_ptr;
-		m_loaded[ static_cast< std::size_t >( settings::esp::cham_ids::glow_ignorez ) ] = glow_ignorez_ptr;
-		m_loaded[ static_cast< std::size_t >( settings::esp::cham_ids::distortion_ignorez ) ] = distortion_ignorez_ptr;
-		m_loaded[ static_cast< std::size_t >( settings::esp::cham_ids::hologram_ignorez ) ] = hologram_ignorez_ptr;
-		m_loaded[ static_cast< std::size_t >( settings::esp::cham_ids::outline_glow ) ] = outline_glow_ptr;
-		m_loaded[ static_cast< std::size_t >( settings::esp::cham_ids::outline_glow_ignorez ) ] = outline_glow_ignorez_ptr;
+		const auto missing = static_cast< std::size_t >( !metallic_ptr ) +
+			static_cast< std::size_t >( !matte_ptr ) + static_cast< std::size_t >( !outlines_ptr ) +
+			static_cast< std::size_t >( !glow_ptr ) + static_cast< std::size_t >( !matte_ignorez_ptr ) +
+			static_cast< std::size_t >( !outlines_ignorez_ptr ) + static_cast< std::size_t >( !glow_ignorez_ptr ) +
+			static_cast< std::size_t >( !outline_glow_ptr ) + static_cast< std::size_t >( !outline_glow_ignorez_ptr );
+		if ( missing )
+		{
+			logging::console::print( xs( "[materials] {} optional chams materials unavailable and hidden from selection" ), missing );
+		}
 
 		return true;
 	}
@@ -971,6 +973,8 @@ format:generic:version{{7412167c-06e9-4698-aff2-e63eb59037e7}} -->
 
 	void materials::update_outline_glow( const settings::esp::outline_glow_config& cfg )
 	{
+		static std::mutex update_mtx{};
+		std::scoped_lock update_lock( update_mtx );
 		static float last_intensity = -1.0f;
 		static float last_thickness = -1.0f;
 		static float last_softness = -1.0f;
@@ -1043,7 +1047,7 @@ format:generic:version{{7412167c-06e9-4698-aff2-e63eb59037e7}} -->
 	};
 
 	static std::unordered_map<std::uint64_t, glow_cache_entry> s_glow_cache{};
-	static std::shared_mutex s_glow_cache_mtx{};
+	static std::mutex s_glow_cache_mtx{};
 	static std::uint32_t s_glow_version{ 0 };
 
 	std::uintptr_t materials::get_outline_glow( const settings::esp::outline_glow_config& cfg, bool ignorez )
@@ -1056,30 +1060,7 @@ format:generic:version{{7412167c-06e9-4698-aff2-e63eb59037e7}} -->
 		const float cur_opacity = cfg.opacity.value;
 		const float cur_inner_spread = cfg.inner_spread.value;
 
-		// Fast path: shared read lock prevents worker thread contention during rendering passes
-		{
-			std::shared_lock read_lock( s_glow_cache_mtx );
-			const auto it = s_glow_cache.find( key );
-			if ( it != s_glow_cache.end( ) )
-			{
-				const auto& entry = it->second;
-				const bool changed =
-					entry.mat == 0 ||
-					std::abs( cur_intensity - entry.last_intensity ) > 0.05f ||
-					std::abs( cur_thickness - entry.last_thickness ) > 0.02f ||
-					std::abs( cur_softness - entry.last_softness ) > 0.02f ||
-					std::abs( cur_opacity - entry.last_opacity ) > 0.01f ||
-					std::abs( cur_inner_spread - entry.last_inner_spread ) > 0.01f;
-
-				if ( !changed )
-				{
-					return entry.mat;
-				}
-			}
-		}
-
-		// Slow path: exclusive write lock when material needs to be compiled or updated
-		std::unique_lock write_lock( s_glow_cache_mtx );
+		std::scoped_lock lock( s_glow_cache_mtx );
 		auto& entry = s_glow_cache[ key ];
 
 		const bool changed =
@@ -1096,13 +1077,9 @@ format:generic:version{{7412167c-06e9-4698-aff2-e63eb59037e7}} -->
 		}
 
 		const auto now = std::chrono::steady_clock::now( );
-		if ( std::chrono::duration_cast<std::chrono::milliseconds>( now - entry.last_reload ).count( ) < 100 )
+		if ( entry.mat != 0 && std::chrono::duration_cast<std::chrono::milliseconds>( now - entry.last_reload ).count( ) < 40 )
 		{
-			if ( entry.mat )
-			{
-				return entry.mat;
-			}
-			return find( ignorez ? settings::esp::cham_ids::outline_glow_ignorez : settings::esp::cham_ids::outline_glow );
+			return entry.mat;
 		}
 
 		entry.last_reload = now;
@@ -1123,10 +1100,6 @@ format:generic:version{{7412167c-06e9-4698-aff2-e63eb59037e7}} -->
 		if ( new_mat )
 		{
 			entry.mat = new_mat;
-		}
-		else if ( !entry.mat )
-		{
-			entry.mat = find( ignorez ? settings::esp::cham_ids::outline_glow_ignorez : settings::esp::cham_ids::outline_glow );
 		}
 
 		return entry.mat;

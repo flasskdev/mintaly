@@ -1,0 +1,132 @@
+// function: FUN_180115e50
+// ea: 180115e50
+// category: trace_geometry
+// depth: 2, via: FUN_1800db540 @1800db99a
+// size: 674 bytes
+// anchors: trace_geometry, hitbox_backtrack
+// ----------------------------------------------------
+
+undefined8 * FUN_180115e50(undefined4 *param_1,undefined8 *param_2,float *param_3)
+
+{
+  float fVar1;
+  float fVar2;
+  float fVar3;
+  float fVar4;
+  float fVar5;
+  float fVar6;
+  float fVar7;
+  float fVar8;
+  float fVar9;
+  float fVar10;
+  float fVar11;
+  float fVar12;
+  int iVar13;
+  float *pfVar14;
+  longlong lVar15;
+  bool bVar16;
+  float fVar17;
+  float fVar18;
+  float fVar19;
+  undefined1 local_b0 [8];
+  undefined4 local_a8;
+  undefined4 uStack_a4;
+  undefined4 uStack_a0;
+  undefined4 uStack_9c;
+  undefined4 local_98;
+  undefined4 uStack_94;
+  undefined4 uStack_90;
+  undefined4 uStack_8c;
+  undefined4 local_88;
+  undefined4 uStack_84;
+  undefined4 uStack_80;
+  undefined4 uStack_7c;
+  undefined4 local_78;
+  undefined4 uStack_74;
+  undefined4 uStack_70;
+  undefined4 uStack_6c;
+  
+  if ((*(byte *)(param_1 + 0x24) & 1) != 0) {
+    iVar13 = FUN_180184b14(param_1 + 0x10);
+    if (iVar13 != 0) {
+                    /* WARNING: Subroutine does not return */
+      FUN_180184228(5);
+    }
+    if (param_1[0x23] == 0x7fffffff) {
+      param_1[0x23] = 0x7ffffffe;
+                    /* WARNING: Subroutine does not return */
+      FUN_180184228(6);
+    }
+    local_a8 = *param_1;
+    uStack_a4 = param_1[1];
+    uStack_a0 = param_1[2];
+    uStack_9c = param_1[3];
+    local_98 = param_1[4];
+    uStack_94 = param_1[5];
+    uStack_90 = param_1[6];
+    uStack_8c = param_1[7];
+    local_88 = param_1[8];
+    uStack_84 = param_1[9];
+    uStack_80 = param_1[10];
+    uStack_7c = param_1[0xb];
+    local_78 = param_1[0xc];
+    uStack_74 = param_1[0xd];
+    uStack_70 = param_1[0xe];
+    uStack_6c = param_1[0xf];
+    FUN_180184b1c(param_1 + 0x10);
+    pfVar14 = (float *)FUN_180166140(&local_a8,3);
+    fVar19 = *pfVar14;
+    fVar17 = *param_3;
+    lVar15 = FUN_180166140(&local_a8,3);
+    fVar18 = *(float *)(lVar15 + 4);
+    fVar1 = param_3[1];
+    lVar15 = FUN_180166140(&local_a8,3);
+    fVar2 = *(float *)(lVar15 + 8);
+    fVar3 = param_3[2];
+    lVar15 = FUN_180166140(&local_a8,3);
+    fVar19 = fVar2 * fVar3 + fVar18 * fVar1 + fVar19 * fVar17 + *(float *)(lVar15 + 0xc);
+    if (0.001 <= fVar19) {
+      pfVar14 = (float *)FUN_180166140(&local_a8,0);
+      fVar17 = *pfVar14;
+      fVar18 = *param_3;
+      lVar15 = FUN_180166140(&local_a8,0);
+      fVar1 = *(float *)(lVar15 + 4);
+      fVar2 = param_3[1];
+      lVar15 = FUN_180166140(&local_a8,0);
+      fVar3 = *(float *)(lVar15 + 8);
+      fVar4 = param_3[2];
+      lVar15 = FUN_180166140(&local_a8,0);
+      fVar5 = *(float *)(lVar15 + 0xc);
+      pfVar14 = (float *)FUN_180166140(&local_a8,1);
+      fVar6 = *pfVar14;
+      fVar7 = *param_3;
+      lVar15 = FUN_180166140(&local_a8,1);
+      fVar8 = *(float *)(lVar15 + 4);
+      fVar9 = param_3[1];
+      lVar15 = FUN_180166140(&local_a8,1);
+      fVar10 = *(float *)(lVar15 + 8);
+      fVar11 = param_3[2];
+      lVar15 = FUN_180166140(&local_a8,1);
+      fVar12 = *(float *)(lVar15 + 0xc);
+      FUN_1801312b0(local_b0);
+      fVar17 = ((1.0 / fVar19) * (fVar3 * fVar4 + fVar1 * fVar2 + fVar17 * fVar18 + fVar5) + 1.0) *
+               (float)local_b0._0_4_ * 0.5;
+      fVar18 = ((1.0 / fVar19) * -(fVar10 * fVar11 + fVar8 * fVar9 + fVar6 * fVar7 + fVar12) + 1.0)
+               * (float)local_b0._4_4_ * 0.5;
+      *param_2 = CONCAT44(fVar18,fVar17);
+      *(float *)(param_2 + 1) = fVar19;
+      bVar16 = false;
+      if ((((0.01 < fVar19) && (bVar16 = false, 0.0 <= fVar17)) &&
+          (bVar16 = false, fVar17 < (float)local_b0._0_4_)) && (0.0 <= fVar18)) {
+        bVar16 = fVar18 < (float)local_b0._4_4_;
+      }
+      *(bool *)((longlong)param_2 + 0xc) = bVar16;
+      return param_2;
+    }
+  }
+  *(undefined8 *)((longlong)param_2 + 5) = 0;
+  *param_2 = 0;
+  return param_2;
+}
+
+

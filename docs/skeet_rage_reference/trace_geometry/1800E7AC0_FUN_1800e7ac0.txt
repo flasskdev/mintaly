@@ -1,0 +1,164 @@
+// function: FUN_1800e7ac0
+// ea: 1800e7ac0
+// category: trace_geometry
+// depth: 2, via: FUN_1800d5b40 @1800d5dc8
+// size: 1065 bytes
+// anchors: trace_geometry, hitbox_backtrack
+// ----------------------------------------------------
+
+void FUN_1800e7ac0(undefined1 *param_1,undefined8 param_2,undefined8 param_3)
+
+{
+  longlong lVar1;
+  longlong *plVar2;
+  undefined1 uVar3;
+  undefined1 uVar4;
+  undefined1 uVar5;
+  byte *pbVar6;
+  char *pcVar7;
+  longlong *plVar8;
+  bool bVar9;
+  undefined1 local_d0 [32];
+  ulonglong local_b0 [7];
+  byte *local_78;
+  longlong *local_70;
+  longlong local_68;
+  longlong local_60;
+  byte local_58 [8];
+  longlong *local_50;
+  undefined8 local_48;
+  
+  local_48 = 0xfffffffffffffffe;
+  FUN_1800e2b00(local_58,param_2,param_3,0);
+  if ((local_58[0] != 2) || (local_68 = *local_50, local_50[1] - local_68 != 0x40)) {
+                    /* WARNING: Subroutine does not return */
+    FUN_1800e24d0("color must be {r,g,b,a}");
+  }
+  local_70 = (longlong *)0x0;
+  local_60 = -0x8000000000000000;
+  lVar1 = local_50[1];
+  local_78 = local_58;
+  plVar8 = local_70;
+  do {
+    local_70 = plVar8;
+    pbVar6 = local_78;
+    if (local_78 != local_58) {
+      FUN_18007bf40(local_d0,"cannot compare iterators of different containers");
+      FUN_1800b7300(local_b0,0xd4,local_d0,pbVar6);
+                    /* WARNING: Subroutine does not return */
+      FUN_180202cdc(local_b0,&DAT_180337470);
+    }
+    if (*local_78 == 1) {
+      if (local_70 == (longlong *)0x0) goto LAB_1800e7c69;
+    }
+    else if (*local_78 == 2) {
+      if (local_68 == lVar1) {
+LAB_1800e7c69:
+        if ((ulonglong)local_58[0] != 2) {
+          if (local_58[0] < 10) {
+            local_78 = (&PTR_s_null_180322971_0x23_18024a540)[local_58[0]];
+          }
+          else {
+            local_78 = (byte *)0x1803213ca;
+          }
+          FUN_1800b7070(local_d0,"cannot use operator[] with a numeric argument with ",&local_78);
+          FUN_1800b6d90(local_b0,0x131,local_d0,local_58);
+                    /* WARNING: Subroutine does not return */
+          FUN_180202cdc(local_b0,&DAT_180337430);
+        }
+        local_b0[0] = local_b0[0] & 0xffffffffffffff00;
+        FUN_1800ec9f0(&DAT_18024a97c,*local_50,local_b0);
+        if ((ulonglong)local_58[0] != 2) {
+          if (local_58[0] < 10) {
+            local_78 = (&PTR_s_null_180322971_0x23_18024a540)[local_58[0]];
+          }
+          else {
+            local_78 = (byte *)0x1803213ca;
+          }
+          FUN_1800b7070(local_d0,"cannot use operator[] with a numeric argument with ",&local_78);
+          FUN_1800b6d90(local_b0,0x131,local_d0,local_58);
+                    /* WARNING: Subroutine does not return */
+          FUN_180202cdc(local_b0,&DAT_180337430);
+        }
+        uVar3 = (undefined1)local_b0[0];
+        local_b0[0] = local_b0[0] & 0xffffffffffffff00;
+        FUN_1800ec9f0(&DAT_18024a97c,*local_50 + 0x10,local_b0);
+        if ((ulonglong)local_58[0] != 2) {
+          if (local_58[0] < 10) {
+            local_78 = (&PTR_s_null_180322971_0x23_18024a540)[local_58[0]];
+          }
+          else {
+            local_78 = (byte *)0x1803213ca;
+          }
+          FUN_1800b7070(local_d0,"cannot use operator[] with a numeric argument with ",&local_78);
+          FUN_1800b6d90(local_b0,0x131,local_d0,local_58);
+                    /* WARNING: Subroutine does not return */
+          FUN_180202cdc(local_b0,&DAT_180337430);
+        }
+        uVar4 = (undefined1)local_b0[0];
+        local_b0[0] = local_b0[0] & 0xffffffffffffff00;
+        FUN_1800ec9f0(&DAT_18024a97c,*local_50 + 0x20,local_b0);
+        if ((ulonglong)local_58[0] != 2) {
+          if (local_58[0] < 10) {
+            local_78 = (&PTR_s_null_180322971_0x23_18024a540)[local_58[0]];
+          }
+          else {
+            local_78 = (byte *)0x1803213ca;
+          }
+          FUN_1800b7070(local_d0,"cannot use operator[] with a numeric argument with ",&local_78);
+          FUN_1800b6d90(local_b0,0x131,local_d0,local_58);
+                    /* WARNING: Subroutine does not return */
+          FUN_180202cdc(local_b0,&DAT_180337430);
+        }
+        uVar5 = (undefined1)local_b0[0];
+        local_b0[0] = local_b0[0] & 0xffffffffffffff00;
+        FUN_1800ec9f0(&DAT_18024a97c,*local_50 + 0x30,local_b0);
+        *param_1 = uVar3;
+        param_1[1] = uVar4;
+        param_1[2] = uVar5;
+        param_1[3] = (undefined1)local_b0[0];
+        FUN_18000b5d0(&local_50,local_58[0]);
+        return;
+      }
+    }
+    else if (SBORROW8(0,local_60)) goto LAB_1800e7c69;
+    pcVar7 = (char *)FUN_1800b4a00(&local_78);
+    if (1 < (byte)(*pcVar7 - 5U)) {
+LAB_1800e7ef2:
+                    /* WARNING: Subroutine does not return */
+      FUN_1800e24d0("color channel must be 0..255");
+    }
+    local_b0[0] = 0;
+    FUN_1800b8c20(pcVar7,local_b0);
+    if ((longlong)local_b0[0] < 0) goto LAB_1800e7ef2;
+    local_b0[0] = 0;
+    FUN_1800b8c20(pcVar7,local_b0);
+    if (0xff < (longlong)local_b0[0]) goto LAB_1800e7ef2;
+    plVar8 = local_70;
+    if (*local_78 == 2) {
+      local_68 = local_68 + 0x10;
+    }
+    else if (*local_78 == 1) {
+      plVar2 = (longlong *)local_70[2];
+      if (*(char *)(local_70[2] + 0x19) == '\0') {
+        do {
+          plVar8 = plVar2;
+          plVar2 = (longlong *)*plVar8;
+        } while (*(char *)((longlong)plVar2 + 0x19) == '\0');
+      }
+      else {
+        do {
+          plVar8 = (longlong *)local_70[1];
+          if (*(char *)((longlong)plVar8 + 0x19) != '\0') break;
+          bVar9 = local_70 == (longlong *)plVar8[2];
+          local_70 = plVar8;
+        } while (bVar9);
+      }
+    }
+    else {
+      local_60 = local_60 + 1;
+    }
+  } while( true );
+}
+
+

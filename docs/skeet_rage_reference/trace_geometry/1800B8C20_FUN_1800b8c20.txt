@@ -1,0 +1,40 @@
+// function: FUN_1800b8c20
+// ea: 1800b8c20
+// category: trace_geometry
+// depth: 2, via: FUN_1800dd7b0 @1800de116
+// size: 140 bytes
+// anchors: trace_geometry, hitbox_backtrack
+// ----------------------------------------------------
+
+void FUN_1800b8c20(char *param_1,longlong *param_2)
+
+{
+  char cVar1;
+  longlong lVar2;
+  undefined1 local_80 [56];
+  undefined1 local_48 [32];
+  undefined8 local_28;
+  undefined8 local_20;
+  
+  local_20 = 0xfffffffffffffffe;
+  cVar1 = *param_1;
+  if (cVar1 != '\x05') {
+    if (cVar1 == '\a') {
+      lVar2 = (longlong)*(double *)(param_1 + 8);
+      goto LAB_1800b8c58;
+    }
+    if (cVar1 != '\x06') {
+      local_28 = FUN_1800b71e0();
+      FUN_1800b7070(local_48,"type must be number, but is ",&local_28);
+      FUN_1800b6d90(local_80,0x12e,local_48,param_1);
+                    /* WARNING: Subroutine does not return */
+      FUN_180202cdc(local_80,&DAT_180337430);
+    }
+  }
+  lVar2 = *(longlong *)(param_1 + 8);
+LAB_1800b8c58:
+  *param_2 = lVar2;
+  return;
+}
+
+

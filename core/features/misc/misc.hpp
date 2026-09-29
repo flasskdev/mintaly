@@ -417,6 +417,7 @@ namespace features::misc {
         public:
                 void on_round_start( );
                 void on_frame_stage_notify( );
+                void do_reveal_radar( ) const;
                 void do_kill_feed_preservation( );
                 void on_player_death( std::uintptr_t event );
                 void vote_kick_self( );
@@ -429,7 +430,6 @@ namespace features::misc {
         private:
                 void do_autobuy( ) const;
                 void do_player_alpha_changing( );
-                void do_reveal_radar( ) const;
                 void do_name_changing( );
                 void do_chat_spam( );
                 bool m_is_alpha_changed{};
@@ -524,6 +524,8 @@ namespace features::misc {
                 void on_frame_stage_notify ();
                 void on_level_change ();
                 bool run_script (const std::string& script);
+                // Share the validated Panorama bridge without enabling the scoreboard feature.
+                bool run_preview_script (const std::string& script);
 
         private:
                 struct weapon_entry {
@@ -545,7 +547,10 @@ namespace features::misc {
                 };
 
                 void try_initialize ();
+                bool run_hud_script (const std::string& script);
                 [[nodiscard]] c_ui_panel* find_hud_panel () const;
+                [[nodiscard]] c_ui_panel* find_preview_panel (
+                        c_ui_engine* ui_engine, std::string* diagnostics = nullptr) const;
                 void send_player_weapons (
                         std::uintptr_t controller,
                         std::span<const systems::entities::cached> items);
@@ -563,6 +568,8 @@ namespace features::misc {
                 // whenever it is opened and is resolved from JavaScript at update time.
                 c_ui_engine* m_ui_engine {};
                 c_ui_panel* m_script_panel {};
+                c_ui_engine* m_preview_ui_engine {};
+                c_ui_panel* m_preview_script_panel {};
         };
 
         namespace detail {

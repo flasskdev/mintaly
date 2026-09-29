@@ -1,5 +1,6 @@
 #include <pch/pch.hpp>
 #include <utilities/logging/logging.hpp>
+#include <utilities/diag.hpp>
 #include "../addresses.hpp"
 
 #pragma comment( lib, "d3d11.lib" )
@@ -7,10 +8,19 @@
 
 namespace {
 
+	// IDXGISwapChain vtable:
+	// IDXGISwapChain inherits seven entries before its own methods:
+	// 0..2: IUnknown, 3..6: IDXGIObject, 7: GetDevice
+	// 8: Present, 9: GetBuffer, 10: SetFullscreenState,
+	// 11: GetFullscreenState, 12: GetDesc, 13: ResizeBuffers.
+	constexpr std::size_t get_desc_index{ 12 };
 	constexpr std::size_t present_index{ 8 };
 	constexpr std::size_t resize_buffers_index{ 13 };
 
-	bool acquire_swap_chain_functions( std::uintptr_t& present, std::uintptr_t& resize_buffers )
+	bool acquire_swap_chain_functions(
+		std::uintptr_t& get_desc,
+		std::uintptr_t& present,
+		std::uintptr_t& resize_buffers )
 	{
 		WNDCLASSEXA window_class{};
 		window_class.cbSize = sizeof( window_class );
@@ -84,8 +94,14 @@ namespace {
 		if ( SUCCEEDED( result ) && swap_chain )
 		{
 			const auto vtable = *reinterpret_cast< std::uintptr_t** >( swap_chain );
+			get_desc = vtable[ get_desc_index ];
 			present = vtable[ present_index ];
 			resize_buffers = vtable[ resize_buffers_index ];
+			diag::writef(
+				diag::level::info,
+				"DXGI vtable resolved: present=%p resize=%p",
+				reinterpret_cast<void*>( present ),
+				reinterpret_cast<void*>( resize_buffers ) );
 		}
 		else
 		{
@@ -101,7 +117,7 @@ namespace {
 
 		DestroyWindow( window );
 		UnregisterClassA( window_class.lpszClassName, window_class.hInstance );
-		return present && resize_buffers;
+		return get_desc && present && resize_buffers;
 	}
 
 } // namespace
@@ -110,7 +126,7 @@ namespace addresses::functions {
 
 	bool initialize( )
 	{
-		return acquire_swap_chain_functions( present, resize_buffers );
+		return acquire_swap_chain_functions( get_desc, present, resize_buffers );
 	}
 
 } // namespace addresses::functions

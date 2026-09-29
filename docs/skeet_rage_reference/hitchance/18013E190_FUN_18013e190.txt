@@ -1,0 +1,76 @@
+// function: FUN_18013e190
+// ea: 18013e190
+// category: hitchance
+// depth: 1, via: FUN_1800f7fa0 @1800f89cc
+// size: 442 bytes
+// anchors: hitchance, nospread, autowall_damage
+// ----------------------------------------------------
+
+void FUN_18013e190(void)
+
+{
+  longlong lVar1;
+  undefined8 uVar2;
+  undefined4 uVar3;
+  float fVar4;
+  float fVar5;
+  float fVar6;
+  float fVar7;
+  float fVar8;
+  
+  FUN_18013bab0();
+  lVar1 = DAT_180495608;
+  if (DAT_180495600 != DAT_180495608) {
+    FUN_18013bab0();
+    fVar4 = DAT_18049547c;
+    fVar6 = 0.0;
+    if (0.0 < *(float *)(lVar1 + -0x48)) {
+      *(float *)(lVar1 + -0x4c) =
+           *(float *)(lVar1 + -0x48) + DAT_18049547c + *(float *)(lVar1 + -0x4c);
+      *(undefined4 *)(lVar1 + -0x48) = 0;
+    }
+    fVar4 = fVar4 * 0.5;
+    fVar5 = (*(float *)(lVar1 + -0x58) - DAT_180495470) - *(float *)(lVar1 + -0x50);
+    if (fVar5 <= 0.0) {
+      fVar5 = 0.0;
+    }
+    FUN_18013bab0();
+    lVar1 = DAT_180495608;
+    fVar8 = 0.0;
+    if (DAT_180495600 != DAT_180495608) {
+      fVar6 = fVar4 + fVar4 + 1.0;
+      if (*(float *)(DAT_180495608 + -0x48) <= 0.0) {
+        fVar8 = *(float *)(DAT_180495608 + -0x4c);
+      }
+      else {
+        FUN_18013bab0();
+        fVar8 = DAT_18049547c + *(float *)(lVar1 + -0x48) + *(float *)(lVar1 + -0x4c);
+        *(float *)(lVar1 + -0x4c) = fVar8;
+      }
+      *(float *)(lVar1 + -0x44) = *(float *)(lVar1 + -0x50);
+      *(float *)(lVar1 + -0x40) = fVar8;
+      *(float *)(lVar1 + -0x3c) = fVar5;
+      *(float *)(lVar1 + -0x38) = fVar6;
+      *(float *)(lVar1 + -0x48) = fVar6;
+      fVar7 = fVar6 + fVar8;
+      if (fVar6 + fVar8 <= *(float *)(lVar1 + -0x18)) {
+        fVar7 = *(float *)(lVar1 + -0x18);
+      }
+      *(float *)(lVar1 + -0x18) = fVar7;
+      fVar6 = (float)FUN_1802151c0(*(float *)(lVar1 + -0x50) + *(float *)(lVar1 + -0x60));
+      fVar8 = (float)FUN_1802151c0(fVar8 + *(float *)(lVar1 + -0x5c));
+    }
+    FUN_18013bab0();
+    if (DAT_180495630 == DAT_180495638) {
+      uVar3 = 1;
+    }
+    else {
+      uVar3 = *(undefined4 *)(DAT_180495638 + -4);
+    }
+    uVar2 = FUN_1801304f0(uVar3);
+    FUN_180129960(uVar2,fVar6,fVar4 + fVar8,fVar5 + fVar6,fVar4 + fVar8,DAT_18049553c,0x3f800000,1);
+  }
+  return;
+}
+
+

@@ -134,6 +134,7 @@ namespace systems {
 		void update( );
 		void apply( );
 		[[nodiscard]] bool has_analog_subticks( proto::base_usercmd_pb* base ) const;
+		[[nodiscard]] float max_subtick_when( proto::base_usercmd_pb* base ) const;
 
 		[[nodiscard]] usercmd* get( ) const { return this->m_current_cmd; }
 		[[nodiscard]] usercmd* get_current_cmd( std::uintptr_t local_controller ) const;
@@ -208,10 +209,14 @@ namespace systems {
 		static constexpr int entity_slot_count = 0x8000;
 
 		[[nodiscard]] bool exists( std::uintptr_t entity ) const;
-		[[nodiscard]] const char* get_schema_name( std::uintptr_t entity ) const;
+		[[nodiscard]] std::optional<std::uint32_t> get_cached_schema_hash( std::uintptr_t entity ) const;
+		[[nodiscard]] __declspec( noinline ) const char* get_schema_name( std::uintptr_t entity ) const;
 		[[nodiscard]] std::uintptr_t get_by_index( int index );
 		[[nodiscard]] std::uintptr_t lookup( std::uint32_t handle ) const;
 		[[nodiscard]] std::vector<cached> get_by_type( type type ) const;
+		// Cheap count without materializing a snapshot: used by the frame hook to
+		// detect a stale cache whose player entries were never recorded.
+		[[nodiscard]] std::size_t count_of( type type ) const;
 		[[nodiscard]] bool has_alive_enemies( std::uintptr_t local_controller, std::uintptr_t local_pawn, int local_team, bool is_team_mode = true ) const;
 
 		[[nodiscard]] bool is_empty( ) const;
@@ -419,6 +424,8 @@ namespace systems {
 			std::uint8_t v6;
 			std::byte pad0[ 0x6 ];
 			char v7;
+
+			[[nodiscard]] bool valid( ) const noexcept { return vtable != 0; }
 		};
 
 		struct ray

@@ -1,0 +1,116 @@
+// function: FUN_1801345c0
+// ea: 1801345c0
+// category: nospread
+// depth: 2, via: FUN_180132f60 @180133420
+// size: 609 bytes
+// anchors: nospread
+// ----------------------------------------------------
+
+ulonglong FUN_1801345c0(longlong param_1)
+
+{
+  char cVar1;
+  int iVar2;
+  size_t sVar3;
+  undefined **ppuVar4;
+  ulonglong uVar5;
+  char *pcVar6;
+  char *_Str;
+  int local_24;
+  uint local_20;
+  int local_1c;
+  
+  _Str = (char *)(param_1 + -1);
+  do {
+    pcVar6 = _Str;
+    cVar1 = pcVar6[1];
+    _Str = pcVar6 + 1;
+  } while (cVar1 == ' ');
+  sVar3 = strlen(_Str);
+  if (cVar1 == '#' && sVar3 != 0) {
+    local_20 = 0;
+    local_24 = 0;
+    local_1c = 0;
+    iVar2 = FUN_180135290(_Str,"#%2x%2x%2x",&local_20,&local_24,&local_1c);
+    if (iVar2 == 3) {
+      uVar5 = (ulonglong)(local_1c << 0x10 | local_24 << 8 | local_20);
+    }
+    else {
+      iVar2 = FUN_180135290(_Str,"#%1x%1x%1x",&local_20,&local_24,&local_1c);
+      uVar5 = 0x808080;
+      if (iVar2 == 3) {
+        uVar5 = (ulonglong)(local_1c * 0x110000 | local_24 * 0x1100 | local_20 * 0x11);
+      }
+    }
+  }
+  else {
+    if ((((cVar1 == 'r' && 3 < sVar3) && (pcVar6[2] == 'g')) && (pcVar6[3] == 'b')) &&
+       (pcVar6[4] == '(')) {
+      uVar5 = FUN_180134ec0(_Str);
+      return uVar5;
+    }
+    iVar2 = strcmp(PTR_s_red_180325721_7_180364920,_Str);
+    if (iVar2 == 0) {
+      ppuVar4 = &PTR_s_red_180325721_7_180364920;
+    }
+    else {
+      iVar2 = strcmp(PTR_s_green_180364930,_Str);
+      if (iVar2 == 0) {
+        ppuVar4 = &PTR_s_green_180364930;
+      }
+      else {
+        iVar2 = strcmp(PTR_DAT_180364940,_Str);
+        if (iVar2 == 0) {
+          ppuVar4 = &PTR_DAT_180364940;
+        }
+        else {
+          iVar2 = strcmp(PTR_s_yellow_180364950,_Str);
+          if (iVar2 == 0) {
+            ppuVar4 = &PTR_s_yellow_180364950;
+          }
+          else {
+            iVar2 = strcmp(PTR_DAT_180364960,_Str);
+            if (iVar2 == 0) {
+              ppuVar4 = &PTR_DAT_180364960;
+            }
+            else {
+              iVar2 = strcmp(PTR_s_magenta_180364970,_Str);
+              if (iVar2 == 0) {
+                ppuVar4 = &PTR_s_magenta_180364970;
+              }
+              else {
+                iVar2 = strcmp(PTR_s_black_180364980,_Str);
+                if (iVar2 == 0) {
+                  ppuVar4 = &PTR_s_black_180364980;
+                }
+                else {
+                  iVar2 = strcmp(PTR_DAT_180364990,_Str);
+                  if (iVar2 == 0) {
+                    ppuVar4 = &PTR_DAT_180364990;
+                  }
+                  else {
+                    iVar2 = strcmp(PTR_DAT_1803649a0,_Str);
+                    if (iVar2 == 0) {
+                      ppuVar4 = &PTR_DAT_1803649a0;
+                    }
+                    else {
+                      iVar2 = strcmp(PTR_s_white_1803649b0,_Str);
+                      if (iVar2 != 0) {
+                        return 0x808080;
+                      }
+                      ppuVar4 = &PTR_s_white_1803649b0;
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    uVar5 = (ulonglong)*(uint *)(ppuVar4 + 1);
+  }
+  return uVar5;
+}
+
+

@@ -38,13 +38,31 @@ class ConfigAndBinds(unittest.TestCase):
         declared = set(re.findall(r'config::(?:val<[^>]+>|bools<[^>]+>)\s+(\w+)', s))
         registered = set(re.findall(r'this->(\w+)\.reg\(', s))
         self.assertEqual(declared, registered)
-        self.assertEqual(len(declared), 7)
+        # 7 legacy fields + trace_budget/detailed_targets from the staged pipeline.
+        self.assertEqual(len(declared), 9)
     def test_every_rage_boolean_bind_has_a_per_weapon_category(self):
         s = body(source('core/settings.hpp'), 'struct weapon_group', 'struct individual_weapon')
         declared = set(re.findall(r'xui::setting\s+(\w+)', s))
         categories = set(re.findall(r'this->(\w+)\.category = s;', s))
         self.assertEqual(declared, categories)
-        self.assertEqual(len(declared), 10)
+        # 10 legacy binds + centers_only/prefer_visible from the staged pipeline.
+        self.assertEqual(len(declared), 12)
+    def test_staged_pipeline_budgets_match_spec_limits(self):
+        combat = source('core/features/combat/combat.hpp')
+        for constant in ['k_max_targets{ 13 }', 'k_detailed_targets{ 2 }',
+                         'k_penetration_budget{ 160 }', 'k_max_scan_points{ 128 }',
+                         'k_max_hitchance_queries{ 32 }', 'k_max_scan_records{ 4 }']:
+            self.assertIn(constant, combat)
+        rage = source('core/features/combat/impl/rage.cpp')
+        for pass_name in ['build_targets', 'run_scan_pass', 'run_select_pass', 'run_fire_pass']:
+            self.assertIn('rage::' + pass_name, rage)
+        # Budgets are consumed, not only declared, and shared by both scan paths.
+        self.assertIn('k_penetration_budget', rage)
+        self.assertIn('k_max_hitchance_queries', rage)
+        self.assertIn('execute_scan_point', rage)
+        # Fire pass re-validates the numbers selection used instead of trusting them.
+        self.assertIn('hitchance_floor(tgt.required_hitchance)', rage)
+        self.assertIn('tgt.forced && tgt.allow_force && max_acc', rage)
     def test_all_rage_group_and_weapon_instances_initialize(self):
         s = body(source('core/settings.hpp'), 'ragebot()', '[[nodiscard]] bool is_weapon_overridden')
         self.assertIn('i < k_group_count', s)

@@ -10,7 +10,7 @@ namespace features::esp {
 		class chams
 		{
 		public:
-			bool on_generate_primitives( std::uintptr_t owner_entity, std::uint32_t owner_hash, std::uintptr_t scene_object, std::uintptr_t primitive_buffer, void( __fastcall* original_fn )( std::uintptr_t, std::uintptr_t, std::uintptr_t, std::uintptr_t ), std::uintptr_t a1, std::uintptr_t scene_view );
+			bool on_generate_primitives( std::uintptr_t owner_entity, std::uint32_t owner_hash, std::uintptr_t scene_object, std::uintptr_t primitive_buffer, std::uintptr_t( __fastcall* original_fn )( std::uintptr_t, std::uintptr_t, std::uintptr_t, std::uintptr_t ), std::uintptr_t a1, std::uintptr_t scene_view );
 			void on_sort_primitives( std::uintptr_t entries, std::uint32_t count );
 
 			class backtrack
@@ -49,16 +49,14 @@ namespace features::esp {
 				[[nodiscard]] float get_alpha (std::uintptr_t pawn) const;
 
 			private:
-                using clock = std::chrono::steady_clock;
-                struct hit_entry {
-                    std::uint32_t pawn_handle{};
-                    clock::time_point hit_time{};
-                    float duration{};
-                };
-                // A confirmed hit colors the victim's current mesh for the full
-                // duration. No bone capture or engine-owned clone is required.
-                mutable std::mutex m_mutex;
-                std::unordered_map<std::uintptr_t, hit_entry> m_entries{};
+				using clock = std::chrono::steady_clock;
+				struct hit_entry {
+					std::uint32_t pawn_handle{};
+					clock::time_point hit_time{};
+					float duration{};
+				};
+				mutable std::mutex m_mutex;
+				std::unordered_map<std::uintptr_t, hit_entry> m_entries{};
 
 			};
 
@@ -66,9 +64,9 @@ namespace features::esp {
 			[[nodiscard]] backtrack& bt( ) { return this->m_backtrack; }
 
 		private:
-			void apply_layer( std::uintptr_t primitive_buffer, void( __fastcall* original_fn )( std::uintptr_t, std::uintptr_t, std::uintptr_t, std::uintptr_t ), std::uintptr_t a1, std::uintptr_t scene_object, std::uintptr_t scene_view, const xdraw::color& color, settings::esp::cham_ids material_id, const settings::esp::outline_glow_config* glow_cfg = nullptr );
-			void apply_overlay( std::uintptr_t primitive_buffer, void( __fastcall* original_fn )( std::uintptr_t, std::uintptr_t, std::uintptr_t, std::uintptr_t ), std::uintptr_t a1, std::uintptr_t scene_object, std::uintptr_t scene_view, const xdraw::color& color, settings::esp::cham_ids material_id, const settings::esp::outline_glow_config* glow_cfg = nullptr );
-			void apply_clone( std::uintptr_t primitive_buffer, void( __fastcall* original_fn )( std::uintptr_t, std::uintptr_t, std::uintptr_t, std::uintptr_t ), std::uintptr_t a1, std::uintptr_t scene_object, std::uintptr_t scene_view, systems::materials::clone_type type );
+			void apply_layer( std::uintptr_t primitive_buffer, std::uintptr_t( __fastcall* original_fn )( std::uintptr_t, std::uintptr_t, std::uintptr_t, std::uintptr_t ), std::uintptr_t a1, std::uintptr_t scene_object, std::uintptr_t scene_view, const xdraw::color& color, settings::esp::cham_ids material_id, const settings::esp::outline_glow_config* glow_cfg = nullptr );
+			void apply_overlay( std::uintptr_t primitive_buffer, std::uintptr_t( __fastcall* original_fn )( std::uintptr_t, std::uintptr_t, std::uintptr_t, std::uintptr_t ), std::uintptr_t a1, std::uintptr_t scene_object, std::uintptr_t scene_view, const xdraw::color& color, settings::esp::cham_ids material_id, const settings::esp::outline_glow_config* glow_cfg = nullptr );
+			void apply_clone( std::uintptr_t primitive_buffer, std::uintptr_t( __fastcall* original_fn )( std::uintptr_t, std::uintptr_t, std::uintptr_t, std::uintptr_t ), std::uintptr_t a1, std::uintptr_t scene_object, std::uintptr_t scene_view, systems::materials::clone_type type );
 
 			bool is_overlay_material( std::uintptr_t mat ) const;
 			void add_overlay_material( std::uintptr_t mat );
@@ -144,6 +142,7 @@ namespace features::esp {
 					int ammo{};
 					int max_ammo{};
 					std::string name{};
+					std::string display_name{};
 
 					[[nodiscard]] bool valid( ) const { return this->ptr && this->vdata; }
 				} weapon{};
@@ -178,11 +177,12 @@ namespace features::esp {
 		class chams
 		{
 		public:
-			bool on_generate_primitives( std::uintptr_t owner_entity, std::uint32_t owner_hash, std::uintptr_t scene_object, std::uintptr_t primitive_buffer, void( __fastcall* original_fn )( std::uintptr_t, std::uintptr_t, std::uintptr_t, std::uintptr_t ), std::uintptr_t a1, std::uintptr_t scene_view );
+			bool on_generate_primitives( std::uintptr_t owner_entity, std::uint32_t owner_hash, std::uintptr_t scene_object, std::uintptr_t primitive_buffer, std::uintptr_t( __fastcall* original_fn )( std::uintptr_t, std::uintptr_t, std::uintptr_t, std::uintptr_t ), std::uintptr_t a1, std::uintptr_t scene_view );
+			[[nodiscard]] std::uint32_t get_item_group( std::uint32_t schema_hash );
 
 		private:
-			void apply_layer( std::uintptr_t primitive_buffer, void( __fastcall* original_fn )( std::uintptr_t, std::uintptr_t, std::uintptr_t, std::uintptr_t ), std::uintptr_t a1, std::uintptr_t scene_object, std::uintptr_t scene_view, const xdraw::color& color, settings::esp::cham_ids material_id, const settings::esp::outline_glow_config* glow_cfg = nullptr );
-			[[nodiscard]] std::uint32_t get_item_group( std::uint32_t schema_hash );
+			void apply_layer( std::uintptr_t primitive_buffer, std::uintptr_t( __fastcall* original_fn )( std::uintptr_t, std::uintptr_t, std::uintptr_t, std::uintptr_t ), std::uintptr_t a1, std::uintptr_t scene_object, std::uintptr_t scene_view, const xdraw::color& color, settings::esp::cham_ids material_id, const settings::esp::outline_glow_config* glow_cfg = nullptr );
+			void apply_overlay( std::uintptr_t primitive_buffer, std::uintptr_t( __fastcall* original_fn )( std::uintptr_t, std::uintptr_t, std::uintptr_t, std::uintptr_t ), std::uintptr_t a1, std::uintptr_t scene_object, std::uintptr_t scene_view, const xdraw::color& color, settings::esp::cham_ids material_id, const settings::esp::outline_glow_config* glow_cfg = nullptr );
 		};
 
 		class glow

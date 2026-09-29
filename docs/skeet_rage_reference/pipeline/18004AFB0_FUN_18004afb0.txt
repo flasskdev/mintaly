@@ -1,0 +1,78 @@
+// function: FUN_18004afb0
+// ea: 18004afb0
+// category: pipeline
+// depth: 1, via: FUN_180039560 @18003a49e
+// size: 412 bytes
+// anchors: pipeline, autowall_damage
+// ----------------------------------------------------
+
+longlong FUN_18004afb0(ulonglong *param_1,ulonglong param_2,undefined8 param_3)
+
+{
+  ulonglong uVar1;
+  ulonglong uVar2;
+  longlong lVar3;
+  ulonglong uVar4;
+  ulonglong uVar5;
+  ulonglong uVar6;
+  ulonglong uVar7;
+  
+  uVar1 = *param_1;
+  uVar7 = ((longlong)(param_1[1] - uVar1) >> 3) * -0x5009150091500915 + 1;
+  uVar4 = ((longlong)(param_1[2] - uVar1) >> 3) * -0x5009150091500915;
+  uVar6 = 0x122a0122a0122a - (uVar4 >> 1);
+  uVar2 = (uVar4 >> 1) + uVar4;
+  if (uVar2 <= uVar7) {
+    uVar2 = uVar7;
+  }
+  if (uVar6 <= uVar4 && uVar4 - uVar6 != 0) {
+    uVar2 = 0x122a0122a0122a;
+  }
+  if (uVar2 < 0x122a0122a0122b) {
+    if (uVar2 == 0) {
+      uVar4 = 0;
+    }
+    else if (uVar2 == 1) {
+      uVar4 = FUN_1801695a0(0xe18);
+    }
+    else {
+      if (uVar2 == 0x122a0122a0122a) goto LAB_18004b12f;
+      lVar3 = FUN_1801695a0(uVar2 * 0xe18 + 0x27);
+      uVar4 = lVar3 + 0x27U & 0xffffffffffffffe0;
+      *(longlong *)(uVar4 - 8) = lVar3;
+    }
+    lVar3 = (param_2 - uVar1) + uVar4;
+    FUN_18023b1d0(lVar3,param_3,0xe18);
+    if (param_1[1] == param_2) {
+      FUN_18023b1d0(uVar4);
+      uVar1 = *param_1;
+    }
+    else {
+      FUN_18023b1d0(uVar4,*param_1,param_2 - *param_1);
+      FUN_18023b1d0(lVar3 + 0xe18,param_2);
+      uVar1 = *param_1;
+    }
+    if (uVar1 != 0) {
+      uVar5 = param_1[2] - uVar1;
+      uVar6 = uVar1;
+      if (0xfff < uVar5) {
+        uVar6 = *(ulonglong *)(uVar1 - 8);
+        if (0x1f < (uVar1 - 8) - uVar6) {
+                    /* WARNING: Subroutine does not return */
+          _invoke_watson((wchar_t *)0x0,(wchar_t *)0x0,(wchar_t *)0x0,0,0);
+        }
+        uVar5 = uVar5 + 0x27;
+      }
+      FUN_1801695f0(uVar6,uVar5);
+    }
+    *param_1 = uVar4;
+    param_1[1] = uVar7 * 0xe18 + uVar4;
+    param_1[2] = uVar2 * 0xe18 + uVar4;
+    return lVar3;
+  }
+LAB_18004b12f:
+                    /* WARNING: Subroutine does not return */
+  FUN_18000b130();
+}
+
+

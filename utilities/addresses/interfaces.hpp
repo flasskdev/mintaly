@@ -23,9 +23,10 @@ public:
 	char _pad_01 [0x2]; // 0x2A
 	uint32_t m_change_count; // 0x2C
 	uint64_t m_flags; // 0x30
-	char _pad_02 [0x20]; // 0x38
-	cvvalue_t m_value; // 0x58
-	char _value_tail [0x8]; // 0x60
+	char _pad_02 [0x10]; // 0x38
+	cvvalue_t m_value; // 0x48
+	char _value_tail [0x8]; // 0x50
+
 
 	template<typename T>
 	T get() const {
@@ -71,7 +72,7 @@ namespace interfaces {
 }
 
 static_assert( offsetof( c_convar, m_flags ) == 0x30 );
-static_assert( offsetof( c_convar, m_value ) == 0x58 );
+static_assert( offsetof( c_convar, m_value ) == 0x48 );
 static_assert( sizeof( interfaces::c_engine_cvar::cvar_container_t ) == 0x10 );
 static_assert( offsetof( interfaces::c_engine_cvar, m_container ) == 0x50 );
 static_assert( offsetof( interfaces::c_engine_cvar, m_head ) == 0x58 );

@@ -680,7 +680,7 @@ namespace features::misc {
 		this->m_molotov_max_slope_z = std::cos(CONVAR ("weapon_molotov_maxdetonateslope")->get<float>( ) * std::numbers::pi_v<float> / 180.0f );
 
 		const auto local_pawn_handle = memory::read<std::uint32_t>( local.controller + SCHEMA( "CBasePlayerController", "m_hPawn"_hash ) );
-		const auto local_team = memory::read<std::int32_t>( local.pawn + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) );
+		const auto local_team = memory::read<std::uint8_t>( local.pawn + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) );
 		const auto now = std::chrono::steady_clock::now( );
 		const auto projectiles = systems::g_entities.get_by_type( systems::entities::type::projectile );
 
@@ -711,7 +711,7 @@ namespace features::misc {
 				const auto thrower = systems::g_entities.lookup( thrower_handle );
 				if ( thrower )
 				{
-					const auto thrower_team = memory::read<std::int32_t>( thrower + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) );
+					const auto thrower_team = memory::read<std::uint8_t>( thrower + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) );
 					is_enemy = thrower_team != local_team;
 				}
 			}
@@ -1055,7 +1055,7 @@ namespace features::misc {
 				continue;
 			}
 
-			const auto team = memory::read<std::int32_t>( pawn + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) );
+			const auto team = memory::read<std::uint8_t>( pawn + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) );
 			if ( !local.is_this_other_team( team ) )
 			{
 				continue;

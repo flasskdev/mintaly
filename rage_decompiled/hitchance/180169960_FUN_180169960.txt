@@ -1,0 +1,22 @@
+// function: FUN_180169960
+// ea: 180169960
+// category: hitchance
+// depth: 1, via: FUN_180043550 @180043d8c
+// size: 19 bytes
+// anchors: hitchance
+// ----------------------------------------------------
+
+longlong FUN_180169960(byte *param_1)
+
+{
+  longlong lVar1;
+  
+  *param_1 = *param_1 | 2;
+  lVar1 = *(longlong *)(param_1 + 0x10) + 0x10;
+  if (*(longlong *)(param_1 + 0x10) == 0) {
+    lVar1 = 0;
+  }
+  return lVar1;
+}
+
+

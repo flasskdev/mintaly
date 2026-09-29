@@ -1,0 +1,31 @@
+// function: FUN_18016d4e0
+// ea: 18016d4e0
+// category: pipeline
+// depth: 1, via: FUN_1800a3380 @1800a3526
+// size: 129 bytes
+// anchors: pipeline, hitbox_backtrack
+// ----------------------------------------------------
+
+void FUN_18016d4e0(longlong param_1,int param_2,uint param_3,undefined8 param_4,longlong param_5)
+
+{
+  longlong lVar1;
+  
+  lVar1 = *(longlong *)(param_1 + 0x10) + (longlong)(param_2 + 1) * -0x10;
+  if ((param_5 == 0) || ((*(uint *)(param_1 + 0xb0) & 0xffff0000) != 0)) {
+    FUN_18018a7f0(param_1,lVar1);
+  }
+  else {
+    *(longlong *)(*(longlong *)(param_1 + 0x20) + 0x20) = param_5;
+    *(undefined8 *)(*(longlong *)(param_1 + 0x20) + 0x30) = param_4;
+    FUN_18018a7e0(param_1,lVar1);
+  }
+  if (0x7fffffff < param_3) {
+    if (*(ulonglong *)(*(longlong *)(param_1 + 0x20) + 8) < *(ulonglong *)(param_1 + 0x10)) {
+      *(ulonglong *)(*(longlong *)(param_1 + 0x20) + 8) = *(ulonglong *)(param_1 + 0x10);
+    }
+  }
+  return;
+}
+
+

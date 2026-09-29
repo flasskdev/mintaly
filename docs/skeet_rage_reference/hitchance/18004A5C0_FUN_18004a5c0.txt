@@ -1,0 +1,24 @@
+// function: FUN_18004a5c0
+// ea: 18004a5c0
+// category: hitchance
+// depth: 1, via: FUN_180043550 @180043dc9
+// size: 115 bytes
+// anchors: hitchance
+// ----------------------------------------------------
+
+undefined4 FUN_18004a5c0(void)
+
+{
+  if (*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+              0x2638) < DAT_180471bf8) {
+    FUN_180183614(&DAT_180471bf8);
+    if (DAT_180471bf8 == -1) {
+      DAT_180471bf4 = FUN_180114bb0("C_CSWeaponBase",0xef9494e8);
+      _Init_thread_footer(&DAT_180471bf8);
+      return DAT_180471bf4;
+    }
+  }
+  return DAT_180471bf4;
+}
+
+

@@ -49,6 +49,7 @@ namespace hooking {
 			return 14;
 		}
 
+
 		static bool build_trampoline( void* target, void* trampoline, std::size_t* out_original_len, std::size_t* out_trampoline_len )
 		{
 			auto src = static_cast< std::uint8_t* >( target );

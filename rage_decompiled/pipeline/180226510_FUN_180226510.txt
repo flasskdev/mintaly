@@ -1,0 +1,20 @@
+// function: FUN_180226510
+// ea: 180226510
+// category: pipeline
+// depth: 3, via: FUN_18022bc30 @18022bcdf
+// size: 32 bytes
+// anchors: pipeline, autowall_damage
+// ----------------------------------------------------
+
+undefined8 FUN_180226510(void)
+
+{
+  byte bVar1;
+  
+  bVar1 = (byte)DAT_180469600 & 0x3f;
+  return CONCAT71((int7)(DAT_180469600 >> 8),
+                  (DAT_180498780 ^ DAT_180469600) >> bVar1 != 0 ||
+                  (DAT_180498780 ^ DAT_180469600) << 0x40 - bVar1 != 0);
+}
+
+

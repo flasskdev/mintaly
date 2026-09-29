@@ -1,0 +1,25 @@
+// function: FUN_1801702e0
+// ea: 1801702e0
+// category: trace_geometry
+// depth: 3, via: FUN_18018bf30 @18018bf5c
+// size: 41 bytes
+// anchors: trace_geometry, hitbox_backtrack
+// ----------------------------------------------------
+
+void FUN_1801702e0(longlong param_1,longlong param_2)
+
+{
+  longlong lVar1;
+  longlong lVar2;
+  
+  lVar2 = *(longlong *)(param_1 + 0x10) - *(longlong *)(param_1 + 0x18);
+  lVar1 = 0x7fffffffffffffff - lVar2;
+  if (lVar1 < param_2) {
+    param_2 = lVar1;
+  }
+  *(longlong *)(param_1 + 0x18) = param_2;
+  *(longlong *)(param_1 + 0x10) = lVar2 + param_2;
+  return;
+}
+
+

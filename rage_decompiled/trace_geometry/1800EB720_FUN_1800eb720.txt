@@ -1,0 +1,59 @@
+// function: FUN_1800eb720
+// ea: 1800eb720
+// category: trace_geometry
+// depth: 2, via: FUN_1800e1050 @1800e126e
+// size: 240 bytes
+// anchors: trace_geometry, hitbox_backtrack
+// ----------------------------------------------------
+
+longlong FUN_1800eb720(char *param_1,undefined8 param_2)
+
+{
+  undefined8 uVar1;
+  longlong *plVar2;
+  longlong *plVar3;
+  longlong lVar4;
+  bool bVar5;
+  undefined1 local_80 [56];
+  longlong *local_48;
+  longlong *local_40;
+  undefined8 local_28;
+  undefined8 local_20;
+  
+  local_20 = 0xfffffffffffffffe;
+  if (*param_1 != '\x01') {
+    local_28 = FUN_1800b71e0();
+    FUN_1800b7070(&local_48,"cannot use erase() with ",&local_28);
+    FUN_1800b6d90(local_80,0x133,&local_48,param_1);
+                    /* WARNING: Subroutine does not return */
+    FUN_180202cdc(local_80,&DAT_180337430);
+  }
+  uVar1 = *(undefined8 *)(param_1 + 8);
+  FUN_1800eb850(uVar1,&local_48,param_2);
+  lVar4 = 0;
+  do {
+    if (local_48 == local_40) {
+      FUN_1800eba10(uVar1);
+      return lVar4;
+    }
+    plVar2 = (longlong *)local_48[2];
+    if (*(char *)(local_48[2] + 0x19) == '\0') {
+      do {
+        plVar3 = plVar2;
+        plVar2 = (longlong *)*plVar3;
+      } while (*(char *)(*plVar3 + 0x19) == '\0');
+    }
+    else {
+      do {
+        plVar3 = (longlong *)local_48[1];
+        if (*(char *)((longlong)plVar3 + 0x19) != '\0') break;
+        bVar5 = local_48 == (longlong *)plVar3[2];
+        local_48 = plVar3;
+      } while (bVar5);
+    }
+    lVar4 = lVar4 + 1;
+    local_48 = plVar3;
+  } while( true );
+}
+
+

@@ -87,7 +87,7 @@ namespace features::combat {
                 }
 
                 ctx.target_armor = memory::read<int>( target_pawn + SCHEMA( "C_CSPlayerPawn", "m_ArmorValue"_hash ) );
-                ctx.target_team = memory::read<int>( target_pawn + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) );
+                ctx.target_team = memory::read<std::uint8_t>( target_pawn + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) );
 
                 if ( ctx.target_armor > 0 )
                 {
@@ -349,7 +349,7 @@ namespace features::combat {
                         return false;
                 }
 
-                const auto local_team = memory::read<int>( local.pawn + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) );
+                const auto local_team = memory::read<std::uint8_t>( local.pawn + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) );
                 const auto trace_delta = direction * this->m_weapon_data.range;
 
                 auto filter = systems::g_tracing.make_filter( local.pawn, 0x1c300b, 3, 15 );
@@ -710,7 +710,7 @@ namespace features::combat {
                                 continue;
                         }
 
-                        const auto team = memory::read<int>( pawn + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) );
+                        const auto team = memory::read<std::uint8_t>( pawn + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) );
                         if ( !local.is_this_other_team( team ) )
                         {
                                 continue;
@@ -933,21 +933,33 @@ namespace features::combat {
 
                 const auto max_ticks = std::clamp( settings::g_combat.m_lagcomp.max_backtrack_ticks.value,
                         1, static_cast<int>( rage::k_max_lagcomp_records ) );
-                const record* newest{};
-                const record* oldest{};
-                int count{};
+                const record* valid[ rage::k_max_lagcomp_records ]{};
+                auto valid_count{ 0 };
                 for ( const auto& rec : it->second )
                 {
                         if ( !rec.is_valid( ) ) continue;
-                        if ( !newest ) newest = &rec;
-                        if ( newest->tick - rec.tick > max_ticks ) break;
-                        oldest = &rec;
-                        if ( ++count == rage::k_max_lagcomp_records ) break;
+                        if ( valid_count > 0 && valid[ 0 ]->tick - rec.tick > max_ticks ) break;
+                        valid[ valid_count++ ] = &rec;
+                        if ( valid_count == rage::k_max_lagcomp_records ) break;
                 }
-                if ( !newest ) return out;
+                if ( valid_count <= 0 ) return out;
                 out.reserve( rage::k_max_scan_records );
+                // Newest first, oldest last, up to two evenly spread middle poses
+                // so recent and aged poses compete within 4 records per target.
+                const auto newest = valid[ 0 ];
+                const auto oldest = valid[ valid_count - 1 ];
                 out.push_back( *newest );
-                if ( oldest != newest ) out.push_back( *oldest );
+                if ( valid_count > 2 )
+                {
+                        const auto mid_step = valid_count / 3;
+                        for ( auto m = 1; m <= 2 && static_cast<int>( out.size( ) ) < rage::k_max_scan_records - 1; ++m )
+                        {
+                                const auto idx = m * mid_step;
+                                if ( idx <= 0 || idx >= valid_count - 1 ) continue;
+                                if ( valid[ idx ] != newest && valid[ idx ] != oldest ) out.push_back( *valid[ idx ] );
+                        }
+                }
+                if ( oldest != newest && static_cast<int>( out.size( ) ) < rage::k_max_scan_records ) out.push_back( *oldest );
                 for ( auto& rec : out ) rec.is_applied = false;
                 return out;
         }

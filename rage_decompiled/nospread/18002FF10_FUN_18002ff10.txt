@@ -1,0 +1,52 @@
+// function: FUN_18002ff10
+// ea: 18002ff10
+// category: nospread
+// depth: 3, via: FUN_18002e190 @18002e87c
+// size: 310 bytes
+// anchors: nospread, trace_geometry, hitbox_backtrack
+// ----------------------------------------------------
+
+void FUN_18002ff10(undefined8 param_1,undefined8 param_2,longlong param_3)
+
+{
+  longlong lVar1;
+  longlong lVar2;
+  
+  lVar1 = FUN_180030520();
+  if (lVar1 != 0) {
+    if (*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+                0x2638) < DAT_1804718d0) {
+      FUN_180183614(&DAT_1804718d0);
+      if (DAT_1804718d0 == -1) {
+        DAT_1804718cc = FUN_180114bb0("C_BaseEntity",0x9d930423);
+        _Init_thread_footer(&DAT_1804718d0);
+      }
+    }
+    lVar1 = *(longlong *)(lVar1 + DAT_1804718cc);
+    if (lVar1 != 0) {
+      if (param_3 == 0) {
+        lVar2 = 1;
+      }
+      else {
+        lVar2 = (ulonglong)*(byte *)(param_3 + 0x90) + 1;
+      }
+      if (*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+                  0x2638) < DAT_1804718e0) {
+        FUN_180183614(&DAT_1804718e0);
+        if (DAT_1804718e0 == -1) {
+          DAT_1804718d8 = (code *)FUN_180162ed0(&DAT_180467e98,lVar2);
+          _Init_thread_footer(&DAT_1804718e0);
+        }
+      }
+      if (DAT_1804718d8 != (code *)0x0) {
+                    /* WARNING: Could not recover jumptable at 0x00018002ff9f. Too many branches */
+                    /* WARNING: Treating indirect jump as call */
+        (*DAT_1804718d8)(lVar1,lVar2);
+        return;
+      }
+    }
+  }
+  return;
+}
+
+

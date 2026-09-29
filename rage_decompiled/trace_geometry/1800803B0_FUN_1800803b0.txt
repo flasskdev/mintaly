@@ -1,0 +1,18 @@
+// function: FUN_1800803b0
+// ea: 1800803b0
+// category: trace_geometry
+// depth: 3, via: FUN_1800931b0 @180093326
+// size: 15 bytes
+// anchors: trace_geometry, hitbox_backtrack
+// ----------------------------------------------------
+
+void FUN_1800803b0(longlong *param_1)
+
+{
+                    /* WARNING: Could not recover jumptable at 0x0001800803bc. Too many branches */
+                    /* WARNING: Treating indirect jump as call */
+  (**(code **)(*param_1 + 0x10))(param_1,1);
+  return;
+}
+
+

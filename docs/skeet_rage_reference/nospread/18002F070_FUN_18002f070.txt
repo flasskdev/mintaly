@@ -1,0 +1,99 @@
+// function: FUN_18002f070
+// ea: 18002f070
+// category: nospread
+// depth: 3, via: FUN_18002e190 @18002e60b
+// size: 1327 bytes
+// anchors: nospread, trace_geometry, hitbox_backtrack
+// ----------------------------------------------------
+
+void FUN_18002f070(undefined2 *param_1,longlong param_2,longlong param_3)
+
+{
+  if (*(char *)(param_1 + 0x12) == '\0') {
+    if (*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+                0x2638) < DAT_18047178c) {
+      FUN_180183614(&DAT_18047178c);
+      if (DAT_18047178c == -1) {
+        DAT_180471788 = FUN_180114bb0("C_EconItemView",0xa2ccb41a);
+        _Init_thread_footer(&DAT_18047178c);
+      }
+    }
+    *param_1 = *(undefined2 *)(DAT_180471788 + param_3);
+    if (*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+                0x2638) < DAT_180471794) {
+      FUN_180183614(&DAT_180471794);
+      if (DAT_180471794 == -1) {
+        DAT_180471790 = FUN_180114bb0("C_EconItemView",0x373ee446);
+        _Init_thread_footer(&DAT_180471794);
+      }
+    }
+    *(undefined4 *)(param_1 + 2) = *(undefined4 *)(DAT_180471790 + param_3);
+    if (*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+                0x2638) < DAT_18047179c) {
+      FUN_180183614(&DAT_18047179c);
+      if (DAT_18047179c == -1) {
+        DAT_180471798 = FUN_180114bb0("C_EconItemView",0xdf29c2c);
+        _Init_thread_footer(&DAT_18047179c);
+      }
+    }
+    *(undefined4 *)(param_1 + 4) = *(undefined4 *)(DAT_180471798 + param_3);
+    if (*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+                0x2638) < DAT_1804717a4) {
+      FUN_180183614(&DAT_1804717a4);
+      if (DAT_1804717a4 == -1) {
+        DAT_1804717a0 = FUN_180114bb0("C_EconItemView",0xc65de986);
+        _Init_thread_footer(&DAT_1804717a4);
+      }
+    }
+    *(undefined4 *)(param_1 + 6) = *(undefined4 *)(DAT_1804717a0 + param_3);
+    if (*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+                0x2638) < DAT_1804717ac) {
+      FUN_180183614(&DAT_1804717ac);
+      if (DAT_1804717ac == -1) {
+        DAT_1804717a8 = FUN_180114bb0("C_EconItemView",0x710abdd);
+        _Init_thread_footer(&DAT_1804717ac);
+      }
+    }
+    *(undefined1 *)(param_1 + 8) = *(undefined1 *)(DAT_1804717a8 + param_3);
+    if (*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+                0x2638) < DAT_1804717b4) {
+      FUN_180183614(&DAT_1804717b4);
+      if (DAT_1804717b4 == -1) {
+        DAT_1804717b0 = FUN_180114bb0("C_EconEntity",0xa12d48f);
+        _Init_thread_footer(&DAT_1804717b4);
+      }
+    }
+    *(undefined4 *)(param_1 + 10) = *(undefined4 *)(DAT_1804717b0 + param_2);
+    if (*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+                0x2638) < DAT_1804717bc) {
+      FUN_180183614(&DAT_1804717bc);
+      if (DAT_1804717bc == -1) {
+        DAT_1804717b8 = FUN_180114bb0("C_EconEntity",0xa1b165b2);
+        _Init_thread_footer(&DAT_1804717bc);
+      }
+    }
+    *(undefined4 *)(param_1 + 0xc) = *(undefined4 *)(DAT_1804717b8 + param_2);
+    if (*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+                0x2638) < DAT_1804717c4) {
+      FUN_180183614(&DAT_1804717c4);
+      if (DAT_1804717c4 == -1) {
+        DAT_1804717c0 = FUN_180114bb0("C_EconEntity",0x86253266);
+        _Init_thread_footer(&DAT_1804717c4);
+      }
+    }
+    *(undefined4 *)(param_1 + 0xe) = *(undefined4 *)(DAT_1804717c0 + param_2);
+    if (*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+                0x2638) < DAT_1804717cc) {
+      FUN_180183614(&DAT_1804717cc);
+      if (DAT_1804717cc == -1) {
+        DAT_1804717c8 = FUN_180114bb0("C_EconEntity",0x67ecc1e7);
+        _Init_thread_footer(&DAT_1804717cc);
+      }
+    }
+    *(undefined4 *)(param_1 + 0x10) = *(undefined4 *)(DAT_1804717c8 + param_2);
+    *(undefined1 *)(param_1 + 0x12) = 1;
+  }
+  return;
+}
+
+

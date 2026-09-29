@@ -1,0 +1,56 @@
+// function: FUN_18008b250
+// ea: 18008b250
+// category: nospread
+// depth: 2, via: FUN_180087b10 @180087b29
+// size: 336 bytes
+// anchors: nospread, trace_geometry, hitbox_backtrack
+// ----------------------------------------------------
+
+void FUN_18008b250(longlong param_1)
+
+{
+  longlong lVar1;
+  longlong lVar2;
+  char cVar3;
+  undefined8 uVar4;
+  
+  if (*(char *)(param_1 + 0x20) == '\0') {
+    cVar3 = FUN_18008b0a0(param_1);
+    if (cVar3 == '\0') {
+      return;
+    }
+  }
+  if (*(char *)(param_1 + 0x21) == '\0') {
+    FUN_18008b4b0(&DAT_180471dd8);
+    *(undefined1 *)(param_1 + 0x21) = 1;
+  }
+  FUN_180072680(&DAT_180356308);
+  (**(code **)(**(longlong **)(param_1 + 8) + 0x108))
+            (*(longlong **)(param_1 + 8),1,param_1 + 0x10,0);
+  FUN_18012d410(1);
+  uVar4 = FUN_1801304f0(0);
+  AcquireSRWLockShared((PSRWLOCK)&DAT_180472508);
+  if (*(char *)(param_1 + 0x21) == '\x01') {
+    AcquireSRWLockShared((PSRWLOCK)&DAT_180471378);
+    lVar2 = DAT_180471358;
+    lVar1 = DAT_180471350;
+    ReleaseSRWLockShared((PSRWLOCK)&DAT_180471378);
+    if ((lVar1 != 0 || lVar2 != 0) && ((DAT_1804708f0 & 1) != 0)) {
+      FUN_18006eed0(&DAT_180470e88,uVar4);
+      FUN_18003d3e0(&DAT_180355048,uVar4);
+      FUN_180034a30(&DAT_180470d88,uVar4);
+      FUN_180073200(&DAT_180473c80,uVar4);
+      FUN_180017840(&DAT_180473c94,uVar4);
+    }
+  }
+  if (*(char *)(param_1 + 0x21) == '\x01') {
+    FUN_1801065c0(&DAT_180473af8);
+  }
+  ReleaseSRWLockShared((PSRWLOCK)&DAT_180472508);
+  FUN_1800afa50();
+  FUN_1800f92f0(&DAT_180471c60);
+  FUN_18012d6e0();
+  return;
+}
+
+

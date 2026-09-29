@@ -1,0 +1,64 @@
+// function: FUN_180109bd0
+// ea: 180109bd0
+// category: pipeline
+// depth: 2, via: FUN_18003e660 @18003e706
+// size: 195 bytes
+// anchors: pipeline, autowall_damage
+// ----------------------------------------------------
+
+undefined8 * FUN_180109bd0(longlong *param_1,undefined8 *param_2,char param_3)
+
+{
+  undefined4 *puVar1;
+  undefined4 uVar2;
+  undefined4 uVar3;
+  undefined4 uVar4;
+  undefined4 *puVar5;
+  undefined4 *puVar6;
+  ulonglong local_38;
+  
+  AcquireSRWLockShared((PSRWLOCK)(param_1 + 3));
+  *param_2 = 0;
+  param_2[1] = 0;
+  param_2[2] = 0;
+  puVar6 = (undefined4 *)*param_1;
+  puVar5 = (undefined4 *)param_1[1];
+  local_38 = (longlong)puVar5 - (longlong)puVar6 >> 4;
+  if (puVar5 == puVar6) goto LAB_180109c4b;
+  if (local_38 >> 0x3c != 0) {
+                    /* WARNING: Subroutine does not return */
+    FUN_18000bd30();
+  }
+  FUN_180109e30(param_2,&local_38);
+  puVar6 = (undefined4 *)*param_1;
+  puVar5 = (undefined4 *)param_1[1];
+  if (puVar6 != puVar5) {
+    do {
+      while (*(char *)((longlong)puVar6 + 0xe) != param_3) {
+LAB_180109c47:
+        puVar6 = puVar6 + 4;
+LAB_180109c4b:
+        if (puVar6 == puVar5) goto LAB_180109c75;
+      }
+      puVar1 = (undefined4 *)param_2[1];
+      if (puVar1 == (undefined4 *)param_2[2]) {
+        FUN_180109ca0(param_2,puVar1,puVar6);
+        goto LAB_180109c47;
+      }
+      uVar2 = puVar6[1];
+      uVar3 = puVar6[2];
+      uVar4 = puVar6[3];
+      *puVar1 = *puVar6;
+      puVar1[1] = uVar2;
+      puVar1[2] = uVar3;
+      puVar1[3] = uVar4;
+      param_2[1] = param_2[1] + 0x10;
+      puVar6 = puVar6 + 4;
+    } while (puVar6 != puVar5);
+  }
+LAB_180109c75:
+  ReleaseSRWLockShared((PSRWLOCK)(param_1 + 3));
+  return param_2;
+}
+
+

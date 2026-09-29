@@ -416,6 +416,7 @@ namespace xui {
 		void force_close( ) noexcept { this->m_closing = true; this->m_closed = true; }
 
 		[[nodiscard]] virtual bool hit_test( float x, float y ) const = 0;
+		[[nodiscard]] virtual bool blocks_background( ) const noexcept { return true; }
 		virtual bool process_input( const input_state& input ) = 0;
 		virtual void render( const style& style, const input_state& input ) = 0;
 
@@ -465,6 +466,8 @@ namespace xui {
 		[[nodiscard]] bool wants_input( float x, float y );
 		[[nodiscard]] bool has_any( );
 		[[nodiscard]] bool has_any_except( std::uintptr_t exclude );
+		[[nodiscard]] bool blocks_background( );
+		[[nodiscard]] bool blocks_background_except( std::uintptr_t exclude );
 
 		void process( const input_state& input );
 		void render( const style& style, const input_state& input );

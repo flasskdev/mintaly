@@ -1,0 +1,37 @@
+// function: FUN_18003d370
+// ea: 18003d370
+// category: pipeline
+// depth: 3, via: FUN_180038e20 @1800390b1
+// size: 99 bytes
+// anchors: pipeline
+// ----------------------------------------------------
+
+void FUN_18003d370(undefined8 *param_1,undefined1 param_2)
+
+{
+  undefined1 *puVar1;
+  int iVar2;
+  
+  puVar1 = (undefined1 *)*param_1;
+  if ((puVar1[2] == '\x01') && (*(char *)param_1[1] == '\0')) {
+    *(ulonglong *)(*(longlong *)param_1[2] + 0x60) =
+         *(ulonglong *)(*(longlong *)param_1[2] + 0x60) & 0xfffffffffffffffe;
+    *(ulonglong *)(*(longlong *)param_1[2] + 0x68) =
+         *(ulonglong *)(*(longlong *)param_1[2] + 0x68) | 1;
+    *(ulonglong *)(*(longlong *)param_1[2] + 0x70) =
+         *(ulonglong *)(*(longlong *)param_1[2] + 0x70) & 0xfffffffffffffffe;
+  }
+  puVar1[2] = 0;
+  puVar1[3] = param_2;
+  *(undefined4 *)(puVar1 + 0x10) = *(undefined4 *)param_1[3];
+  iVar2 = *(int *)param_1[4];
+  if (*(int *)param_1[4] < *(int *)(puVar1 + 0x14)) {
+    iVar2 = *(int *)(puVar1 + 0x14);
+  }
+  *(int *)(puVar1 + 0x14) = iVar2;
+  *(undefined4 *)(puVar1 + 4) = 0xffffffff;
+  *puVar1 = 0;
+  return;
+}
+
+

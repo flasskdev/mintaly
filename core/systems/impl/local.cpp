@@ -102,7 +102,7 @@ namespace systems {
 							if ( observer_target )
 							{
 								s.observer_pawn = observer_target;
-								s.view_team = memory::safe_read<int>( observer_target + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) ).value_or( s.team );
+								s.view_team = memory::safe_read<std::uint8_t>( observer_target + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) ).value_or( s.team );
 
 								const auto observer_target_controller_handle = memory::safe_read<std::uint32_t>( observer_target + SCHEMA( "C_BasePlayerPawn", "m_hController"_hash ) ).value_or( 0 );
 								if ( observer_target_controller_handle && observer_target_controller_handle != 0xffffffff )

@@ -1,10 +1,33 @@
 #include <pch/pch.hpp>
 #include <utilities/memory/memory.hpp>
 #include <utilities/addresses/addresses.hpp>
+#include <utilities/diag.hpp>
 #include <protection/game_addresses.hpp>
 #include "../systems.hpp"
 
 namespace systems {
+
+	namespace {
+		[[nodiscard]] bool valid_runtime_address( std::uintptr_t address ) noexcept
+		{
+			// safe_read returns an empty optional on an AV, but a field can also
+			// contain the canonical sentinel -1.  Do not let either value reach
+			// an engine call where it will be treated as a pointer.
+			return address >= 0x10000ull &&
+				address != ( std::numeric_limits<std::uintptr_t>::max )( ) &&
+				address <= 0x00007FFFFFFFFFFFull;
+		}
+
+		void report_invalid_filter( )
+		{
+			static std::atomic_bool reported{};
+			if ( !reported.exchange( true, std::memory_order_relaxed ) )
+			{
+				diag::write( diag::level::warning,
+					"trace filter initialization produced a null vtable; tracing disabled to prevent client.dll access violation" );
+			}
+		}
+	}
 
 	bool tracing::is_visible( const math::vector3& start, const math::vector3& end, std::uintptr_t target_entity, std::uintptr_t skip_entity, std::uintptr_t mask ) const
 	{
@@ -71,6 +94,12 @@ namespace systems {
 	tracing::result tracing::trace( const math::vector3& start, const math::vector3& end, const filter& filter ) const
 	{
 		result result{};
+		if ( !filter.valid( ) )
+		{
+			report_invalid_filter( );
+			return result;
+		}
+
 		if ( !addresses::globals::game_trace_manager || !PATTERN( patterns::trace_ray ) )
 		{
 			return result;
@@ -99,6 +128,12 @@ namespace systems {
 	tracing::result tracing::trace_hull( const math::vector3& start, const math::vector3& end, const math::vector3& mins, const math::vector3& maxs, const filter& filter ) const
 	{
 		result result{};
+		if ( !filter.valid( ) )
+		{
+			report_invalid_filter( );
+			return result;
+		}
+
 		if ( !addresses::globals::game_trace_manager || !PATTERN( patterns::trace_ray ) )
 		{
 			return result;
@@ -124,6 +159,12 @@ namespace systems {
 	tracing::result tracing::trace_sphere( const math::vector3& start, const math::vector3& end, float radius, const filter& filter ) const
 	{
 		result result{};
+		if ( !filter.valid( ) )
+		{
+			report_invalid_filter( );
+			return result;
+		}
+
 		if ( !addresses::globals::game_trace_manager || !PATTERN( patterns::trace_ray ) )
 		{
 			return result;
@@ -155,6 +196,12 @@ namespace systems {
 	tracing::result tracing::trace_to_entity( const math::vector3& start, const math::vector3& end, std::uintptr_t target_entity, const filter& filter ) const
 	{
 		result result{};
+		if ( !filter.valid( ) )
+		{
+			report_invalid_filter( );
+			return result;
+		}
+
 		if ( !addresses::globals::game_trace_manager || !PATTERN( patterns::trace_ray_entity ) )
 		{
 			return result;
@@ -190,6 +237,11 @@ namespace systems {
 		{
 		}
 
+		if ( !filter.valid( ) )
+		{
+			report_invalid_filter( );
+		}
+
 		return filter;
 	}
 
@@ -209,14 +261,31 @@ namespace systems {
 		{
 		}
 
+		if ( !filter.valid( ) )
+		{
+			report_invalid_filter( );
+		}
+
 		return filter;
 	}
 
 	tracing::player_movement_filter tracing::make_player_movement_filter( std::uintptr_t entity, std::uintptr_t mask, std::uint8_t collision_group ) const
 	{
 		player_movement_filter filter{};
+		const auto init = PATTERN( patterns::trace_filter_set_collision );
+		if ( !init || !valid_runtime_address( entity ) )
+		{
+			return filter;
+		}
 
-		memory::call<void>(PATTERN (patterns::trace_filter_set_collision), &filter, entity, mask, static_cast< int >( collision_group ) );
+		__try
+		{
+			memory::call<void>( init, &filter, entity, mask, static_cast< int >( collision_group ) );
+		}
+		__except ( EXCEPTION_EXECUTE_HANDLER )
+		{
+			return {};
+		}
 
 		return filter;
 	}
@@ -224,14 +293,42 @@ namespace systems {
 	tracing::result tracing::trace_player_bbox( const math::vector3& start, const math::vector3& end, const bbox_collision& bbox, const player_movement_filter& filter, std::uintptr_t movement_services ) const
 	{
 		result result{};
+		const auto trace_hull = PATTERN( patterns::trace_hull );
+		if ( !trace_hull || !valid_runtime_address( movement_services ) ||
+			!std::isfinite( start.x ) || !std::isfinite( start.y ) || !std::isfinite( start.z ) ||
+			!std::isfinite( end.x ) || !std::isfinite( end.y ) || !std::isfinite( end.z ) )
+		{
+			return result;
+		}
 
-		memory::call<void>(PATTERN (patterns::trace_hull), movement_services + 1592, &result, &start, &end, &bbox, &filter );
+		// The player filter is an opaque engine object.  A failed initializer
+		// leaves it zeroed; passing that object into trace_hull is not safe.
+		const auto filter_word = *reinterpret_cast<const std::uintptr_t*>( filter.data );
+		if ( !valid_runtime_address( filter_word ) )
+		{
+			return result;
+		}
+
+		__try
+		{
+			memory::call<void>( trace_hull, movement_services + 1592, &result, &start, &end, &bbox, &filter );
+		}
+		__except ( EXCEPTION_EXECUTE_HANDLER )
+		{
+			return {};
+		}
 
 		return result;
 	}
 
 	void tracing::setup_trace( trace_data* trace_data, const math::vector3& start, const math::vector3& delta, const filter& filter, int penetration_count, bool trace_world ) const
 	{
+		if ( !trace_data || !filter.valid( ) )
+		{
+			if ( !filter.valid( ) ) report_invalid_filter( );
+			return;
+		}
+
 		memory::call<void>(PATTERN (patterns::trace_bullet_data_init), trace_data, start, delta, filter, penetration_count, trace_world );
 	}
 

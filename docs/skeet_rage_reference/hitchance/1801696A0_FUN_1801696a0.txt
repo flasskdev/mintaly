@@ -1,0 +1,17 @@
+// function: FUN_1801696a0
+// ea: 1801696a0
+// category: hitchance
+// depth: 1, via: FUN_180043550 @180043c26
+// size: 9 bytes
+// anchors: hitchance
+// ----------------------------------------------------
+
+void FUN_1801696a0(byte *param_1,undefined4 param_2)
+
+{
+  *param_1 = *param_1 | 2;
+  *(undefined4 *)(param_1 + 0xc) = param_2;
+  return;
+}
+
+

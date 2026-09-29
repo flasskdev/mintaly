@@ -1,0 +1,83 @@
+// function: FUN_1800bd7e0
+// ea: 1800bd7e0
+// category: pipeline
+// depth: 2, via: FUN_1800bd4d0 @1800bd6d6
+// size: 285 bytes
+// anchors: pipeline, hitbox_backtrack
+// ----------------------------------------------------
+
+ulonglong FUN_1800bd7e0(longlong *param_1,longlong *param_2,longlong *param_3)
+
+{
+  char cVar1;
+  int iVar2;
+  longlong *plVar3;
+  longlong *plVar4;
+  longlong *plVar5;
+  undefined8 unaff_RSI;
+  ulonglong uVar6;
+  size_t _Size;
+  bool bVar7;
+  
+  uVar6 = CONCAT71((int7)((ulonglong)unaff_RSI >> 8),1);
+  do {
+    plVar5 = param_3;
+    if (param_1 == param_2) {
+LAB_1800bd913:
+      return uVar6 & 0xffffffff;
+    }
+    if ((ulonglong)plVar5[7] < 0x10) {
+      plVar4 = plVar5 + 4;
+      if ((ulonglong)param_1[7] < 0x10) goto LAB_1800bd821;
+LAB_1800bd84b:
+      plVar3 = (longlong *)param_1[4];
+      _Size = plVar5[6];
+      if (param_1[6] == _Size) goto LAB_1800bd85d;
+LAB_1800bd911:
+      uVar6 = 0;
+      goto LAB_1800bd913;
+    }
+    plVar4 = (longlong *)plVar5[4];
+    if (0xf < (ulonglong)param_1[7]) goto LAB_1800bd84b;
+LAB_1800bd821:
+    plVar3 = param_1 + 4;
+    _Size = plVar5[6];
+    if (param_1[6] != _Size) goto LAB_1800bd911;
+LAB_1800bd85d:
+    if (((_Size != 0) && (iVar2 = memcmp(plVar3,plVar4,_Size), iVar2 != 0)) ||
+       (cVar1 = FUN_1800bd4d0(param_1 + 8,plVar5 + 8), cVar1 == '\0')) goto LAB_1800bd911;
+    plVar4 = (longlong *)param_1[2];
+    plVar3 = param_1;
+    if (*(char *)(param_1[2] + 0x19) == '\0') {
+      do {
+        param_1 = plVar4;
+        plVar4 = (longlong *)*param_1;
+      } while (*(char *)(*param_1 + 0x19) == '\0');
+    }
+    else {
+      do {
+        param_1 = (longlong *)plVar3[1];
+        if (*(char *)((longlong)param_1 + 0x19) != '\0') break;
+        bVar7 = plVar3 == (longlong *)param_1[2];
+        plVar3 = param_1;
+      } while (bVar7);
+    }
+    plVar4 = (longlong *)plVar5[2];
+    if (*(char *)(plVar5[2] + 0x19) == '\0') {
+      do {
+        param_3 = plVar4;
+        plVar4 = (longlong *)*param_3;
+      } while (*(char *)((longlong)plVar4 + 0x19) == '\0');
+    }
+    else {
+      do {
+        param_3 = (longlong *)plVar5[1];
+        if (*(char *)((longlong)param_3 + 0x19) != '\0') break;
+        bVar7 = plVar5 == (longlong *)param_3[2];
+        plVar5 = param_3;
+      } while (bVar7);
+    }
+  } while( true );
+}
+
+

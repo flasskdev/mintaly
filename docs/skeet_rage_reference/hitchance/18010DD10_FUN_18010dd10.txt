@@ -1,0 +1,32 @@
+// function: FUN_18010dd10
+// ea: 18010dd10
+// category: hitchance
+// depth: 1, via: FUN_180043550 @180043f40
+// size: 149 bytes
+// anchors: hitchance
+// ----------------------------------------------------
+
+void FUN_18010dd10(undefined8 param_1,undefined8 param_2)
+
+{
+  undefined8 uVar1;
+  
+  uVar1 = DAT_180474230;
+  if (*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+              0x2638) < DAT_1804741f0) {
+    FUN_180183614(&DAT_1804741f0);
+    if (DAT_1804741f0 == -1) {
+      DAT_1804741e8 = (code *)FUN_180162ed0(&DAT_1804652d8);
+      _Init_thread_footer(&DAT_1804741f0);
+    }
+  }
+  if (DAT_1804741e8 != (code *)0x0) {
+                    /* WARNING: Could not recover jumptable at 0x00018010dd58. Too many branches */
+                    /* WARNING: Treating indirect jump as call */
+    (*DAT_1804741e8)(uVar1,0,param_2);
+    return;
+  }
+  return;
+}
+
+

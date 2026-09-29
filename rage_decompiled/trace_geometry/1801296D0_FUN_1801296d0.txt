@@ -1,0 +1,82 @@
+// function: FUN_1801296d0
+// ea: 1801296d0
+// category: trace_geometry
+// depth: 2, via: FUN_1800d6c30 @1800d6fe9
+// size: 642 bytes
+// anchors: trace_geometry, hitbox_backtrack
+// ----------------------------------------------------
+
+void FUN_1801296d0(undefined8 param_1,float param_2,float param_3,float param_4,uint param_5,
+                  float param_6,uint param_7,undefined1 param_8)
+
+{
+  longlong lVar1;
+  uint uVar2;
+  ulonglong uVar3;
+  ulonglong uVar4;
+  ulonglong uVar5;
+  ulonglong uVar6;
+  float fVar7;
+  float fVar8;
+  float fVar9;
+  ulonglong local_b8;
+  ulonglong local_b0;
+  
+  if (((param_4 <= 0.0) || (param_5 < 0x1000000)) || (param_6 <= 0.0)) {
+    return;
+  }
+  if ((int)param_7 < 1) {
+    fVar9 = (float)FUN_1802139c0((param_4 * 6.2831855) / 1.5);
+    uVar2 = 0x18;
+    if (0x18 < (int)fVar9) {
+      uVar2 = (int)fVar9;
+    }
+    param_7 = 0x80;
+    if ((int)uVar2 < 0x80) {
+      param_7 = uVar2;
+    }
+    fVar9 = 6.2831855 / (float)(int)param_7;
+    uVar3 = (ulonglong)(param_7 * 2);
+    uVar6 = (ulonglong)(param_7 * 8);
+  }
+  else {
+    fVar9 = 6.2831855 / (float)(int)param_7;
+    uVar3 = (ulonglong)(param_7 * 2);
+    uVar6 = uVar3 * 4;
+    if (0x1ff < param_7) {
+      lVar1 = FUN_1801695a0(uVar6 + 0x27);
+      uVar5 = lVar1 + 0x27U & 0xffffffffffffffe0;
+      *(longlong *)(uVar5 - 8) = lVar1;
+      goto LAB_180129842;
+    }
+  }
+  uVar5 = FUN_1801695a0(uVar6);
+LAB_180129842:
+  uVar4 = 0;
+  FUN_18023b870(uVar5,0,uVar6);
+  do {
+    fVar8 = (float)(int)uVar4 * fVar9;
+    fVar7 = (float)FUN_180214280(fVar8);
+    *(float *)(uVar5 + uVar4 * 8) = fVar7 * param_4 + param_2;
+    fVar7 = (float)FUN_18021b870(fVar8);
+    *(float *)(uVar5 + 4 + uVar4 * 8) = fVar7 * param_4 + param_3;
+    uVar4 = uVar4 + 1;
+  } while (param_7 != uVar4);
+  uVar4 = uVar3 * 4;
+  local_b8 = uVar5;
+  local_b0 = uVar3;
+  FUN_180128830(param_1,&local_b8,param_5,1,param_6,param_8);
+  uVar6 = uVar5;
+  if (0xfff < uVar4) {
+    uVar6 = *(ulonglong *)(uVar5 - 8);
+    if (0x1f < (uVar5 - 8) - uVar6) {
+                    /* WARNING: Subroutine does not return */
+      _invoke_watson((wchar_t *)0x0,(wchar_t *)0x0,(wchar_t *)0x0,0,0);
+    }
+    uVar4 = uVar4 + 0x27;
+  }
+  FUN_1801695f0(uVar6,uVar4);
+  return;
+}
+
+

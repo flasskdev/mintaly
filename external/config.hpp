@@ -815,6 +815,32 @@ namespace config {
 		xui::binds::reset_runtime();
 	}
 
+	// Restore the declared compile-time defaults when startup cannot load a profile.
+	inline void apply_factory_defaults()
+	{
+		xui::slider_binds::reset();
+		reset_bind_assignments();
+
+		auto& reg = detail::get_registry();
+		if ( !reg.factory_defaults.is_object() )
+		{
+			return;
+		}
+
+		for ( auto& f : reg.fields )
+		{
+			char key_str[12];
+			std::snprintf( key_str, sizeof( key_str ), "%08x", f.key );
+			const auto def = reg.factory_defaults.find( key_str );
+			if ( def != reg.factory_defaults.end() )
+			{
+				serial::json_to_field( *def, f );
+			}
+		}
+
+		xui::binds::reset_runtime();
+	}
+
 	inline void initialize()
 	{
         static bool initialized = false;
@@ -1138,10 +1164,231 @@ namespace config {
 	namespace registry {
 
 		inline const std::filesystem::path k_config_dir{ L"C:\\mintaly\\configs" };
+		// Remembers the profile used in the previous session so injection can
+		// restore the user's setup instead of starting from a blank state.
+		inline const std::filesystem::path k_state_file{ k_config_dir / L".active" };
 		inline std::wstring g_active_config{ L"default" };
 		inline std::recursive_mutex g_io_mutex;
 		inline std::optional<std::wstring> g_pending_save;
 		inline bool flush_pending_save();
+		inline bool load( std::wstring_view name );
+
+		inline void remember_active( std::wstring_view name )
+		{
+			if ( name.empty() )
+			{
+				return;
+			}
+
+			try
+			{
+				std::error_code ec;
+				std::filesystem::create_directories( k_config_dir, ec );
+				if ( ec )
+				{
+					return;
+				}
+
+				const auto wide = std::wstring{ name };
+				const auto needed = WideCharToMultiByte( CP_UTF8, 0, wide.c_str(), -1, nullptr, 0, nullptr, nullptr );
+				if ( needed <= 1 )
+				{
+					return;
+				}
+
+				std::string utf8( static_cast<std::size_t>( needed ), '\0' );
+				WideCharToMultiByte( CP_UTF8, 0, wide.c_str(), -1, utf8.data(), needed, nullptr, nullptr );
+				utf8.resize( static_cast<std::size_t>( needed ) - 1 );
+
+				std::ofstream file( k_state_file, std::ios::binary | std::ios::trunc );
+				if ( !file.is_open() )
+				{
+					return;
+				}
+
+				file << utf8;
+			}
+			catch ( ... )
+			{
+			}
+		}
+
+		[[nodiscard]] inline std::wstring remembered_active()
+		{
+			try
+			{
+				std::ifstream file( k_state_file, std::ios::binary );
+				if ( !file.is_open() )
+				{
+					return {};
+				}
+
+				std::string utf8;
+				std::getline( file, utf8 );
+				if ( utf8.empty() )
+				{
+					return {};
+				}
+
+				const auto needed = MultiByteToWideChar( CP_UTF8, 0, utf8.c_str(), -1, nullptr, 0 );
+				if ( needed <= 1 )
+				{
+					return {};
+				}
+
+				std::wstring wide( static_cast<std::size_t>( needed ), L'\0' );
+				MultiByteToWideChar( CP_UTF8, 0, utf8.c_str(), -1, wide.data(), needed );
+				wide.resize( static_cast<std::size_t>( needed ) - 1 );
+				return wide;
+			}
+			catch ( ... )
+			{
+				return {};
+			}
+		}
+
+		// Startup path: the previous session's profile, then "default", then the
+		// declared defaults. Returns the restored profile name (empty when the
+		// factory defaults were applied).
+		[[nodiscard]] inline std::wstring load_startup()
+		{
+			const auto remembered = remembered_active();
+			if ( !remembered.empty() && load( remembered ) )
+			{
+				return remembered;
+			}
+
+			if ( load( L"default" ) )
+			{
+				return L"default";
+			}
+
+			apply_factory_defaults();
+			return {};
+		}
+
+		// Start each injection with all persisted boolean controls switched off,
+		// while keeping the loaded profile, non-boolean values, and bind assignments.
+		[[nodiscard]] inline std::size_t reset_all_toggles()
+		{
+			xui::binds::reset_runtime();
+
+			std::size_t reset_count{};
+			for ( auto& f : detail::get_registry().fields )
+			{
+				switch ( f.type )
+				{
+				case field_type::setting:
+				{
+					auto* s = static_cast<xui::setting*>( f.ptr );
+					s->value = false;
+					s->bind.active = false;
+					++reset_count;
+					break;
+				}
+				case field_type::bool_val:
+					*static_cast<bool*>( f.ptr ) = false;
+					++reset_count;
+					break;
+				case field_type::bool_array:
+				{
+					auto* values = static_cast<bool*>( f.ptr );
+					std::fill_n( values, f.count, false );
+					reset_count += f.count;
+					break;
+				}
+				default:
+					break;
+				}
+			}
+
+			return reset_count;
+		}
+
+		// Cheap hash of every trivially-copyable field. Menus write settings from
+		// the render thread and there is no central "changed" callback, so this
+		// scan is how a toggle becomes persistent. Only scalars are read here:
+		// std::string and custom payloads can be reallocated by another thread
+		// mid-read, and those already have their own dirty hooks.
+		[[nodiscard]] inline std::uint64_t fingerprint()
+		{
+			const auto mix = []( std::uint64_t h, std::uint64_t v ) noexcept
+			{
+				return h ^ ( v + 0x9e3779b97f4a7c15ull + ( h << 6 ) + ( h >> 2 ) );
+			};
+			const auto mix_double = [&mix]( std::uint64_t h, double v ) noexcept
+			{
+				std::uint64_t bits{};
+				std::memcpy( &bits, &v, sizeof( bits ) );
+				return mix( h, bits );
+			};
+
+			std::uint64_t h = 0xcbf29ce484222325ull;
+			for ( const auto& f : detail::get_registry().fields )
+			{
+				switch ( f.type )
+				{
+				case field_type::setting:
+				{
+					const auto s = static_cast<const xui::setting*>( f.ptr );
+					// Mirror field_to_json: hold bindings store their resting state,
+					// so a key being held must not look like a change.
+					const bool value = s->bind.key != 0 && s->bind.mode != xui::bind_mode::toggle
+						? s->bind.mode == xui::bind_mode::hold_off : s->value;
+					h = mix( h, f.key );
+					h = mix( h, value ? 1ull : 0ull );
+					h = mix( h, static_cast<std::uint64_t>( static_cast<std::uint32_t>( s->bind.key ) ) );
+					h = mix( h, static_cast<std::uint64_t>( static_cast<std::uint32_t>( s->bind.mode ) ) );
+					break;
+				}
+				case field_type::bool_val:
+					h = mix( h, *static_cast<const bool*>( f.ptr ) ? 1ull : 0ull );
+					break;
+				case field_type::int_val:
+					if ( const auto* bind = xui::slider_binds::find_by_ptr( f.ptr ); bind && bind->has_base_value )
+						h = mix_double( h, bind->base_value );
+					else
+						h = mix( h, static_cast<std::uint64_t>( static_cast<std::uint32_t>( *static_cast<const int*>( f.ptr ) ) ) );
+					break;
+				case field_type::uint8_val:
+					h = mix( h, *static_cast<const std::uint8_t*>( f.ptr ) );
+					break;
+				case field_type::float_val:
+					if ( const auto* bind = xui::slider_binds::find_by_ptr( f.ptr ); bind && bind->has_base_value )
+						h = mix_double( h, bind->base_value );
+					else
+						h = mix_double( h, static_cast<double>( *static_cast<const float*>( f.ptr ) ) );
+					break;
+				case field_type::color:
+				{
+					const auto& c = *static_cast<const xdraw::color*>( f.ptr );
+					h = mix( h, ( static_cast<std::uint64_t>( c.r ) << 24 ) | ( static_cast<std::uint64_t>( c.g ) << 16 ) |
+						( static_cast<std::uint64_t>( c.b ) << 8 ) | static_cast<std::uint64_t>( c.a ) );
+					break;
+				}
+				case field_type::float3:
+				{
+					const auto& v = *static_cast<const config::float3*>( f.ptr );
+					h = mix_double( h, v.x );
+					h = mix_double( h, v.y );
+					h = mix_double( h, v.z );
+					break;
+				}
+				case field_type::bool_array:
+				{
+					const auto arr = static_cast<const bool*>( f.ptr );
+					for ( std::uint32_t i = 0; i < f.count; ++i )
+					{
+						h = mix( h, arr[ i ] ? 1ull : 0ull );
+					}
+					break;
+				}
+				default:
+					break;
+				}
+			}
+			return h;
+		}
 
 		// No serialization, compression or disk I/O in player_death.
 		inline void request_save_active()
@@ -1193,6 +1440,7 @@ namespace config {
 					return false;
 				}
 				g_active_config = saved_name;
+				remember_active( saved_name );
 				if (g_pending_save && *g_pending_save == saved_name) g_pending_save.reset();
 				return true;
 			}
@@ -1252,6 +1500,7 @@ namespace config {
 				if (from_json(j))
 				{
 					g_active_config = name;
+					remember_active( name );
 					return true;
 				}
 				return false;

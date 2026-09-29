@@ -1,0 +1,38 @@
+// function: FUN_180037cf0
+// ea: 180037cf0
+// category: pipeline
+// depth: 2, via: FUN_180037730 @180037954
+// size: 205 bytes
+// anchors: pipeline
+// ----------------------------------------------------
+
+void FUN_180037cf0(undefined8 *param_1,undefined8 param_2,undefined8 *param_3)
+
+{
+  undefined8 local_138;
+  float local_130;
+  undefined8 local_128;
+  float local_120;
+  undefined1 local_118 [156];
+  undefined8 local_7c;
+  undefined4 local_74;
+  float local_6c;
+  
+  local_120 = *(float *)(param_3 + 1) + 64.0;
+  local_138 = *param_3;
+  local_130 = *(float *)(param_3 + 1) + -8192.0;
+  local_128 = local_138;
+  FUN_180114dd0(&DAT_180471958,local_118,&local_128,&local_138,param_2,0x1c3003,4);
+  if ((local_6c <= 0.0) || (0.997 <= local_6c)) {
+    *(undefined4 *)(param_1 + 1) = *(undefined4 *)(param_3 + 1);
+    *param_1 = *param_3;
+  }
+  else {
+    *(undefined4 *)(param_1 + 1) = local_74;
+    *param_1 = local_7c;
+    *(float *)(param_1 + 1) = *(float *)(param_1 + 1) + 1.0;
+  }
+  return;
+}
+
+

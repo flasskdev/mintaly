@@ -1,0 +1,109 @@
+// function: FUN_180019780
+// ea: 180019780
+// category: nospread
+// depth: 3, via: FUN_180018910 @180018ba7
+// size: 1202 bytes
+// anchors: nospread, trace_geometry, hitbox_backtrack
+// ----------------------------------------------------
+
+void FUN_180019780(longlong param_1,undefined8 param_2,longlong param_3,undefined8 param_4,
+                  undefined2 *param_5,int *param_6,undefined4 param_7)
+
+{
+  undefined2 uVar1;
+  code *pcVar2;
+  
+  if (*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+              0x2638) < DAT_180471418) {
+    FUN_180183614(&DAT_180471418);
+    if (DAT_180471418 == -1) {
+      DAT_180471410 = (code *)FUN_180162ed0(&DAT_180468758);
+      _Init_thread_footer(&DAT_180471418);
+    }
+  }
+  pcVar2 = DAT_180471410;
+  if (DAT_180471410 != (code *)0x0) {
+    uVar1 = *param_5;
+    if (*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+                0x2638) < DAT_180471420) {
+      FUN_180183614(&DAT_180471420);
+      if (DAT_180471420 == -1) {
+        DAT_18047141c = FUN_180114bb0("C_EconItemView",0xa2ccb41a);
+        _Init_thread_footer(&DAT_180471420);
+      }
+    }
+    *(undefined2 *)(DAT_18047141c + param_3) = uVar1;
+    if (*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+                0x2638) < DAT_180471428) {
+      FUN_180183614(&DAT_180471428);
+      if (DAT_180471428 == -1) {
+        DAT_180471424 = FUN_180114bb0("C_EconItemView",0x34b55816);
+        _Init_thread_footer(&DAT_180471428);
+      }
+    }
+    *(undefined8 *)(DAT_180471424 + param_3) = 0xf000000000000010;
+    if (*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+                0x2638) < DAT_180471430) {
+      FUN_180183614(&DAT_180471430);
+      if (DAT_180471430 == -1) {
+        DAT_18047142c = FUN_180114bb0("C_EconItemView",0x373ee446);
+        _Init_thread_footer(&DAT_180471430);
+      }
+    }
+    *(undefined4 *)(DAT_18047142c + param_3) = 0xf0000000;
+    if (*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+                0x2638) < DAT_180471438) {
+      FUN_180183614(&DAT_180471438);
+      if (DAT_180471438 == -1) {
+        DAT_180471434 = FUN_180114bb0("C_EconItemView",0xdf29c2c);
+        _Init_thread_footer(&DAT_180471438);
+      }
+    }
+    *(undefined4 *)(DAT_180471434 + param_3) = 0x10;
+    if (*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+                0x2638) < DAT_180471440) {
+      FUN_180183614(&DAT_180471440);
+      if (DAT_180471440 == -1) {
+        DAT_18047143c = FUN_180114bb0("C_EconItemView",0xc65de986);
+        _Init_thread_footer(&DAT_180471440);
+      }
+    }
+    *(undefined4 *)(DAT_18047143c + param_3) = param_7;
+    if (*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+                0x2638) < DAT_180471448) {
+      FUN_180183614(&DAT_180471448);
+      if (DAT_180471448 == -1) {
+        DAT_180471444 = FUN_180114bb0("C_EconItemView",0x33e8ae5a);
+        _Init_thread_footer(&DAT_180471448);
+      }
+    }
+    *(undefined1 *)(DAT_180471444 + param_3) = 1;
+    if (*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+                0x2638) < DAT_180471450) {
+      FUN_180183614(&DAT_180471450);
+      if (DAT_180471450 == -1) {
+        DAT_18047144c = FUN_180114bb0("C_EconItemView",0x710abdd);
+        _Init_thread_footer(&DAT_180471450);
+      }
+    }
+    *(undefined1 *)(DAT_18047144c + param_3) = 1;
+    if (*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+                0x2638) < DAT_180471458) {
+      FUN_180183614(&DAT_180471458);
+      if (DAT_180471458 == -1) {
+        DAT_180471454 = FUN_180114bb0("C_EconItemView",0x216db5e3);
+        _Init_thread_footer(&DAT_180471458);
+      }
+    }
+    *(undefined1 *)(DAT_180471454 + param_3) = 1;
+    (*pcVar2)(param_3,"set item texture prefab",(float)*param_6);
+    (*pcVar2)(param_3,"set item texture seed",(float)param_6[2]);
+    (*pcVar2)(param_3,"set item texture wear",param_6[1]);
+    *(undefined1 *)(param_1 + 0x40) = 1;
+    FUN_180019dc0();
+    return;
+  }
+  return;
+}
+
+

@@ -1,0 +1,37 @@
+// function: FUN_180069910
+// ea: 180069910
+// category: nospread
+// depth: 2, via: FUN_180089670 @1800896a1
+// size: 165 bytes
+// anchors: nospread, trace_geometry, hitbox_backtrack
+// ----------------------------------------------------
+
+void FUN_180069910(undefined8 *param_1)
+
+{
+  longlong lVar1;
+  
+  param_1[8] = 0;
+  *param_1 = 0;
+  param_1[1] = 0;
+  *(undefined8 *)((longlong)param_1 + 0xe) = 0;
+  *(undefined8 *)((longlong)param_1 + 0x16) = 0;
+  param_1[4] = 0;
+  param_1[5] = 0;
+  *(undefined8 *)((longlong)param_1 + 0x2f) = 0;
+  *(undefined8 *)((longlong)param_1 + 0x37) = 0;
+  FUN_18023b870(param_1 + 0x15,0,0x298);
+  param_1[9] = 0;
+  param_1[10] = 0;
+  param_1[0xb] = 0;
+  *(undefined4 *)(param_1 + 0x68) = 0;
+  lVar1 = *(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8);
+  *(undefined8 *)(lVar1 + 0x25a0) = 0;
+  *(undefined1 *)(lVar1 + 0x25a8) = 0;
+  AcquireSRWLockExclusive((PSRWLOCK)(param_1 + 0x14));
+  FUN_1800678e0(param_1 + 0xc);
+  ReleaseSRWLockExclusive((PSRWLOCK)(param_1 + 0x14));
+  return;
+}
+
+

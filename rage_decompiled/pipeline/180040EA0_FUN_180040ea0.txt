@@ -1,0 +1,165 @@
+// function: FUN_180040ea0
+// ea: 180040ea0
+// category: pipeline
+// depth: 1, via: FUN_180039560 @18003aa80
+// size: 866 bytes
+// anchors: pipeline, autowall_damage
+// ----------------------------------------------------
+
+void FUN_180040ea0(longlong *param_1,ulonglong *param_2,undefined8 param_3,undefined4 param_4)
+
+{
+  undefined4 *puVar1;
+  ulonglong uVar2;
+  int iVar3;
+  ulonglong uVar4;
+  longlong lVar5;
+  longlong lVar6;
+  ulonglong uVar7;
+  ulonglong uVar8;
+  ulonglong uVar9;
+  longlong lVar10;
+  ulonglong uVar11;
+  longlong lVar12;
+  longlong lVar13;
+  undefined8 local_c4;
+  undefined4 local_bc;
+  longlong local_b8;
+  undefined8 local_b0;
+  longlong local_a8;
+  longlong *local_a0;
+  undefined8 local_98;
+  undefined4 uStack_90;
+  undefined4 uStack_8c;
+  undefined4 local_88;
+  undefined4 uStack_84;
+  undefined4 uStack_80;
+  undefined4 uStack_7c;
+  longlong local_70;
+  longlong local_68;
+  longlong local_60;
+  
+  lVar5 = param_1[1];
+  *param_2 = 0;
+  param_2[1] = 0;
+  param_2[2] = 0;
+  lVar6 = *param_1;
+  if (0 < *(int *)(lVar6 + 0x40)) {
+    lVar10 = 0;
+    local_b8 = lVar5;
+    local_b0 = param_3;
+    local_a0 = param_1;
+    do {
+      lVar13 = lVar10 * 0x20;
+      FUN_180165d30(lVar6 + lVar13,&local_c4,local_b0);
+      lVar10 = lVar10 + 1;
+      iVar3 = 0x78;
+      if ((*(int *)(*param_1 + 0x40) <= lVar10) &&
+         (iVar3 = 0xa0 - *(uint *)(lVar5 + 0x38), 0xa0 < *(uint *)(lVar5 + 0x38))) {
+        iVar3 = 0;
+      }
+      FUN_180044370(lVar5,&local_70,&local_c4,param_4,param_1[2],(int)param_1[3],param_1[4],
+                    *(undefined1 *)param_1[5],0,iVar3);
+      lVar6 = local_68;
+      if (local_70 != local_68) {
+        uVar11 = param_2[1];
+        uVar9 = param_2[2];
+        lVar12 = local_70;
+        local_a8 = lVar10;
+        do {
+          while( true ) {
+            uStack_8c = *(undefined4 *)(*param_1 + lVar13 + 0xc);
+            puVar1 = (undefined4 *)(*param_1 + 0x10 + lVar13);
+            local_88 = *puVar1;
+            uStack_84 = puVar1[1];
+            uStack_80 = puVar1[2];
+            uStack_7c = puVar1[3];
+            uStack_90 = local_bc;
+            local_98 = local_c4;
+            *(undefined4 *)(lVar12 + 0x78) = local_88;
+            *(undefined4 *)(lVar12 + 0x7c) = uStack_84;
+            *(undefined4 *)(lVar12 + 0x80) = uStack_80;
+            *(undefined4 *)(lVar12 + 0x84) = uStack_7c;
+            *(undefined8 *)(lVar12 + 0x68) = local_c4;
+            *(undefined4 *)(lVar12 + 0x70) = local_bc;
+            *(undefined4 *)(lVar12 + 0x74) = uStack_8c;
+            if (uVar11 != uVar9) break;
+            uVar2 = *param_2;
+            uVar9 = uVar9 - uVar2;
+            uVar4 = ((longlong)uVar9 >> 5) * -0x3333333333333333;
+            uVar11 = uVar4 + 1;
+            uVar7 = 0x199999999999999 - (uVar4 >> 1);
+            uVar8 = (uVar4 >> 1) + uVar4;
+            if (uVar8 <= uVar11) {
+              uVar8 = uVar11;
+            }
+            if (uVar7 <= uVar4 && uVar4 - uVar7 != 0) {
+              uVar8 = 0x199999999999999;
+            }
+            if (0x199999999999999 < uVar8) {
+                    /* WARNING: Subroutine does not return */
+              FUN_18000b130();
+            }
+            if (uVar8 == 0) {
+              uVar4 = 0;
+            }
+            else if (uVar8 < 0x1a) {
+              uVar4 = FUN_1801695a0(uVar8 * 0xa0);
+            }
+            else {
+              lVar5 = FUN_1801695a0(uVar8 * 0xa0 + 0x27);
+              uVar4 = lVar5 + 0x27U & 0xffffffffffffffe0;
+              *(longlong *)(uVar4 - 8) = lVar5;
+            }
+            FUN_18023b1d0(uVar4 + uVar9,lVar12,0xa0);
+            FUN_18023b1d0();
+            if (uVar2 != 0) {
+              uVar7 = uVar2;
+              if (0xfff < uVar9) {
+                uVar7 = *(ulonglong *)(uVar2 - 8);
+                if (0x1f < (uVar2 - 8) - uVar7) goto LAB_1800411f7;
+                uVar9 = uVar9 + 0x27;
+              }
+              FUN_1801695f0(uVar7,uVar9);
+            }
+            *param_2 = uVar4;
+            uVar11 = uVar11 * 0xa0 + uVar4;
+            param_2[1] = uVar11;
+            uVar9 = uVar8 * 0xa0 + uVar4;
+            param_2[2] = uVar9;
+            lVar12 = lVar12 + 0xa0;
+            lVar5 = local_b8;
+            param_1 = local_a0;
+            lVar10 = local_a8;
+            if (lVar12 == lVar6) goto LAB_180041198;
+          }
+          FUN_18023b1d0(uVar11,lVar12);
+          uVar11 = uVar11 + 0xa0;
+          param_2[1] = uVar11;
+          lVar12 = lVar12 + 0xa0;
+          lVar5 = local_b8;
+          lVar10 = local_a8;
+        } while (lVar12 != lVar6);
+      }
+LAB_180041198:
+      if (local_70 != 0) {
+        uVar11 = local_60 - local_70;
+        lVar6 = local_70;
+        if (0xfff < uVar11) {
+          lVar6 = *(longlong *)(local_70 + -8);
+          if (0x1f < (ulonglong)((local_70 + -8) - lVar6)) {
+LAB_1800411f7:
+                    /* WARNING: Subroutine does not return */
+            _invoke_watson((wchar_t *)0x0,(wchar_t *)0x0,(wchar_t *)0x0,0,0);
+          }
+          uVar11 = uVar11 + 0x27;
+        }
+        FUN_1801695f0(lVar6,uVar11);
+      }
+      lVar6 = *param_1;
+    } while (lVar10 < *(int *)(lVar6 + 0x40));
+  }
+  return;
+}
+
+

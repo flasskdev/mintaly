@@ -1,0 +1,73 @@
+// function: FUN_180031b90
+// ea: 180031b90
+// category: pipeline
+// depth: 2, via: FUN_18003e660 @18003ea6d
+// size: 388 bytes
+// anchors: pipeline, autowall_damage
+// ----------------------------------------------------
+
+longlong FUN_180031b90(ulonglong *param_1,ulonglong param_2,undefined8 param_3)
+
+{
+  ulonglong uVar1;
+  longlong lVar2;
+  ulonglong uVar3;
+  ulonglong uVar4;
+  ulonglong uVar5;
+  ulonglong uVar6;
+  ulonglong uVar7;
+  
+  uVar1 = *param_1;
+  uVar6 = ((longlong)(param_1[1] - uVar1) >> 3) * -0x34307aae9fc8985d + 1;
+  uVar3 = ((longlong)(param_1[2] - uVar1) >> 3) * -0x34307aae9fc8985d;
+  uVar5 = 0x7ea3bdb64ab29 - (uVar3 >> 1);
+  uVar7 = (uVar3 >> 1) + uVar3;
+  if (uVar7 <= uVar6) {
+    uVar7 = uVar6;
+  }
+  if (uVar5 <= uVar3 && uVar3 - uVar5 != 0) {
+    uVar7 = 0x7ea3bdb64ab29;
+  }
+  if (uVar7 < 0x7ea3bdb64ab2a) {
+    if (uVar7 == 0) {
+      uVar3 = 0;
+    }
+    else {
+      lVar2 = FUN_1801695a0(uVar7 * 0x2058 + 0x27);
+      uVar3 = lVar2 + 0x27U & 0xffffffffffffffe0;
+      *(longlong *)(uVar3 - 8) = lVar2;
+    }
+    lVar2 = (param_2 - uVar1) + uVar3;
+    FUN_18023b1d0(lVar2,param_3,0x2058);
+    if (param_1[1] == param_2) {
+      FUN_18023b1d0(uVar3);
+      uVar1 = *param_1;
+    }
+    else {
+      FUN_18023b1d0(uVar3,*param_1,param_2 - *param_1);
+      FUN_18023b1d0(lVar2 + 0x2058,param_2);
+      uVar1 = *param_1;
+    }
+    if (uVar1 != 0) {
+      uVar4 = param_1[2] - uVar1;
+      uVar5 = uVar1;
+      if (0xfff < uVar4) {
+        uVar5 = *(ulonglong *)(uVar1 - 8);
+        if (0x1f < (uVar1 - 8) - uVar5) {
+                    /* WARNING: Subroutine does not return */
+          _invoke_watson((wchar_t *)0x0,(wchar_t *)0x0,(wchar_t *)0x0,0,0);
+        }
+        uVar4 = uVar4 + 0x27;
+      }
+      FUN_1801695f0(uVar5,uVar4);
+    }
+    *param_1 = uVar3;
+    param_1[1] = uVar6 * 0x2058 + uVar3;
+    param_1[2] = uVar7 * 0x2058 + uVar3;
+    return lVar2;
+  }
+                    /* WARNING: Subroutine does not return */
+  FUN_18000b130();
+}
+
+

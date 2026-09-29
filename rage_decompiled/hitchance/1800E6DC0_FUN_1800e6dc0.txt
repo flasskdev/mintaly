@@ -1,0 +1,57 @@
+// function: FUN_1800e6dc0
+// ea: 1800e6dc0
+// category: hitchance
+// depth: 2, via: FUN_1800e6b90 @1800e6c94
+// size: 246 bytes
+// anchors: hitchance
+// ----------------------------------------------------
+
+longlong FUN_1800e6dc0(uint param_1)
+
+{
+  int *piVar1;
+  int iVar2;
+  undefined8 uVar3;
+  longlong lVar4;
+  longlong local_30;
+  byte local_28;
+  int *local_20;
+  undefined8 local_18;
+  
+  uVar3 = DAT_180473ed8;
+  local_18 = 0xfffffffffffffffe;
+  if (1 < param_1 + 1) {
+    lVar4 = *(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8);
+    local_20 = (int *)(lVar4 + 4);
+    piVar1 = (int *)(lVar4 + 4);
+    *piVar1 = *piVar1 + 1;
+    FUN_1800e6ad0(&local_30,uVar3);
+    iVar2 = *local_20;
+    *local_20 = iVar2 + -1;
+    lVar4 = 0;
+    if (local_28 != 0) {
+      lVar4 = local_30;
+    }
+    if ((param_1 & 0x4000) != 0) {
+      return 0;
+    }
+    if (lVar4 == 0) {
+      return 0;
+    }
+    *local_20 = iVar2;
+    FUN_1800e6ad0(&local_30,lVar4 + (ulonglong)(param_1 >> 6 & 0xf8) + 0x10);
+    iVar2 = *local_20;
+    *local_20 = iVar2 + -1;
+    if ((local_30 != 0 & local_28) == 1) {
+      *local_20 = iVar2;
+      FUN_1800e6ad0(&local_30,local_30 + (ulonglong)((param_1 & 0x1ff) * 0x70));
+      *local_20 = *local_20 + -1;
+      if (local_28 != 0) {
+        return local_30;
+      }
+    }
+  }
+  return 0;
+}
+
+

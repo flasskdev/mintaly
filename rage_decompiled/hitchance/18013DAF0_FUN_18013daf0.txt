@@ -1,0 +1,49 @@
+// function: FUN_18013daf0
+// ea: 18013daf0
+// category: hitchance
+// depth: 2, via: FUN_1801462d0 @180146a1a
+// size: 259 bytes
+// anchors: hitchance, nospread, autowall_damage
+// ----------------------------------------------------
+
+void FUN_18013daf0(undefined8 *param_1)
+
+{
+  undefined8 uVar1;
+  undefined8 *puVar2;
+  undefined1 local_12;
+  undefined1 local_11;
+  undefined4 local_10;
+  undefined4 local_c;
+  
+  if ((*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+               0x2638) < DAT_180495870) && (FUN_180183614(&DAT_180495870), DAT_180495870 == -1)) {
+    DAT_1804957d8 = 0;
+    DAT_1804957e0 = (undefined8 *)0x0;
+    DAT_1804957e8 = (undefined8 *)0x0;
+    local_10 = 0;
+    FUN_18006ca00(&DAT_1804957f0,&local_10,&local_12);
+    local_c = 0;
+    FUN_18006ca00(&DAT_180495830,&local_c,&local_11);
+    atexit(FUN_18014bee0);
+    _Init_thread_footer(&DAT_180495870);
+  }
+  puVar2 = DAT_1804957e0;
+  if (DAT_1804957e0 == DAT_1804957e8) {
+    FUN_18014c0f0(&DAT_1804957d8,DAT_1804957e0,param_1);
+    param_1 = (undefined8 *)*param_1;
+  }
+  else {
+    uVar1 = *param_1;
+    *param_1 = 0;
+    *puVar2 = uVar1;
+    DAT_1804957e0 = DAT_1804957e0 + 1;
+    param_1 = (undefined8 *)*param_1;
+  }
+  if (param_1 != (undefined8 *)0x0) {
+    (**(code **)*param_1)(param_1,1);
+  }
+  return;
+}
+
+

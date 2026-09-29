@@ -1,0 +1,32 @@
+// function: FUN_1801651a0
+// ea: 1801651a0
+// category: nospread
+// depth: 3, via: FUN_180165210 @180165627
+// size: 111 bytes
+// anchors: nospread, trace_geometry, hitbox_backtrack
+// ----------------------------------------------------
+
+void FUN_1801651a0(longlong param_1)
+
+{
+  HANDLE pvVar1;
+  undefined8 local_28;
+  longlong local_20;
+  char *local_18;
+  undefined8 local_10;
+  
+  if (param_1 != 0) {
+    local_28 = 0;
+    local_20 = param_1;
+    pvVar1 = GetCurrentProcess();
+    if (DAT_180495be0 == (code *)0x0) {
+      local_18 = "ntdll.dll:NtFreeVirtualMemory";
+      local_10 = 0x1d;
+      DAT_180495be0 = (code *)FUN_180166750(&local_18);
+    }
+    (*DAT_180495be0)(pvVar1,&local_20,&local_28,0x8000);
+  }
+  return;
+}
+
+

@@ -1,0 +1,50 @@
+// function: FUN_1800ec580
+// ea: 1800ec580
+// category: hitbox_backtrack
+// depth: 1, via: FUN_1800d2fd0 @1800d3771
+// size: 208 bytes
+// anchors: hitbox_backtrack
+// ----------------------------------------------------
+
+void FUN_1800ec580(undefined8 param_1,undefined1 *param_2,float *param_3)
+
+{
+  ulonglong uVar1;
+  float fVar2;
+  undefined1 local_80 [56];
+  undefined1 local_48 [32];
+  undefined8 local_28;
+  undefined8 local_20;
+  
+  local_20 = 0xfffffffffffffffe;
+  switch(*param_2) {
+  case 4:
+    fVar2 = (float)(int)(char)param_2[8];
+    break;
+  case 5:
+    fVar2 = (float)*(longlong *)(param_2 + 8);
+    break;
+  case 6:
+    uVar1 = *(ulonglong *)(param_2 + 8);
+    if ((longlong)uVar1 < 0) {
+      fVar2 = (float)uVar1;
+    }
+    else {
+      fVar2 = (float)(longlong)uVar1;
+    }
+    break;
+  case 7:
+    fVar2 = (float)*(double *)(param_2 + 8);
+    break;
+  default:
+    local_28 = FUN_1800b71e0(param_2);
+    FUN_1800b7070(local_48,"type must be number, but is ",&local_28);
+    FUN_1800b6d90(local_80,0x12e,local_48,param_2);
+                    /* WARNING: Subroutine does not return */
+    FUN_180202cdc(local_80,&DAT_180337430);
+  }
+  *param_3 = fVar2;
+  return;
+}
+
+

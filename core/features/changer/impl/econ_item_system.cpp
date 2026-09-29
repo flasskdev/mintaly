@@ -62,7 +62,7 @@ namespace features::changer {
 		// tables. Wait until both are populated, then parse exactly once.
 		for ( auto attempt = 0; attempt < max_attempts; ++attempt )
 		{
-			const auto system = memory::call<std::uintptr_t>( addresses::globals::item_system );
+			const auto system = addresses::globals::item_system;
 			schema = system
 				? memory::safe_read<std::uintptr_t>( system + 0x8 ).value_or( 0 )
 				: 0;
@@ -158,7 +158,7 @@ namespace features::changer {
 		const auto now = std::chrono::steady_clock::now( );
 		if ( now - this->m_last_schema_poll < std::chrono::seconds( 1 ) ) return false;
 		this->m_last_schema_poll = now;
-		const auto system = memory::call<std::uintptr_t>( addresses::globals::item_system );
+		const auto system = addresses::globals::item_system;
 		const auto schema = system
 			? memory::safe_read<std::uintptr_t>( system + 0x8 ).value_or( 0 )
 			: 0;

@@ -1,0 +1,59 @@
+// function: FUN_18006c420
+// ea: 18006c420
+// category: pipeline
+// depth: 3, via: FUN_180033660 @18003479d
+// size: 407 bytes
+// anchors: pipeline
+// ----------------------------------------------------
+
+bool FUN_18006c420(longlong *param_1,float param_2)
+
+{
+  longlong lVar1;
+  uint uVar2;
+  bool bVar3;
+  float extraout_XMM0_Da;
+  float extraout_XMM0_Da_00;
+  float fVar4;
+  
+  uVar2 = DAT_1804707c8;
+  FUN_180165f50(&DAT_1804707cc);
+  if ((uVar2 & 1) == 0) {
+    lVar1 = param_1[2];
+    if ((*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+                 0x2638) < DAT_180472280) && (FUN_180183614(&DAT_180472280), DAT_180472280 == -1)) {
+      DAT_18047227c = FUN_180114bb0("CCSWeaponBaseVData",0x7f1cc92d);
+      _Init_thread_footer(&DAT_180472280);
+    }
+    fVar4 = *(float *)(lVar1 + DAT_18047227c);
+    lVar1 = *param_1;
+    if ((*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+                 0x2638) < DAT_180472288) && (FUN_180183614(&DAT_180472288), DAT_180472288 == -1)) {
+      DAT_180472284 = FUN_180114bb0("C_CSWeaponBase",0x7fb6de25);
+      _Init_thread_footer(&DAT_180472288);
+    }
+    bVar3 = fVar4 + *(float *)(lVar1 + DAT_180472284) + 0.001 < param_2;
+  }
+  else {
+    if ((int)param_1[3] == 5) {
+      if (*(char *)((longlong)param_1 + 0x3d) != '\x01') {
+        return false;
+      }
+      if ((uVar2 & 4) == 0) {
+        if (0.1 < extraout_XMM0_Da) {
+          return false;
+        }
+        fVar4 = 170.0;
+      }
+      else {
+        fVar4 = 300.0;
+      }
+      FUN_1802151c0(param_2 * fVar4);
+      return extraout_XMM0_Da_00 / fVar4 < param_2;
+    }
+    bVar3 = *(float *)((longlong)param_1 + 0x34) * 0.34 < extraout_XMM0_Da;
+  }
+  return !bVar3;
+}
+
+

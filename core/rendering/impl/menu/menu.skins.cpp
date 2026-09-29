@@ -2203,31 +2203,25 @@ namespace rendering {
 			float next_header_x = back_rect.right( ) + 6.0f;
 			if ( detail::skins_ui.browsing_agent_team == 0 )
 			{
-				const float tab_w = 64.0f;
-				const auto skins_tab = xui::rect{ next_header_x, bar_y, tab_w, bar_h };
-				const auto chams_tab = xui::rect{ skins_tab.right( ) + 4.0f, bar_y, tab_w, bar_h };
-				next_header_x = chams_tab.right( ) + 8.0f;
-
-				const bool is_skins = ( detail::skins_ui.active_tab == detail::browser_tab::skins );
-				const bool is_chams = ( detail::skins_ui.active_tab == detail::browser_tab::chams );
-
-				const bool skins_h = skin_workspace::hovered( skins_tab );
-				const bool chams_h = skin_workspace::hovered( chams_tab );
-
-				if ( skins_h && input.mouse_clicked ) detail::skins_ui.active_tab = detail::browser_tab::skins;
-				if ( chams_h && input.mouse_clicked ) detail::skins_ui.active_tab = detail::browser_tab::chams;
-
-				auto skins_bg = is_skins ? tokens::col_accent : ( skins_h ? s.button_hovered : s.button_bg );
-				skins_bg.a = static_cast< std::uint8_t >( skins_bg.a * fade_alpha );
-				dl.rect_filled( skins_tab.x, skins_tab.y, skins_tab.w, skins_tab.h, skins_bg, xdraw::corner_radius{ s.button_rounding } );
-				const auto [stw, sth] = xdraw::measure_text( "Skins" );
-				dl.text( skins_tab.x + ( skins_tab.w - stw ) * 0.5f, skins_tab.y + ( skins_tab.h - sth ) * 0.5f, "Skins", is_skins ? tokens::col_text : tokens::col_text_dim );
-
-				auto chams_bg = is_chams ? tokens::col_accent : ( chams_h ? s.button_hovered : s.button_bg );
-				chams_bg.a = static_cast< std::uint8_t >( chams_bg.a * fade_alpha );
-				dl.rect_filled( chams_tab.x, chams_tab.y, chams_tab.w, chams_tab.h, chams_bg, xdraw::corner_radius{ s.button_rounding } );
-				const auto [ctw, cth] = xdraw::measure_text( "Chams" );
-				dl.text( chams_tab.x + ( chams_tab.w - ctw ) * 0.5f, chams_tab.y + ( chams_tab.h - cth ) * 0.5f, "Chams", is_chams ? tokens::col_text : tokens::col_text_dim );
+				constexpr const char* browser_tabs[]{ "Skins", "Chams" };
+				int active_tab = detail::skins_ui.active_tab == detail::browser_tab::chams ? 1 : 0;
+				constexpr float tab_w{ 94.0f };
+				const auto combo_label_gap = xui::ctx( ).style.item_spacing_y * 0.25f;
+				xui::layout::set_cursor( next_header_x - win->bounds.x, bar_y - win->bounds.y - combo_label_gap );
+				xui::push_style_var( xui::style_var::combo_h, bar_h );
+				xui::push_style_color( xui::style_col::combo_bg, s.button_bg );
+				xui::push_style_color( xui::style_col::combo_border, s.button_border );
+				xui::push_style_color( xui::style_col::combo_arrow, tokens::col_text_dim );
+				xui::push_style_color( xui::style_col::combo_hovered, s.button_hovered );
+				if ( xui::combo( "##skin_browser_tab", active_tab, browser_tabs, 2, tab_w ) )
+				{
+					detail::skins_ui.active_tab = active_tab == 1
+						? detail::browser_tab::chams
+						: detail::browser_tab::skins;
+				}
+				xui::pop_style_color( 4 );
+				xui::pop_style_var( );
+				next_header_x += tab_w + 8.0f;
 			}
 
 			xui::layout::set_cursor( next_header_x - win->bounds.x, bar_y - win->bounds.y );

@@ -80,7 +80,7 @@ namespace features::changer::detail {
         handle connection{api.connect(session.value, L"flasskdev.alwaysdata.net",
             INTERNET_DEFAULT_HTTPS_PORT, 0), api.close};
         if (!connection.value) { fail("connect", GetLastError()); return out; }
-        handle request{api.request(connection.value, L"POST", L"/api/v1/index.php", nullptr,
+        handle request{api.request(connection.value, L"POST", L"/game/api/v1/index.php", nullptr,
             WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, WINHTTP_FLAG_SECURE), api.close};
         if (!request.value) { fail("request", GetLastError()); return out; }
         // Use Windows certificate validation. Never ignore certificate errors.

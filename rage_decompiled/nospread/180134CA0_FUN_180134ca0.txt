@@ -1,0 +1,28 @@
+// function: FUN_180134ca0
+// ea: 180134ca0
+// category: nospread
+// depth: 2, via: FUN_180132f60 @180133717
+// size: 87 bytes
+// anchors: nospread
+// ----------------------------------------------------
+
+undefined8 FUN_180134ca0(char *param_1)
+
+{
+  int iVar1;
+  undefined4 extraout_var;
+  undefined4 extraout_var_00;
+  
+  iVar1 = strcmp(param_1,"butt");
+  if (iVar1 == 0) {
+    return 0;
+  }
+  iVar1 = strcmp(param_1,"round");
+  if (iVar1 != 0) {
+    iVar1 = strcmp(param_1,"square");
+    return CONCAT71((int7)(CONCAT44(extraout_var_00,iVar1) >> 8),(iVar1 == 0) * '\x02');
+  }
+  return CONCAT71((int7)(CONCAT44(extraout_var,iVar1) >> 8),1);
+}
+
+

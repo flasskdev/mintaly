@@ -238,12 +238,15 @@ namespace tokens {
 
 	inline xdraw::color col_border{ 38, 42, 52, 255 };
 
-	constexpr auto sidebar_w{ 192.0f };
+	// Violet bloom used by the window background (theme independent, as on the reference).
+	inline xdraw::color col_aurora{ 124, 104, 224, 255 };
+
+	constexpr auto sidebar_w{ 162.0f };
 	constexpr auto tab_icon_size{ 35.0f };
-	constexpr auto subtab_bar_h{ 32.0f };
+	constexpr auto subtab_bar_h{ 28.0f };
 	constexpr auto gap{ 28.0f };
 	constexpr auto window_rounding{ 26.0f };
-	constexpr auto card_rounding{ 8.0f };
-	constexpr auto btn_rounding{ 5.0f };
+	constexpr auto card_rounding{ 12.0f };
+	constexpr auto btn_rounding{ 6.0f };
 
 } // namespace tokens

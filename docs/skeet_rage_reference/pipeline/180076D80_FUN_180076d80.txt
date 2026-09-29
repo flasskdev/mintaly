@@ -1,0 +1,36 @@
+// function: FUN_180076d80
+// ea: 180076d80
+// category: pipeline
+// depth: 2, via: FUN_180076ed0 @1800778fb
+// size: 124 bytes
+// anchors: pipeline
+// ----------------------------------------------------
+
+void FUN_180076d80(float param_1,float param_2,float *param_3)
+
+{
+  float fVar1;
+  float fVar2;
+  
+  if (0.0001 < param_1) {
+    fVar1 = param_3[2];
+    fVar2 = fVar1;
+    if (param_3[1] <= fVar1) {
+      fVar2 = param_3[1];
+    }
+    fVar2 = fVar2 - fVar1 * *param_3 * param_3[3] * param_2;
+    fVar1 = 0.0;
+    if (0.0 <= fVar2) {
+      fVar1 = fVar2;
+    }
+    fVar1 = fVar1 / param_1;
+    fVar2 = 0.0;
+    if (0.0 <= fVar1) {
+      fVar2 = fVar1;
+    }
+    FUN_180212770(-(uint)(1.0 < fVar1) & 0x3f800000 | ~-(uint)(1.0 < fVar1) & (uint)fVar2);
+  }
+  return;
+}
+
+

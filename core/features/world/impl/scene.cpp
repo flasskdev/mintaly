@@ -363,7 +363,7 @@ namespace features::world {
 			return;
 		}
 
-		const auto light_data_base = memory::safe_read<std::uintptr_t> (*light_data_queue + 0x18);
+		const auto light_data_base = memory::safe_read<std::uintptr_t> (*light_data_queue + 0x1f08);
 		if (!light_data_base || !*light_data_base) {
 			return;
 		}
@@ -381,7 +381,7 @@ namespace features::world {
 
 		for (auto i = 0; i < *count; ++i) {
 			const auto color_addr = *light_data_base +
-				((static_cast<std::size_t> (*index) + i) << 5);
+				(static_cast<std::size_t> (*index) + i) * 0x50 + 0x28;
 			const auto current = memory::safe_read<xdraw::color> (color_addr);
 			if (!current) {
 				continue;
@@ -431,8 +431,9 @@ namespace features::world {
 		};
 
 		for (auto i = 0; i < batch_count; ++i) {
-			// Current scenesystem.dll mesh primitives are 0x70 bytes.
-			const auto mesh = batch + (static_cast<std::size_t> (i) * 0x70);
+			// Current scenesystem.dll mesh primitives are 0x50 bytes and their
+			// packed color is at +0x28.
+			const auto mesh = batch + (static_cast<std::size_t> (i) * 0x50);
 			const auto material = memory::safe_read<std::uintptr_t> (mesh + 0x20);
 
 			if (!material || !*material) {
@@ -441,11 +442,11 @@ namespace features::world {
 
             const auto& fire = settings::g_misc.m_smoke_and_fire_color;
             if (fire.custom_molotov.value && is_inferno_primitive(mesh)) {
-                if (const auto original = memory::safe_read<xdraw::color>(mesh + 0x50)) {
+				if (const auto original = memory::safe_read<xdraw::color>(mesh + 0x28)) {
                     const auto& color = fire.molotov_color.value;
                     // Preserve the flame's opacity/fade. draw_scene_object's
                     // existing scoped backup restores the original after draw.
-                    (void)memory::safe_write<xdraw::color>(mesh + 0x50,
+					(void)memory::safe_write<xdraw::color>(mesh + 0x28,
                         {color.r, color.g, color.b, original->a});
                 }
                 continue; // World/fullbright tint must not replace the fire color.
@@ -460,11 +461,11 @@ namespace features::world {
 
 			if ((is_cloud || is_sun) && config.custom_color.value) {
 				const auto& color = is_cloud ? config.cloud_color.value : config.sun_color.value;
-				*reinterpret_cast<std::uint32_t*>(mesh + 0x50) = color;
+				(void)memory::safe_write<std::uint32_t>(mesh + 0x28, color);
 			} else if (fullbright_on) {
-				*reinterpret_cast<std::uint32_t*>(mesh + 0x50) = settings::g_world.m_scene.fullbright_color.value;
+				(void)memory::safe_write<std::uint32_t>(mesh + 0x28, settings::g_world.m_scene.fullbright_color.value);
 			} else if (!is_cloud && !is_sun && settings::g_world.m_scene.world_setting.value) {
-				*reinterpret_cast<std::uint32_t*>(mesh + 0x50) = settings::g_world.m_scene.world_color.value;
+				(void)memory::safe_write<std::uint32_t>(mesh + 0x28, settings::g_world.m_scene.world_color.value);
 			}
 		}
 	}

@@ -42,6 +42,12 @@ namespace settings {
                                 xui::setting dynamic_pointscale{ true,{}, "dynamic point scale", "ragebot" };
                                 xui::setting debug_multipoints{ false,{}, "debug multipoints", "ragebot" };
 
+                                // Staged-pipeline budgets (docs/RAGEBOT.ru.md rage_scan context).
+                                config::val<int> trace_budget{ 160 };
+                                xui::setting centers_only{ false,{}, "centers only scan", "ragebot" };
+                                xui::setting prefer_visible{ true,{}, "prefer visible targets", "ragebot" };
+                                config::val<int> detailed_targets{ 2 };
+
                                 config::bools<6> hitboxes{ { true, true, true, true, true, true } };
 
                                 void init(std::string_view cat)
@@ -58,6 +64,8 @@ namespace settings {
                                         this->hitchance_override.category = s;
                                         this->dynamic_pointscale.category = s;
                                         this->debug_multipoints.category = s;
+                                        this->centers_only.category = s;
+                                        this->prefer_visible.category = s;
 
                                         this->max_fov.reg(s, "max fov");
                                         this->hitchance.reg(s, "hit chance");
@@ -65,6 +73,8 @@ namespace settings {
                                         this->min_damage_override_value.reg(s, "min damage override value");
                                         this->hitchance_override_value.reg(s, "hit chance override value");
                                         this->pointscale.reg(s, "point scale");
+                                        this->trace_budget.reg(s, "trace budget");
+                                        this->detailed_targets.reg(s, "detailed targets");
                                         this->hitboxes.reg(s, "hitboxes");
                                 }
 
@@ -96,6 +106,12 @@ namespace settings {
                                         this->dynamic_pointscale.bind = other.dynamic_pointscale.bind;
                                         this->debug_multipoints.value = other.debug_multipoints.value;
                                         this->debug_multipoints.bind = other.debug_multipoints.bind;
+                                        this->trace_budget.value = other.trace_budget.value;
+                                        this->centers_only.value = other.centers_only.value;
+                                        this->centers_only.bind = other.centers_only.bind;
+                                        this->prefer_visible.value = other.prefer_visible.value;
+                                        this->prefer_visible.bind = other.prefer_visible.bind;
+                                        this->detailed_targets.value = other.detailed_targets.value;
                                         this->hitboxes = other.hitboxes;
                                 }
 
@@ -499,10 +515,14 @@ namespace settings {
 
         struct esp
         {
-                enum class cham_ids : std::uint8_t
-                {
+                        enum class cham_ids : std::uint8_t
+                        {
                         liquid, metallic, matte, flat, bloom, outlines, glow, electric, distortion, hologram, pearl,
+                        // Reserved legacy ids keep existing profile values stable.
+                        glass, crystal, pulse, animated, rainbow, fresnel, iridescent, self_illum, wireframe, velvet, chrome, gold,
                         liquid_ignorez, matte_ignorez, flat_ignorez, bloom_ignorez, outlines_ignorez, glow_ignorez, distortion_ignorez, hologram_ignorez,
+                        // Reserved legacy through-wall ids; no material is loaded for these.
+                        glass_ignorez, crystal_ignorez, pulse_ignorez, animated_ignorez, rainbow_ignorez, fresnel_ignorez, iridescent_ignorez, self_illum_ignorez, wireframe_ignorez, velvet_ignorez, chrome_ignorez, gold_ignorez,
                         outline_glow, outline_glow_ignorez,
                         count
                 };
@@ -513,28 +533,30 @@ namespace settings {
                                 id == cham_ids::outlines_ignorez ||
                                 id == cham_ids::outline_glow ||
                                 id == cham_ids::outline_glow_ignorez ||
+                                id == cham_ids::wireframe ||
+                                id == cham_ids::wireframe_ignorez;
+                }
+
+                static constexpr bool is_overlay_material(cham_ids id) noexcept
+                {
+                        return is_outline_material(id) ||
                                 id == cham_ids::glow ||
                                 id == cham_ids::glow_ignorez;
                 }
 
-                // Non-IZ materials (for visible / primary and overlay layers)
+                // Only list materials that have a matching loader entry. Unavailable
+                // entries are filtered again by the menu after material compilation.
                 static constexpr const char* k_non_iz_material_names[]{
-                        "liquid", "metallic", "matte", "flat", "bloom", "outlines", "glow", "electric", "distortion", "hologram", "pearl", "outline glow"
+                        "metallic", "material", "flat", "outlines", "glow", "outline glow"
                 };
-                static constexpr int k_non_iz_material_count = 12;
+                static constexpr int k_non_iz_material_count = 6;
 
                 static constexpr cham_ids k_non_iz_materials[ k_non_iz_material_count ]{
-                        cham_ids::liquid,
                         cham_ids::metallic,
                         cham_ids::matte,
                         cham_ids::flat,
-                        cham_ids::bloom,
                         cham_ids::outlines,
                         cham_ids::glow,
-                        cham_ids::electric,
-                        cham_ids::distortion,
-                        cham_ids::hologram,
-                        cham_ids::pearl,
                         cham_ids::outline_glow
                 };
 
@@ -547,34 +569,27 @@ namespace settings {
                         }
                         switch ( id )
                         {
-                        case cham_ids::liquid_ignorez: return 0;
-                        case cham_ids::matte_ignorez: return 2;
-                        case cham_ids::flat_ignorez: return 3;
-                        case cham_ids::bloom_ignorez: return 4;
-                        case cham_ids::outlines_ignorez: return 5;
-                        case cham_ids::glow_ignorez: return 6;
-                        case cham_ids::distortion_ignorez: return 8;
-                        case cham_ids::hologram_ignorez: return 9;
-                        case cham_ids::outline_glow_ignorez: return 11;
-                        default: return 2; // matte
+                        case cham_ids::metallic: return 0;
+                        case cham_ids::matte_ignorez: return 1;
+                        case cham_ids::flat_ignorez: return 2;
+                        case cham_ids::outlines_ignorez: return 3;
+                        case cham_ids::glow_ignorez: return 4;
+                        case cham_ids::outline_glow_ignorez: return 5;
+                        default: return 1; // matte
                         }
                 }
 
                 // IZ materials (for through wall / occluded secondary layer) without "(iz)" suffix
                 static constexpr const char* k_iz_material_names[]{
-                        "liquid", "matte", "flat", "bloom", "outlines", "glow", "distortion", "hologram", "outline glow"
+                        "material", "flat", "outlines", "glow", "outline glow"
                 };
-                static constexpr int k_iz_material_count = 9;
+                static constexpr int k_iz_material_count = 5;
 
                 static constexpr cham_ids k_iz_materials[ k_iz_material_count ]{
-                        cham_ids::liquid_ignorez,
                         cham_ids::matte_ignorez,
                         cham_ids::flat_ignorez,
-                        cham_ids::bloom_ignorez,
                         cham_ids::outlines_ignorez,
                         cham_ids::glow_ignorez,
-                        cham_ids::distortion_ignorez,
-                        cham_ids::hologram_ignorez,
                         cham_ids::outline_glow_ignorez
                 };
 
@@ -587,16 +602,12 @@ namespace settings {
                         }
                         switch ( id )
                         {
-                        case cham_ids::liquid: return 0;
-                        case cham_ids::matte: return 1;
-                        case cham_ids::flat: return 2;
-                        case cham_ids::bloom: return 3;
-                        case cham_ids::outlines: return 4;
-                        case cham_ids::glow: return 5;
-                        case cham_ids::distortion: return 6;
-                        case cham_ids::hologram: return 7;
-                        case cham_ids::outline_glow: return 8;
-                        default: return 2; // flat_ignorez
+                        case cham_ids::matte: return 0;
+                        case cham_ids::flat: return 1;
+                        case cham_ids::outlines: return 2;
+                        case cham_ids::glow: return 3;
+                        case cham_ids::outline_glow: return 4;
+                        default: return 1; // flat_ignorez
                         }
                 }
 
@@ -629,8 +640,34 @@ namespace settings {
                         xui::setting enabled{ false,{}, "chams layer", "chams" };
                         config::col color{ { 255, 255, 255, 255 } };
                         config::enm<cham_ids> material{ cham_ids::matte };
-                        xui::setting filled{ true,{}, "filled", "chams" };
+                        xui::setting filled{ false,{}, "filled", "chams" };
                         outline_glow_config glow{};
+
+                        // AttackWareCS2 style parameters
+                        config::val<float> pulse_speed{ 0.0f };
+                        config::val<float> pulse_min_alpha{ 0.3f };
+                        config::val<float> pulse_max_alpha{ 1.0f };
+                        config::val<float> fresnel_exponent{ 1.0f };
+                        config::val<float> fresnel_falloff{ 1.0f };
+                        config::val<float> fresnel_min{ 0.0f };
+                        config::val<float> fresnel_max{ 1.0f };
+                        config::val<float> iridescent_strength{ 0.0f };
+                        config::val<float> iridescent_hue_shift{ 0.0f };
+                        config::val<float> iridescent_speed{ 0.0f };
+                        config::val<float> self_illum_brightness{ 0.0f };
+                        config::val<float> self_illum_scroll_u{ 0.0f };
+                        config::val<float> self_illum_scroll_v{ 0.0f };
+                        config::val<float> scroll_speed_u{ 0.0f };
+                        config::val<float> scroll_speed_v{ 0.0f };
+                        config::val<float> brightness{ 1.0f };
+                        config::val<float> saturation{ 1.0f };
+                        config::val<float> opacity_scale{ 1.0f };
+                        config::val<float> color_boost{ 1.0f };
+                        xui::setting health_based{ false,{}, "health based", "chams" };
+                        xui::setting team_based{ false,{}, "team based", "chams" };
+                        xui::setting rainbow{ false,{}, "rainbow", "chams" };
+                        xui::setting wireframe{ false,{}, "wireframe", "chams" };
+                        xui::setting backface_culling{ true,{}, "backface culling", "chams" };
 
                         void copy_values_from(const chams_layer& other)
                         {
@@ -643,6 +680,31 @@ namespace settings {
                                 glow.opacity.value = other.glow.opacity.value;
                                 glow.inner_spread.value = other.glow.inner_spread.value;
                                 glow.pulse_speed.value = other.glow.pulse_speed.value;
+                                // AttackWareCS2 params
+                                pulse_speed.value = other.pulse_speed.value;
+                                pulse_min_alpha.value = other.pulse_min_alpha.value;
+                                pulse_max_alpha.value = other.pulse_max_alpha.value;
+                                fresnel_exponent.value = other.fresnel_exponent.value;
+                                fresnel_falloff.value = other.fresnel_falloff.value;
+                                fresnel_min.value = other.fresnel_min.value;
+                                fresnel_max.value = other.fresnel_max.value;
+                                iridescent_strength.value = other.iridescent_strength.value;
+                                iridescent_hue_shift.value = other.iridescent_hue_shift.value;
+                                iridescent_speed.value = other.iridescent_speed.value;
+                                self_illum_brightness.value = other.self_illum_brightness.value;
+                                self_illum_scroll_u.value = other.self_illum_scroll_u.value;
+                                self_illum_scroll_v.value = other.self_illum_scroll_v.value;
+                                scroll_speed_u.value = other.scroll_speed_u.value;
+                                scroll_speed_v.value = other.scroll_speed_v.value;
+                                brightness.value = other.brightness.value;
+                                saturation.value = other.saturation.value;
+                                opacity_scale.value = other.opacity_scale.value;
+                                color_boost.value = other.color_boost.value;
+                                health_based.value = other.health_based.value; health_based.bind = other.health_based.bind;
+                                team_based.value = other.team_based.value; team_based.bind = other.team_based.bind;
+                                rainbow.value = other.rainbow.value; rainbow.bind = other.rainbow.bind;
+                                wireframe.value = other.wireframe.value; wireframe.bind = other.wireframe.bind;
+                                backface_culling.value = other.backface_culling.value; backface_culling.bind = other.backface_culling.bind;
                         }
 
                         void init(std::string_view cat, std::string_view layer_prefix)
@@ -655,8 +717,38 @@ namespace settings {
                                 this->material.reg(s, p + " material");
                                 this->filled.name = p + " filled";
                                 this->filled.category = s;
-                                this->filled.value = true;
+                                this->filled.value = false;
                                 this->glow.reg(s, p);
+                                // AttackWareCS2 params
+                                this->pulse_speed.reg(s, p + " pulse speed");
+                                this->pulse_min_alpha.reg(s, p + " pulse min alpha");
+                                this->pulse_max_alpha.reg(s, p + " pulse max alpha");
+                                this->fresnel_exponent.reg(s, p + " fresnel exponent");
+                                this->fresnel_falloff.reg(s, p + " fresnel falloff");
+                                this->fresnel_min.reg(s, p + " fresnel min");
+                                this->fresnel_max.reg(s, p + " fresnel max");
+                                this->iridescent_strength.reg(s, p + " iridescent strength");
+                                this->iridescent_hue_shift.reg(s, p + " iridescent hue shift");
+                                this->iridescent_speed.reg(s, p + " iridescent speed");
+                                this->self_illum_brightness.reg(s, p + " self-illum brightness");
+                                this->self_illum_scroll_u.reg(s, p + " self-illum scroll u");
+                                this->self_illum_scroll_v.reg(s, p + " self-illum scroll v");
+                                this->scroll_speed_u.reg(s, p + " scroll speed u");
+                                this->scroll_speed_v.reg(s, p + " scroll speed v");
+                                this->brightness.reg(s, p + " brightness");
+                                this->saturation.reg(s, p + " saturation");
+                                this->opacity_scale.reg(s, p + " opacity scale");
+                                this->color_boost.reg(s, p + " color boost");
+                                this->health_based.name = p + " health based";
+                                this->health_based.category = s;
+                                this->team_based.name = p + " team based";
+                                this->team_based.category = s;
+                                this->rainbow.name = p + " rainbow";
+                                this->rainbow.category = s;
+                                this->wireframe.name = p + " wireframe";
+                                this->wireframe.category = s;
+                                this->backface_culling.name = p + " backface culling";
+                                this->backface_culling.category = s;
                         }
                 };
 
@@ -1000,7 +1092,9 @@ namespace settings {
                                 }
                         };
 
-                        std::array<overlay, 2> m_overlay{ { overlay{ "esp enemy" }, overlay{ "esp team", false } } };
+						std::array<overlay, 2> m_overlay{
+							{ overlay{ "esp enemy" }, overlay{ "esp team", false } }
+						};
 
                         struct chams
                         {
@@ -1017,11 +1111,11 @@ namespace settings {
                                 chams()
                                 {
                                         this->enemy.init("chams enemy", "chams");
-                                        this->enemy.enabled.value = true;
-                                        this->enemy.primary.enabled.value = true;
+                                        this->enemy.enabled.value = false;
+                                        this->enemy.primary.enabled.value = false;
                                         this->enemy.primary.color.value = { 173, 192, 255, 150 };
                                         this->enemy.primary.material.value = cham_ids::flat;
-                                        this->enemy.secondary.enabled.value = true;
+                                        this->enemy.secondary.enabled.value = false;
                                         this->enemy.secondary.color.value = { 255, 208, 243, 118 };
                                         this->enemy.secondary.material.value = cham_ids::flat_ignorez;
 
@@ -1032,8 +1126,8 @@ namespace settings {
                                         this->team_ragdoll.init("chams team ragdoll", "ragdoll chams");
 
                                         this->local.init("chams local", "chams");
-                                        this->local.enabled.value = true;
-                                        this->local.overlay.enabled.value = true;
+                                        this->local.enabled.value = false;
+                                        this->local.overlay.enabled.value = false;
                                         this->local.overlay.color.value = { 173, 192, 255, 175 };
                                         this->local.overlay.material.value = cham_ids::outlines;
 
@@ -1046,7 +1140,7 @@ namespace settings {
                                         this->backtrack.secondary.material.value = cham_ids::outlines;
 
                                         this->onshot.init("chams onshot", "onshot chams");
-                                        this->onshot.primary.enabled.value = true;
+                                        this->onshot.primary.enabled.value = false;
                                         this->onshot.primary.color.value = { 255, 100, 100, 200 };
                                         this->onshot.primary.material.value = cham_ids::flat;
                                         this->onshot.secondary.color.value = { 255, 100, 100, 100 };
@@ -1084,19 +1178,19 @@ namespace settings {
                         {
                                 this->weapon.init("viewmodel weapon", "weapon chams");
                                 this->weapon.enabled.category = "viewmodel";
-                                this->weapon.enabled.value = true;
+                                this->weapon.enabled.value = false;
                                 this->weapon.primary.color.value = { 255, 255, 255, 255 };
                                 this->weapon.primary.material.value = cham_ids::matte;
-                                this->weapon.overlay.enabled.value = true;
+                                this->weapon.overlay.enabled.value = false;
                                 this->weapon.overlay.color.value = { 217, 173, 202, 175 };
                                 this->weapon.overlay.material.value = cham_ids::glow;
 
                                 this->arms.init("viewmodel arms", "arms chams");
                                 this->arms.enabled.category = "viewmodel";
-                                this->arms.enabled.value = true;
+                                this->arms.enabled.value = false;
                                 this->arms.primary.color.value = { 173, 192, 255, 255 };
                                 this->arms.primary.material.value = cham_ids::outlines;
-                                this->arms.overlay.enabled.value = true;
+                                this->arms.overlay.enabled.value = false;
                                 this->arms.overlay.color.value = { 173, 192, 255, 255 };
                                 this->arms.overlay.material.value = cham_ids::outlines;
                         }
@@ -1212,13 +1306,13 @@ namespace settings {
 
                         struct chams
                         {
-                                xui::setting enabled{ true,{}, "item chams", "chams items" };
+                                xui::setting enabled{ false,{}, "item chams", "chams items" };
                                 xui::setting pistol{ false,{}, "pistol", "chams items" };
                                 xui::setting smg{ false,{}, "smg", "chams items" };
                                 xui::setting rifle{ false,{}, "rifle", "chams items" };
                                 xui::setting shotgun{ false,{}, "shotgun", "chams items" };
-                                xui::setting sniper{ true,{}, "sniper", "chams items" };
-                                xui::setting utility{ true,{}, "utility", "chams items" };
+                                xui::setting sniper{ false,{}, "sniper", "chams items" };
+                                xui::setting utility{ false,{}, "utility", "chams items" };
 
                                 std::array<chams_config, k_group_count> groups{};
                                 weapon_chams_overrides individual{ "item weapon id" };
@@ -1231,11 +1325,11 @@ namespace settings {
                                                 this->groups[i].init(cat, "item chams");
                                         }
 
-                                        this->groups[4].primary.enabled.value = true;
+                                        this->groups[4].primary.enabled.value = false;
                                         this->groups[4].primary.color = { 173, 192, 255, 255 };
                                         this->groups[4].primary.material = cham_ids::flat;
 
-                                        this->groups[5].primary.enabled.value = true;
+                                        this->groups[5].primary.enabled.value = false;
                                         this->groups[5].primary.color = { 173, 192, 255, 255 };
                                         this->groups[5].primary.material = cham_ids::flat;
                                 }
@@ -1723,6 +1817,7 @@ namespace settings {
 
         struct misc
         {
+
                 struct scoreboard_weapons
                 {
                         xui::setting enabled{ false,{}, "scoreboard weapons", "misc" };

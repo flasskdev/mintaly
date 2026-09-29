@@ -204,6 +204,14 @@ namespace features::combat {
         out.velocity = prestate.velocity;
         out.spread = g_shared.get_spread();
         out.predicted_inaccuracy = g_shared.get_inaccuracy(true);
+        {
+            const auto& cfg = settings::g_combat.m_ragebot.get_group(ctx.weapon_type, ctx.item_def_idx);
+            out.required_hitchance = cfg.hitchance_override.value
+                ? static_cast<float>(cfg.hitchance_override_value) / 100.0f
+                : static_cast<float>(cfg.hitchance) / 100.0f;
+            out.no_spread = cfg.no_spread.value;
+            out.allow_force = false;
+        }
         auto recoil_index = ctx.recoil_index;
 
         // Keep spread, inaccuracy and recoil from the same simulated weapon state.
@@ -221,6 +229,12 @@ namespace features::combat {
         ctx.recoil_index = recoil_index;
         out.view_angles = systems::g_input.get_view_angles();
         out.on_ground = (prestate.flags & cstypes::entity_flags::on_ground) != 0;
+        {
+            // Ground state is known only after prediction; resolve force-shot
+            // permission here so the whole staged pass sees one consistent flag.
+            const auto& cfg = settings::g_combat.m_ragebot.get_group(ctx.weapon_type, ctx.item_def_idx);
+            out.allow_force = out.on_ground ? cfg.force_shot.value : cfg.force_shot_air.value;
+        }
         out.is_scoped = ctx.is_scoped;
         out.weapon_max_speed = ctx.weapon_max_speed;
         out.accurate_threshold = ctx.weapon_max_speed * 0.34f;
@@ -306,19 +320,42 @@ namespace features::combat {
 
     std::vector<rage::candidate>& rage::gather_candidates(const systems::local::snapshot& local, float max_distance_sq)
     {
+        // Legacy path kept for taser/knife: delegates to the staged targets pass
+        // with a default context built from the shared aim state.
+        auto& ctx = g_shared.ctx();
+        aim_context aim{};
+        aim.view_angles = systems::g_input.get_view_angles();
+        aim.spread = g_shared.get_spread();
+        aim.predicted_inaccuracy = ctx.inaccuracy;
+        this->build_targets(aim, local, s_candidates_buf);
+        if (max_distance_sq > 0.0f)
+        {
+            s_candidates_buf.erase(std::remove_if(s_candidates_buf.begin(), s_candidates_buf.end(),
+                [&](const candidate& c) { return c.distance_sq > max_distance_sq; }), s_candidates_buf.end());
+        }
+        return s_candidates_buf;
+    }
+
+    void rage::build_targets(const aim_context& ctx, const systems::local::snapshot& local, std::vector<candidate>& out)
+    {
         perf::scope timer{perf::stage::gather};
         const auto& shared_ctx = g_shared.ctx();
+        const auto& group = settings::g_combat.m_ragebot.get_group(shared_ctx.weapon_type, shared_ctx.item_def_idx);
         const auto players = systems::g_entities.get_by_type(systems::entities::type::player);
 
-        s_candidates_buf.clear();
-        s_candidates_buf.reserve(players.size());
+        out.clear();
+        out.reserve(std::min<std::size_t>(players.size(), k_max_targets));
 
         this->m_scan_records.clear();
-        // Reserve before publishing pointers; at most two owned poses per player.
+        // Reserve before publishing pointers; owned poses stay stable while
+        // scan/selection/fire passes hold raw record pointers.
         this->m_scan_records.reserve(players.size() * k_max_scan_records);
 
+        const auto& eye_origin = systems::g_prediction.pre().origin;
         for (const auto& p : players)
         {
+            if (out.size() >= static_cast<std::size_t>(k_max_targets))
+                break;
             if (!p.ptr || p.ptr == local.controller)
                 continue;
 
@@ -330,7 +367,8 @@ namespace features::combat {
             if (!pawn || pawn == local.pawn)
                 continue;
 
-            const auto team = memory::read<int>(pawn + SCHEMA("C_BaseEntity", "m_iTeamNum"_hash));
+            // m_iTeamNum is a single byte in the current client schema.
+            const auto team = memory::read<std::uint8_t>(pawn + SCHEMA("C_BaseEntity", "m_iTeamNum"_hash));
             if (!local.is_this_other_team(team))
                 continue;
 
@@ -352,50 +390,68 @@ namespace features::combat {
             int records_count{};
             for (auto& snapshot : snapshots)
             {
+                if (records_count >= k_max_lagcomp_records)
+                    break;
                 this->m_scan_records.push_back(std::move(snapshot));
                 records_buf[records_count++] = &this->m_scan_records.back();
             }
-
-            // Distance cull
-            if (max_distance_sq > 0.0f)
-            {
-                const auto& origin = systems::g_prediction.pre().origin;
-                const auto delta_front = records_buf[0]->origin - origin;
-                auto closest_sq = delta_front.x * delta_front.x + delta_front.y * delta_front.y + delta_front.z * delta_front.z;
-
-                if (records_count > 1)
-                {
-                    const auto delta_back = records_buf[records_count - 1]->origin - origin;
-                    const auto back_sq = delta_back.x * delta_back.x + delta_back.y * delta_back.y + delta_back.z * delta_back.z;
-                    closest_sq = std::min(closest_sq, back_sq);
-                }
-
-                if (closest_sq > max_distance_sq)
-                    continue;
-            }
+            if (records_count <= 0)
+                continue;
 
             candidate c{};
             c.pawn = pawn;
             c.health = health;
             c.armor = memory::read<int>(pawn + SCHEMA("C_CSPlayerPawn", "m_ArmorValue"_hash));
 
-            // Pick first and last record for scanning
-            c.records[0] = records_buf[0];
-            auto picked{ 1 };
-            if (records_count > 1)
-                c.records[picked++] = records_buf[records_count - 1];
+            // Resolve pose distance once; gather_candidates filters on it.
+            {
+                auto closest_sq = std::numeric_limits<float>::max();
+                for (auto i = 0; i < records_count; ++i)
+                {
+                    const auto d = records_buf[i]->origin - eye_origin;
+                    closest_sq = std::min(closest_sq, d.x * d.x + d.y * d.y + d.z * d.z);
+                }
+                c.distance_sq = closest_sq;
+            }
 
-            c.record_count = picked;
+            // Newest -> ... -> oldest; scan keeps up to k_max_scan_records so
+            // recent and aged poses compete without extra penetration tests.
+            for (auto i = 0; i < records_count && c.record_count < k_max_scan_records; ++i)
+                c.records[c.record_count++] = records_buf[i];
 
             if (shared_ctx.weapon_type >= cstypes::weapon_type::pistol && shared_ctx.weapon_type <= cstypes::weapon_type::lmg)
             {
-                const auto& config = settings::g_combat.m_ragebot.get_group(shared_ctx.weapon_type, shared_ctx.item_def_idx);
-                c.min_damage = this->get_min_damage(config, health, config.min_damage_override.value);
+                c.min_damage = this->get_min_damage(group, health, group.min_damage_override.value);
             }
 
-            s_candidates_buf.push_back(c);
+            // FOV snapshot for targets-stage ordering (rage_targets context).
+            {
+                const auto to_target = math::helpers::calculate_angle(eye_origin, records_buf[0]->origin);
+                c.fov = math::helpers::angle_distance(ctx.view_angles, to_target);
+                c.in_fov = group.max_fov >= 180.0f || c.fov <= group.max_fov;
+            }
+
+            out.push_back(c);
         }
-        return s_candidates_buf;
+
+        // rage_targets ordering: in-FOV first, then closest, then lowest health.
+        // Stable so scan/selection tie-breaks stay deterministic.
+        std::stable_sort(out.begin(), out.end(), [](const candidate& a, const candidate& b)
+        {
+            if (a.in_fov != b.in_fov) return a.in_fov > b.in_fov;
+            if (a.distance_sq != b.distance_sq) return a.distance_sq < b.distance_sq;
+            return a.health < b.health;
+        });
+
+        // Visibility rotation: scan detailed targets (default 2) from the top of
+        // the ordered list; the rest still compete as centers-only fallbacks.
+        auto order = 0;
+        for (auto& c : out)
+            c.order = order++;
+
+        // Trim to the staged cap; caller never scans more than k_max_targets.
+        if (out.size() > static_cast<std::size_t>(k_max_targets))
+            out.resize(k_max_targets);
     }
 
     bool rage::run_gun(systems::input::usercmd* cmd, const aim_context& ctx, const systems::local::snapshot& local, bool allow_fire)
@@ -409,7 +465,11 @@ namespace features::combat {
         const auto autostop_enabled = config.autostop.value;
 
         diag::set_exception_phase("rage: run_gun / gather_candidates");
-        auto& candidates = this->gather_candidates(local);
+        // Reset per-command staged budgets: penetration traces + hitchance.
+        this->m_penetration_used = 0;
+        this->m_hitchance_used = 0;
+        this->build_targets(ctx, local, s_candidates_buf);
+        auto& candidates = s_candidates_buf;
         {
             std::lock_guard lock(m_debug_mtx);
             m_debug_points.clear();
@@ -474,23 +534,16 @@ namespace features::combat {
         s_hits_buf.reserve(64);
         auto& hits_buf = s_hits_buf;
 
-        // No-spread uses the same predicted state as scanning. fire_gun validates
-        // the compensated trajectory instead of assuming compensation always hits.
+        // No-spread uses the same predicted state as scanning. Staged select/fire
+        // passes validate the compensated trajectory instead of assuming it hits.
         if (config.no_spread.value)
         {
             scan_from_eye_candidates({}, shared_ctx.inaccuracy, hits_buf);
-            const auto best = hits_buf.empty() ? target{} : this->select_best(ctx, hits_buf, shared_ctx.inaccuracy);
+            const auto best = hits_buf.empty() ? target{} : this->run_select_pass(ctx, hits_buf, shared_ctx.inaccuracy);
 
             if (best.valid && allow_fire)
             {
-                this->fire_gun(cmd, best, false, best.hit.source_eye.position, local);
-                if (duckpeek_active && this->m_firing_this_tick)
-                {
-                    this->m_duckpeek_reduck = true;
-                    this->m_duckpeek_reduck_ticks = 10;
-                    this->m_release_duck_for_shot = false;
-                }
-                return best.valid;
+                return this->run_fire_pass(cmd, best, ctx, local);
             }
 
             // Duckpeek standing scan
@@ -498,7 +551,7 @@ namespace features::combat {
             {
                 const auto stand_offset = math::vector3{ 0.0f, 0.0f, effective_stand_z };
                 scan_from_eye_candidates(stand_offset, shared_ctx.inaccuracy, hits_buf);
-                const auto standing_best = hits_buf.empty() ? target{} : this->select_best(ctx, hits_buf, shared_ctx.inaccuracy);
+                const auto standing_best = hits_buf.empty() ? target{} : this->run_select_pass(ctx, hits_buf, shared_ctx.inaccuracy);
 
                 if (standing_best.valid)
                 {
@@ -518,10 +571,10 @@ namespace features::combat {
             return best.valid;
         }
 
-        // Standard hitchance-based logic
+        // Standard hitchance-based logic (rage_select context lives in aim_ctx).
         const auto primary_eye = eye_candidates.entries[0].position;
         scan_from_eye_candidates({}, ctx.predicted_inaccuracy, hits_buf);
-        const auto best = this->select_best(ctx, hits_buf, ctx.predicted_inaccuracy);
+        auto best = this->run_select_pass(ctx, hits_buf, ctx.predicted_inaccuracy);
 
         // Auto-scope
         if (settings::g_combat.m_autos.scope.value && settings::g_combat.m_ragebot.enabled &&
@@ -533,28 +586,20 @@ namespace features::combat {
             cmd->buttons.value_scroll |= cstypes::command_buttons::in_second_attack;
         }
 
-        const auto needed_hc = config.hitchance_override.value ?
-            static_cast<float>(config.hitchance_override_value) / 100.0f :
-            static_cast<float>(config.hitchance) / 100.0f;
+        const auto needed_hc = ctx.required_hitchance;
         const auto hc_floor = hitchance_floor(needed_hc);
 
         const auto standing_inaccuracy = duckpeek_active ? this->get_standing_inaccuracy(local, ctx) : ctx.predicted_inaccuracy;
         const auto current_hc = best.valid ? best.hitchance : 0.0f;
         const auto accurate = best.valid && current_hc >= hc_floor;
         const auto max_acc = g_shared.is_max_accuracy(ctx.predicted_inaccuracy);
-        const auto force = best.valid && (ctx.on_ground ? (config.force_shot.value && max_acc) : (config.force_shot_air.value && max_acc));
+        const auto force = best.valid && ctx.allow_force && max_acc;
         const auto shot_viable = accurate || force;
 
         if (shot_viable && allow_fire)
         {
-            this->fire_gun(cmd, best, !accurate && force, best.hit.source_eye.position, local);
-            if (duckpeek_active && this->m_firing_this_tick)
-            {
-                this->m_duckpeek_reduck = true;
-                this->m_duckpeek_reduck_ticks = 10;
-                this->m_release_duck_for_shot = false;
-            }
-            return best.valid;
+            best.forced = !accurate && force;
+            return this->run_fire_pass(cmd, best, ctx, local);
         }
 
         // Duckpeek logic: check if standing up reveals a better shot
@@ -562,7 +607,7 @@ namespace features::combat {
         {
             const auto stand_offset = math::vector3{ 0.0f, 0.0f, effective_stand_z };
             scan_from_eye_candidates(stand_offset, standing_inaccuracy, hits_buf);
-            const auto standing_best = hits_buf.empty() ? target{} : this->select_best(ctx, hits_buf, standing_inaccuracy);
+            const auto standing_best = hits_buf.empty() ? target{} : this->run_select_pass(ctx, hits_buf, standing_inaccuracy);
 
             if (standing_best.valid)
             {
@@ -595,7 +640,7 @@ namespace features::combat {
             this->m_release_duck_for_shot = false;
         }
 
-        // Autostop planning
+        // Autostop planning (prediction pass, not a guaranteed shot).
         if (autostop_enabled && !shot_viable && this->should_stop_movement(ctx))
         {
             const auto stop = this->predict_stop(ctx, primary_eye, local);
@@ -603,7 +648,7 @@ namespace features::combat {
             {
                 const auto future_offset = stop->eye - primary_eye;
                 scan_from_eye_candidates(future_offset, stop->inaccuracy, hits_buf);
-                const auto planned = this->select_best(ctx, hits_buf, stop->inaccuracy);
+                const auto planned = this->run_select_pass(ctx, hits_buf, stop->inaccuracy);
                 this->m_should_stop = planned.valid;
             }
             else
@@ -613,6 +658,29 @@ namespace features::combat {
         }
 
         return best.valid;
+    }
+
+    bool rage::run_fire_pass(systems::input::usercmd* cmd, const target& tgt, const aim_context& ctx, const systems::local::snapshot& local)
+    {
+        // rage_fire context: single hit + hitchance/required_hitchance/forced.
+        // Geometry is frozen here; this pass only validates and fires.
+        if (!tgt.valid || !tgt.hit.record || !tgt.hit.record->valid)
+            return false;
+
+        const auto hc_floor = hitchance_floor(tgt.required_hitchance);
+        const auto max_acc = g_shared.is_max_accuracy(ctx.predicted_inaccuracy);
+        const auto accurate = tgt.hitchance >= hc_floor;
+        if (!accurate && !(tgt.forced && tgt.allow_force && max_acc))
+            return false;
+
+        this->fire_gun(cmd, tgt, tgt.forced, tgt.hit.source_eye.position, local);
+        if (settings::g_combat.m_duckpeek.enabled.value && ctx.on_ground && this->m_firing_this_tick)
+        {
+            this->m_duckpeek_reduck = true;
+            this->m_duckpeek_reduck_ticks = 10;
+            this->m_release_duck_for_shot = false;
+        }
+        return this->m_firing_this_tick;
     }
 
     void rage::run_taser(systems::input::usercmd* cmd, const aim_context& ctx, const systems::local::snapshot& local)
@@ -772,6 +840,99 @@ namespace features::combat {
         ++this->m_revolver_cock_ticks;
     }
 
+    bool rage::execute_scan_point(const math::vector3& eye, const trace_point& point, std::uintptr_t pawn,
+        int health, float min_damage, float max_fov, const shared::penetration::run_context& pen_ctx,
+        const aim_context& ctx, const systems::local::snapshot& local, scan_hit& out) const
+    {
+        if (point.hitbox_index < 0 || point.hitbox_index >= 19)
+            return false;
+
+        const auto aim = math::helpers::calculate_angle(eye, point.position);
+        const auto fov = math::helpers::angle_distance(ctx.view_angles, aim);
+        if (fov > max_fov)
+            return false;
+
+        // Shared penetration budget (160 traces per command). Reserve the slot
+        // with a CAS loop so parallel workers cannot overshoot the cap.
+        auto used = this->m_penetration_used.load(std::memory_order_relaxed);
+        while (true)
+        {
+            if (used >= k_penetration_budget)
+                return false;
+            if (this->m_penetration_used.compare_exchange_weak(used, used + 1, std::memory_order_relaxed))
+                break;
+        }
+
+        const auto penetration = g_shared.pen(); // Immutable weapon-data snapshot.
+        shared::penetration::result pen{};
+        if (!penetration.run(eye, point.position, pen_ctx, local.pawn, local.team, pen))
+            return false;
+        if (pen.damage < min_damage)
+            return false;
+        // A multipoint only counts for the requested hitbox: bonus points that
+        // landed on another group must not be reported as a head hit.
+        if (!point.is_center && point.hitbox_index == 0 &&
+            pen.hitgroup != systems::g_hitboxes.hitgroup_from_hitbox(0))
+            return false;
+
+        out = {};
+        out.position = point.position;
+        out.aim_angle = aim;
+        out.damage = pen.damage;
+        out.fov = fov;
+        out.hitbox_index = point.hitbox_index;
+        out.requested_hitbox = point.hitbox_index;
+        out.hitgroup = pen.hitgroup;
+        out.bone_index = point.bone_index;
+        out.hitbox = point.hitbox;
+        out.is_center = point.is_center;
+        out.penetrated = pen.penetrated;
+        out.pawn = pawn;
+        out.health = health;
+        out.record = pen_ctx.record;
+        return true;
+    }
+
+    void rage::run_scan_pass(const rage_scan& scan, const aim_context& ctx, const systems::local::snapshot& local, std::vector<scan_hit>& out, const shared::penetration::run_context* prepared) const
+    {
+        // Single-target/single-record pass. Points are already ordered;
+        // trace_budget + centers_only come from the scan context.
+        if (!scan.pawn || !scan.record || !scan.record->valid || scan.point_count <= 0)
+            return;
+        if (!g_shared.pen().prepare_workers())
+            return;
+        const auto& config = settings::g_combat.m_ragebot.get_group(g_shared.ctx().weapon_type, g_shared.ctx().item_def_idx);
+        const auto max_fov = static_cast<float>(config.max_fov);
+
+        // Prepared once per pose; every point of this pass reuses the geometry.
+        // Callers that already prepared the same record (batched driver) pass it in.
+        auto owned_ctx = shared::penetration::run_context{};
+        const auto* pen_ctx = prepared;
+        if (!pen_ctx)
+        {
+            owned_ctx = g_shared.pen().prepare_target(scan.pawn, scan.record);
+            pen_ctx = &owned_ctx;
+        }
+        if (pen_ctx->geometry_count <= 0)
+            return;
+
+        // Per-pass budget counts every attempted trace, hit or miss; the shared
+        // command budget is additionally enforced inside execute_scan_point.
+        const auto budget = std::clamp(scan.trace_budget, 0, k_penetration_budget);
+        auto traced{ 0 };
+        for (auto pi = 0; pi < scan.point_count && traced < budget; ++pi)
+        {
+            const auto& point = scan.points[pi];
+            if (!point.is_center && scan.centers_only)
+                continue;
+            ++traced;
+            scan_hit hit{};
+            if (this->execute_scan_point(scan.eye, point, scan.pawn, scan.health, scan.min_damage,
+                max_fov, *pen_ctx, ctx, local, hit))
+                out.push_back(hit);
+        }
+    }
+
     void rage::scan_players(const math::vector3& eye, float inaccuracy, const aim_context& ctx, std::vector<candidate>& candidates, const systems::local::snapshot& local, std::vector<scan_hit>& out) const
     {
         diag::exception_scope scan_scope{ "rage: scan_players / batch" };
@@ -779,16 +940,68 @@ namespace features::combat {
         const auto penetration = g_shared.pen(); // Immutable weapon-data snapshot.
         // Initialize TLS on the owner before any worker reads its slot index.
         if (!penetration.prepare_workers()) return;
-        const auto max_fov = static_cast<float>(settings::g_combat.m_ragebot.get_group(
-            g_shared.ctx().weapon_type, g_shared.ctx().item_def_idx).max_fov);
-        const auto view_angles = ctx.view_angles;
-        const auto local_pawn = local.pawn;
-        const auto local_team = local.team;
+        const auto& group = settings::g_combat.m_ragebot.get_group(
+            g_shared.ctx().weapon_type, g_shared.ctx().item_def_idx);
+        const auto max_fov = static_cast<float>(group.max_fov);
+        const auto detailed = std::clamp(group.detailed_targets.value, 1, k_detailed_targets);
+        const auto prefer_visible = group.prefer_visible.value;
 
         m_scan_work.resize(candidates.size());
         m_candidate_hits.resize(candidates.size());
         m_candidate_done.assign(candidates.size(), 0);
         for (auto& hits : m_candidate_hits) hits.clear();
+
+        // Single-target commands run the staged serial pass: identical point
+        // ordering, budgets and hit assembly to the batched driver below, but
+        // without paying a worker barrier for one task. Duels are the common
+        // case, so this is the hot path.
+        if (candidates.size() == 1)
+        {
+            const auto& cand = candidates.front();
+            auto& work = m_scan_work.front();
+            std::vector<scan_hit> serial_hits;
+            for (auto ri = 0; ri < cand.record_count && !m_candidate_done.front(); ++ri)
+            {
+                this->prepare_scan(eye, inaccuracy, ctx, cand, cand.records[ri], work, false);
+
+                rage_scan scan{};
+                scan.pawn = cand.pawn;
+                scan.health = cand.health;
+                scan.min_damage = cand.min_damage;
+                scan.record = cand.records[ri];
+                scan.eye = eye;
+                scan.inaccuracy = inaccuracy;
+                scan.spread = ctx.spread;
+                scan.prediction = false;
+                scan.centers_only = group.centers_only.value;
+                scan.trace_budget = std::clamp(group.trace_budget.value, 0, k_penetration_budget);
+                scan.point_count = std::min(work.point_count, k_max_scan_points);
+                for (auto pi = 0; pi < scan.point_count; ++pi)
+                    scan.points[pi] = work.points[pi];
+
+                serial_hits.clear();
+                serial_hits.reserve(scan.point_count);
+                // prepare_scan already built the pose geometry for this record.
+                this->run_scan_pass(scan, ctx, local, serial_hits, &work.penetration);
+                // Centers keep priority inside a record; selection relies on it.
+                std::stable_partition(serial_hits.begin(), serial_hits.end(),
+                    [](const scan_hit& hit) { return hit.is_center; });
+
+                for (auto& hit : serial_hits)
+                {
+                    m_candidate_hits.front().push_back(hit);
+                    if (!hit.penetrated && hit.damage >= static_cast<float>(hit.health))
+                        m_candidate_done.front() = 1;
+                }
+            }
+            for (const auto& hits : m_candidate_hits)
+                out.insert(out.end(), hits.begin(), hits.end());
+            return;
+        }
+
+        // Staged rotation: top-N ordered targets get the detailed multipoint
+        // pass; the rest compete as centers-only fallbacks so at most 13
+        // targets stay cheap while visible ones keep priority.
 
         // One queue per record round, not two barriers per individual player.
         // Newest poses run first. Older poses keep being scanned unless the newest
@@ -803,7 +1016,26 @@ namespace features::combat {
                 work.point_count = 0;
                 const auto& cand = candidates[ci];
                 if (m_candidate_done[ci] || ri >= cand.record_count) continue;
-                this->prepare_scan(eye, inaccuracy, ctx, cand, cand.records[ri], work);
+                // Detailed rotation: first N ordered candidates scan all records
+                // with multipoints; others scan only their newest record and only
+                // centers. Non-detailed targets skip older records entirely.
+                const auto detailed_target = static_cast<int>(ci) < detailed;
+                const auto centers_only_record = !detailed_target && ri > 0;
+                if (centers_only_record) continue;
+                this->prepare_scan(eye, inaccuracy, ctx, cand, cand.records[ri], work, !detailed_target);
+                if (prefer_visible && !detailed_target && cand.order >= detailed)
+                {
+                    // Keep fallback targets centers-only even if config disables it.
+                    for (auto pi = 0; pi < work.point_count;)
+                    {
+                        if (!work.points[pi].is_center)
+                        {
+                            work.points[pi] = work.points[--work.point_count];
+                            continue;
+                        }
+                        ++pi;
+                    }
+                }
                 std::array<bool, 19> queued{};
                 for (int pi = 0; pi < work.point_count; ++pi)
                 {
@@ -834,31 +1066,14 @@ namespace features::combat {
                             const auto& point = work.points[pi];
                             if (point.hitbox_index != task.hitbox_index) continue;
                             if (!point.is_center && center_sufficient) continue;
-                            const auto aim = math::helpers::calculate_angle(eye, point.position);
-                            const auto fov = math::helpers::angle_distance(view_angles, aim);
-                            if (fov > max_fov) continue;
-                            shared::penetration::result pen{};
-                            if (!penetration.run(eye, point.position, work.penetration, local_pawn, local_team, pen)) continue;
-                            if (pen.damage < cand.min_damage) continue;
-                            if (!point.is_center && point.hitbox_index == 0 &&
-                                pen.hitgroup != systems::g_hitboxes.hitgroup_from_hitbox(0)) continue;
-                            if (point.is_center && (!pen.penetrated || pen.damage >= static_cast<float>(cand.health)))
-                                center_sufficient = true;
 
                             scan_hit hit{};
-                            hit.position = point.position;
-                            hit.aim_angle = aim;
-                            hit.damage = pen.damage;
-                            hit.fov = fov;
-                            hit.hitbox_index = point.hitbox_index;
-                            hit.hitgroup = pen.hitgroup;
-                            hit.bone_index = point.bone_index;
-                            hit.hitbox = point.hitbox;
-                            hit.is_center = point.is_center;
-                            hit.penetrated = pen.penetrated;
-                            hit.pawn = cand.pawn;
-                            hit.health = cand.health;
-                            hit.record = work.penetration.record;
+                            if (!this->execute_scan_point(eye, point, cand.pawn, cand.health, cand.min_damage,
+                                max_fov, work.penetration, ctx, local, hit)) continue;
+
+                            if (point.is_center && (!hit.penetrated || hit.damage >= static_cast<float>(cand.health)))
+                                center_sufficient = true;
+
                             work.hits[pi] = hit;
                         }
                     }
@@ -885,7 +1100,7 @@ namespace features::combat {
             out.insert(out.end(), hits.begin(), hits.end());
     }
 
-    void rage::prepare_scan(const math::vector3& eye, float inaccuracy, const aim_context& ctx, const candidate& cand, shared::lagcomp::record* record, scan_work& work) const
+    void rage::prepare_scan(const math::vector3& eye, float inaccuracy, const aim_context& ctx, const candidate& cand, shared::lagcomp::record* record, scan_work& work, bool centers_only) const
     {
         perf::scope timer{perf::stage::prepare_scan};
         work.point_count = 0;
@@ -971,6 +1186,8 @@ namespace features::combat {
         // Reuse owner-allocated storage; workers never resize these buffers.
         auto& points = work.points;
         auto& point_count = work.point_count;
+        // Staged cap: at most 128 points per target/record scan.
+        const auto point_limit = std::min(static_cast<int>(points.size()), k_max_scan_points);
 
         // Batch debug points to avoid per-point mutex acquisition
         std::array<debug_point, 256> local_debug_points{};
@@ -994,7 +1211,7 @@ namespace features::combat {
             const auto hitbox_center = (hb->mins + hb->maxs) * 0.5f;
             const auto center = bone.rotation.rotate_vector(hitbox_center) + bone.position;
 
-            if (point_count < static_cast<int>(points.size()))
+            if (point_count < point_limit)
             {
                 auto& cp = points[point_count++];
                 cp.position = center;
@@ -1007,8 +1224,8 @@ namespace features::combat {
             if (collecting_debug && debug_count < static_cast<int>(local_debug_points.size()))
                 local_debug_points[debug_count++] = { center, hitbox_index, true };
 
-            // Generate multipoints
-            if (config.pointscale > 0.0f)
+            // Generate multipoints (skipped for centers-only fallback targets).
+            if (!centers_only && !config.centers_only.value && config.pointscale > 0.0f)
             {
                 const auto mps = this->generate_multipoints(*hb, center, bone.rotation, config.pointscale, eye, inaccuracy);
                 // Duplicate check scoped to current hitbox's points only
@@ -1031,7 +1248,7 @@ namespace features::combat {
                     if (duplicate)
                         continue;
 
-                    if (point_count < static_cast<int>(points.size()))
+                    if (point_count < point_limit)
                     {
                         auto& tp = points[point_count++];
                         tp.position = mp;
@@ -1056,6 +1273,20 @@ namespace features::combat {
         }
 
         // Dispatch is owned by scan_players after all target inputs are ready.
+    }
+
+    rage::target rage::run_select_pass(const aim_context& aim_ctx, const std::vector<scan_hit>& hits, float eval_inaccuracy) const
+    {
+        auto best = this->select_best(aim_ctx, hits, eval_inaccuracy);
+        // rage_select context fields: required_hitchance/allow_force/no_spread
+        // travel with the aim pass; stamp them on the accepted target so
+        // run_fire_pass validates the same numbers select used.
+        if (best.valid)
+        {
+            best.required_hitchance = aim_ctx.required_hitchance;
+            best.allow_force = aim_ctx.allow_force;
+        }
+        return best;
     }
 
     rage::target rage::select_best(const aim_context& aim_ctx, const std::vector<scan_hit>& hits, float eval_inaccuracy) const
@@ -1149,20 +1380,17 @@ namespace features::combat {
         std::sort(candidate_indices.begin(), candidate_indices.begin() + cand_count,
             [&](int a, int b) { return cheap_score(hits[a]) > cheap_score(hits[b]); });
 
-        const auto& config = settings::g_combat.m_ragebot.get_group(g_shared.ctx().weapon_type, g_shared.ctx().item_def_idx);
-        const auto needed_hc = config.hitchance_override.value ?
-            static_cast<float>(config.hitchance_override_value) / 100.0f :
-            static_cast<float>(config.hitchance) / 100.0f;
+        const auto needed_hc = aim_ctx.required_hitchance;
         const auto hc_floor = hitchance_floor(needed_hc);
 
         // Build the spread cache once for the entire evaluation loop. More samples
         // than the default tighten the Monte-Carlo estimate, which both rejects more
         // borderline misses and avoids dropping shots that only *looked* weak.
-        const auto hc_cache = config.no_spread.value
+        const auto no_spread = aim_ctx.no_spread;
+        const auto hc_cache = no_spread
             ? shared::spread_cache{}
             : g_shared.build_spread_cache( eval_inaccuracy, aim_ctx.spread, 256 );
         const auto weapon_range = g_shared.ctx().range;
-        const auto no_spread = config.no_spread.value;
         const auto batch_width = no_spread ? 1 : std::max(threadpool::get_thread_count(), 1);
         std::array<float, 128> hitchances{};
         hitchances.fill(-1.0f);
@@ -1195,7 +1423,15 @@ namespace features::combat {
             {
                 // Ordered waves retain branch-and-bound between batches instead
                 // of evaluating every discarded candidate unconditionally.
-                const auto wave_end = ci + std::min(batch_width, cand_count - ci);
+                // Hard cap mirrors the staged pipeline: 32 hitchance queries
+                // per command; beyond that reuse the cheap-score ordering.
+                if (this->m_hitchance_used >= k_max_hitchance_queries)
+                {
+                    hitchances[ci] = 0.0f;
+                }
+                else
+                {
+                const auto wave_end = ci + std::min({ batch_width, cand_count - ci, k_max_hitchance_queries - this->m_hitchance_used.load() });
                 perf::scope timer{perf::stage::hitchance_batch};
                 threadpool::parallel_for(ci, wave_end, [&](int begin, int end)
                 {
@@ -1212,10 +1448,12 @@ namespace features::combat {
                         hitchances[wi] = hc_value;
                     }
                 });
+                this->m_hitchance_used += wave_end - ci;
+                }
             }
             const auto hc = no_spread ? 1.0f : hitchances[ci];
 
-            const auto passes_hitchance = config.no_spread.value || hc >= hc_floor;
+            const auto passes_hitchance = no_spread || hc >= hc_floor;
 
             auto score = passes_hitchance ? 1000000.0f : 0.0f;
             if (can_kill)

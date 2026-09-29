@@ -1,0 +1,65 @@
+// function: FUN_1800e7320
+// ea: 1800e7320
+// category: pipeline
+// depth: 1, via: FUN_1800a3380 @1800a42c3
+// size: 551 bytes
+// anchors: pipeline, hitbox_backtrack
+// ----------------------------------------------------
+
+void FUN_1800e7320(undefined8 *param_1,char *param_2)
+
+{
+  double dVar1;
+  double dVar2;
+  longlong lVar3;
+  char *pcVar4;
+  double local_60 [8];
+  
+  if (*param_2 == '\x01') {
+    lVar3 = FUN_180013570(*(undefined8 *)(param_2 + 8),"x");
+    if ((lVar3 != **(longlong **)(param_2 + 8)) && (*param_2 == '\x01')) {
+      lVar3 = FUN_180013570(*(longlong **)(param_2 + 8),"y");
+      if ((lVar3 != **(longlong **)(param_2 + 8)) && (*param_2 == '\x01')) {
+        lVar3 = FUN_180013570(*(longlong **)(param_2 + 8),"z");
+        if (lVar3 != **(longlong **)(param_2 + 8)) {
+          pcVar4 = (char *)FUN_1800e71b0(param_2,"x");
+          if ((byte)(*pcVar4 - 5U) < 3) {
+            local_60[0] = 0.0;
+            FUN_1800b8ce0(pcVar4,local_60);
+            dVar1 = local_60[0];
+            if (((local_60[0] <= 1000000.0) && (-1000000.0 <= local_60[0])) &&
+               ((ulonglong)ABS(local_60[0]) < 0x7ff0000000000000)) {
+              pcVar4 = (char *)FUN_1800e71b0(param_2,"y");
+              if (2 < (byte)(*pcVar4 - 5U)) goto LAB_1800e752f;
+              local_60[0] = 0.0;
+              FUN_1800b8ce0(pcVar4,local_60);
+              dVar2 = local_60[0];
+              if (((local_60[0] <= 1000000.0) && (-1000000.0 <= local_60[0])) &&
+                 ((ulonglong)ABS(local_60[0]) < 0x7ff0000000000000)) {
+                pcVar4 = (char *)FUN_1800e71b0(param_2,"z");
+                if (2 < (byte)(*pcVar4 - 5U)) goto LAB_1800e752f;
+                local_60[0] = 0.0;
+                FUN_1800b8ce0(pcVar4,local_60);
+                if (((local_60[0] <= 1000000.0) && (-1000000.0 <= local_60[0])) &&
+                   ((ulonglong)ABS(local_60[0]) < 0x7ff0000000000000)) {
+                  *param_1 = CONCAT44((float)dVar2,(float)dVar1);
+                  *(float *)(param_1 + 1) = (float)local_60[0];
+                  return;
+                }
+              }
+            }
+                    /* WARNING: Subroutine does not return */
+            FUN_1800e24d0("numeric field out of range");
+          }
+LAB_1800e752f:
+                    /* WARNING: Subroutine does not return */
+          FUN_1800e24d0("expected a numeric field");
+        }
+      }
+    }
+  }
+                    /* WARNING: Subroutine does not return */
+  FUN_1800e24d0("expected {x,y,z}");
+}
+
+

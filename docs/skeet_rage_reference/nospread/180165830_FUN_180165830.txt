@@ -1,0 +1,51 @@
+// function: FUN_180165830
+// ea: 180165830
+// category: nospread
+// depth: 3, via: FUN_180165960 @180165978
+// size: 293 bytes
+// anchors: nospread, trace_geometry, hitbox_backtrack
+// ----------------------------------------------------
+
+ulonglong FUN_180165830(longlong *param_1)
+
+{
+  undefined4 uVar1;
+  int iVar2;
+  HANDLE pvVar3;
+  ulonglong uVar4;
+  undefined4 local_4c;
+  longlong local_48;
+  longlong local_40;
+  char *local_38;
+  undefined8 local_30;
+  
+  local_40 = *param_1;
+  uVar4 = 0;
+  if (((local_40 != 0) && (param_1[2] != 0)) && (uVar4 = 1, (char)param_1[0xb] == '\x01')) {
+    local_48 = param_1[9];
+    local_4c = 0;
+    pvVar3 = GetCurrentProcess();
+    if (DAT_180495bf0 == (code *)0x0) {
+      local_38 = "ntdll.dll:NtProtectVirtualMemory";
+      local_30 = 0x20;
+      DAT_180495bf0 = (code *)FUN_180166750(&local_38);
+    }
+    iVar2 = (*DAT_180495bf0)(pvVar3,&local_40,&local_48,0x40,&local_4c);
+    uVar4 = CONCAT71((int7)((ulonglong)pvVar3 >> 8),-1 < iVar2);
+    if (-1 < iVar2) {
+      FUN_18023b1d0(*param_1,param_1 + 3,param_1[9]);
+      uVar1 = local_4c;
+      pvVar3 = GetCurrentProcess();
+      if (DAT_180495bf0 == (code *)0x0) {
+        local_38 = "ntdll.dll:NtProtectVirtualMemory";
+        local_30 = 0x20;
+        DAT_180495bf0 = (code *)FUN_180166750(&local_38);
+      }
+      (*DAT_180495bf0)(pvVar3,&local_40,&local_48,uVar1,&local_4c);
+      *(undefined1 *)(param_1 + 0xb) = 0;
+    }
+  }
+  return uVar4 & 0xffffffff;
+}
+
+

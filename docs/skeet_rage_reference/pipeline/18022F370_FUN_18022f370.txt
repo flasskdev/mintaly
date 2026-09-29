@@ -1,0 +1,16 @@
+// function: FUN_18022f370
+// ea: 18022f370
+// category: pipeline
+// depth: 3, via: FUN_18022bc30 @18022bcda
+// size: 42 bytes
+// anchors: pipeline, autowall_damage
+// ----------------------------------------------------
+
+void FUN_18022f370(void)
+
+{
+  FUN_18022f530();
+  return;
+}
+
+

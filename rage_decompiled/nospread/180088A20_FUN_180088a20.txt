@@ -1,0 +1,32 @@
+// function: FUN_180088a20
+// ea: 180088a20
+// category: nospread
+// depth: 1, via: FUN_180084040 @1800854f5
+// size: 160 bytes
+// anchors: nospread, trace_geometry, hitbox_backtrack
+// ----------------------------------------------------
+
+undefined8
+FUN_180088a20(undefined8 param_1,undefined8 param_2,undefined8 param_3,undefined4 param_4)
+
+{
+  longlong lVar1;
+  undefined8 uVar2;
+  
+  lVar1 = *(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8);
+  *(int *)(lVar1 + 0x10) = *(int *)(lVar1 + 0x10) + 1;
+  uVar2 = *(undefined8 *)(lVar1 + 8);
+  *(char **)(lVar1 + 8) = "world: primitive tint";
+  FUN_18007ea00(&DAT_180470ee8,param_3,param_4);
+  *(int *)(lVar1 + 0x10) = *(int *)(lVar1 + 0x10) + -1;
+  *(undefined8 *)(lVar1 + 8) = uVar2;
+  if (DAT_180473120 != (code *)0x0) {
+                    /* WARNING: Could not recover jumptable at 0x000180088aad. Too many branches */
+                    /* WARNING: Treating indirect jump as call */
+    uVar2 = (*DAT_180473120)(param_1,param_2,param_3,param_4);
+    return uVar2;
+  }
+  return 0;
+}
+
+

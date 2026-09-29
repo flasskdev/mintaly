@@ -219,6 +219,7 @@ void skin_sync::on_frame_stage_notify() {
     for (const auto& preview : preview_scene::players) append(preview.steam_id);
     std::lock_guard lock(m_query_mutex);
     for (const auto pending : m_pending_query_ids) append(pending);
+    m_latest_query_ids = ids_to_query;
     m_pending_query_ids = std::move(ids_to_query);
 }
 
@@ -379,4 +380,5 @@ void skin_sync::perform_users_update() {
     // Only visible match/preview IDs are queued by the game thread. Do not let
     // global discovery grow the HTTP backlog or displace current players.
 }
+
 } // namespace features::changer

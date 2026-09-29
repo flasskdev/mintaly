@@ -1,0 +1,121 @@
+// function: FUN_180204168
+// ea: 180204168
+// category: hitchance
+// depth: 3, via: FUN_180203cac @180203d85
+// size: 582 bytes
+// anchors: hitchance, nospread, autowall_damage
+// ----------------------------------------------------
+
+int * FUN_180204168(longlong param_1,longlong param_2,longlong param_3,longlong param_4,
+                   longlong param_5,longlong param_6)
+
+{
+  int iVar1;
+  uint uVar2;
+  bool bVar3;
+  longlong lVar4;
+  int iVar5;
+  longlong lVar6;
+  longlong lVar7;
+  longlong lVar8;
+  byte bVar9;
+  int *piVar10;
+  int *piVar11;
+  int iVar12;
+  int *piVar13;
+  int *piVar14;
+  int *piVar15;
+  int *piVar16;
+  bool bVar17;
+  uint local_res10;
+  longlong local_60;
+  
+  lVar4 = param_6;
+  piVar10 = (int *)0x0;
+  param_6._0_4_ = -1;
+  local_res10 = 0;
+  local_60 = -1;
+  iVar1 = *(int *)((longlong)*(int *)(param_2 + 0x10) + 0xc + lVar4);
+  uVar2 = *(uint *)((longlong)*(int *)(param_2 + 0x10) + 8 + lVar4);
+  bVar3 = true;
+  piVar11 = piVar10;
+  piVar13 = piVar10;
+  piVar14 = piVar10;
+  piVar15 = piVar10;
+  piVar16 = piVar10;
+  if (uVar2 != 0) {
+    do {
+      iVar12 = (int)piVar11;
+      piVar11 = (int *)(*(int *)(iVar1 + lVar4 + (longlong)piVar11 * 4) + lVar4);
+      if (((uint)piVar10 < (uint)(iVar12 - (int)param_6)) &&
+         (((*piVar11 + lVar4 == param_5 ||
+           (iVar5 = strcmp((char *)(*piVar11 + lVar4 + 0x10),(char *)(param_5 + 0x10)), iVar5 == 0))
+          && (local_res10 = piVar11[1], piVar16 = piVar11, param_6._0_4_ = iVar12,
+             (*(byte *)(piVar11 + 5) & 3) == 0)))) {
+        piVar13 = piVar11;
+      }
+      lVar6 = local_60;
+      if ((*piVar11 + lVar4 == param_3) ||
+         (iVar5 = strcmp((char *)(*piVar11 + lVar4 + 0x10),(char *)(param_3 + 0x10)), iVar5 == 0)) {
+        lVar8 = 0;
+        lVar7 = lVar8;
+        if (-1 < piVar11[3]) {
+          lVar7 = (longlong)*(int *)(*(longlong *)(piVar11[3] + param_1) + (longlong)piVar11[4]) +
+                  (longlong)piVar11[3];
+        }
+        if (piVar11[2] + lVar7 == param_4) {
+          if (local_res10 < (uint)(iVar12 - (int)param_6)) {
+            if ((*(byte *)(piVar11 + 5) & 5) == 0) {
+              piVar15 = piVar11;
+            }
+          }
+          else if (bVar3) {
+            if ((*(byte *)(piVar16 + 5) & 0x40) == 0) {
+              if (((int)param_6 == 0) && (bVar3 = true, (*(byte *)(piVar11 + 5) & 1) != 0)) {
+                bVar3 = false;
+              }
+              bVar9 = 1;
+              bVar17 = bVar3;
+            }
+            else {
+              lVar7 = (longlong)
+                      *(int *)(*(int *)((longlong)piVar16[6] + 0xc + lVar4) + lVar4 +
+                              (ulonglong)(uint)(iVar12 - (int)param_6) * 4);
+              bVar9 = ~(byte)(*(uint *)(lVar7 + 0x14 + lVar4) >> 2) & 1;
+              bVar17 = false;
+              if ((*(byte *)(lVar7 + 0x14 + lVar4) & 1) == 0) {
+                bVar17 = bVar3;
+              }
+            }
+            bVar3 = bVar17;
+            if ((bVar17) && (bVar9 != 0)) {
+              if (-1 < piVar16[3]) {
+                lVar8 = (longlong)
+                        *(int *)(*(longlong *)(piVar16[3] + param_1) + (longlong)piVar16[4]) +
+                        (longlong)piVar16[3];
+              }
+              lVar6 = piVar16[2] + lVar8;
+              bVar17 = piVar14 != (int *)0x0;
+              piVar14 = piVar16;
+              if ((bVar17) && (local_60 != lVar6)) {
+                return (int *)0x0;
+              }
+            }
+          }
+        }
+      }
+      local_60 = lVar6;
+      piVar10 = (int *)(ulonglong)local_res10;
+      piVar11 = (int *)(ulonglong)(iVar12 + 1U);
+    } while (iVar12 + 1U < uVar2);
+    if ((bVar3) && (piVar14 != (int *)0x0)) {
+      return piVar14;
+    }
+    if (piVar15 != (int *)0x0) {
+      return (int *)(-(ulonglong)(piVar13 != (int *)0x0) & (ulonglong)piVar13);
+    }
+  }
+  return (int *)0x0;
+}
+
+

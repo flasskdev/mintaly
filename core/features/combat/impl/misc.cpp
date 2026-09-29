@@ -258,7 +258,7 @@ namespace features::combat {
                     const auto pawn_handle = memory::read<std::uint32_t>(p.ptr + SCHEMA("CBasePlayerController", "m_hPawn"_hash));
                     const auto pawn = systems::g_entities.lookup(pawn_handle);
                     if (!pawn || pawn == local.pawn) continue;
-                    if (!local.is_this_other_team(memory::read<int>(pawn + SCHEMA("C_BaseEntity", "m_iTeamNum"_hash)))) continue;
+                    if (!local.is_this_other_team(memory::read<std::uint8_t>(pawn + SCHEMA("C_BaseEntity", "m_iTeamNum"_hash)))) continue;
                     if (memory::read<int>(pawn + SCHEMA("C_BaseEntity", "m_iHealth"_hash)) <= 0) continue;
 
                     const auto enemy_node = memory::read<std::uintptr_t>(pawn + SCHEMA("C_BaseEntity", "m_pGameSceneNode"_hash));
@@ -306,7 +306,7 @@ namespace features::combat {
                 const auto pawn_handle = memory::read<std::uint32_t>(p.ptr + SCHEMA("CBasePlayerController", "m_hPawn"_hash));
                 const auto pawn = systems::g_entities.lookup(pawn_handle);
                 if (!pawn || pawn == local.pawn) continue;
-                if (!local.is_this_other_team(memory::read<int>(pawn + SCHEMA("C_BaseEntity", "m_iTeamNum"_hash)))) continue;
+                if (!local.is_this_other_team(memory::read<std::uint8_t>(pawn + SCHEMA("C_BaseEntity", "m_iTeamNum"_hash)))) continue;
                 if (memory::read<int>(pawn + SCHEMA("C_BaseEntity", "m_iHealth"_hash)) <= 0) continue;
                 if (memory::read<bool>(pawn + SCHEMA("C_CSPlayerPawn", "m_bGunGameImmunity"_hash))) continue;
 

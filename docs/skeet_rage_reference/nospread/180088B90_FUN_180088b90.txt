@@ -1,0 +1,60 @@
+// function: FUN_180088b90
+// ea: 180088b90
+// category: nospread
+// depth: 1, via: FUN_180084040 @1800857a5
+// size: 197 bytes
+// anchors: nospread, trace_geometry, hitbox_backtrack
+// ----------------------------------------------------
+
+void FUN_180088b90(longlong param_1,undefined8 param_2)
+
+{
+  longlong lVar1;
+  char cVar2;
+  char *pcVar3;
+  uint uVar4;
+  uint uVar5;
+  uint uVar6;
+  
+  if (param_1 == 0) {
+    if (DAT_1804731e0 == (code *)0x0) {
+      return;
+    }
+    param_1 = 0;
+    goto LAB_180088c48;
+  }
+  lVar1 = *(longlong *)(param_1 + 0x18);
+  if ((lVar1 != 0) && (pcVar3 = (char *)FUN_180109510(&DAT_180355000,lVar1), pcVar3 != (char *)0x0))
+  {
+    cVar2 = *pcVar3;
+    if (cVar2 == '\0') {
+      uVar5 = 0x811c9dc5;
+    }
+    else {
+      uVar5 = 0x811c9dc5;
+      do {
+        uVar4 = uVar5;
+        pcVar3 = pcVar3 + 1;
+        uVar6 = (uint)cVar2;
+        uVar5 = (uVar4 ^ uVar6) * 0x1000193;
+        cVar2 = *pcVar3;
+      } while (cVar2 != '\0');
+      if (uVar4 == uVar6) goto LAB_180088c3c;
+    }
+    cVar2 = FUN_18006ed30(&DAT_180473add,lVar1,uVar5,param_2);
+    if (cVar2 != '\0') {
+      return;
+    }
+  }
+LAB_180088c3c:
+  if (DAT_1804731e0 == (code *)0x0) {
+    return;
+  }
+LAB_180088c48:
+                    /* WARNING: Could not recover jumptable at 0x000180088c52. Too many branches */
+                    /* WARNING: Treating indirect jump as call */
+  (*DAT_1804731e0)(param_1,param_2);
+  return;
+}
+
+

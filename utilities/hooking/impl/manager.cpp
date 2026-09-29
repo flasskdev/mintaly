@@ -50,7 +50,11 @@ namespace hooking::manager {
 				return false;
 			}
 
-			security::prologues::add( entry.address, entry.hook->get_original_bytes( ), entry.hook->get_original_length( ) );
+			security::prologues::add(
+				reinterpret_cast< std::uintptr_t >( entry.hook->get_target() ),
+				entry.hook->get_original_bytes(),
+				entry.hook->get_original_length() );
+
 		}
 
 		return true;

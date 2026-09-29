@@ -24,6 +24,34 @@ namespace hooking {
 			return reinterpret_cast< T( * )( args_t... ) >( this->m_trampoline )( args... );
 		}
 
+		// SEH-safe variant: the original Present may fault on a half-released swap
+		// chain during level transitions. Calling through the trampoline under
+		// __try keeps that fault from taking the process down. Must not be used
+		// from a function that holds non-trivial destructibles (MSVC C2712).
+		template <typename T, typename... args_t>
+		T safe_call( args_t... args ) const
+		{
+			if ( !this->m_trampoline )
+			{
+				if constexpr (std::is_same_v<T, void>)
+					return;
+				else
+					return T {};
+			}
+
+			__try
+			{
+				return reinterpret_cast< T( * )( args_t... ) >( this->m_trampoline )( args... );
+			}
+			__except ( EXCEPTION_EXECUTE_HANDLER )
+			{
+				if constexpr (std::is_same_v<T, void>)
+					return;
+				else
+					return T {};
+			}
+		}
+
 		template <typename T>
 		T original( ) const
 		{

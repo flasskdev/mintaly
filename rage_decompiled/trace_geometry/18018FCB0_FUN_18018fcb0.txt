@@ -1,0 +1,34 @@
+// function: FUN_18018fcb0
+// ea: 18018fcb0
+// category: trace_geometry
+// depth: 3, via: FUN_18016cb50 @18016cb70
+// size: 153 bytes
+// anchors: trace_geometry, hitbox_backtrack
+// ----------------------------------------------------
+
+longlong FUN_18018fcb0(longlong param_1,undefined8 param_2,ulonglong param_3)
+
+{
+  undefined4 uVar1;
+  longlong lVar2;
+  
+  if (param_3 < 0x29) {
+    lVar2 = FUN_180190060();
+    return lVar2;
+  }
+  if (param_3 < 0x7fffffffffffffcf) {
+    uVar1 = *(undefined4 *)(*(longlong *)(param_1 + 0x18) + 0x60);
+    lVar2 = FUN_18018c400(param_1,0x14,param_3 + 0x21);
+    *(undefined4 *)(lVar2 + 0xc) = uVar1;
+    *(longlong *)(lVar2 + 0x18) = lVar2 + 0x20;
+    *(undefined2 *)(lVar2 + 10) = 0xff00;
+    *(ulonglong *)(lVar2 + 0x10) = param_3;
+    *(undefined1 *)(lVar2 + 0x20 + param_3) = 0;
+    FUN_18023b1d0(*(undefined8 *)(lVar2 + 0x18),param_2,param_3);
+    return lVar2;
+  }
+                    /* WARNING: Subroutine does not return */
+  FUN_180197ff0();
+}
+
+

@@ -1,0 +1,11 @@
+Rage functions dump from skeet payload DLL (embedded in skeet.exe)
+program: /C:/Users/stass/AppData/Local/Temp/skeet_work/skeet_payload.dll
+total functions: 980
+
+per category:
+  autowall_damage: 35
+  hitbox_backtrack: 18
+  hitchance: 135
+  nospread: 228
+  pipeline: 357
+  trace_geometry: 207

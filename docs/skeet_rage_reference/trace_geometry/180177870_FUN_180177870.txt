@@ -1,0 +1,34 @@
+// function: FUN_180177870
+// ea: 180177870
+// category: trace_geometry
+// depth: 1, via: FUN_1800aae50 @1800aaeff
+// size: 308 bytes
+// anchors: trace_geometry, hitbox_backtrack
+// ----------------------------------------------------
+
+undefined8 FUN_180177870(undefined8 param_1)
+
+{
+  undefined4 uVar1;
+  undefined8 uVar2;
+  
+  FUN_18016df70(param_1,0x407f900000000000,0x88);
+  FUN_18016d0d0(param_1,0,0x1d);
+  FUN_18016efa0(param_1,&PTR_DAT_1802d2540,0);
+  FUN_18016cb10(param_1,0x400921fb54442d18);
+  FUN_18016d270(param_1,0xfffffffe,&DAT_18032bff0);
+  FUN_18016cb10(param_1,0x7ff0000000000000);
+  FUN_18016d270(param_1,0xfffffffe,&DAT_18032c170);
+  FUN_18016cb30(param_1,0x7fffffffffffffff);
+  FUN_18016d270(param_1,0xfffffffe,"maxinteger");
+  FUN_18016cb30(param_1,0x8000000000000000);
+  FUN_18016d270(param_1,0xfffffffe,"mininteger");
+  uVar2 = FUN_18016d140(param_1,0x20,0);
+  uVar1 = FUN_18016eec0(param_1);
+  FUN_1801779b0(param_1,uVar2,uVar1,0);
+  FUN_18016c3a0(param_1,0xfffffffd);
+  FUN_18016efa0(param_1,&PTR_s_random_1802d2510,1);
+  return 1;
+}
+
+

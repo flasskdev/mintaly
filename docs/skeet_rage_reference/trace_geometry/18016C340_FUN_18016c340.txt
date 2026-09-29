@@ -1,0 +1,15 @@
+// function: FUN_18016c340
+// ea: 18016c340
+// category: trace_geometry
+// depth: 3, via: FUN_18016df70 @18016df88
+// size: 9 bytes
+// anchors: trace_geometry, hitbox_backtrack
+// ----------------------------------------------------
+
+undefined8 FUN_18016c340(void)
+
+{
+  return 0x407f900000000000;
+}
+
+

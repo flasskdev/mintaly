@@ -1,0 +1,24 @@
+// function: FUN_18002fe10
+// ea: 18002fe10
+// category: nospread
+// depth: 3, via: FUN_18002e190 @18002e813
+// size: 115 bytes
+// anchors: nospread, trace_geometry, hitbox_backtrack
+// ----------------------------------------------------
+
+undefined4 FUN_18002fe10(void)
+
+{
+  if (*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+              0x2638) < DAT_18047177c) {
+    FUN_180183614(&DAT_18047177c);
+    if (DAT_18047177c == -1) {
+      DAT_180471778 = FUN_180114bb0("C_EconItemView",0xa2ccb41a);
+      _Init_thread_footer(&DAT_18047177c);
+      return DAT_180471778;
+    }
+  }
+  return DAT_180471778;
+}
+
+

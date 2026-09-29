@@ -1,0 +1,39 @@
+// function: FUN_180170a50
+// ea: 180170a50
+// category: pipeline
+// depth: 3, via: FUN_1801702d0 @1801702db
+// size: 175 bytes
+// anchors: pipeline
+// ----------------------------------------------------
+
+void FUN_180170a50(longlong param_1)
+
+{
+  longlong *plVar1;
+  undefined8 *puVar2;
+  
+  puVar2 = *(undefined8 **)(param_1 + 0x18);
+  if ((*(byte *)(puVar2 + 0xb) & 0xf) == 0) {
+    plVar1 = (longlong *)(param_1 + 0x60);
+    *plVar1 = *(longlong *)(param_1 + 0x30);
+    *(longlong **)(param_1 + 0x20) = plVar1;
+    *(undefined1 *)(*(longlong *)(param_1 + 0x30) + 8) = 0;
+    *(undefined4 *)(param_1 + 0x9c) = 0x8000;
+    *(longlong *)(param_1 + 0x68) = *plVar1 + 0x150;
+    *(undefined8 *)(param_1 + 0x80) = 0;
+    *(undefined1 *)(param_1 + 0xb) = 0;
+    *(undefined8 *)(param_1 + 0xa8) = 0;
+    FUN_18018a800(param_1,1,0);
+    *(longlong *)(param_1 + 0x10) = *(longlong *)(param_1 + 0x30) + 0x10;
+  }
+  FUN_18018be60(param_1);
+  FUN_180198120(param_1,*(undefined8 *)(*(longlong *)(param_1 + 0x18) + 0x30),
+                (longlong)*(int *)(*(longlong *)(param_1 + 0x18) + 0x3c) << 3);
+  FUN_1801708f0(param_1);
+                    /* WARNING: Could not recover jumptable at 0x000180170afc. Too many branches */
+                    /* WARNING: Treating indirect jump as call */
+  (*(code *)*puVar2)(puVar2[1],puVar2,0x658,0);
+  return;
+}
+
+

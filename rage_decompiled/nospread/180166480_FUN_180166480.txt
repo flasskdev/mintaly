@@ -1,0 +1,15 @@
+// function: FUN_180166480
+// ea: 180166480
+// category: nospread
+// depth: 1, via: FUN_18006aa30 @18006ac9c
+// size: 9 bytes
+// anchors: nospread, hitbox_backtrack
+// ----------------------------------------------------
+
+float FUN_180166480(float param_1)
+
+{
+  return param_1 * 57.295776;
+}
+
+

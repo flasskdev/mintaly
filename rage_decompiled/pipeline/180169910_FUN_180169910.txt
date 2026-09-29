@@ -1,0 +1,15 @@
+// function: FUN_180169910
+// ea: 180169910
+// category: pipeline
+// depth: 3, via: FUN_180035fb0 @18003635c
+// size: 6 bytes
+// anchors: pipeline
+// ----------------------------------------------------
+
+byte FUN_180169910(byte *param_1)
+
+{
+  return *param_1 & 1;
+}
+
+

@@ -1,0 +1,122 @@
+// function: FUN_1800beef0
+// ea: 1800beef0
+// category: pipeline
+// depth: 0, via: seed:pipeline
+// size: 651 bytes
+// anchors: pipeline
+// ----------------------------------------------------
+
+undefined8 FUN_1800beef0(longlong param_1)
+
+{
+  char cVar1;
+  undefined1 uVar2;
+  int iVar3;
+  uint uVar4;
+  longlong lVar5;
+  undefined8 uVar6;
+  ulonglong uVar7;
+  ulonglong uVar8;
+  longlong lVar9;
+  ulonglong uVar10;
+  int *piVar11;
+  uint *puVar12;
+  bool bVar13;
+  undefined1 local_458 [1024];
+  undefined1 local_58 [8];
+  undefined8 local_50;
+  longlong local_48;
+  undefined1 local_40 [8];
+  undefined1 local_38 [8];
+  undefined8 local_30;
+  
+  local_30 = 0xfffffffffffffffe;
+  FUN_18023b870(local_458,0,0x400);
+  lVar5 = *(longlong *)(param_1 + -8);
+  local_48 = param_1;
+  if (*(char *)(lVar5 + 0xc2) == '\x01') {
+                    /* WARNING: Subroutine does not return */
+    FUN_1800e24d0("script is closing");
+  }
+  iVar3 = *(int *)(lVar5 + 0xa8);
+  *(int *)(lVar5 + 0xa8) = iVar3 + 1;
+  if (iVar3 < 0x8000) {
+    uVar7 = FUN_180184cfc();
+    uVar8 = FUN_180184ce0();
+    if (uVar7 == 24000000) {
+      lVar9 = (((longlong)uVar8 % 24000000) * 1000000000) / 24000000 +
+              ((longlong)uVar8 / 24000000) * 1000000000;
+    }
+    else if (uVar7 == 10000000) {
+      lVar9 = uVar8 * 100;
+    }
+    else {
+      if ((uVar8 | uVar7) >> 0x20 == 0) {
+        uVar10 = (uVar8 & 0xffffffff) / (uVar7 & 0xffffffff);
+        uVar8 = (uVar8 & 0xffffffff) % (uVar7 & 0xffffffff);
+      }
+      else {
+        uVar10 = (longlong)uVar8 / (longlong)uVar7;
+        uVar8 = (longlong)uVar8 % (longlong)uVar7;
+      }
+      uVar8 = uVar8 * 1000000000;
+      if ((uVar7 | uVar8) >> 0x20 == 0) {
+        uVar8 = (uVar8 & 0xffffffff) / (uVar7 & 0xffffffff);
+      }
+      else {
+        uVar8 = (longlong)uVar8 / (longlong)uVar7;
+      }
+      lVar9 = uVar8 + uVar10 * 1000000000;
+    }
+    if (lVar9 <= *(longlong *)(lVar5 + 0xb0)) {
+      lVar5 = *(longlong *)(param_1 + -8);
+      if (4 < *(ulonglong *)(lVar5 + 0x58)) {
+        if (*(ulonglong *)(lVar5 + 0x60) < 0x10) {
+          piVar11 = (int *)(lVar5 + 0x48);
+        }
+        else {
+          piVar11 = *(int **)(lVar5 + 0x48);
+        }
+        if ((char)piVar11[1] == '_' && *piVar11 == 0x65676172) {
+                    /* WARNING: Subroutine does not return */
+          FUN_1800e24d0("change settings in pre_rage, not inside the rage pipeline");
+        }
+      }
+      puVar12 = (uint *)FUN_1800e2750(param_1);
+      FUN_1800e2b00(local_40,local_48,3,0);
+      FUN_1800e3230(puVar12,local_40);
+      uVar4 = *puVar12;
+      lVar5 = *(longlong *)(DAT_180473d68 + 8);
+      cVar1 = *(char *)(lVar5 + 0x19);
+      lVar9 = DAT_180473d68;
+      while (cVar1 == '\0') {
+        bVar13 = *(uint *)(lVar5 + 0x20) < uVar4;
+        if (!bVar13) {
+          lVar9 = lVar5;
+        }
+        lVar5 = *(longlong *)(lVar5 + (ulonglong)bVar13 * 0x10);
+        cVar1 = *(char *)(lVar5 + 0x19);
+      }
+      if (((*(char *)(lVar9 + 0x19) == '\0') && (lVar9 != DAT_180473d68)) &&
+         (*(uint *)(lVar9 + 0x20) <= uVar4)) {
+        FUN_1800122b0(local_58,local_40);
+        uVar2 = *(undefined1 *)(lVar9 + 0x28);
+        *(undefined1 *)(lVar9 + 0x28) = local_58[0];
+        uVar6 = *(undefined8 *)(lVar9 + 0x30);
+        *(undefined8 *)(lVar9 + 0x30) = local_50;
+        local_58[0] = uVar2;
+        local_50 = uVar6;
+        FUN_18000b5d0(&local_50);
+      }
+      else {
+        FUN_1800b8e50(puVar12,local_40);
+      }
+      FUN_18000b5d0(local_38,local_40[0]);
+      return 0;
+    }
+  }
+                    /* WARNING: Subroutine does not return */
+  FUN_1800e24d0("callback budget exceeded");
+}
+
+

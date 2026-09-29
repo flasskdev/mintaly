@@ -1,5 +1,6 @@
 #include <pch/pch.hpp>
 #include <core/settings.hpp>
+#include <array>
 #include <core/features/features.hpp>
 #include <utilities/addresses/addresses.hpp>
 #include <utilities/memory/memory.hpp>
@@ -42,17 +43,14 @@ namespace rendering {
                 const auto content_x = wx + tokens::gap + menu::k_sidebar_w + tokens::gap;
                 const auto body_y = wy + tokens::gap + tokens::subtab_bar_h + tokens::gap;
                 const auto body_h = this->m_body_h;
-                const auto content_w = this->m_w - tokens::gap * 2.0f - menu::k_sidebar_w - tokens::gap;
+                const auto content_w = this->m_body_w;
                 const auto col_w = ( content_w - tokens::gap ) * 0.5f;
                 const auto right_x = content_x + col_w + tokens::gap;
                 const auto subtab = std::clamp( this->m_subtab, 0, 3 );
 
                 constexpr float k_header_h = 22.0f;
                 auto draw_col_title = [&]( float x, const char* title ) {
-                        auto& dl = xui::draw::current( );
-                        xdraw::push_font( rendering::g_fonts.inter_bold[ rendering::fonts::size::petite ] );
-                        dl.text( x + 2.0f, body_y + 2.0f, title, tokens::col_text );
-                        xdraw::pop_font( );
+                        this->draw_column_header( x, title );
                 };
 
                 if ( subtab == 0 )
@@ -123,8 +121,10 @@ namespace rendering {
                                                 if ( !player.ptr || player.ptr == local.controller )
                                                         continue;
 
-                                                const auto name_ptr = memory::safe_read<std::uintptr_t>( player.ptr + SCHEMA( "CCSPlayerController", "m_sSanitizedPlayerName"_hash ) ).value_or( 0 );
-                                                if ( !name_ptr )
+                                                const auto name_offset = SCHEMA( "CCSPlayerController", "m_sSanitizedPlayerName"_hash );
+                                                const auto name_ptr = name_offset && player.ptr >= 0x10000
+                                                        ? memory::safe_read<std::uintptr_t>( player.ptr + name_offset ).value_or( 0 ) : 0;
+                                                if ( name_ptr < 0x10000 )
                                                         continue;
 
                                                 auto pname = memory::read_string( name_ptr, 127 );

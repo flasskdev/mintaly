@@ -637,7 +637,7 @@ namespace features::combat {
             const auto pawn = systems::g_entities.lookup(pawn_handle);
             if (!pawn || pawn == local.pawn) continue;
 
-            const auto team = memory::read<std::int32_t>(pawn + SCHEMA("C_BaseEntity", "m_iTeamNum"_hash));
+            const auto team = memory::read<std::uint8_t>(pawn + SCHEMA("C_BaseEntity", "m_iTeamNum"_hash));
             if (!local.is_this_other_team(team)) continue;
 
             const auto health = memory::read<std::int32_t>(pawn + SCHEMA("C_BaseEntity", "m_iHealth"_hash));
@@ -1026,7 +1026,7 @@ namespace features::combat {
             if (continuing_hold && !is_cocking && pawn != this->m_trigger_pending_pawn)
                 continue;
 
-            const auto team = memory::read<std::int32_t>(pawn + SCHEMA("C_BaseEntity", "m_iTeamNum"_hash));
+            const auto team = memory::read<std::uint8_t>(pawn + SCHEMA("C_BaseEntity", "m_iTeamNum"_hash));
             if (!local.is_this_other_team(team)) continue;
 
             const auto health = memory::read<std::int32_t>(pawn + SCHEMA("C_BaseEntity", "m_iHealth"_hash));

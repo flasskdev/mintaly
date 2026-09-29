@@ -1,0 +1,79 @@
+// function: FUN_18005ff10
+// ea: 18005ff10
+// category: pipeline
+// depth: 3, via: FUN_18005fd80 @18005febc
+// size: 293 bytes
+// anchors: pipeline, autowall_damage
+// ----------------------------------------------------
+
+undefined8 *
+FUN_18005ff10(undefined8 *param_1,undefined8 param_2,undefined8 param_3,undefined8 *param_4)
+
+{
+  ulonglong uVar1;
+  undefined4 uVar2;
+  undefined4 uVar3;
+  undefined4 uVar4;
+  longlong lVar5;
+  ulonglong uVar6;
+  longlong lVar7;
+  undefined8 *puVar8;
+  ulonglong uVar9;
+  
+  *param_1 = param_2;
+  param_1[1] = 0;
+  lVar5 = FUN_1801695a0(0x50);
+  param_1[1] = lVar5;
+  *(undefined8 *)(lVar5 + 0x20) = 0;
+  *(undefined8 *)(lVar5 + 0x28) = 0;
+  *(undefined8 *)(lVar5 + 0x30) = 0;
+  *(undefined8 *)(lVar5 + 0x38) = 0;
+  uVar1 = param_4[2];
+  puVar8 = param_4;
+  if (0xf < (ulonglong)param_4[3]) {
+    puVar8 = (undefined8 *)*param_4;
+  }
+  if (-1 < (longlong)uVar1) {
+    if (uVar1 < 0x10) {
+      *(ulonglong *)(lVar5 + 0x30) = uVar1;
+      *(undefined8 *)(lVar5 + 0x38) = 0xf;
+      uVar2 = *(undefined4 *)((longlong)puVar8 + 4);
+      uVar3 = *(undefined4 *)(puVar8 + 1);
+      uVar4 = *(undefined4 *)((longlong)puVar8 + 0xc);
+      *(undefined4 *)(lVar5 + 0x20) = *(undefined4 *)puVar8;
+      *(undefined4 *)(lVar5 + 0x24) = uVar2;
+      *(undefined4 *)(lVar5 + 0x28) = uVar3;
+      *(undefined4 *)(lVar5 + 0x2c) = uVar4;
+    }
+    else {
+      uVar6 = uVar1 | 0xf;
+      uVar9 = 0x16;
+      if (0x16 < uVar6) {
+        uVar9 = uVar6;
+      }
+      if (uVar6 < 0xfff) {
+        uVar6 = FUN_1801695a0(uVar9 + 1);
+      }
+      else {
+        lVar7 = FUN_1801695a0(uVar9 + 0x28);
+        uVar6 = lVar7 + 0x27U & 0xffffffffffffffe0;
+        *(longlong *)(uVar6 - 8) = lVar7;
+      }
+      *(ulonglong *)(lVar5 + 0x20) = uVar6;
+      *(ulonglong *)(lVar5 + 0x30) = uVar1;
+      *(ulonglong *)(lVar5 + 0x38) = uVar9;
+      FUN_18023b1d0(uVar6,puVar8,uVar1 + 1);
+    }
+    FUN_1800122b0(lVar5 + 0x40,param_4 + 4);
+    *(undefined8 *)param_1[1] = param_3;
+    *(undefined8 *)(param_1[1] + 8) = param_3;
+    *(undefined8 *)(param_1[1] + 0x10) = param_3;
+    *(undefined1 *)(param_1[1] + 0x18) = 0;
+    *(undefined1 *)(param_1[1] + 0x19) = 0;
+    return param_1;
+  }
+                    /* WARNING: Subroutine does not return */
+  FUN_18000b110();
+}
+
+

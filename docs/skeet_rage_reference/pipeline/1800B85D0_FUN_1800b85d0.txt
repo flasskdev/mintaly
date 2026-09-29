@@ -1,0 +1,21 @@
+// function: FUN_1800b85d0
+// ea: 1800b85d0
+// category: pipeline
+// depth: 3, via: FUN_1800b8000 @1800b81a4
+// size: 82 bytes
+// anchors: pipeline
+// ----------------------------------------------------
+
+undefined8 FUN_1800b85d0(longlong param_1)
+
+{
+  longlong lVar1;
+  
+  lVar1 = *(longlong *)(param_1 + -8);
+  FUN_18016d040(param_1,0xbffffc19,(longlong)*(int *)(lVar1 + 0xd8));
+  FUN_1800b8630(param_1,*(undefined8 *)(lVar1 + 0xd0));
+  FUN_18016d4e0(param_1,1,0,0,0);
+  return 0;
+}
+
+

@@ -1,0 +1,84 @@
+// function: FUN_180064d70
+// ea: 180064d70
+// category: pipeline
+// depth: 2, via: FUN_180069130 @18006951b
+// size: 951 bytes
+// anchors: pipeline
+// ----------------------------------------------------
+
+void FUN_180064d70(float *param_1,longlong param_2,longlong param_3)
+
+{
+  float fVar1;
+  float fVar2;
+  float fVar3;
+  float fVar4;
+  float fVar5;
+  int iVar6;
+  
+  if (param_3 != 0 && param_2 != 0) {
+    if (*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+                0x2638) < DAT_180471e78) {
+      FUN_180183614(&DAT_180471e78);
+      if (DAT_180471e78 == -1) {
+        DAT_180471e74 = FUN_180114bb0("CCSWeaponBaseVData",0x1c56d69c);
+        _Init_thread_footer(&DAT_180471e78);
+      }
+    }
+    iVar6 = *(int *)(DAT_180471e74 + param_2);
+    if (*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+                0x2638) < DAT_180471e80) {
+      FUN_180183614(&DAT_180471e80);
+      if (DAT_180471e80 == -1) {
+        DAT_180471e7c = FUN_180114bb0("CCSWeaponBaseVData",0xc4163f78);
+        _Init_thread_footer(&DAT_180471e80);
+      }
+    }
+    fVar1 = *(float *)(DAT_180471e7c + param_2);
+    if (*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+                0x2638) < DAT_180471e88) {
+      FUN_180183614(&DAT_180471e88);
+      if (DAT_180471e88 == -1) {
+        DAT_180471e84 = FUN_180114bb0("CCSWeaponBaseVData",0x556fea15);
+        _Init_thread_footer(&DAT_180471e88);
+      }
+    }
+    fVar2 = *(float *)(DAT_180471e84 + param_2);
+    if (*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+                0x2638) < DAT_180471e90) {
+      FUN_180183614(&DAT_180471e90);
+      if (DAT_180471e90 == -1) {
+        DAT_180471e8c = FUN_180114bb0("CCSWeaponBaseVData",0x3fc92844);
+        _Init_thread_footer(&DAT_180471e90);
+      }
+    }
+    fVar3 = *(float *)(DAT_180471e8c + param_2);
+    if (*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+                0x2638) < DAT_180471e98) {
+      FUN_180183614(&DAT_180471e98);
+      if (DAT_180471e98 == -1) {
+        DAT_180471e94 = FUN_180114bb0("CCSWeaponBaseVData",0xc023cfd);
+        _Init_thread_footer(&DAT_180471e98);
+      }
+    }
+    fVar4 = *(float *)(DAT_180471e94 + param_2);
+    if (*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+                0x2638) < DAT_180471ea0) {
+      FUN_180183614(&DAT_180471ea0);
+      if (DAT_180471ea0 == -1) {
+        DAT_180471e9c = FUN_180114bb0("CCSWeaponBaseVData",0xb47ff686);
+        _Init_thread_footer(&DAT_180471ea0);
+      }
+    }
+    fVar5 = *(float *)(DAT_180471e9c + param_2);
+    *param_1 = (float)iVar6;
+    param_1[1] = fVar1;
+    param_1[2] = fVar2;
+    param_1[3] = fVar3;
+    param_1[4] = fVar4;
+    param_1[5] = fVar5;
+  }
+  return;
+}
+
+

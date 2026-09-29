@@ -119,7 +119,8 @@ namespace hooks {
 					memory::write<std::uintptr_t>( a1 + 56, buffer );
 					memory::write<std::uintptr_t>( a1 + 64, particle.size( ) );
 					memory::write<std::uintptr_t>( a1 + 72, particle.size( ) );
-					memory::call<void>( PATTERN (patterns::filesystem_close), a1 - 224, 0 );
+					if ( const auto close_fn = PATTERN( patterns::filesystem_close ) )
+						memory::call<void>( close_fn, a1 - 224, 0 );
 
 					return 0;
 				}

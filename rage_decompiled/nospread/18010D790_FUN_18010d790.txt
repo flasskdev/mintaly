@@ -1,0 +1,54 @@
+// function: FUN_18010d790
+// ea: 18010d790
+// category: nospread
+// depth: 0, via: seed:nospread
+// size: 362 bytes
+// anchors: nospread, trace_geometry
+// ----------------------------------------------------
+
+longlong FUN_18010d790(undefined8 param_1,undefined8 *param_2)
+
+{
+  int iVar1;
+  int *piVar2;
+  undefined8 uVar3;
+  longlong lVar4;
+  
+  if (param_2 != (undefined8 *)0x0) {
+    piVar2 = (int *)param_2[2];
+    if (piVar2 != (int *)0x0) {
+      iVar1 = *(int *)(param_2 + 1);
+      if ((iVar1 < *piVar2) && (lVar4 = *(longlong *)(piVar2 + (longlong)iVar1 * 2 + 2), lVar4 != 0)
+         ) {
+        *(int *)(param_2 + 1) = iVar1 + 1;
+        *(undefined8 *)(lVar4 + 0x20) = 0;
+        *(undefined8 *)(lVar4 + 0x28) = 0;
+        *(undefined8 *)(lVar4 + 0x10) = 0;
+        *(undefined8 *)(lVar4 + 0x18) = 0;
+        *(undefined8 *)(lVar4 + 0x30) = 0;
+        return lVar4 + 0x10;
+      }
+    }
+    uVar3 = *param_2;
+    if ((*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+                 0x2638) < DAT_1804741c0) && (FUN_180183614(&DAT_1804741c0), DAT_1804741c0 == -1)) {
+      DAT_1804741b8 = (code *)FUN_180162ed0(&DAT_180465dc8);
+      _Init_thread_footer(&DAT_1804741c0);
+    }
+    if ((DAT_1804741b8 != (code *)0x0) && (lVar4 = (*DAT_1804741b8)(uVar3), lVar4 != 0)) {
+      if ((*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+                   0x2638) < DAT_1804741d0) && (FUN_180183614(&DAT_1804741d0), DAT_1804741d0 == -1))
+      {
+        DAT_1804741c8 = (code *)FUN_180162ed0(&DAT_180467178);
+        _Init_thread_footer(&DAT_1804741d0);
+      }
+      if (DAT_1804741c8 != (code *)0x0) {
+        (*DAT_1804741c8)(param_2,lVar4);
+      }
+      return lVar4 + 0x10;
+    }
+  }
+  return 0;
+}
+
+

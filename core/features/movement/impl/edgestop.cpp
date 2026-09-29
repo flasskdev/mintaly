@@ -10,7 +10,7 @@ namespace features::movement {
 
 	void edgestop::on_create_move( systems::input::usercmd* cmd ) const
 	{
-		if ( !settings::g_movement.edgestop.value || settings::g_movement.edgejump.value )
+		if ( !cmd || !settings::g_movement.edgestop.value || settings::g_movement.edgejump.value )
 		{
 			return;
 		}
@@ -30,7 +30,10 @@ namespace features::movement {
 		const auto velocity = prestate.networked_velocity;
 		const auto speed = velocity.length_2d( );
 
-		const auto move_type = memory::read<std::uint8_t>( local.pawn + SCHEMA( "C_BaseEntity", "m_nActualMoveType"_hash ) );
+		const auto move_type_offset = SCHEMA( "C_BaseEntity", "m_nActualMoveType"_hash );
+		if ( !move_type_offset )
+			return;
+		const auto move_type = memory::safe_read<std::uint8_t>( local.pawn + move_type_offset ).value_or( 0 );
 		if ( move_type == cstypes::move_type::ladder || move_type == cstypes::move_type::noclip )
 		{
 			return;
@@ -43,9 +46,9 @@ namespace features::movement {
 		}
 
 		const auto origin = memory::read<math::vector3>( game_scene_node + SCHEMA( "CGameSceneNode", "m_vecAbsOrigin"_hash ) );
-		const auto movement_services = memory::read<std::uintptr_t>( local.pawn + SCHEMA( "C_BasePlayerPawn", "m_pMovementServices"_hash ) );
+		const auto movement_services = memory::safe_read<std::uintptr_t>( local.pawn + SCHEMA( "C_BasePlayerPawn", "m_pMovementServices"_hash ) ).value_or( 0 );
 
-		if ( !movement_services )
+		if ( !valid_runtime_address( movement_services ) )
 		{
 			return;
 		}
@@ -56,17 +59,22 @@ namespace features::movement {
 
 		auto trace_mask{ 0ull };
 		{
-			const auto pawn_ptr = memory::read<std::uintptr_t>( movement_services + 56 );
-			trace_mask = memory::read<std::uintptr_t>( pawn_ptr + 0xd48 );
+			const auto pawn_ptr = memory::safe_read<std::uintptr_t>( movement_services + 56 ).value_or( 0 );
+			if ( !valid_runtime_address( pawn_ptr ) )
+				return;
+			trace_mask = memory::safe_read<std::uintptr_t>( pawn_ptr + 0xd48 ).value_or( 0 );
 
-			if ( !pawn_ptr || ( memory::read<std::uint32_t>( pawn_ptr + 0x3f8 ) & 0x10 ) )
+			if ( memory::safe_read<std::uint32_t>( pawn_ptr + 0x3f8 ).value_or( 0 ) & 0x10 )
 			{
 				trace_mask |= 0x20;
 			}
 		}
 
 		const auto filter = systems::g_tracing.make_player_movement_filter( local.pawn, trace_mask, 11 );
-		const auto sv_standable_normal = CONVAR ("sv_standable_normal")->get<float>( );
+		const auto standable_cvar = CONVAR( "sv_standable_normal" );
+		if ( !standable_cvar )
+			return;
+		const auto sv_standable_normal = standable_cvar->get<float>( );
 
 		const auto check_edge = [ & ]( int ticks_ahead ) -> bool
 			{
@@ -87,8 +95,12 @@ namespace features::movement {
 
 		if ( !at_edge && speed > 1.0f )
 		{
-			const auto sv_friction = CONVAR ("sv_friction")->get<float>( );
-			const auto sv_stopspeed = CONVAR ("sv_stopspeed")->get<float>( );
+			const auto friction_cvar = CONVAR( "sv_friction" );
+			const auto stopspeed_cvar = CONVAR( "sv_stopspeed" );
+			if ( !friction_cvar || !stopspeed_cvar )
+				return;
+			const auto sv_friction = friction_cvar->get<float>( );
+			const auto sv_stopspeed = stopspeed_cvar->get<float>( );
 			const auto ticks_needed = std::max( 2, static_cast< int >( std::ceilf( speed / ( sv_friction * prestate.surface_friction * std::fmaxf( speed, sv_stopspeed ) * cstypes::tick_interval ) ) ) );
 
 			for ( auto i = 2; i <= ticks_needed + 2; ++i )
@@ -112,7 +124,7 @@ namespace features::movement {
 			return;
 		}
 
-		const auto view_yaw = base->viewangles( )->y( );
+		const auto view_yaw = base->viewangles( ) ? base->viewangles( )->y( ) : systems::g_input.get_view_angles( ).y;
 		const auto view_yaw_rad = view_yaw * ( std::numbers::pi_v<float> / 180.0f );
 		const auto max_weapon_speed = combat::g_shared.ctx( ).valid ? combat::g_shared.ctx( ).weapon_max_speed : 250.0f;
 
@@ -183,7 +195,10 @@ namespace features::movement {
 				const auto stop_yaw = std::atan2f( velocity.y, velocity.x ) * ( 180.0f / std::numbers::pi_v<float> ) + 180.0f;
 				const auto rotation = ( view_yaw - stop_yaw ) * ( std::numbers::pi_v<float> / 180.0f );
 
-				const auto sv_accelerate = CONVAR ("sv_accelerate")->get<float>( );
+				const auto accelerate_cvar = CONVAR( "sv_accelerate" );
+				if ( !accelerate_cvar )
+					return;
+				const auto sv_accelerate = accelerate_cvar->get<float>( );
 				const auto accel_speed = sv_accelerate * max_weapon_speed * prestate.surface_friction * cstypes::tick_interval;
 				const auto move_speed = ( speed < accel_speed ) ? speed : max_weapon_speed;
 
@@ -222,7 +237,10 @@ namespace features::movement {
 		const auto stop_yaw = std::atan2f( velocity.y, velocity.x ) * ( 180.0f / std::numbers::pi_v<float> ) + 180.0f;
 		const auto rotation = ( view_yaw - stop_yaw ) * ( std::numbers::pi_v<float> / 180.0f );
 
-		const auto sv_accelerate = CONVAR ("sv_accelerate")->get<float>( );
+		const auto accelerate_cvar = CONVAR( "sv_accelerate" );
+		if ( !accelerate_cvar )
+			return;
+		const auto sv_accelerate = accelerate_cvar->get<float>( );
 		const auto accel_speed = sv_accelerate * max_weapon_speed * prestate.surface_friction * cstypes::tick_interval;
 		const auto move_speed = ( speed < accel_speed ) ? speed : max_weapon_speed;
 

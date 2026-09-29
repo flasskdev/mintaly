@@ -1,0 +1,42 @@
+// function: FUN_18000b500
+// ea: 18000b500
+// category: pipeline
+// depth: 3, via: FUN_18000b330 @18000b4be
+// size: 207 bytes
+// anchors: pipeline
+// ----------------------------------------------------
+
+void FUN_18000b500(void)
+
+{
+  longlong lVar1;
+  ulonglong uVar2;
+  longlong lVar3;
+  
+  FUN_18000b5d0(&DAT_180471328,DAT_180471320);
+  FUN_18000b5d0(&DAT_180471318,DAT_180471310);
+  lVar1 = DAT_180471300;
+  lVar3 = DAT_1804712f8;
+  if (DAT_1804712f8 != 0) {
+    for (; lVar3 != lVar1; lVar3 = lVar3 + 0x58) {
+      FUN_18000c080();
+    }
+    uVar2 = DAT_180471308 - DAT_1804712f8;
+    lVar3 = DAT_1804712f8;
+    if (0xfff < uVar2) {
+      lVar3 = *(longlong *)(DAT_1804712f8 + -8);
+      if (0x1f < (ulonglong)((DAT_1804712f8 + -8) - lVar3)) {
+                    /* WARNING: Subroutine does not return */
+        _invoke_watson((wchar_t *)0x0,(wchar_t *)0x0,(wchar_t *)0x0,0,0);
+      }
+      uVar2 = uVar2 + 0x27;
+    }
+    FUN_1801695f0(lVar3,uVar2);
+    DAT_1804712f8 = 0;
+    DAT_180471300 = 0;
+    DAT_180471308 = 0;
+  }
+  return;
+}
+
+

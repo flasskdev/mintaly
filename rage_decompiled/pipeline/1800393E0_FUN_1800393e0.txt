@@ -1,0 +1,68 @@
+// function: FUN_1800393e0
+// ea: 1800393e0
+// category: pipeline
+// depth: 2, via: FUN_180038870 @180038d3c
+// size: 382 bytes
+// anchors: pipeline
+// ----------------------------------------------------
+
+/* WARNING: Globals starting with '_' overlap smaller symbols at the same address */
+
+longlong * FUN_1800393e0(undefined8 param_1,longlong *param_2,undefined8 param_3,longlong param_4)
+
+{
+  float fVar1;
+  char cVar2;
+  undefined4 uVar3;
+  undefined **local_f8;
+  longlong local_f0;
+  undefined8 *local_e8;
+  longlong *local_e0;
+  undefined ***local_c0;
+  longlong local_b8;
+  undefined4 local_b0;
+  longlong *local_80;
+  
+  *(undefined8 *)((longlong)param_2 + 0x1a) = 0;
+  *(undefined8 *)((longlong)param_2 + 0x22) = 0;
+  param_2[2] = 0;
+  param_2[3] = 0;
+  *param_2 = 0;
+  param_2[1] = 0;
+  *(undefined8 *)((longlong)param_2 + 0xc) = DAT_1804707d8;
+  *(undefined4 *)((longlong)param_2 + 0x14) = DAT_1804707e0;
+  uVar3 = FUN_18006b590(&DAT_1804709e0);
+  *(undefined4 *)((longlong)param_2 + 0x1c) = uVar3;
+  uVar3 = FUN_18006b6a0(&DAT_1804709e0,1);
+  *(undefined4 *)(param_2 + 3) = uVar3;
+  local_80 = (longlong *)0x0;
+  local_f8 = std::
+             _Func_impl_no_alloc<`private:_struct_features::combat::rage::aim_context___cdecl_features::combat::rage::build_context(systems::input::usercmd*___ptr64,systems::local::snapshot_const&___ptr64)const___ptr64'::`1'::<lambda_4>,void>
+             ::vftable;
+  local_e8 = &DAT_1804709e0;
+  local_f0 = param_4;
+  local_e0 = param_2;
+  local_c0 = &local_f8;
+  cVar2 = FUN_18010f6b0(&DAT_1804707c8,param_3,param_4,&local_f8,&local_b8);
+  if (local_c0 != (undefined ***)0x0) {
+    (*(code *)(*local_c0)[4])(local_c0,local_c0 != &local_f8);
+  }
+  if (local_80 != (longlong *)0x0) {
+    (**(code **)(*local_80 + 0x20))(local_80,local_80 != &local_b8);
+  }
+  if (cVar2 == '\0') {
+    FUN_180068c30(&DAT_180470a88,*(undefined8 *)(param_4 + 8),DAT_1804709e8);
+  }
+  _DAT_180470a20 = param_2[3];
+  FUN_18010dc70(&DAT_180471a08,&local_b8);
+  *(undefined4 *)(param_2 + 1) = local_b0;
+  *param_2 = local_b8;
+  *(byte *)(param_2 + 5) = (byte)DAT_1804707c8 & 1;
+  *(undefined1 *)((longlong)param_2 + 0x29) = DAT_180470a1d;
+  fVar1 = DAT_180470a14;
+  *(float *)(param_2 + 4) = DAT_180470a14;
+  *(float *)((longlong)param_2 + 0x24) = fVar1 * 0.34;
+  return param_2;
+}
+
+

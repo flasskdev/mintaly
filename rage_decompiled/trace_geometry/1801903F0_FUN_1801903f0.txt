@@ -1,0 +1,38 @@
+// function: FUN_1801903f0
+// ea: 1801903f0
+// category: trace_geometry
+// depth: 3, via: FUN_18016dd10 @18016dd9a
+// size: 127 bytes
+// anchors: trace_geometry, hitbox_backtrack
+// ----------------------------------------------------
+
+byte FUN_1801903f0(longlong param_1,longlong param_2,undefined8 *param_3)
+
+{
+  char *pcVar1;
+  undefined8 *puVar2;
+  ulonglong uVar3;
+  
+  if (*(char *)(param_2 + 0xb) < '\0') {
+    puVar2 = (undefined8 *)FUN_180192370();
+  }
+  else {
+    uVar3 = (ulonglong)((1 << (*(byte *)(param_1 + 0xb) & 0x1f)) - 1U & *(uint *)(param_2 + 0xc));
+    puVar2 = *(undefined8 **)(param_1 + 0x18);
+    do {
+      pcVar1 = (char *)((longlong)puVar2 + uVar3 * 0x18 + 9);
+      puVar2 = puVar2 + uVar3 * 3;
+      if ((*pcVar1 == 'D') && (puVar2[2] == param_2)) goto LAB_180190450;
+      uVar3 = (ulonglong)*(int *)((longlong)puVar2 + 0xc);
+    } while (*(int *)((longlong)puVar2 + 0xc) != 0);
+    puVar2 = &DAT_1802f2dd8;
+  }
+LAB_180190450:
+  if ((*(byte *)(puVar2 + 1) & 0xf) != 0) {
+    *param_3 = *puVar2;
+    *(undefined1 *)(param_3 + 1) = *(undefined1 *)(puVar2 + 1);
+  }
+  return *(byte *)(puVar2 + 1) & 0x3f;
+}
+
+

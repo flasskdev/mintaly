@@ -1,0 +1,147 @@
+// function: FUN_180001180
+// ea: 180001180
+// category: hitbox_backtrack
+// depth: 0, via: seed:hitbox_backtrack
+// size: 1281 bytes
+// anchors: hitbox_backtrack
+// ----------------------------------------------------
+
+/* WARNING: Globals starting with '_' overlap smaller symbols at the same address */
+
+void FUN_180001180(void)
+
+{
+  char *local_38;
+  undefined8 local_30;
+  char *local_28;
+  undefined8 local_20;
+  
+  FUN_180001690(&DAT_18046c280);
+  FUN_180002150(&DAT_18046d128);
+  FUN_180002a20(&DAT_18046e538);
+  DAT_18046e668 = 0;
+  _DAT_18046e670 = 0;
+  DAT_18046e678 = 0;
+  _DAT_18046e680 = 0;
+  DAT_18046e688 = 0x71;
+  _DAT_18046e689 = 0x656570206b636975;
+  DAT_18046e691 = 0x6b;
+  _DAT_18046e692 = 0;
+  _DAT_18046e696 = 0;
+  _DAT_18046e698 = 10;
+  _DAT_18046e6a0 = 0xf;
+  DAT_18046e6a8 = 0x70;
+  _DAT_18046e6a9 = 0x7361206b6565;
+  _DAT_18046e6af = 0x6973;
+  uRam000000018046e6b1 = 0x65636e617473;
+  DAT_18046e6b7 = 0;
+  _DAT_18046e6b8 = 0xf;
+  _DAT_18046e6c0 = 0xf;
+  FUN_18013c3d0(&DAT_18046e668);
+  _DAT_18046e6e8 = (char *)FUN_1801695a0(0x20);
+  builtin_strncpy(_DAT_18046e6e8,"autopeek activate",0x12);
+  DAT_18046e6c8 = 0;
+  _DAT_18046e6d0 = 0x56;
+  DAT_18046e6d8 = 0;
+  _DAT_18046e6e0 = 0;
+  _DAT_18046e6f0 = 0;
+  _DAT_18046e6f8 = 0x11;
+  _DAT_18046e700 = 0x1f;
+  DAT_18046e708 = 0x70;
+  uRam000000018046e711 = 0x65636e617473;
+  _DAT_18046e709 = 0x7361206b6565;
+  _DAT_18046e70f = 0x6973;
+  DAT_18046e717 = 0;
+  _DAT_18046e718 = 0xf;
+  _DAT_18046e720 = 0xf;
+  FUN_18013c3d0(&DAT_18046e6c8);
+  DAT_18046e728 = 0;
+  _DAT_18046e730 = 0;
+  DAT_18046e738 = 0;
+  _DAT_18046e740 = 0;
+  DAT_18046e748 = 0x61;
+  _DAT_18046e749 = 0x70206f7475;
+  _DAT_18046e74e = 0x6b6565;
+  uRam000000018046e751 = 0x646c6f6820;
+  _DAT_18046e756 = 0;
+  _DAT_18046e758 = 0xe;
+  _DAT_18046e760 = 0xf;
+  DAT_18046e768 = 0x70;
+  _DAT_18046e769 = 0x7361206b6565;
+  _DAT_18046e76f = 0x6973;
+  uRam000000018046e771 = 0x65636e617473;
+  DAT_18046e777 = 0;
+  _DAT_18046e778 = 0xf;
+  _DAT_18046e780 = 0xf;
+  FUN_18013c3d0(&DAT_18046e728);
+  DAT_18046e788 = 1;
+  _DAT_18046e790 = 0;
+  DAT_18046e798 = 0;
+  _DAT_18046e7a0 = 0;
+  DAT_18046e7a8 = 0x72;
+  _DAT_18046e7a9 = 0x676e696e72757465;
+  _DAT_18046e7b1 = 0;
+  uRam000000018046e7b5 = 0;
+  _DAT_18046e7b8 = 9;
+  _DAT_18046e7c0 = 0xf;
+  DAT_18046e7c8 = 0x70;
+  _DAT_18046e7c9 = 0x7361206b6565;
+  _DAT_18046e7cf = 0x6973;
+  uRam000000018046e7d1 = 0x65636e617473;
+  DAT_18046e7d7 = 0;
+  _DAT_18046e7d8 = 0xf;
+  _DAT_18046e7e0 = 0xf;
+  FUN_18013c3d0(&DAT_18046e788);
+  _DAT_18046e7e8 = 0xffffffff;
+  local_28 = "quick peek color";
+  local_20 = 0x10;
+  local_38 = "peek assistance";
+  local_30 = 0xf;
+  FUN_18000d430(&DAT_18046e7e8,&local_38,&local_28);
+  _DAT_18046e7ec = 0xffffffff;
+  local_28 = "retracting color";
+  local_20 = 0x10;
+  local_38 = "peek assistance";
+  local_30 = 0xf;
+  FUN_18000d430(&DAT_18046e7ec,&local_38,&local_28);
+  DAT_18046e7f0 = 0x43960000;
+  local_28 = "light radius";
+  local_20 = 0xc;
+  local_38 = "peek assistance";
+  local_30 = 0xf;
+  FUN_18000a3d0(&DAT_18046e7f0,&local_38,&local_28);
+  DAT_18046e7f4 = 0x40000000;
+  local_28 = "light z offset";
+  local_20 = 0xe;
+  local_38 = "peek assistance";
+  local_30 = 0xf;
+  FUN_18000a3d0(&DAT_18046e7f4,&local_38,&local_28);
+  DAT_18046e7f8 = 0xc;
+  local_28 = "max backtrack ticks";
+  local_20 = 0x13;
+  local_38 = "ragebot";
+  local_30 = 7;
+  FUN_18000a720(&DAT_18046e7f8,&local_38,&local_28);
+  DAT_18046e800 = 1;
+  _DAT_18046e808 = 0;
+  DAT_18046e810 = 0;
+  _DAT_18046e818 = 0;
+  DAT_18046e820 = 0x61;
+  _DAT_18046e821 = 0x706f6373206f7475;
+  DAT_18046e829 = 0x65;
+  _DAT_18046e82a = 0;
+  _DAT_18046e82e = 0;
+  _DAT_18046e830 = 10;
+  _DAT_18046e838 = 0xf;
+  DAT_18046e840 = 0x61;
+  _DAT_18046e841 = 0x736f7475;
+  _DAT_18046e845 = 0;
+  _DAT_18046e84c = 0;
+  _DAT_18046e850 = 5;
+  _DAT_18046e858 = 0xf;
+  FUN_18013c3d0(&DAT_18046e800);
+  atexit((_func_5014 *)&LAB_180002dc0);
+  return;
+}
+
+

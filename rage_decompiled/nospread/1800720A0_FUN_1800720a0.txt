@@ -1,0 +1,92 @@
+// function: FUN_1800720a0
+// ea: 1800720a0
+// category: nospread
+// depth: 3, via: FUN_180071ef0 @180071f60
+// size: 847 bytes
+// anchors: nospread, trace_geometry, hitbox_backtrack
+// ----------------------------------------------------
+
+void FUN_1800720a0(undefined8 param_1,longlong param_2,longlong param_3)
+
+{
+  longlong lVar1;
+  undefined8 local_1b0;
+  undefined4 local_1a8;
+  uint local_1a4;
+  uint local_1a0;
+  uint local_19c;
+  undefined8 local_198;
+  undefined4 local_190;
+  undefined8 local_188;
+  undefined4 local_180;
+  undefined8 local_178;
+  undefined4 local_170;
+  undefined8 local_16c;
+  undefined4 local_164;
+  undefined1 local_160 [12];
+  undefined1 local_154 [12];
+  undefined1 local_148 [12];
+  undefined1 local_13c [12];
+  undefined1 local_130 [8];
+  longlong local_128;
+  float local_84;
+  
+  if (DAT_18046f990 == '\x01') {
+    if (*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+                0x2638) < DAT_180472378) {
+      FUN_180183614(&DAT_180472378);
+      if (DAT_180472378 == -1) {
+        DAT_180472374 = FUN_180114bb0("C_BaseEntity",0x9d930423);
+        _Init_thread_footer(&DAT_180472378);
+      }
+    }
+    lVar1 = *(longlong *)(DAT_180472374 + param_3);
+    if (*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+                0x2638) < DAT_180472380) {
+      FUN_180183614(&DAT_180472380);
+      if (DAT_180472380 == -1) {
+        DAT_18047237c = FUN_180114bb0("CGameSceneNode",0xe8b4eae5);
+        _Init_thread_footer(&DAT_180472380);
+      }
+    }
+    local_178 = *(undefined8 *)(lVar1 + DAT_18047237c);
+    local_170 = *(undefined4 *)(lVar1 + 8 + (longlong)DAT_18047237c);
+    if (*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+                0x2638) < DAT_180472388) {
+      FUN_180183614(&DAT_180472388);
+      if (DAT_180472388 == -1) {
+        DAT_180472384 = FUN_180114bb0("C_BaseModelEntity",0x39db834b);
+        _Init_thread_footer(&DAT_180472388);
+      }
+    }
+    local_188 = *(undefined8 *)(DAT_180472384 + param_3);
+    local_180 = *(undefined4 *)((longlong)DAT_180472384 + 8 + param_3);
+    FUN_180165d30(&local_178,local_160,&local_188);
+    FUN_18010dc70(&DAT_180471a08,local_13c);
+    local_198 = 0;
+    local_190 = 0;
+    FUN_180166150(local_13c,&local_198,0,0);
+    FUN_180165d90(&local_198,local_130,DAT_18046f9f0);
+    FUN_180165d60(local_160,&local_1b0,local_130);
+    local_1a4 = DAT_18046f9f4 ^ 0x80000000;
+    local_1a0 = local_1a4;
+    local_19c = local_1a4;
+    FUN_180115000(&DAT_180471958,local_130,local_160,&local_1b0,&local_1a4,&local_1a4,param_3,
+                  0x1c3003,4);
+    if (local_84 < 1.0) {
+      lVar1 = FUN_180109ad0(&DAT_180355000,0);
+      if (local_128 == lVar1) {
+        FUN_180165d60(&local_1b0,local_154,local_160);
+        FUN_180165d90(local_154,local_148,local_84);
+        FUN_180165d30(local_160,&local_16c,local_148);
+        local_1a8 = local_164;
+        local_1b0 = local_16c;
+      }
+    }
+    *(undefined4 *)(param_2 + 0x4a8) = local_1a8;
+    *(undefined8 *)(param_2 + 0x4a0) = local_1b0;
+  }
+  return;
+}
+
+

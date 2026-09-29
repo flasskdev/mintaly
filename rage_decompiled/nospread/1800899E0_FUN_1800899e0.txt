@@ -1,0 +1,40 @@
+// function: FUN_1800899e0
+// ea: 1800899e0
+// category: nospread
+// depth: 1, via: FUN_180084040 @180086f0d
+// size: 335 bytes
+// anchors: nospread, trace_geometry, hitbox_backtrack
+// ----------------------------------------------------
+
+void FUN_1800899e0(undefined8 param_1,ulonglong param_2,undefined8 param_3,undefined8 param_4)
+
+{
+  longlong lVar1;
+  float fVar2;
+  
+  if ((DAT_18046f8b8 < 100.0) && ((DAT_18046f8b8 != 0.0 || (NAN(DAT_18046f8b8))))) {
+    param_2 = param_2 & 0xffffffff;
+    AcquireSRWLockShared((PSRWLOCK)&DAT_180471378);
+    lVar1 = (&DAT_180471350)[(byte)~DAT_180471370 & 1];
+    ReleaseSRWLockShared((PSRWLOCK)&DAT_180471378);
+    if (lVar1 != 0) {
+      fVar2 = DAT_18046f8b8 / 100.0;
+      if ((*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+                   0x2638) < DAT_180472c18) && (FUN_180183614(&DAT_180472c18), DAT_180472c18 == -1))
+      {
+        DAT_180472c14 = FUN_180114bb0("C_CSPlayerPawnBase",0x3dcf0d29);
+        _Init_thread_footer(&DAT_180472c18);
+      }
+      *(float *)(lVar1 + DAT_180472c14) = fVar2 * 255.0;
+    }
+  }
+  if (((DAT_18046f8b8 != 0.0) || (NAN(DAT_18046f8b8))) && (DAT_1804737e0 != (code *)0x0)) {
+                    /* WARNING: Could not recover jumptable at 0x000180089adc. Too many branches */
+                    /* WARNING: Treating indirect jump as call */
+    (*DAT_1804737e0)(param_1,param_2,param_3,param_4);
+    return;
+  }
+  return;
+}
+
+

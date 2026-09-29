@@ -1,0 +1,44 @@
+// function: FUN_180169a60
+// ea: 180169a60
+// category: pipeline
+// depth: 2, via: FUN_180035ad0 @180035d64
+// size: 261 bytes
+// anchors: pipeline
+// ----------------------------------------------------
+
+/* WARNING: Globals starting with '_' overlap smaller symbols at the same address */
+
+float FUN_180169a60(float param_1,float param_2)
+
+{
+  uint uVar1;
+  ulonglong uVar2;
+  longlong lVar3;
+  
+  if (*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+              0x2638) < DAT_180496fa8) {
+    FUN_180183614(&DAT_180496fa8);
+    if (DAT_180496fa8 == -1) {
+      uVar2 = FUN_1801841a0();
+      _DAT_180496fa4 = 0xffffffff;
+      _DAT_180495c24 = (undefined4)uVar2;
+      lVar3 = 3;
+      while( true ) {
+        uVar2 = ((ulonglong)(((uint)(uVar2 >> 0x1e) & 3 ^ (uint)uVar2) * 0x6c078965) + lVar3) - 2;
+        uVar1 = (uint)uVar2;
+        *(uint *)((longlong)&DAT_180495c18 + lVar3 * 4 + 4) = uVar1;
+        if (lVar3 == 0x271) break;
+        uVar1 = (((uint)(uVar2 >> 0x1e) & 3 ^ uVar1) * 0x6c078965 + (int)lVar3) - 1;
+        uVar2 = (ulonglong)uVar1;
+        *(uint *)(&DAT_180495c20 + lVar3 * 4) = uVar1;
+        lVar3 = lVar3 + 2;
+      }
+      _DAT_180495c20 = 0x270;
+      _Init_thread_footer(&DAT_180496fa8);
+    }
+  }
+  uVar1 = FUN_180169b70(&DAT_180495c20);
+  return (param_2 - param_1) * (float)(uVar1 >> 8) * 5.9604645e-08 + param_1;
+}
+
+

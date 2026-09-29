@@ -1,0 +1,24 @@
+// function: FUN_18002fd90
+// ea: 18002fd90
+// category: nospread
+// depth: 3, via: FUN_18002e190 @18002e808
+// size: 115 bytes
+// anchors: nospread, trace_geometry, hitbox_backtrack
+// ----------------------------------------------------
+
+undefined4 FUN_18002fd90(void)
+
+{
+  if (*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+              0x2638) < DAT_180471774) {
+    FUN_180183614(&DAT_180471774);
+    if (DAT_180471774 == -1) {
+      DAT_180471770 = FUN_180114bb0("C_AttributeContainer",0xdce71866);
+      _Init_thread_footer(&DAT_180471774);
+      return DAT_180471770;
+    }
+  }
+  return DAT_180471770;
+}
+
+

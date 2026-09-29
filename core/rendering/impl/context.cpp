@@ -148,6 +148,16 @@ namespace rendering {
 
 	void context::on_resize_buffers( )
 	{
+		// ResizeBuffers requires every reference to the old back buffer to be
+		// released, including the RTV currently bound to the immediate context.
+		// Releasing only m_rtv leaves DXGI with a live context binding and can
+		// crash inside dxgi.dll instead of returning DXGI_ERROR_INVALID_CALL.
+		if ( this->m_context )
+		{
+			this->m_context->OMSetRenderTargets( 0, nullptr, nullptr );
+			this->m_context->Flush( );
+		}
+
 		features::misc::g_motion_blur.on_resize_buffers( );
 
 		if ( this->m_rtv )

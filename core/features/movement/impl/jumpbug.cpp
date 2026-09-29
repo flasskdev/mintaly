@@ -45,7 +45,7 @@ namespace features::movement {
             for (const auto button : {jump, duck}) {
                 if (!(mask & button)) continue;
                 auto* event = systems::g_input.acquire_subtick_step(moves);
-                if (!event) { moves->m_current_size = old_size; return; }
+                if (!event || !valid_runtime_address( reinterpret_cast<std::uintptr_t>( event ) )) { moves->m_current_size = old_size; return; }
                 events[count++] = event;
             }
             for (int i = 0; i < old_size; ++i) {
@@ -97,7 +97,11 @@ namespace features::movement {
         const bool grounded = (pre.flags & cstypes::entity_flags::on_ground) != 0;
         const bool can_attempt = m_cycle.available(grounded, pre.networked_velocity.z);
         if ((!bound && !config.value) || grounded || !can_attempt) { release_owned(); return; }
-        const auto move_type = memory::read<std::uint8_t>(local.pawn + SCHEMA("C_BaseEntity", "m_nActualMoveType"_hash));
+        const auto move_type_offset = SCHEMA("C_BaseEntity", "m_nActualMoveType"_hash);
+        if (!move_type_offset) {
+            release_owned(); return;
+        }
+        const auto move_type = memory::safe_read<std::uint8_t>(local.pawn + move_type_offset).value_or(0);
         if (move_type == cstypes::move_type::ladder || move_type == cstypes::move_type::noclip) {
             release_owned(); return;
         }
@@ -106,10 +110,10 @@ namespace features::movement {
         }
         // Prepare the crouched hull early. Waiting until damage speed to crouch
         // would leave too little time for the duck transition near the floor.
-        const auto movement = memory::read<std::uintptr_t>(local.pawn + SCHEMA("C_BasePlayerPawn", "m_pMovementServices"_hash));
-        if (!moves || !movement || !PATTERN(patterns::trace_hull) || !PATTERN(patterns::trace_filter_set_collision)) { report("missing_trace_dependency"); release_owned(); return; }
+        const auto movement = memory::safe_read<std::uintptr_t>(local.pawn + SCHEMA("C_BasePlayerPawn", "m_pMovementServices"_hash)).value_or(0);
+        if (!moves || !valid_runtime_address(movement) || !PATTERN(patterns::trace_hull) || !PATTERN(patterns::trace_filter_set_collision)) { report("missing_trace_dependency"); release_owned(); return; }
         const auto pawn = memory::safe_read<std::uintptr_t>(movement + 56).value_or(0);
-        if (!pawn) { report("missing_movement_pawn"); release_owned(); return; }
+        if (!valid_runtime_address(pawn)) { report("missing_movement_pawn"); release_owned(); return; }
         auto mask = memory::read<std::uint64_t>(pawn + 0xd48);
         if (memory::read<std::uint32_t>(pawn + 0x3f8) & 0x10) mask |= 0x20;
         const auto gravity_var = CONVAR("sv_gravity");
@@ -214,7 +218,7 @@ namespace features::movement {
         std::array<proto::subtick_move_step*, 4> events{};
         for (int i = 0; i < plan->count; ++i) {
             events[i] = systems::g_input.acquire_subtick_step(moves);
-            if (!events[i]) { report("subtick_allocation_failed"); moves->m_current_size = original_size; return; }
+            if (!events[i] || !valid_runtime_address( reinterpret_cast<std::uintptr_t>( events[i] ) )) { report("subtick_allocation_failed"); moves->m_current_size = original_size; return; }
         }
         for (int i = 0; i < original_size; ++i) {
             if (const auto step = base->mutable_subtick_moves(i); step && (step->button() & controlled)) {

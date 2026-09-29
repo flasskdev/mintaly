@@ -1,0 +1,24 @@
+// function: FUN_18007b0f0
+// ea: 18007b0f0
+// category: pipeline
+// depth: 2, via: FUN_18007aa00 @18007ab64
+// size: 115 bytes
+// anchors: pipeline
+// ----------------------------------------------------
+
+undefined4 FUN_18007b0f0(void)
+
+{
+  if (*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+              0x2638) < DAT_18047273c) {
+    FUN_180183614(&DAT_18047273c);
+    if (DAT_18047273c == -1) {
+      DAT_180472738 = FUN_180114bb0("CCollisionProperty",0xe57f80c);
+      _Init_thread_footer(&DAT_18047273c);
+      return DAT_180472738;
+    }
+  }
+  return DAT_180472738;
+}
+
+

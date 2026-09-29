@@ -142,40 +142,72 @@ namespace systems {
 		return false;
 	}
 
-	const char* entities::get_schema_name( std::uintptr_t entity ) const
+	std::optional<std::uint32_t> entities::get_cached_schema_hash( std::uintptr_t entity_ptr ) const
 	{
-		if ( !entity || entity < 0x10000 )
+		std::shared_lock lock( this->m_cache_mtx );
+
+		for ( const auto& c : this->m_cached.entries( ) )
+		{
+			if ( c.ptr == entity_ptr )
+			{
+				return c.schema_hash;
+			}
+		}
+
+		return std::nullopt;
+	}
+
+	__declspec( noinline ) const char* entities::get_schema_name( std::uintptr_t entity ) const
+	{
+		constexpr auto k_min_runtime_pointer = 0x100000000ull;
+		constexpr auto k_max_runtime_pointer = 0x00007FFFFFFFFFFFull;
+		const auto valid_pointer = []( std::uintptr_t address ) noexcept
+		{
+			return address >= k_min_runtime_pointer && address <= k_max_runtime_pointer;
+		};
+
+		// A failed handle lookup can produce 32-bit sentinels or packed values.
+		// Do not dereference anything from the schema chain until every link has
+		// passed the guarded-read and canonical-pointer checks.
+		if ( !valid_pointer( entity ) )
 		{
 			return nullptr;
 		}
 
-		__try
-		{
-			const auto identity = *reinterpret_cast<const std::uintptr_t*>( entity + 0x10 );
-			if ( !identity )
-			{
-				return nullptr;
-			}
-
-			const auto entity_class = *reinterpret_cast<const std::uintptr_t*>( identity + 0x8 );
-			if ( !entity_class )
-			{
-				return nullptr;
-			}
-
-			// CEntityClass owns the current SchemaClassInfo pointer at 0x58.
-			const auto class_info = *reinterpret_cast<const std::uintptr_t*>( entity_class + 0x58 );
-			if ( !class_info )
-			{
-				return nullptr;
-			}
-
-			return *reinterpret_cast<const char* const*>( class_info + 0x8 );
-		}
-		__except ( EXCEPTION_EXECUTE_HANDLER )
+		const auto identity = memory::safe_read<std::uintptr_t>( entity + 0x10 );
+		if ( !identity || !valid_pointer( *identity ) )
 		{
 			return nullptr;
 		}
+
+		const auto entity_class = memory::safe_read<std::uintptr_t>( *identity + 0x8 );
+		if ( !entity_class || !valid_pointer( *entity_class ) )
+		{
+			return nullptr;
+		}
+
+		// CEntityClass owns the current SchemaClassInfo pointer at 0x58.
+		const auto class_info = memory::safe_read<std::uintptr_t>( *entity_class + 0x58 );
+		if ( !class_info || !valid_pointer( *class_info ) )
+		{
+			return nullptr;
+		}
+
+		const auto name = memory::safe_read<const char*>( *class_info + 0x8 );
+		if ( !name || !valid_pointer( reinterpret_cast<std::uintptr_t>( *name ) ) )
+		{
+			return nullptr;
+		}
+
+		// The pointer itself can still be a stale canonical address during entity
+		// recreation. Validate the bounded string before returning it to callers;
+		// many consumers hash the name directly.
+		if ( fnv1a::runtime_hash( *name ) == 0 )
+		{
+			return nullptr;
+		}
+
+		return *name;
 	}
 
 	std::uintptr_t entities::get_by_index( std::int32_t index )
@@ -242,7 +274,8 @@ namespace systems {
 			const auto current_handle = *reinterpret_cast<const std::uint32_t*>( identity + 0x10 );
 			if ( current_handle != handle ) return 0;
 			const auto entity = *reinterpret_cast<const std::uintptr_t*>( identity );
-			if ( !entity || entity == 0xffffffffffffffff || entity < 0x10000 )
+			if ( !entity || entity == 0xffffffffffffffff || entity < 0x100000000ull ||
+				entity > 0x00007FFFFFFFFFFFull )
 			{
 				return 0;
 			}
@@ -268,6 +301,22 @@ namespace systems {
 		// rebuilt the snapshot, or an entity callback may have invalidated it.
 		std::unique_lock lock( this->m_cache_mtx );
 		return this->m_cached.snapshot( type_index );
+	}
+
+	std::size_t entities::count_of( type type ) const
+	{
+		std::shared_lock lock( this->m_cache_mtx );
+
+		std::size_t count{};
+		for ( const auto& c : this->m_cached.entries( ) )
+		{
+			if ( c.type == type )
+			{
+				++count;
+			}
+		}
+
+		return count;
 	}
 
 	bool entities::has_alive_enemies( std::uintptr_t local_controller, std::uintptr_t local_pawn, int local_team, bool is_team_mode ) const
@@ -309,7 +358,7 @@ namespace systems {
 				continue;
 			}
 
-			const auto team = memory::read<int>( pawn + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) );
+			const auto team = memory::read<std::uint8_t>( pawn + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) );
 			if ( is_team_mode && team == local_team )
 			{
 				continue;

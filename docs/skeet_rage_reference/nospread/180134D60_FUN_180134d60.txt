@@ -1,0 +1,23 @@
+// function: FUN_180134d60
+// ea: 180134d60
+// category: nospread
+// depth: 2, via: FUN_180132f60 @18013383c
+// size: 58 bytes
+// anchors: nospread
+// ----------------------------------------------------
+
+undefined8 FUN_180134d60(char *param_1)
+
+{
+  int iVar1;
+  undefined4 extraout_var;
+  
+  iVar1 = strcmp(param_1,"nonzero");
+  if (iVar1 != 0) {
+    iVar1 = strcmp(param_1,"evenodd");
+    return CONCAT71((int7)(CONCAT44(extraout_var,iVar1) >> 8),iVar1 == 0);
+  }
+  return 0;
+}
+
+

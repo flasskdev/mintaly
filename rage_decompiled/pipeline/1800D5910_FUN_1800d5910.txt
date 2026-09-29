@@ -1,0 +1,88 @@
+// function: FUN_1800d5910
+// ea: 1800d5910
+// category: pipeline
+// depth: 0, via: seed:pipeline
+// size: 453 bytes
+// anchors: pipeline
+// ----------------------------------------------------
+
+undefined8 FUN_1800d5910(longlong param_1)
+
+{
+  int iVar1;
+  longlong lVar2;
+  ulonglong uVar3;
+  ulonglong uVar4;
+  longlong lVar5;
+  ulonglong uVar6;
+  longlong *plVar7;
+  undefined1 local_438 [1024];
+  longlong local_38;
+  undefined8 local_30;
+  
+  local_30 = 0xfffffffffffffffe;
+  FUN_18023b870(local_438,0,0x400);
+  lVar2 = *(longlong *)(param_1 + -8);
+  local_38 = param_1;
+  if (*(char *)(lVar2 + 0xc2) == '\x01') {
+                    /* WARNING: Subroutine does not return */
+    FUN_1800e24d0("script is closing");
+  }
+  iVar1 = *(int *)(lVar2 + 0xa8);
+  *(int *)(lVar2 + 0xa8) = iVar1 + 1;
+  if (iVar1 < 0x8000) {
+    uVar3 = FUN_180184cfc();
+    uVar4 = FUN_180184ce0();
+    if (uVar3 == 24000000) {
+      lVar5 = (((longlong)uVar4 % 24000000) * 1000000000) / 24000000 +
+              ((longlong)uVar4 / 24000000) * 1000000000;
+    }
+    else if (uVar3 == 10000000) {
+      lVar5 = uVar4 * 100;
+    }
+    else {
+      if ((uVar4 | uVar3) >> 0x20 == 0) {
+        uVar6 = (uVar4 & 0xffffffff) / (uVar3 & 0xffffffff);
+        uVar4 = (uVar4 & 0xffffffff) % (uVar3 & 0xffffffff);
+      }
+      else {
+        uVar6 = (longlong)uVar4 / (longlong)uVar3;
+        uVar4 = (longlong)uVar4 % (longlong)uVar3;
+      }
+      uVar4 = uVar4 * 1000000000;
+      if ((uVar3 | uVar4) >> 0x20 == 0) {
+        uVar4 = (uVar4 & 0xffffffff) / (uVar3 & 0xffffffff);
+      }
+      else {
+        uVar4 = (longlong)uVar4 / (longlong)uVar3;
+      }
+      lVar5 = uVar4 + uVar6 * 1000000000;
+    }
+    if (lVar5 <= *(longlong *)(lVar2 + 0xb0)) {
+      lVar2 = *(longlong *)(param_1 + -8);
+      if (*(longlong *)(lVar2 + 0xb8) == 0) {
+                    /* WARNING: Subroutine does not return */
+        FUN_1800e24d0("available only in command callbacks");
+      }
+      if (*(longlong *)(lVar2 + 0x58) == 8) {
+        if (*(ulonglong *)(lVar2 + 0x60) < 0x10) {
+          plVar7 = (longlong *)(lVar2 + 0x48);
+        }
+        else {
+          plVar7 = *(longlong **)(lVar2 + 0x48);
+        }
+        if (*plVar7 == 0x656761725f657270) {
+          *(undefined1 *)(lVar2 + 0x11c) = 1;
+          DAT_180473de8 = 1;
+          return 0;
+        }
+      }
+                    /* WARNING: Subroutine does not return */
+      FUN_1800e24d0("claim_command is only available in pre_rage");
+    }
+  }
+                    /* WARNING: Subroutine does not return */
+  FUN_1800e24d0("callback budget exceeded");
+}
+
+

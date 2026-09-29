@@ -1,0 +1,183 @@
+// function: strncpy
+// ea: 18023bf50
+// category: nospread
+// depth: 1, via: FUN_180131790 @18013186c
+// size: 354 bytes
+// anchors: nospread
+// ----------------------------------------------------
+
+/* Library Function - Single Match
+    strncpy
+   
+   Library: Visual Studio */
+
+char * __cdecl strncpy(char *_Dest,char *_Source,size_t _Count)
+
+{
+  ulonglong uVar1;
+  char cVar2;
+  longlong lVar3;
+  char *pcVar4;
+  ulonglong *puVar5;
+  size_t sVar6;
+  bool bVar7;
+  
+  if (_Count != 0) {
+    lVar3 = (longlong)_Dest - (longlong)_Source;
+    do {
+      if (((ulonglong)_Source & 7) == 0) goto LAB_18023bf88;
+      uVar1 = *(ulonglong *)_Source;
+      *(char *)((longlong)_Source + lVar3) = (char)uVar1;
+      puVar5 = (ulonglong *)_Source;
+      sVar6 = _Count;
+      if ((char)uVar1 == '\0') goto LAB_18023c050;
+      _Source = (char *)((longlong)_Source + 1);
+      _Count = _Count - 1;
+    } while (_Count != 0);
+  }
+  return _Dest;
+LAB_18023bf88:
+  while( true ) {
+    uVar1 = *(ulonglong *)_Source;
+    if ((_Count < 8 || _Count - 8 == 0) ||
+       (((uVar1 ^ 0xffffffffffffffff ^ uVar1 + 0x7efefefefefefeff) & 0x8101010101010100) != 0))
+    break;
+    *(ulonglong *)((longlong)_Source + lVar3) = uVar1;
+    _Source = (char *)((longlong)_Source + 8);
+    _Count = _Count - 8;
+  }
+  if (_Count == 0) {
+    return _Dest;
+  }
+  *(char *)((longlong)_Source + lVar3) = (char)uVar1;
+  puVar5 = (ulonglong *)_Source;
+  sVar6 = _Count;
+  if ((char)uVar1 == '\0') {
+LAB_18023c050:
+    pcVar4 = (char *)(lVar3 + (longlong)puVar5);
+    if (0xf < sVar6) {
+      while (((ulonglong)pcVar4 & 7) != 0) {
+        pcVar4 = pcVar4 + 1;
+        *pcVar4 = '\0';
+        sVar6 = sVar6 - 1;
+      }
+      while (0x1f < sVar6) {
+        pcVar4[0] = '\0';
+        pcVar4[1] = '\0';
+        pcVar4[2] = '\0';
+        pcVar4[3] = '\0';
+        pcVar4[4] = '\0';
+        pcVar4[5] = '\0';
+        pcVar4[6] = '\0';
+        pcVar4[7] = '\0';
+        pcVar4[8] = '\0';
+        pcVar4[9] = '\0';
+        pcVar4[10] = '\0';
+        pcVar4[0xb] = '\0';
+        pcVar4[0xc] = '\0';
+        pcVar4[0xd] = '\0';
+        pcVar4[0xe] = '\0';
+        pcVar4[0xf] = '\0';
+        pcVar4[0x10] = '\0';
+        pcVar4[0x11] = '\0';
+        pcVar4[0x12] = '\0';
+        pcVar4[0x13] = '\0';
+        pcVar4[0x14] = '\0';
+        pcVar4[0x15] = '\0';
+        pcVar4[0x16] = '\0';
+        pcVar4[0x17] = '\0';
+        pcVar4[0x18] = '\0';
+        pcVar4[0x19] = '\0';
+        pcVar4[0x1a] = '\0';
+        pcVar4[0x1b] = '\0';
+        pcVar4[0x1c] = '\0';
+        pcVar4[0x1d] = '\0';
+        pcVar4[0x1e] = '\0';
+        pcVar4[0x1f] = '\0';
+        pcVar4 = pcVar4 + 0x20;
+        sVar6 = sVar6 - 0x20;
+      }
+      while (7 < sVar6) {
+        pcVar4[0] = '\0';
+        pcVar4[1] = '\0';
+        pcVar4[2] = '\0';
+        pcVar4[3] = '\0';
+        pcVar4[4] = '\0';
+        pcVar4[5] = '\0';
+        pcVar4[6] = '\0';
+        pcVar4[7] = '\0';
+        pcVar4 = pcVar4 + 8;
+        sVar6 = sVar6 - 8;
+      }
+    }
+    while (bVar7 = sVar6 != 0, sVar6 = sVar6 - 1, bVar7) {
+      *pcVar4 = '\0';
+      pcVar4 = pcVar4 + 1;
+    }
+    return _Dest;
+  }
+  puVar5 = (ulonglong *)((longlong)_Source + 1);
+  sVar6 = _Count - 1;
+  if (sVar6 == 0) {
+    return _Dest;
+  }
+  cVar2 = (char)(uVar1 >> 8);
+  *(char *)((longlong)puVar5 + lVar3) = cVar2;
+  if (cVar2 == '\0') goto LAB_18023c050;
+  puVar5 = (ulonglong *)((longlong)_Source + 2);
+  sVar6 = _Count - 2;
+  if (sVar6 == 0) {
+    return _Dest;
+  }
+  cVar2 = (char)(uVar1 >> 0x10);
+  *(char *)((longlong)puVar5 + lVar3) = cVar2;
+  if (cVar2 == '\0') goto LAB_18023c050;
+  puVar5 = (ulonglong *)((longlong)_Source + 3);
+  sVar6 = _Count - 3;
+  if (sVar6 == 0) {
+    return _Dest;
+  }
+  cVar2 = (char)(uVar1 >> 0x18);
+  *(char *)((longlong)puVar5 + lVar3) = cVar2;
+  if (cVar2 == '\0') goto LAB_18023c050;
+  puVar5 = (ulonglong *)((longlong)_Source + 4);
+  sVar6 = _Count - 4;
+  if (sVar6 == 0) {
+    return _Dest;
+  }
+  cVar2 = (char)(uVar1 >> 0x20);
+  *(char *)((longlong)puVar5 + lVar3) = cVar2;
+  if (cVar2 == '\0') goto LAB_18023c050;
+  puVar5 = (ulonglong *)((longlong)_Source + 5);
+  sVar6 = _Count - 5;
+  if (sVar6 == 0) {
+    return _Dest;
+  }
+  cVar2 = (char)(uVar1 >> 0x28);
+  *(char *)((longlong)puVar5 + lVar3) = cVar2;
+  if (cVar2 == '\0') goto LAB_18023c050;
+  puVar5 = (ulonglong *)((longlong)_Source + 6);
+  sVar6 = _Count - 6;
+  if (sVar6 == 0) {
+    return _Dest;
+  }
+  cVar2 = (char)(uVar1 >> 0x30);
+  *(char *)((longlong)puVar5 + lVar3) = cVar2;
+  if (cVar2 == '\0') goto LAB_18023c050;
+  puVar5 = (ulonglong *)((longlong)_Source + 7);
+  sVar6 = _Count - 7;
+  if (sVar6 == 0) {
+    return _Dest;
+  }
+  cVar2 = (char)(uVar1 >> 0x38);
+  *(char *)((longlong)puVar5 + lVar3) = cVar2;
+  if (cVar2 == '\0') goto LAB_18023c050;
+  _Source = (char *)((longlong)_Source + 8);
+  _Count = _Count - 8;
+  if (_Count == 0) {
+    return _Dest;
+  }
+  goto LAB_18023bf88;
+}
+
+

@@ -4,6 +4,7 @@
 #include <fstream>
 #include <utilities/memory/memory.hpp>
 #include <utilities/addresses/addresses.hpp>
+#include <utilities/diag.hpp>
 #include <utilities/logging/logging.hpp>
 #include <utilities/steam/steam.hpp>
 #include <core/settings.hpp>
@@ -618,20 +619,366 @@ namespace features::misc {
 	}
 
 	c_ui_panel* scoreboard_weapons::find_hud_panel () const {
-		if (!addresses::globals::hud)
+		const auto looks_like_panel = [](std::uintptr_t candidate) -> c_ui_panel* {
+			if (!candidate || candidate < 0x100000000ull || candidate >= 0x7fff'ffff'ffffull)
+				return nullptr;
+
+			const auto panorama_begin = addresses::modules::panorama;
+			const auto panorama_end = panorama_begin + memory::get_module_size(panorama_begin);
+			const auto vtable = memory::safe_read<std::uintptr_t>(candidate).value_or(0);
+			if (!vtable || !panorama_begin || vtable < panorama_begin || vtable >= panorama_end ||
+				!memory::safe_read<std::uintptr_t>(vtable).value_or(0))
+				return nullptr;
+
+			// A real Panorama panel has a readable panel-name slot at +0x10.
+			// Requiring a short printable name prevents treating the HUD-element
+			// wrapper returned by FindHudElement as the panel itself.
+			const auto name_ptr = memory::safe_read<std::uintptr_t>(candidate + 0x10).value_or(0);
+			const auto name = memory::read_string(name_ptr, 96);
+			if (name.empty() || name.size() >= 96 ||
+				!std::ranges::all_of(name, [](const unsigned char c) {
+					return c >= 0x20 && c < 0x7f;
+				}))
+				return nullptr;
+
+			return reinterpret_cast<c_ui_panel*>(candidate);
+		};
+
+		if (addresses::globals::hud) {
+			const auto hud = memory::safe_read<std::uintptr_t>(addresses::globals::hud).value_or(0);
+			if (hud) {
+				for (std::uintptr_t offset = 0; offset < 0x200; offset += sizeof(std::uintptr_t)) {
+					if (const auto panel = looks_like_panel(
+						memory::safe_read<std::uintptr_t>(hud + offset).value_or(0)))
+						return panel;
+				}
+			}
+		}
+
+		// The client HUD global changed layout. FindHudElement remains the
+		// stable path used by the native HUD features; its result is a wrapper
+		// around the Panorama panel, so probe the known wrapper displacement.
+		const auto find_hud = PATTERN(patterns::find_hud_element);
+		if (!find_hud)
 			return nullptr;
 
-		const auto hud = memory::safe_read<std::uintptr_t>(addresses::globals::hud).value_or(0);
-		if (!hud)
-			return nullptr;
+		for (const char* id : {"CCSGO_HudRadar", "HudRadar", "Radar", "CCSGO_HudChat"}) {
+			const auto element = memory::safe_call<std::uintptr_t>(find_hud, id);
+			if (!element)
+				continue;
 
-		const auto panel = memory::safe_read<c_ui_panel*>(hud + 0x8).value_or(nullptr);
-		if (!panel)
-			return nullptr;
+			for (const auto displacement : {std::ptrdiff_t{0}, std::ptrdiff_t{-0x20},
+				std::ptrdiff_t{0x20}, std::ptrdiff_t{-0x28}, std::ptrdiff_t{0x28}}) {
+				const auto candidate = displacement < 0
+					? element - static_cast<std::uintptr_t>(-displacement)
+					: element + static_cast<std::uintptr_t>(displacement);
+				if (const auto panel = looks_like_panel(candidate))
+					return panel;
+			}
 
-		const auto vtable = memory::safe_read<std::uintptr_t>(
-			reinterpret_cast<std::uintptr_t>(panel));
-		return vtable && *vtable ? panel : nullptr;
+			// HUD wrapper layouts move between builds. Search its pointer fields for
+			// the live Panorama panel instead of assuming one fixed displacement.
+			for (std::uintptr_t offset = 0; offset < 0x200; offset += sizeof(std::uintptr_t)) {
+				if (const auto panel = looks_like_panel(
+					memory::safe_read<std::uintptr_t>(element + offset).value_or(0)))
+					return panel;
+			}
+		}
+
+		return nullptr;
+	}
+
+	c_ui_panel* scoreboard_weapons::find_preview_panel (
+		c_ui_engine* ui_engine, std::string* diagnostics) const {
+		if (diagnostics)
+			diagnostics->clear();
+		if (!ui_engine) {
+			if (diagnostics) *diagnostics = "ui engine is null";
+			return nullptr;
+		}
+
+		const auto engine = reinterpret_cast<std::uintptr_t>(ui_engine);
+		const auto panels = memory::safe_read<std::uintptr_t>(
+			engine + offsetof(c_ui_engine, m_panels_array)).value_or(0);
+		const auto count = memory::safe_read<std::int32_t>(
+			engine + offsetof(c_ui_engine, m_panel_count)).value_or(0);
+		if (!panels || count <= 0 || count > 8192) {
+			const auto panorama_begin = addresses::modules::panorama;
+			const auto panorama_end = panorama_begin + memory::get_module_size(panorama_begin);
+			const auto read_panel = [&](std::uintptr_t address, std::string& name) -> c_ui_panel* {
+				if (!address || address < 0x100000000ull || address >= 0x7fff'ffff'ffffull)
+					return nullptr;
+				const auto vtable = memory::safe_read<std::uintptr_t>(address).value_or(0);
+				if (!vtable || !panorama_begin || vtable < panorama_begin || vtable >= panorama_end)
+					return nullptr;
+				const auto name_address = memory::safe_read<std::uintptr_t>(
+					address + offsetof(c_ui_panel, m_panel_name)).value_or(0);
+				if (!name_address)
+					return nullptr;
+				name = memory::read_string(name_address, 96);
+				if (name.empty() || name.size() >= 96 ||
+					!std::ranges::all_of(name, [](const unsigned char c) { return c >= 0x20 && c < 0x7f; }))
+					return nullptr;
+				return reinterpret_cast<c_ui_panel*>(address);
+			};
+			const auto is_menu_root = [](const std::string& name) {
+				return name == "CSGOMainMenu" || name == "MainMenuRoot" ||
+					name == "MainMenuContainerPanel" || name == "MainMenuInput";
+			};
+			const auto is_hud_root = [](const std::string& name) {
+				return name == "CSGOHud" || name == "CSGO_Hud" || name == "Hud" ||
+					name == "CCSGO_HudRadar" || name == "HudRadar" || name == "CCSGO_HudChat";
+			};
+			const auto find_menu_root = [&](c_ui_panel* candidate) -> c_ui_panel* {
+				auto* current = candidate;
+				for (int depth = 0; current && depth < 16; ++depth) {
+					std::string name;
+					if (!read_panel(reinterpret_cast<std::uintptr_t>(current), name))
+						break;
+					if (is_menu_root(name))
+						return current;
+					const auto parent = memory::safe_read<std::uintptr_t>(
+						reinterpret_cast<std::uintptr_t>(current) + offsetof(c_ui_panel, m_parent_panel)).value_or(0);
+					if (!parent)
+						break;
+					current = reinterpret_cast<c_ui_panel*>(parent);
+				}
+				return nullptr;
+			};
+			c_ui_panel* scanned_panel{};
+			std::string scanned_panel_name;
+			c_ui_panel* scanned_hud_panel{};
+			std::string scanned_hud_panel_name;
+			c_ui_panel* event_panel{};
+			std::string event_panel_name;
+			// The UI engine keeps its current script-panel stack at this stable
+			// member even when the all-panels registry changes layout.
+			for (std::size_t i = 0; i < std::size(ui_engine->m_panel_stack); ++i) {
+				const auto candidate = memory::safe_read<std::uintptr_t>(
+					engine + offsetof(c_ui_engine, m_panel_stack) + i * sizeof(std::uintptr_t)).value_or(0);
+				std::string name;
+				if (auto* panel = read_panel(candidate, name)) {
+					if (auto* root = find_menu_root(panel)) {
+						if (diagnostics) *diagnostics = std::format(
+							"using main-menu ancestor '{}' from script-stack slot {}",
+							memory::read_string(reinterpret_cast<std::uintptr_t>(root->m_panel_name), 96), i);
+						return root;
+					}
+					if (is_hud_root(name)) {
+						if (!scanned_hud_panel) {
+							scanned_hud_panel = panel;
+							scanned_hud_panel_name = name;
+						}
+					} else if (!scanned_panel) {
+						scanned_panel = panel;
+						scanned_panel_name = name;
+					}
+				}
+			}
+			// Some builds keep panels directly in UI-engine members rather than a
+			// public registry. Validate each pointer's Panorama vtable and name.
+			for (std::uintptr_t field = 0x40; field < 0x2000; field += sizeof(std::uintptr_t)) {
+				const auto candidate = memory::safe_read<std::uintptr_t>(engine + field).value_or(0);
+				std::string name;
+				if (auto* panel = read_panel(candidate, name)) {
+					if (auto* root = find_menu_root(panel)) {
+						if (diagnostics) *diagnostics = std::format(
+							"found main-menu root '{}' at UI-engine field +0x{:x}",
+							memory::read_string(reinterpret_cast<std::uintptr_t>(root->m_panel_name), 96),
+							static_cast<unsigned>(field));
+						return root;
+					}
+					if (is_hud_root(name)) {
+						if (!scanned_hud_panel) {
+							scanned_hud_panel = panel;
+							scanned_hud_panel_name = name;
+						}
+					} else if (!scanned_panel) {
+						scanned_panel = panel;
+						scanned_panel_name = name;
+					}
+				}
+			}
+			// The main menu can have no HUD panel and the panel-registry offsets
+			// differ between client builds. Ask Panorama for its last UI event target
+			// as a fallback, then validate it exactly like any other live panel.
+			const auto engine_vtable = memory::safe_read<std::uintptr_t>(engine).value_or(0);
+			const auto target_function = engine_vtable
+				? memory::safe_read<std::uintptr_t>(engine_vtable + 56 * sizeof(std::uintptr_t)).value_or(0)
+				: 0;
+			if (panorama_begin && target_function >= panorama_begin && target_function < panorama_end) {
+				const auto target = memory::safe_call<std::uintptr_t>(target_function, engine);
+				std::string target_name;
+				if (auto* target_panel = read_panel(target, target_name)) {
+					if (auto* root = find_menu_root(target_panel)) {
+						if (diagnostics) *diagnostics = std::format(
+							"using main-menu ancestor '{}' of last UI event",
+							memory::read_string(reinterpret_cast<std::uintptr_t>(root->m_panel_name), 96));
+						return root;
+					}
+					event_panel = target_panel;
+					event_panel_name = target_name;
+				}
+			}
+			// The panel registry moved in recent Panorama builds. Probe pointer/count
+			// pairs around the UI engine and accept only arrays containing real
+			// Panorama panels with a known menu/HUD root name.
+			static constexpr std::array<std::ptrdiff_t, 5> count_offsets{ 8, 4, 12, 16, -8 };
+			static constexpr std::array<std::size_t, 4> strides{ 0x20, 0x18, 0x10, 0x08 };
+			static constexpr std::array<std::size_t, 3> panel_offsets{ 0x10, 0x08, 0x00 };
+			for (std::uintptr_t field = 0x40; field < 0x1200; field += sizeof(std::uintptr_t)) {
+				const auto array = memory::safe_read<std::uintptr_t>(engine + field).value_or(0);
+				if (array < 0x100000000ull || array >= 0x7fff'ffff'ffffull)
+					continue;
+				for (const auto delta : count_offsets) {
+					if (delta < 0 && field < static_cast<std::uintptr_t>(-delta))
+						continue;
+					const auto count_field = delta < 0
+						? field - static_cast<std::uintptr_t>(-delta)
+						: field + static_cast<std::uintptr_t>(delta);
+					const auto candidate_count = memory::safe_read<std::int32_t>(engine + count_field).value_or(0);
+					if (candidate_count <= 0 || candidate_count > 8192)
+						continue;
+					for (const auto stride : strides) {
+						for (const auto panel_offset : panel_offsets) {
+							bool layout_valid = false;
+							const auto sample_count = std::min(candidate_count, 8);
+							for (std::int32_t i = 0; i < sample_count; ++i) {
+								const auto slot = array + static_cast<std::uintptr_t>(i) * stride + panel_offset;
+								const auto candidate = memory::safe_read<std::uintptr_t>(slot).value_or(0);
+								std::string name;
+								if (auto* panel = read_panel(candidate, name)) {
+									layout_valid = true;
+									if (auto* root = find_menu_root(panel)) {
+										if (diagnostics) *diagnostics = std::format(
+										"scanned menu root '{}' at engine+0x{:x} ({}/{} panels)",
+											memory::read_string(reinterpret_cast<std::uintptr_t>(root->m_panel_name), 96),
+											static_cast<unsigned>(field), i, candidate_count);
+										return root;
+									}
+									if (is_hud_root(name)) {
+										if (!scanned_hud_panel) {
+											scanned_hud_panel = panel;
+											scanned_hud_panel_name = name;
+										}
+									} else if (!scanned_panel) {
+										scanned_panel = panel;
+										scanned_panel_name = name;
+									}
+								}
+							}
+							if (!layout_valid)
+								continue;
+							for (std::int32_t i = sample_count; i < std::min(candidate_count, 256); ++i) {
+								const auto slot = array + static_cast<std::uintptr_t>(i) * stride + panel_offset;
+								const auto candidate = memory::safe_read<std::uintptr_t>(slot).value_or(0);
+								std::string name;
+								if (auto* panel = read_panel(candidate, name)) {
+									if (auto* root = find_menu_root(panel)) {
+										if (diagnostics) *diagnostics = std::format(
+										"scanned menu root '{}' at engine+0x{:x} ({}/{} panels)",
+											memory::read_string(reinterpret_cast<std::uintptr_t>(root->m_panel_name), 96),
+											static_cast<unsigned>(field), i, candidate_count);
+										return root;
+									}
+									if (is_hud_root(name)) {
+										if (!scanned_hud_panel) {
+											scanned_hud_panel = panel;
+											scanned_hud_panel_name = name;
+										}
+									} else if (!scanned_panel) {
+										scanned_panel = panel;
+										scanned_panel_name = name;
+									}
+								}
+							}
+						}
+				}
+			}
+			}
+			if (event_panel) {
+				if (diagnostics) *diagnostics = std::format(
+					"using active Panorama event panel '{}'", event_panel_name);
+				return event_panel;
+			}
+			if (scanned_panel) {
+				if (diagnostics) *diagnostics = std::format(
+					"using live panel '{}' from UI-engine storage", scanned_panel_name);
+				return scanned_panel;
+			}
+			if (scanned_hud_panel) {
+				if (diagnostics) *diagnostics = std::format(
+					"no menu root found; using HUD panel '{}'", scanned_hud_panel_name);
+				return scanned_hud_panel;
+			}
+			auto* hud = find_hud_panel();
+			if (diagnostics) {
+				const auto hud_name = hud
+					? memory::read_string(reinterpret_cast<std::uintptr_t>(hud->m_panel_name), 96)
+					: std::string{"<none>"};
+				*diagnostics = std::format(
+					"invalid panel registry array=0x{:x} count={}; no scanned root; HUD fallback='{}'",
+					static_cast<unsigned long long>(panels), count, hud_name);
+			}
+			return hud;
+		}
+
+		c_ui_panel* fallback{};
+		std::string candidate_names;
+		unsigned candidate_count{};
+		for (std::int32_t i = 0; i < count; ++i) {
+			const auto slot = memory::safe_read<panel_data_t>(
+				panels + static_cast<std::uintptr_t>(i) * sizeof(panel_data_t));
+			if (!slot || !slot->m_panel)
+				continue;
+
+			const auto panel_address = reinterpret_cast<std::uintptr_t>(slot->m_panel);
+			const auto vtable = memory::safe_read<std::uintptr_t>(panel_address).value_or(0);
+			const auto name_address = memory::safe_read<std::uintptr_t>(
+				panel_address + offsetof(c_ui_panel, m_panel_name)).value_or(0);
+			if (!vtable || !name_address)
+				continue;
+
+			const auto name = memory::read_string(name_address, 96);
+			if (name.empty() || name.size() >= 96 ||
+				!std::ranges::all_of(name, [](const unsigned char c) {
+					return c >= 0x20 && c < 0x7f;
+				}))
+				continue;
+			if (candidate_count < 12) {
+				if (!candidate_names.empty()) candidate_names += ",";
+				candidate_names += name;
+				++candidate_count;
+			}
+
+			// The main-menu Panorama tree exists when the client is outside a match.
+			// Run preview scripts from that root when no live HUD panel is present.
+			if (name == "CSGOMainMenu" || name == "MainMenuRoot") {
+				if (diagnostics) *diagnostics = std::format("matched menu root '{}' ({}/{} panels)", name, i, count);
+				return slot->m_panel;
+			}
+			if (!fallback && (name == "MainMenuContainerPanel" || name == "MainMenuInput"))
+				fallback = slot->m_panel;
+		}
+		// Prefer the active menu tree when the match HUD is not built yet. A stale
+		// HUD element can survive a disconnect and would accept scripts without
+		// ever displaying the resulting preview panel.
+		if (fallback) {
+			if (diagnostics)
+				*diagnostics = std::format("menu root not found; using '{}' ({}/{} panels; sample={})",
+					memory::read_string(reinterpret_cast<std::uintptr_t>(fallback->m_panel_name), 96),
+					count, count, candidate_names);
+			return fallback;
+		}
+		auto* hud = find_hud_panel();
+		if (diagnostics) {
+			const auto hud_name = hud
+				? memory::read_string(reinterpret_cast<std::uintptr_t>(hud->m_panel_name), 96)
+				: std::string{"<none>"};
+			*diagnostics = std::format("menu root not found; HUD fallback='{}' ({} panels; sample={})",
+				hud_name, count, candidate_names);
+		}
+		return hud;
 	}
 
 	void scoreboard_weapons::on_level_change () {
@@ -642,11 +989,25 @@ namespace features::misc {
 		m_init_throttle = 0;
 		m_ui_engine = nullptr;
 		m_script_panel = nullptr;
+		m_preview_ui_engine = nullptr;
+		m_preview_script_panel = nullptr;
 
 		logging::console::print (xs ("[scoreboard_weapons] level change — state reset\n"));
 	}
 
 	void scoreboard_weapons::on_frame_stage_notify () {
+		// Do not touch Panorama while the feature is disabled.  The setup script
+		// used to be injected unconditionally, even though the actual weapon
+		// updates were guarded below.  Installing a long-lived script on the HUD
+		// for a disabled option is both unnecessary and can interfere with other
+		// Panorama panels (including the native radar).
+		if (!settings::g_misc.m_scoreboard_weapons.enabled.value) {
+			if (m_scoreboard_open && m_script_injected)
+				clear_all();
+			m_scoreboard_open = false;
+			return;
+		}
+
 		// Team selection can replace the HUD without a level-change event.
 		// Discard the old script context even when TAB is currently closed.
 		if (m_script_injected && find_hud_panel() != m_script_panel) {
@@ -742,6 +1103,133 @@ namespace features::misc {
 			m_script_injected = true;
 			logging::console::print (xs ("[scoreboard_weapons] setup script injected\n"));
 		}
+	}
+
+	bool scoreboard_weapons::run_hud_script (const std::string& script) {
+		if (!addresses::globals::panorama)
+			return false;
+
+		auto* panorama = reinterpret_cast<c_panorama_ui_engine*>(addresses::globals::panorama);
+		auto* ui_engine = panorama->get_ui_engine();
+		auto* panel = find_hud_panel();
+		if (!ui_engine || !panel)
+			return false;
+
+		const auto engine = reinterpret_cast<std::uintptr_t>(ui_engine);
+		const auto vtable = memory::safe_read<std::uintptr_t>(engine);
+		const auto function = vtable ? memory::safe_read<std::uintptr_t>(
+			*vtable + 77 * sizeof(std::uintptr_t)) : std::nullopt;
+		const auto panorama_begin = addresses::modules::panorama;
+		const auto panorama_end = panorama_begin + memory::get_module_size(panorama_begin);
+		if (!function || *function < panorama_begin || *function >= panorama_end)
+			return false;
+
+		m_ui_engine = ui_engine;
+		m_script_panel = panel;
+		m_ui_engine->run_script(m_script_panel, script.c_str());
+		return true;
+	}
+
+	bool scoreboard_weapons::run_preview_script (const std::string& script) {
+		const auto fail = [](const char* reason, std::uintptr_t panorama, std::uintptr_t engine,
+			std::uintptr_t panel, const char* details = "") {
+			static std::string last_reason;
+			static auto next_log = std::chrono::steady_clock::time_point{};
+			const auto now = std::chrono::steady_clock::now();
+			if (reason != last_reason || now >= next_log) {
+				diag::writef(diag::level::warning,
+					"[model-preview] bridge failed reason=%s panorama=0x%llx engine=0x%llx panel=0x%llx details=%s",
+					reason, static_cast<unsigned long long>(panorama),
+					static_cast<unsigned long long>(engine), static_cast<unsigned long long>(panel), details);
+				last_reason = reason;
+				next_log = now + std::chrono::seconds(2);
+			}
+			return false;
+		};
+		const auto panorama_address = addresses::globals::panorama;
+		if (!panorama_address)
+			return fail("panorama-global-null", 0, 0, 0);
+
+		auto* panorama = reinterpret_cast<c_panorama_ui_engine*>(panorama_address);
+		auto* ui_engine = panorama->get_ui_engine();
+		if (!ui_engine)
+			return fail("ui-engine-null", panorama_address, 0, 0);
+		std::string panel_diagnostics;
+		const auto is_live_panel = [&](c_ui_panel* candidate) {
+			if (!candidate) return false;
+			const auto address = reinterpret_cast<std::uintptr_t>(candidate);
+			const auto vtable = memory::safe_read<std::uintptr_t>(address).value_or(0);
+			const auto panorama_begin = addresses::modules::panorama;
+			const auto panorama_end = panorama_begin + memory::get_module_size(panorama_begin);
+			if (!vtable || !panorama_begin || vtable < panorama_begin || vtable >= panorama_end)
+				return false;
+			const auto name_address = memory::safe_read<std::uintptr_t>(
+				address + offsetof(c_ui_panel, m_panel_name)).value_or(0);
+			const auto name = memory::read_string(name_address, 96);
+			return !name.empty() && name.size() < 96 &&
+				std::ranges::all_of(name, [](const unsigned char c) { return c >= 0x20 && c < 0x7f; });
+		};
+		c_ui_panel* panel{};
+		if (m_preview_ui_engine == ui_engine && is_live_panel(m_preview_script_panel)) {
+			panel = m_preview_script_panel;
+			panel_diagnostics = "cached active Panorama panel";
+		} else if (m_ui_engine == ui_engine && is_live_panel(m_script_panel)) {
+			panel = m_script_panel;
+			panel_diagnostics = "reusing the scoreboard's live Panorama panel";
+		} else {
+			static c_ui_engine* retry_engine{};
+			static auto next_search = std::chrono::steady_clock::time_point{};
+			const auto now = std::chrono::steady_clock::now();
+			if (retry_engine != ui_engine) {
+				retry_engine = ui_engine;
+				next_search = {};
+			}
+			if (now < next_search)
+				return fail("panel-search-throttled", panorama_address,
+					reinterpret_cast<std::uintptr_t>(ui_engine), 0);
+			next_search = now + std::chrono::milliseconds(750);
+			panel = find_preview_panel(ui_engine, &panel_diagnostics);
+		}
+		if (!panel)
+			return fail("panel-not-found", panorama_address,
+				reinterpret_cast<std::uintptr_t>(ui_engine), 0, panel_diagnostics.c_str());
+
+		const auto engine = reinterpret_cast<std::uintptr_t>(ui_engine);
+		const auto vtable = memory::safe_read<std::uintptr_t>(engine);
+		const auto function = vtable ? memory::safe_read<std::uintptr_t>(
+			*vtable + 77 * sizeof(std::uintptr_t)) : std::nullopt;
+		const auto panorama_begin = addresses::modules::panorama;
+		const auto panorama_end = panorama_begin + memory::get_module_size(panorama_begin);
+		if (!function || *function < panorama_begin || *function >= panorama_end)
+			return fail("run-script-vfunc-invalid", panorama_address, engine,
+				reinterpret_cast<std::uintptr_t>(panel), "vtable slot 77 is outside panorama.dll");
+
+		const bool context_changed = m_preview_ui_engine &&
+			(m_preview_ui_engine != ui_engine || m_preview_script_panel != panel);
+		static c_ui_engine* logged_engine{};
+		static c_ui_panel* logged_panel{};
+		const bool first_connection = logged_engine != ui_engine || logged_panel != panel;
+		m_preview_ui_engine = ui_engine;
+		m_preview_script_panel = panel;
+		if (context_changed) {
+			diag::writef(diag::level::warning,
+				"[model-preview] Panorama context changed; reconnecting engine=0x%llx panel=0x%llx",
+				static_cast<unsigned long long>(engine),
+				static_cast<unsigned long long>(reinterpret_cast<std::uintptr_t>(panel)));
+			return false;
+		}
+		if (first_connection) {
+			diag::writef(diag::level::info,
+				"[model-preview] Panorama bridge ready engine=0x%llx panel=0x%llx details=%s",
+				static_cast<unsigned long long>(engine),
+				static_cast<unsigned long long>(reinterpret_cast<std::uintptr_t>(panel)),
+				panel_diagnostics.c_str());
+			logged_engine = ui_engine;
+			logged_panel = panel;
+		}
+
+		ui_engine->run_script(panel, script.c_str());
+		return true;
 	}
 
 	bool scoreboard_weapons::run_script (const std::string& script) {

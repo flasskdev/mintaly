@@ -13,6 +13,7 @@ namespace hooks {
 		static bool initialize( );
 		static void shutdown( );
 
+		static HRESULT __fastcall get_desc( IDXGISwapChain* thisptr, DXGI_SWAP_CHAIN_DESC* desc );
 		static HRESULT __fastcall present( IDXGISwapChain* thisptr, UINT sync_interval, UINT flags );
 		static HRESULT __fastcall resize_buffers( IDXGISwapChain* thisptr, UINT buffer_count, UINT width, UINT height, DXGI_FORMAT new_format, UINT swap_chain_flags );
 		static LRESULT __stdcall wnd_proc( HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam );
@@ -32,7 +33,8 @@ namespace hooks {
 		static bool __fastcall is_glowing( std::uintptr_t glow_property );
 		static void __fastcall get_glow_color( std::uintptr_t glow_property, float* color );
 		static ID3D11ShaderResourceView* __fastcall preview_resource_view(std::uintptr_t, std::uintptr_t, char, char, const char*);
-		static void __fastcall generate_primitives( std::uintptr_t thisptr, std::uintptr_t scene_object, std::uintptr_t scene_view, std::uintptr_t primitive_buffer );
+		static std::uintptr_t __fastcall generate_primitives( std::uintptr_t desc, std::uintptr_t object, std::uintptr_t a3, std::uintptr_t render_buffer );
+		static std::uintptr_t __fastcall generate_animatable_primitives( std::uintptr_t desc, std::uintptr_t object, std::uintptr_t a3, std::uintptr_t render_buffer );
 		static std::uintptr_t __fastcall parse_report_hit( std::uintptr_t thisptr, std::uint8_t deleting );
 		static std::uintptr_t __fastcall setup_fog( __m128i* output, int* mode );
 		static std::uintptr_t __fastcall set_shader_param( __m128i* map, std::uint32_t hash, __m128i* value );
@@ -71,6 +73,7 @@ namespace hooks {
 		static void process_lobby_music( );
 
 	private:
+		inline static hooking::jmp m_get_desc{};
 		inline static hooking::jmp m_present{};
 		inline static hooking::jmp m_resize_buffers{};
 		inline static hooking::jmp m_wnd_proc{};
@@ -90,6 +93,7 @@ namespace hooks {
 		inline static hooking::jmp m_is_glowing{};
 		inline static hooking::jmp m_get_glow_color{};
 		inline static hooking::jmp m_generate_primitives{};
+		inline static hooking::jmp m_generate_animatable_primitives{};
 		inline static hooking::jmp m_preview_resource_view{};
 		inline static hooking::jmp m_parse_report_hit{};
 		inline static hooking::jmp m_vote_start{};

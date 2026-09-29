@@ -1,0 +1,59 @@
+// function: FUN_18014bdc0
+// ea: 18014bdc0
+// category: pipeline
+// depth: 2, via: FUN_18013c8d0 @18013caa2
+// size: 277 bytes
+// anchors: pipeline
+// ----------------------------------------------------
+
+void FUN_18014bdc0(void)
+
+{
+  undefined8 *puVar1;
+  undefined8 *puVar2;
+  longlong lVar3;
+  ulonglong uVar4;
+  
+  if (DAT_180495798 != 0) {
+    uVar4 = DAT_1804957a8 - DAT_180495798;
+    lVar3 = DAT_180495798;
+    if (0xfff < uVar4) {
+      lVar3 = *(longlong *)(DAT_180495798 + -8);
+      if (0x1f < (ulonglong)((DAT_180495798 + -8) - lVar3)) goto LAB_18014bebd;
+      uVar4 = uVar4 + 0x27;
+    }
+    FUN_1801695f0(lVar3,uVar4);
+    DAT_180495798 = 0;
+    DAT_1804957a0 = 0;
+    DAT_1804957a8 = 0;
+  }
+  puVar2 = DAT_180495788;
+  *(undefined8 *)DAT_180495788[1] = 0;
+  puVar2 = (undefined8 *)*puVar2;
+  while (puVar2 != (undefined8 *)0x0) {
+    puVar1 = (undefined8 *)*puVar2;
+    FUN_1801695f0(puVar2,0x18);
+    puVar2 = puVar1;
+  }
+  FUN_1801695f0(DAT_180495788,0x18);
+  if (DAT_180495768 != 0) {
+    uVar4 = DAT_180495778 - DAT_180495768;
+    lVar3 = DAT_180495768;
+    if (0xfff < uVar4) {
+      lVar3 = *(longlong *)(DAT_180495768 + -8);
+      if (0x1f < (ulonglong)((DAT_180495768 + -8) - lVar3)) {
+LAB_18014bebd:
+                    /* WARNING: Subroutine does not return */
+        _invoke_watson((wchar_t *)0x0,(wchar_t *)0x0,(wchar_t *)0x0,0,0);
+      }
+      uVar4 = uVar4 + 0x27;
+    }
+    FUN_1801695f0(lVar3,uVar4);
+    DAT_180495768 = 0;
+    DAT_180495770 = 0;
+    DAT_180495778 = 0;
+  }
+  return;
+}
+
+

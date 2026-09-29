@@ -1,6 +1,7 @@
 #include <pch/pch.hpp>
 #include <utilities/memory/memory.hpp>
 #include <utilities/addresses/addresses.hpp>
+#include <utilities/diag.hpp>
 #include <utilities/logging/logging.hpp>
 #include <core/systems/systems.hpp>
 #include <core/settings.hpp>
@@ -11,9 +12,35 @@
 
 namespace features::esp::player {
 
-	bool chams::on_generate_primitives( std::uintptr_t owner_entity, std::uint32_t owner_hash, std::uintptr_t scene_object, std::uintptr_t primitive_buffer, void( __fastcall* original_fn )( std::uintptr_t, std::uintptr_t, std::uintptr_t, std::uintptr_t ), std::uintptr_t a1, std::uintptr_t scene_view )
+	bool chams::on_generate_primitives( std::uintptr_t owner_entity, std::uint32_t owner_hash, std::uintptr_t scene_object, std::uintptr_t primitive_buffer, std::uintptr_t( __fastcall* original_fn )( std::uintptr_t, std::uintptr_t, std::uintptr_t, std::uintptr_t ), std::uintptr_t a1, std::uintptr_t scene_view )
 	{
-		const auto is_player = owner_hash == "C_CSPlayerPawn"_hash;
+		const auto is_preview_player = owner_hash == "C_CSGO_PreviewPlayer"_hash;
+		const auto is_lobby_vanity_preview =
+			owner_hash == "C_CSGO_PreviewPlayerAlias_csgo_player_previewmodel"_hash;
+		const auto is_lobby_team_preview = owner_hash == "C_CSGO_TeamPreviewModel"_hash;
+		static std::atomic_bool preview_actor_logged{};
+		static std::atomic_bool lobby_actor_logged{};
+		if (is_preview_player && !preview_actor_logged.exchange(true, std::memory_order_relaxed))
+			diag::writef(diag::level::info,
+				"[preview-chams] custom preview actor seen owner=0x%llx scene=0x%llx",
+				static_cast<unsigned long long>(owner_entity),
+				static_cast<unsigned long long>(scene_object));
+		if (is_lobby_team_preview && !lobby_actor_logged.exchange(true, std::memory_order_relaxed))
+			diag::writef(diag::level::info,
+				"[preview-chams] lobby team actor kept native owner=0x%llx scene=0x%llx",
+				static_cast<unsigned long long>(owner_entity),
+				static_cast<unsigned long long>(scene_object));
+		// The custom MapPlayerPreviewPanel uses C_CSGO_PreviewPlayer. Leave the
+		// separate team-lineup actor in the lobby on its native materials.
+		if (is_lobby_team_preview || is_lobby_vanity_preview)
+			return false;
+		// PreviewPlayer is also used by Panorama's lobby lineup. Only the actor
+		// captured from our open preview window may receive the preview chams.
+		if ( is_preview_player && !systems::g_model_preview.is_agent_preview_entity( owner_entity ) )
+			return false;
+
+		const auto is_player = is_preview_player || owner_hash == "C_CSPlayerPawn"_hash ||
+			owner_hash == "C_CSPlayerPawnBase"_hash || owner_hash == "C_BasePlayerPawn"_hash;
 		const auto is_arms = owner_hash == "C_CS2HudModelArms"_hash;
 		const auto is_weapon = owner_hash == "C_CS2HudModelWeapon"_hash;
 
@@ -22,6 +49,16 @@ namespace features::esp::player {
 				if ( !owner_entity || owner_entity < 0x10000 )
 				{
 					return false;
+				}
+
+				const auto owner_handle_offset = SCHEMA( "C_BaseEntity", "m_hOwnerEntity"_hash );
+				const auto owner_handle = owner_handle_offset
+					? memory::safe_read<std::uint32_t>( owner_entity + owner_handle_offset ).value_or( 0xffffffffu )
+					: 0xffffffffu;
+				if ( view_pawn && owner_handle != 0xffffffffu &&
+					systems::g_entities.lookup( owner_handle ) == view_pawn )
+				{
+					return true;
 				}
 
 				const auto game_scene_node = memory::safe_read<std::uintptr_t>( owner_entity + SCHEMA( "C_BaseEntity", "m_pGameSceneNode"_hash ) ).value_or( 0 );
@@ -40,77 +77,73 @@ namespace features::esp::player {
 				return parent_owner == view_pawn;
 			};
 
-		const auto apply_config = [ & ]( const settings::esp::chams_config& cfg, std::uintptr_t target_scene_obj, bool force_original = false, float alpha = 1.0f, bool draw_original_base = true )
+		const auto apply_config = [ & ]( const settings::esp::chams_config& cfg, std::uintptr_t target_scene_obj,
+			bool force_original = false, float color_scale = 1.0f )
 			{
-				const auto fade = [alpha]( xdraw::color color ) {
-					color.a = static_cast<std::uint8_t>( color.a * alpha );
+				// Onshot chams fade by scaling the layer alpha here instead of copying the
+				// whole settings struct: every copy registers a fresh set of bound settings
+				// and used to leak them into the bind registry on each rendered object.
+				const auto tint = [ color_scale ]( xdraw::color color )
+				{
+					if ( color_scale < 1.0f )
+						color.a = static_cast< std::uint8_t >( static_cast< float >( color.a ) * color_scale );
 					return color;
 				};
-				const bool overlay_is_outline = cfg.overlay.enabled.value && settings::esp::is_outline_material( cfg.overlay.material.value );
-				const bool overlay_suppress_fill = overlay_is_outline && !cfg.overlay.filled.value;
+				const auto primary_color = tint( cfg.primary.color );
+				const auto secondary_color = tint( cfg.secondary.color );
+				const auto overlay_color = tint( cfg.overlay.color );
+				// Additive glow materials are overlays, so retain the native surface
+				// and draw the glow pass on top instead of tinting the whole character.
+				if ( force_original )
+					original_fn( a1, target_scene_obj, scene_view, primitive_buffer );
 
-				const bool primary_is_outline = cfg.primary.enabled.value && settings::esp::is_outline_material( cfg.primary.material.value );
-				const bool primary_suppress_fill = primary_is_outline && !cfg.primary.filled.value;
+				const bool primary_is_overlay = cfg.primary.enabled.value && settings::esp::is_overlay_material( cfg.primary.material.value );
 
-				const bool secondary_is_outline = cfg.secondary.enabled.value && settings::esp::is_outline_material( cfg.secondary.material.value );
-				const bool secondary_suppress_fill = secondary_is_outline && !cfg.secondary.filled.value;
-
-				const bool suppress_fill = overlay_suppress_fill || primary_suppress_fill;
+				const bool secondary_is_overlay = cfg.secondary.enabled.value && settings::esp::is_overlay_material( cfg.secondary.material.value );
 
 				if ( cfg.secondary.enabled.value )
 				{
-					if ( secondary_is_outline )
+					if ( secondary_is_overlay )
 					{
-						this->apply_overlay( primitive_buffer, original_fn, a1, target_scene_obj, scene_view, fade( cfg.secondary.color ), cfg.secondary.material, &cfg.secondary.glow );
+						this->apply_overlay( primitive_buffer, original_fn, a1, target_scene_obj, scene_view, secondary_color, cfg.secondary.material, &cfg.secondary.glow );
 					}
-					else if ( !secondary_suppress_fill && !suppress_fill )
+					else
 					{
-						this->apply_layer( primitive_buffer, original_fn, a1, target_scene_obj, scene_view, fade( cfg.secondary.color ), cfg.secondary.material, &cfg.secondary.glow );
+						this->apply_layer( primitive_buffer, original_fn, a1, target_scene_obj, scene_view, secondary_color, cfg.secondary.material, &cfg.secondary.glow );
 					}
 				}
 
-				const bool has_primary_fill = cfg.primary.enabled.value && !primary_is_outline && !suppress_fill;
+				const bool has_primary_fill = cfg.primary.enabled.value && !primary_is_overlay;
 				if ( has_primary_fill )
 				{
-					this->apply_layer( primitive_buffer, original_fn, a1, target_scene_obj, scene_view, fade( cfg.primary.color ), cfg.primary.material, &cfg.primary.glow );
+					this->apply_layer( primitive_buffer, original_fn, a1, target_scene_obj, scene_view, primary_color, cfg.primary.material, &cfg.primary.glow );
 				}
 
-				const bool has_secondary_fill = cfg.secondary.enabled.value && !secondary_is_outline && !suppress_fill;
-				const bool needs_original_base = !has_primary_fill && !has_secondary_fill &&
-					( cfg.overlay.enabled.value || ( primary_is_outline && !primary_suppress_fill ) || force_original );
+				const bool has_secondary_fill = cfg.secondary.enabled.value && !secondary_is_overlay;
+				// Keep the native model as a base if the selected layers only add an
+				// outline. If outline material creation fails for a preview panel, the
+				// agent remains visible instead of being replaced by empty geometry.
+				const bool needs_original_base = !force_original && (!has_primary_fill && !has_secondary_fill);
 
-				if ( needs_original_base && !suppress_fill && draw_original_base )
+				if ( needs_original_base )
 				{
 					original_fn( a1, target_scene_obj, scene_view, primitive_buffer );
 				}
 
-				if ( primary_is_outline )
+				if ( primary_is_overlay )
 				{
-					this->apply_overlay( primitive_buffer, original_fn, a1, target_scene_obj, scene_view, fade( cfg.primary.color ), cfg.primary.material, &cfg.primary.glow );
+					this->apply_overlay( primitive_buffer, original_fn, a1, target_scene_obj, scene_view, primary_color, cfg.primary.material, &cfg.primary.glow );
 				}
 
 				if ( cfg.overlay.enabled.value )
 				{
-					this->apply_overlay( primitive_buffer, original_fn, a1, target_scene_obj, scene_view, fade( cfg.overlay.color ), cfg.overlay.material, &cfg.overlay.glow );
+					this->apply_overlay( primitive_buffer, original_fn, a1, target_scene_obj, scene_view, overlay_color, cfg.overlay.material, &cfg.overlay.glow );
 				}
 			};
 
 		if ( !is_player && !is_arms && !is_weapon )
 		{
-			if ( ( !settings::g_misc.m_camera.thirdperson.value && !features::misc::g_camera.is_freecam_active( ) ) || !is_local_attachment( systems::g_local.get( ).view_pawn( ) ) )
-			{
-				return false;
-			}
 			const auto& cfg = settings::g_esp.m_viewmodel.for_weapon( detail::weapon_definition( owner_entity ) );
-			if ( !cfg.enabled.value || ( !cfg.primary.enabled.value && !cfg.secondary.enabled.value && !cfg.overlay.enabled.value ) ) return false;
-			apply_config( cfg, scene_object );
-			return true;
-		}
-
-		if ( is_arms || is_weapon )
-		{
-			const auto& cfg = is_arms ? settings::g_esp.m_viewmodel.arms :
-				settings::g_esp.m_viewmodel.for_weapon( detail::active_weapon_definition( ) );
 			if ( !cfg.enabled.value )
 			{
 				return false;
@@ -121,21 +154,97 @@ namespace features::esp::player {
 				return false;
 			}
 
+			if ( ( !settings::g_misc.m_camera.thirdperson.value && !features::misc::g_camera.is_freecam_active( ) ) || !is_local_attachment( systems::g_local.get( ).view_pawn( ) ) )
+			{
+				return false;
+			}
+
+			systems::materials::update_outline_glow( settings::g_esp.m_outline_glow );
+			apply_config( cfg, scene_object );
+			return true;
+		}
+
+		if ( is_arms || is_weapon )
+		{
+			const auto& cfg = is_arms
+				? settings::g_esp.m_viewmodel.arms
+				: settings::g_esp.m_viewmodel.for_weapon( detail::active_weapon_definition( ) );
+			if ( !cfg.enabled.value )
+			{
+				return false;
+			}
+
+			if ( !cfg.primary.enabled.value && !cfg.secondary.enabled.value && !cfg.overlay.enabled.value )
+			{
+				return false;
+			}
+
+			systems::materials::update_outline_glow( settings::g_esp.m_outline_glow );
 			apply_config( cfg, scene_object );
 			return true;
 		}
 
 		const auto local = systems::g_local.get( );
+		// Do not run gameplay player chams against dormant lobby/menu pawns.
+		// PreviewPlayer remains supported above, but only for our selected panel actor.
+		if ( !is_preview_player && is_player && !local.is_alive && !local.observer_pawn )
+			return false;
 		const auto& chams_cfg = settings::g_esp.m_player.m_chams;
 
-		const auto team = memory::read<int>( owner_entity + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) );
-		const auto health = memory::read<int>( owner_entity + SCHEMA( "C_BaseEntity", "m_iHealth"_hash ) );
+		const auto read_team = [ ]( std::uintptr_t entity )
+		{
+			const std::array<int, 4> offsets{
+				SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ),
+				SCHEMA( "C_BasePlayerPawn", "m_iTeamNum"_hash ),
+				SCHEMA( "C_CSPlayerPawnBase", "m_iTeamNum"_hash ),
+				SCHEMA( "C_CSPlayerPawn", "m_iTeamNum"_hash )
+			};
+			for ( const auto offset : offsets )
+			{
+				if ( !offset )
+				{
+					continue;
+				}
+				const auto value = memory::safe_read<std::uint8_t>( entity + offset );
+				if ( value && ( *value == 2 || *value == 3 ) )
+				{
+					return static_cast<int>( *value );
+				}
+			}
+			return 0;
+		};
+		const auto read_health = [ ]( std::uintptr_t entity )
+		{
+			const std::array<int, 4> offsets{
+				SCHEMA( "C_BaseEntity", "m_iHealth"_hash ),
+				SCHEMA( "C_BasePlayerPawn", "m_iHealth"_hash ),
+				SCHEMA( "C_CSPlayerPawnBase", "m_iHealth"_hash ),
+				SCHEMA( "C_CSPlayerPawn", "m_iHealth"_hash )
+			};
+			for ( const auto offset : offsets )
+			{
+				if ( !offset )
+				{
+					continue;
+				}
+				if ( const auto value = memory::safe_read<int>( entity + offset ) )
+				{
+					return *value;
+				}
+			}
+			return 0;
+		};
 
-		const auto is_other_team = local.is_this_other_team( team );
-		const auto is_local = owner_entity == local.view_pawn( );
+		const auto team = is_preview_player ? 0 : read_team( owner_entity );
+		const auto health = is_preview_player ? 100 : read_health( owner_entity );
+
+		const auto is_other_team = is_preview_player
+			? systems::g_model_preview.is_enemy_preview( local.team )
+			: local.is_this_other_team( team );
+		const auto is_local = !is_preview_player && owner_entity == local.view_pawn( );
 		const auto is_dead = health <= 0;
 
-		if ( is_player && is_other_team && !is_dead && chams_cfg.backtrack.enabled.value )
+		if ( is_player && !is_preview_player && is_other_team && !is_dead && chams_cfg.backtrack.enabled.value )
 		{
 			if ( this->m_backtrack.has_active( owner_entity ) )
 			{
@@ -151,55 +260,14 @@ namespace features::esp::player {
 					const auto new_count = after ? after->count() : -1;
 					if ( after && prev_count >= 0 && new_count > prev_count )
 					{
-						__try
+						for ( auto i = prev_count; i < new_count; ++i )
 						{
-							for ( auto i = prev_count; i < new_count; ++i )
-							{
-								const auto prim = after->at_fast( i );
-								if ( prim )
-								{
-									detail::mark_primitive_last_fast( prim );
-								}
-							}
-						}
-						__except ( EXCEPTION_EXECUTE_HANDLER )
-						{
+							detail::mark_primitive_last( after->at( i ) );
 						}
 					}
 				}
 			}
 		}
-		const auto& onshot = chams_cfg.onshot;
-		const auto hit_alpha = is_player && is_other_team && onshot.enabled.value
-			? this->m_onshot.get_alpha( owner_entity ) : 0.0f;
-		if ( hit_alpha > 0.0f &&
-			( onshot.primary.enabled.value || onshot.secondary.enabled.value || onshot.overlay.enabled.value ) )
-		{
-			// Preserve the normal appearance underneath the fading hit effect.
-			const auto& base = is_dead ? chams_cfg.enemy_ragdoll : chams_cfg.enemy;
-			if ( base.enabled.value &&
-				( base.primary.enabled.value || base.secondary.enabled.value || base.overlay.enabled.value ) )
-				apply_config( base, scene_object );
-			else
-				original_fn( a1, scene_object, scene_view, primitive_buffer );
-
-			const auto before = detail::read_primitive_buffer( primitive_buffer );
-			const auto first = before ? before->count() : -1;
-			apply_config( onshot, scene_object, false, hit_alpha, false );
-			const auto after = detail::read_primitive_buffer( primitive_buffer );
-			if ( after && first >= 0 )
-			{
-				__try
-				{
-					for ( auto i = first; i < after->count(); ++i )
-						if ( const auto primitive = after->at_fast( i ) )
-							detail::mark_primitive_last_fast( primitive );
-				}
-				__except ( EXCEPTION_EXECUTE_HANDLER ) {}
-			}
-			return true;
-		}
-
 		const settings::esp::chams_config* target{ nullptr };
 
 		if ( is_dead )
@@ -233,15 +301,61 @@ namespace features::esp::player {
 			}
 		}
 
+		// Onshot fade: reuse the stored config and scale its alpha at apply time
+		// instead of materialising a copy of the whole settings struct.
+		const auto& onshot_cfg = chams_cfg.onshot;
+		float target_color_scale{ 1.0f };
+		if ( is_player && !is_preview_player && is_other_team && !is_dead && onshot_cfg.enabled.value &&
+			( onshot_cfg.primary.enabled.value || onshot_cfg.secondary.enabled.value || onshot_cfg.overlay.enabled.value ) )
+		{
+			const auto alpha = this->m_onshot.get_alpha( owner_entity );
+			if ( alpha > 0.0f )
+			{
+				target = &onshot_cfg;
+				target_color_scale = alpha;
+			}
+		}
+
 		if ( !target || !target->enabled.value )
 		{
+			if ( is_preview_player )
+			{
+				static std::atomic<std::int64_t> next_skip_log{};
+				const auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+					std::chrono::steady_clock::now().time_since_epoch()).count();
+				auto expected = next_skip_log.load(std::memory_order_relaxed);
+				if ( now_ms >= expected && next_skip_log.compare_exchange_strong(
+					expected, now_ms + 2500, std::memory_order_relaxed ) )
+				{
+					diag::writef(diag::level::info,
+						"[preview-chams] skipped enemy=%d target-enabled=%d",
+						static_cast<int>(is_other_team),
+						static_cast<int>(target && target->enabled.value));
+				}
+			}
 			return false;
 		}
 
 		if ( !target->primary.enabled.value && !target->secondary.enabled.value && !target->overlay.enabled.value )
 		{
+			if ( is_preview_player )
+			{
+				static std::atomic<std::int64_t> next_skip_log{};
+				const auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+					std::chrono::steady_clock::now().time_since_epoch()).count();
+				auto expected = next_skip_log.load(std::memory_order_relaxed);
+				if ( now_ms >= expected && next_skip_log.compare_exchange_strong(
+					expected, now_ms + 2500, std::memory_order_relaxed ) )
+				{
+					diag::writef(diag::level::info,
+						"[preview-chams] skipped enemy=%d target-enabled=1 no-layers=1",
+						static_cast<int>(is_other_team));
+				}
+			}
 			return false;
 		}
+
+		systems::materials::update_outline_glow( settings::g_esp.m_outline_glow );
 
 		{
 			const auto flags = memory::safe_read<std::uint8_t>( scene_object + 0x78 );
@@ -271,14 +385,100 @@ namespace features::esp::player {
 			return true;
 		}
 
-		apply_config( *target, scene_object );
+		const auto buffer_before = detail::read_primitive_buffer( primitive_buffer );
+		const auto previous_count = buffer_before ? buffer_before->count() : -1;
+		// For the native preview, replace the generated primitives directly.
+		// A separate original pass first can win the depth test and hide flat,
+		// matte, or metallic materials behind the unmodified agent.
+		apply_config( *target, scene_object, false, target_color_scale );
+		const auto buffer_after = detail::read_primitive_buffer( primitive_buffer );
+		const auto new_count = buffer_after ? buffer_after->count() : -1;
+		if ( is_preview_player )
+		{
+			if ( buffer_after && previous_count >= 0 && new_count > previous_count )
+			{
+				for ( auto i = previous_count; i < new_count; ++i )
+					detail::mark_primitive_last( buffer_after->at( i ) );
+			}
+
+			static std::atomic<std::int64_t> next_apply_log{};
+			const auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+				std::chrono::steady_clock::now().time_since_epoch()).count();
+			auto expected = next_apply_log.load(std::memory_order_relaxed);
+			if ( now_ms >= expected && next_apply_log.compare_exchange_strong(
+				expected, now_ms + 2500, std::memory_order_relaxed ) )
+			{
+				diag::writef(diag::level::info,
+					"[preview-chams] applied enemy=%d primary=%d:%d:%p secondary=%d:%d:%p overlay=%d:%d:%p primitives=%d->%d",
+					static_cast<int>(is_other_team),
+					static_cast<int>(target->primary.enabled.value),
+					static_cast<int>(target->primary.material.value),
+					reinterpret_cast<void*>(systems::materials::find(target->primary.material.value)),
+					static_cast<int>(target->secondary.enabled.value),
+					static_cast<int>(target->secondary.material.value),
+					reinterpret_cast<void*>(systems::materials::find(target->secondary.material.value)),
+					static_cast<int>(target->overlay.enabled.value),
+					static_cast<int>(target->overlay.material.value),
+					reinterpret_cast<void*>(systems::materials::find(target->overlay.material.value)),
+					previous_count, new_count);
+			}
+		}
 		return true;
 	}
 
 	void chams::on_sort_primitives( std::uintptr_t entries, std::uint32_t count )
 	{
-		// scenesystem.dll already sorts primitives by draw_order (0x58) and primitive_draw_last (0x62) natively.
-		// Manual post-sort partition over thousands of elements in every pass causes massive CPU churn and FPS drops.
+		if ( !count || !entries || count > ( 1u << 20 ) )
+		{
+			return;
+		}
+
+		const auto overlay_mat_count = this->m_overlay_material_count.load( std::memory_order_acquire );
+		if ( overlay_mat_count <= 0 )
+		{
+			return;
+		}
+
+		const auto total = static_cast< int >( count );
+		if ( total <= 1 )
+		{
+			return;
+		}
+
+		std::vector<detail::mesh_primitive> sorted;
+		sorted.reserve( total );
+
+		for ( auto i = 0; i < total; ++i )
+		{
+			const auto primitive = memory::safe_read<detail::mesh_primitive>(
+				entries + static_cast<std::size_t>( i ) * detail::primitive_size );
+			if ( !primitive ) {
+				return;
+			}
+
+			sorted.push_back( *primitive );
+		}
+
+		const auto overlay_begin = std::stable_partition(
+			sorted.begin(), sorted.end(), [ this ]( const auto& primitive ) {
+				return !this->is_overlay_material( primitive.material );
+			} );
+		const auto overlay_count = static_cast<int>(
+			std::distance( overlay_begin, sorted.end() ) );
+
+		if ( overlay_count <= 0 || overlay_count >= total )
+		{
+			return;
+		}
+
+		for ( auto i = 0; i < total; ++i )
+		{
+			if ( !memory::safe_write<detail::mesh_primitive>(
+					entries + static_cast<std::size_t>( i ) * detail::primitive_size,
+					sorted[ i ] ) ) {
+				return;
+			}
+		}
 	}
 
 	void chams::backtrack::update( )
@@ -606,64 +806,77 @@ namespace features::esp::player {
 		}
 	}
 
-    void chams::onshot::push(std::uintptr_t pawn) {
-        const auto& cfg = settings::g_esp.m_player.m_chams;
-        if (!pawn || !cfg.onshot.enabled.value) return;
-        // Use the entity's full serial-bearing handle. The controller can
-        // already have switched to an observer when a lethal hurt arrives.
-        const auto identity = memory::safe_read<std::uintptr_t>(pawn + 0x10).value_or(0);
-        if (!identity) return;
-        const auto handle = memory::safe_read<std::uint32_t>(identity + 0x10).value_or(0xffffffffu);
-        if (systems::g_entities.lookup(handle) != pawn) return;
-        const auto duration = cfg.onshot_fade_time.value;
-        const auto seconds = std::isfinite(duration) ? std::clamp(duration, 0.05f, 5.0f) : 0.25f;
-        std::lock_guard lock(m_mutex);
-        // A second confirmed hit restarts this victim's timer only.
-        m_entries[pawn] = {handle, clock::now(), seconds};
-    }
+	void chams::onshot::push( std::uintptr_t pawn )
+	{
+		const auto& cfg = settings::g_esp.m_player.m_chams;
+		if ( !pawn || !cfg.onshot.enabled.value )
+			return;
 
-    void chams::onshot::update() {
-        std::lock_guard lock(m_mutex);
-        if (!settings::g_esp.m_player.m_chams.onshot.enabled.value) {
-            m_entries.clear();
-            return;
-        }
-        const auto now = clock::now();
-        std::erase_if(m_entries, [now](const auto& entry) {
-            const auto& hit = entry.second;
-            return systems::g_entities.lookup(hit.pawn_handle) != entry.first ||
-                std::chrono::duration<float>(now - hit.hit_time).count() >= hit.duration;
-        });
-    }
+		// The controller may already have switched to an observer after a lethal hit.
+		const auto identity = memory::safe_read<std::uintptr_t>( pawn + 0x10 ).value_or( 0 );
+		if ( !identity )
+			return;
+		const auto handle = memory::safe_read<std::uint32_t>( identity + 0x10 ).value_or( 0xffffffffu );
+		if ( systems::g_entities.lookup( handle ) != pawn )
+			return;
 
-    void chams::onshot::shutdown(bool /*destroy_objects*/) {
-        std::lock_guard lock(m_mutex);
-        m_entries.clear();
-    }
+		const auto duration = cfg.onshot_fade_time.value;
+		const auto seconds = std::isfinite( duration ) ? std::clamp( duration, 0.05f, 5.0f ) : 0.25f;
+		std::scoped_lock lock( this->m_mutex );
+		this->m_entries[ pawn ] = { handle, clock::now(), seconds };
+	}
 
-    float chams::onshot::get_alpha(std::uintptr_t pawn) const {
-        std::lock_guard lock(m_mutex);
-        const auto it = m_entries.find(pawn);
-        if (it == m_entries.end()) return 0.0f;
-        const auto& hit = it->second;
-        if (systems::g_entities.lookup(hit.pawn_handle) != pawn || hit.duration <= 0.0f)
-            return 0.0f;
-        const auto elapsed = std::chrono::duration<float>(clock::now() - hit.hit_time).count();
-        const auto t = std::clamp(elapsed / hit.duration, 0.0f, 1.0f);
-        // Inverse smoothstep: full opacity at impact, zero at duration.
-        return (1.0f - t) * (1.0f - t) * (1.0f + 2.0f * t);
-    }
+	void chams::onshot::update()
+	{
+		std::scoped_lock lock( this->m_mutex );
+		if ( !settings::g_esp.m_player.m_chams.onshot.enabled.value )
+		{
+			this->m_entries.clear();
+			return;
+		}
 
-    bool chams::onshot::has_active(std::uintptr_t pawn) const {
-        std::lock_guard lock(m_mutex);
-        const auto it = m_entries.find(pawn);
-        if (it == m_entries.end()) return false;
-        const auto& hit = it->second;
-        return systems::g_entities.lookup(hit.pawn_handle) == pawn &&
-            std::chrono::duration<float>(clock::now() - hit.hit_time).count() < hit.duration;
-    }
+		const auto now = clock::now();
+		std::erase_if( this->m_entries, [ now ]( const auto& entry )
+		{
+			const auto& hit = entry.second;
+			return systems::g_entities.lookup( hit.pawn_handle ) != entry.first ||
+				std::chrono::duration<float>( now - hit.hit_time ).count() >= hit.duration;
+		} );
+	}
 
-	void chams::apply_layer( std::uintptr_t primitive_buffer, void( __fastcall* original_fn )( std::uintptr_t, std::uintptr_t, std::uintptr_t, std::uintptr_t ), std::uintptr_t a1, std::uintptr_t scene_object, std::uintptr_t scene_view, const xdraw::color& color, settings::esp::cham_ids material_id, const settings::esp::outline_glow_config* glow_cfg )
+	void chams::onshot::shutdown( bool /*destroy_objects*/ )
+	{
+		std::scoped_lock lock( this->m_mutex );
+		this->m_entries.clear();
+	}
+
+	bool chams::onshot::has_active( std::uintptr_t pawn ) const
+	{
+		std::scoped_lock lock( this->m_mutex );
+		const auto it = this->m_entries.find( pawn );
+		if ( it == this->m_entries.end() )
+			return false;
+		const auto& hit = it->second;
+		return systems::g_entities.lookup( hit.pawn_handle ) == pawn &&
+			std::chrono::duration<float>( clock::now() - hit.hit_time ).count() < hit.duration;
+	}
+
+	float chams::onshot::get_alpha( std::uintptr_t pawn ) const
+	{
+		std::scoped_lock lock( this->m_mutex );
+		const auto it = this->m_entries.find( pawn );
+		if ( it == this->m_entries.end() )
+			return 0.0f;
+		const auto& hit = it->second;
+		if ( systems::g_entities.lookup( hit.pawn_handle ) != pawn || hit.duration <= 0.0f )
+			return 0.0f;
+
+		const auto elapsed = std::chrono::duration<float>( clock::now() - hit.hit_time ).count();
+		const auto t = std::clamp( elapsed / hit.duration, 0.0f, 1.0f );
+		return ( 1.0f - t ) * ( 1.0f - t ) * ( 1.0f + 2.0f * t );
+	}
+
+	void chams::apply_layer( std::uintptr_t primitive_buffer, std::uintptr_t( __fastcall* original_fn )( std::uintptr_t, std::uintptr_t, std::uintptr_t, std::uintptr_t ), std::uintptr_t a1, std::uintptr_t scene_object, std::uintptr_t scene_view, const xdraw::color& color, settings::esp::cham_ids material_id, const settings::esp::outline_glow_config* glow_cfg )
 	{
 		const auto before = detail::read_primitive_buffer( primitive_buffer );
 		const auto prev_count = before ? before->count() : -1;
@@ -706,24 +919,13 @@ namespace features::esp::player {
 			draw_color.a = static_cast<std::uint8_t>( draw_color.a * ( 0.3f + 0.7f * wave ) );
 		}
 
-		const auto color_val = static_cast<std::uint32_t>( draw_color );
-		__try
+		for ( auto i = prev_count; i < new_count; ++i )
 		{
-			for ( auto i = prev_count; i < new_count; ++i )
-			{
-				const auto primitive = after->at_fast( i );
-				if ( primitive )
-				{
-					detail::replace_primitive_fast( primitive, material, color_val );
-				}
-			}
-		}
-		__except ( EXCEPTION_EXECUTE_HANDLER )
-		{
+			detail::replace_primitive( after->at( i ), material, draw_color );
 		}
 	}
 
-	void chams::apply_overlay( std::uintptr_t primitive_buffer, void( __fastcall* original_fn )( std::uintptr_t, std::uintptr_t, std::uintptr_t, std::uintptr_t ), std::uintptr_t a1, std::uintptr_t scene_object, std::uintptr_t scene_view, const xdraw::color& color, settings::esp::cham_ids material_id, const settings::esp::outline_glow_config* glow_cfg )
+	void chams::apply_overlay( std::uintptr_t primitive_buffer, std::uintptr_t( __fastcall* original_fn )( std::uintptr_t, std::uintptr_t, std::uintptr_t, std::uintptr_t ), std::uintptr_t a1, std::uintptr_t scene_object, std::uintptr_t scene_view, const xdraw::color& color, settings::esp::cham_ids material_id, const settings::esp::outline_glow_config* glow_cfg )
 	{
 		std::uintptr_t material = 0;
 		if ( glow_cfg && ( material_id == settings::esp::cham_ids::outline_glow || material_id == settings::esp::cham_ids::outline_glow_ignorez ) )
@@ -766,27 +968,16 @@ namespace features::esp::player {
 			draw_color.a = static_cast<std::uint8_t>( draw_color.a * ( 0.3f + 0.7f * wave ) );
 		}
 
-		const auto color_val = static_cast<std::uint32_t>( draw_color );
-		__try
+		for ( auto i = prev_count; i < new_count; ++i )
 		{
-			for ( auto i = prev_count; i < new_count; ++i )
-			{
-				const auto primitive = after->at_fast( i );
-				if ( primitive )
-				{
-					detail::replace_primitive_fast( primitive, material, color_val );
-					detail::mark_primitive_last_fast( primitive );
-				}
-			}
-		}
-		__except ( EXCEPTION_EXECUTE_HANDLER )
-		{
+			detail::replace_primitive( after->at( i ), material, draw_color );
+			detail::mark_primitive_last( after->at( i ) );
 		}
 
 		this->add_overlay_material( material );
 	}
 
-	void chams::apply_clone( std::uintptr_t primitive_buffer, void( __fastcall* original_fn )( std::uintptr_t, std::uintptr_t, std::uintptr_t, std::uintptr_t ), std::uintptr_t a1, std::uintptr_t scene_object, std::uintptr_t scene_view, systems::materials::clone_type type )
+	void chams::apply_clone( std::uintptr_t primitive_buffer, std::uintptr_t( __fastcall* original_fn )( std::uintptr_t, std::uintptr_t, std::uintptr_t, std::uintptr_t ), std::uintptr_t a1, std::uintptr_t scene_object, std::uintptr_t scene_view, systems::materials::clone_type type )
 	{
 		const auto before = detail::read_primitive_buffer( primitive_buffer );
 		const auto prev_count = before ? before->count() : -1;
@@ -800,36 +991,27 @@ namespace features::esp::player {
 			return;
 		}
 
-		__try
+		for ( auto i = prev_count; i < new_count; ++i )
 		{
-			for ( auto i = prev_count; i < new_count; ++i )
+			const auto primitive = after->at( i );
+			const auto orig_mat = memory::safe_read<std::uintptr_t>(
+				primitive + detail::primitive_material_offset );
+
+			if ( !orig_mat || !*orig_mat )
 			{
-				const auto primitive = after->at_fast( i );
-				if ( !primitive )
-				{
-					continue;
-				}
-
-				const auto orig_mat = *reinterpret_cast<const std::uintptr_t*>(
-					primitive + detail::primitive_material_offset );
-
-				if ( !orig_mat )
-				{
-					continue;
-				}
-
-				const auto clone = systems::materials::get_or_create_clone( orig_mat, type );
-				if ( !clone )
-				{
-					continue;
-				}
-
-				*reinterpret_cast<std::uintptr_t*>(
-					primitive + detail::primitive_material_offset ) = clone;
+				continue;
 			}
-		}
-		__except ( EXCEPTION_EXECUTE_HANDLER )
-		{
+
+			const auto clone = systems::materials::get_or_create_clone( *orig_mat, type );
+			if ( !clone )
+			{
+				continue;
+			}
+
+			(void) memory::safe_write<std::uintptr_t>(
+				primitive + detail::primitive_material_offset, clone );
+			(void) memory::safe_write<std::uintptr_t>(
+				primitive + detail::primitive_material_copy_offset, clone );
 		}
 	}
 

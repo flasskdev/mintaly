@@ -1,0 +1,25 @@
+// function: FUN_180072b50
+// ea: 180072b50
+// category: nospread
+// depth: 2, via: FUN_1800890c0 @180089459
+// size: 68 bytes
+// anchors: nospread, trace_geometry, hitbox_backtrack
+// ----------------------------------------------------
+
+undefined8 FUN_180072b50(undefined8 param_1)
+
+{
+  int *piVar1;
+  int *piVar2;
+  longlong lVar3;
+  
+  lVar3 = *(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8);
+  piVar1 = (int *)(lVar3 + 4);
+  piVar2 = (int *)(lVar3 + 4);
+  *piVar2 = *piVar2 + 1;
+  FUN_180019fe0(param_1);
+  *piVar1 = *piVar1 + -1;
+  return param_1;
+}
+
+

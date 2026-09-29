@@ -1,0 +1,24 @@
+// function: FUN_18010e960
+// ea: 18010e960
+// category: nospread
+// depth: 3, via: FUN_18010e0d0 @18010e2c1
+// size: 115 bytes
+// anchors: nospread, trace_geometry, hitbox_backtrack
+// ----------------------------------------------------
+
+undefined4 FUN_18010e960(void)
+
+{
+  if (*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+              0x2638) < DAT_18047428c) {
+    FUN_180183614(&DAT_18047428c);
+    if (DAT_18047428c == -1) {
+      DAT_180474288 = FUN_180114bb0("C_BasePlayerPawn",0x29882a6b);
+      _Init_thread_footer(&DAT_18047428c);
+      return DAT_180474288;
+    }
+  }
+  return DAT_180474288;
+}
+
+

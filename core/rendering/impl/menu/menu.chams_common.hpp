@@ -1,8 +1,91 @@
 #pragma once
 #include <core/settings.hpp>
+#include <core/systems/systems.hpp>
 #include <external/xdraw/xui/xui.hpp>
 
 namespace rendering::detail {
+
+struct chams_material_options
+{
+	std::array<const char*, settings::esp::k_non_iz_material_count> names{};
+	std::array<settings::esp::cham_ids, settings::esp::k_non_iz_material_count> ids{};
+	int count{};
+};
+
+inline static chams_material_options get_chams_material_options( bool through_wall )
+{
+	chams_material_options options{};
+	const auto append = [ &options ]( const char* name, settings::esp::cham_ids id )
+	{
+		if ( systems::materials::find( id ) )
+		{
+			options.names[ options.count ] = name;
+			options.ids[ options.count ] = id;
+			++options.count;
+		}
+	};
+
+	if ( through_wall )
+	{
+		for ( int i = 0; i < settings::esp::k_iz_material_count; ++i )
+			append( settings::esp::k_iz_material_names[ i ], settings::esp::k_iz_materials[ i ] );
+	}
+	else
+	{
+		for ( int i = 0; i < settings::esp::k_non_iz_material_count; ++i )
+			append( settings::esp::k_non_iz_material_names[ i ], settings::esp::k_non_iz_materials[ i ] );
+	}
+
+	return options;
+}
+
+inline static bool draw_chams_material_combo( const char* label, config::enm<settings::esp::cham_ids>& material, bool through_wall )
+{
+	const auto options = get_chams_material_options( through_wall );
+	if ( options.count == 0 )
+		return false;
+
+	int selected = -1;
+	for ( int i = 0; i < options.count; ++i )
+	{
+		if ( options.ids[ i ] == material.value )
+		{
+			selected = i;
+			break;
+		}
+	}
+
+	if ( selected < 0 )
+	{
+		const auto preferred = through_wall ? settings::esp::cham_ids::matte_ignorez : settings::esp::cham_ids::matte;
+		for ( int i = 0; i < options.count; ++i )
+		{
+			if ( options.ids[ i ] == preferred )
+			{
+				selected = i;
+				break;
+			}
+		}
+		if ( selected < 0 )
+			selected = 0;
+		material.value = options.ids[ selected ];
+	}
+
+	if ( !xui::combo( label, selected, options.names.data(), options.count ) )
+		return false;
+
+	material.value = options.ids[ selected ];
+	return true;
+}
+
+inline static void reset_filled_for_new_outline( settings::esp::chams_layer& layer, settings::esp::cham_ids previous_material )
+{
+	if ( !settings::esp::is_outline_material( previous_material ) &&
+		 settings::esp::is_outline_material( layer.material.value ) )
+	{
+		layer.filled.value = false;
+	}
+}
 
 inline static void draw_outline_glow_sliders( const char* id_suffix, settings::esp::outline_glow_config& cfg )
 {
@@ -34,43 +117,16 @@ inline static void draw_chams_layer( const char* label, const char* popup_id, se
 	xui::toggle( label, layer.enabled );
 	if ( xui::begin_popup( popup_id, 220.0f ) )
 	{
-		const bool is_outline = settings::esp::is_outline_material( layer.material.value );
 		const bool is_glow_outline = ( layer.material.value == settings::esp::cham_ids::outline_glow ||
 									   layer.material.value == settings::esp::cham_ids::outline_glow_ignorez );
 
 		const auto prev_mat = layer.material.value;
-		if ( is_through_wall )
-		{
-			int mat_idx = settings::esp::get_iz_index( layer.material.value );
-			if ( xui::combo( "material", mat_idx, settings::esp::k_iz_material_names, settings::esp::k_iz_material_count ) )
-			{
-				layer.material.value = settings::esp::k_iz_materials[ mat_idx ];
-				if ( ( layer.material.value == settings::esp::cham_ids::outline_glow || layer.material.value == settings::esp::cham_ids::outline_glow_ignorez ) &&
-					 ( prev_mat != settings::esp::cham_ids::outline_glow && prev_mat != settings::esp::cham_ids::outline_glow_ignorez ) )
-				{
-					layer.filled.value = true;
-				}
-			}
-		}
-		else
-		{
-			int mat_idx = settings::esp::get_non_iz_index( layer.material.value );
-			if ( xui::combo( "material", mat_idx, settings::esp::k_non_iz_material_names, settings::esp::k_non_iz_material_count ) )
-			{
-				layer.material.value = settings::esp::k_non_iz_materials[ mat_idx ];
-				if ( ( layer.material.value == settings::esp::cham_ids::outline_glow || layer.material.value == settings::esp::cham_ids::outline_glow_ignorez ) &&
-					 ( prev_mat != settings::esp::cham_ids::outline_glow && prev_mat != settings::esp::cham_ids::outline_glow_ignorez ) )
-				{
-					layer.filled.value = true;
-				}
-			}
-		}
+		if ( draw_chams_material_combo( "material", layer.material, is_through_wall ) )
+			reset_filled_for_new_outline( layer, prev_mat );
 
-		xui::color_picker( "color", layer.color, 0.0f, true, is_outline ? &layer.filled.value : nullptr );
-		if ( is_outline )
-		{
-			xui::checkbox( "filled", layer.filled );
-		}
+		xui::color_picker( "color", layer.color );
+		if ( settings::esp::is_outline_material( layer.material.value ) )
+			xui::toggle( "filled", layer.filled );
 		if ( is_glow_outline )
 		{
 			xui::layout::spacing( 5.0f );

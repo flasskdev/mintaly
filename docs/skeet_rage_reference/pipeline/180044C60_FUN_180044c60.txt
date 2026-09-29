@@ -1,0 +1,72 @@
+// function: FUN_180044c60
+// ea: 180044c60
+// category: pipeline
+// depth: 2, via: FUN_180044370 @18004458e
+// size: 351 bytes
+// anchors: pipeline, autowall_damage
+// ----------------------------------------------------
+
+ulonglong FUN_180044c60(longlong *param_1,undefined8 param_2,longlong param_3,undefined1 param_4,
+                       uint param_5)
+
+{
+  uint *puVar1;
+  longlong lVar2;
+  uint uVar3;
+  ulonglong uVar4;
+  longlong lVar5;
+  ulonglong uVar6;
+  bool bVar7;
+  longlong local_40;
+  longlong local_38;
+  longlong local_30;
+  
+  if ((param_3 != 0) && (*(char *)(param_3 + 0x204c) == '\x01')) {
+    puVar1 = (uint *)(*param_1 + 0x38);
+    uVar3 = *(uint *)param_1[1] - *puVar1;
+    if (*puVar1 <= *(uint *)param_1[1] && uVar3 != 0) {
+      if (uVar3 < param_5) {
+        param_5 = uVar3;
+      }
+      lVar5 = param_1[5];
+      FUN_180044dc0(*param_1,&local_40,param_1[2],*(undefined4 *)param_1[3],param_1[4],param_2,
+                    param_3,lVar5,*(undefined1 *)param_1[6],param_4,param_5);
+      bVar7 = local_40 != local_38;
+      uVar6 = CONCAT71((int7)((ulonglong)lVar5 >> 8),bVar7);
+      lVar5 = local_40;
+      while (bVar7) {
+        while( true ) {
+          lVar2 = param_1[7];
+          if (*(longlong *)(lVar2 + 8) == *(longlong *)(lVar2 + 0x10)) break;
+          FUN_18023b1d0(*(longlong *)(lVar2 + 8),lVar5);
+          *(longlong *)(lVar2 + 8) = *(longlong *)(lVar2 + 8) + 0xa0;
+          lVar5 = lVar5 + 0xa0;
+          if (lVar5 == local_38) goto joined_r0x000180044d62;
+        }
+        FUN_18004b150();
+        lVar5 = lVar5 + 0xa0;
+        bVar7 = lVar5 != local_38;
+      }
+joined_r0x000180044d62:
+      if (local_40 != 0) {
+        uVar4 = local_30 - local_40;
+        lVar5 = local_40;
+        if (0xfff < uVar4) {
+          lVar5 = *(longlong *)(local_40 + -8);
+          if (0x1f < (ulonglong)((local_40 + -8) - lVar5)) {
+                    /* WARNING: Subroutine does not return */
+            _invoke_watson((wchar_t *)0x0,(wchar_t *)0x0,(wchar_t *)0x0,0,0);
+          }
+          uVar4 = uVar4 + 0x27;
+        }
+        FUN_1801695f0(lVar5,uVar4);
+      }
+      goto LAB_180044d99;
+    }
+  }
+  uVar6 = 0;
+LAB_180044d99:
+  return uVar6 & 0xffffffff;
+}
+
+

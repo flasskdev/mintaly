@@ -7,6 +7,9 @@
 namespace features::movement {
     void quickstop::on_create_move(systems::input::usercmd* cmd) const
     {
+		if ( !cmd )
+			return;
+
         constexpr auto move_buttons = cstypes::command_buttons::in_forward |
             cstypes::command_buttons::in_back |
             cstypes::command_buttons::in_moveleft |
@@ -33,7 +36,10 @@ namespace features::movement {
         if (!(prestate.flags & cstypes::entity_flags::on_ground))
             return;
 
-        const auto move_type = memory::read<std::uint8_t>(local.pawn + SCHEMA("C_BaseEntity", "m_nActualMoveType"_hash));
+        const auto move_type_offset = SCHEMA("C_BaseEntity", "m_nActualMoveType"_hash);
+        if (!move_type_offset)
+            return;
+        const auto move_type = memory::safe_read<std::uint8_t>(local.pawn + move_type_offset).value_or(0);
         if (move_type == cstypes::move_type::ladder || move_type == cstypes::move_type::noclip)
             return;
 
@@ -56,7 +62,9 @@ namespace features::movement {
             if (subtick_moves)
             {
                 if (const auto step = systems::g_input.acquire_subtick_step(subtick_moves))
-                {
+				{
+					if ( !valid_runtime_address( reinterpret_cast<std::uintptr_t>( step ) ) )
+						return;
                     step->set_button(0);
                     step->set_pressed(false);
                     step->set_when(0.0f);
@@ -68,7 +76,7 @@ namespace features::movement {
         }
 
         // Counter-strafe для скоростей выше порога
-        const auto view_yaw = base->viewangles()->y();
+        const auto view_yaw = base->viewangles() ? base->viewangles()->y() : systems::g_input.get_view_angles().y;
         const auto view_yaw_rad = view_yaw * (std::numbers::pi_v<float> / 180.0f);
 
         const auto wish_norm_x = -velocity.x / speed;
@@ -80,7 +88,10 @@ namespace features::movement {
         const auto forward_component = wish_norm_x * cy + wish_norm_y * sy;
         const auto left_component = -(wish_norm_x * sy - wish_norm_y * cy);
 
-        const auto sv_accelerate = CONVAR("sv_accelerate")->get<float>();
+        const auto accelerate_cvar = CONVAR( "sv_accelerate" );
+		if ( !accelerate_cvar )
+			return;
+		const auto sv_accelerate = accelerate_cvar->get<float>();
         const auto max_weapon_speed = combat::g_shared.ctx().valid ? combat::g_shared.ctx().weapon_max_speed : 250.0f;
         const auto accel_drop = sv_accelerate * max_weapon_speed * prestate.surface_friction * cstypes::tick_interval;
 

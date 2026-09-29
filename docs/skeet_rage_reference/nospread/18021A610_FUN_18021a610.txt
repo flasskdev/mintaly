@@ -1,0 +1,128 @@
+// function: FUN_18021a610
+// ea: 18021a610
+// category: nospread
+// depth: 1, via: FUN_18006aa30 @18006ab0d
+// size: 938 bytes
+// anchors: nospread, hitbox_backtrack
+// ----------------------------------------------------
+
+ulonglong FUN_18021a610(ulonglong param_1,float param_2)
+
+{
+  int iVar1;
+  uint uVar2;
+  ulonglong uVar3;
+  uint uVar4;
+  int iVar5;
+  double dVar6;
+  double dVar7;
+  float fVar8;
+  undefined1 auVar9 [16];
+  undefined1 auVar10 [16];
+  double dVar11;
+  double dVar12;
+  double local_18;
+  
+  fVar8 = (float)param_1;
+  dVar11 = (double)fVar8;
+  dVar12 = (double)param_2;
+  dVar6 = ABS(dVar11);
+  uVar2 = (uint)((ulonglong)dVar11 >> 0x34) & 0x7ff;
+  dVar7 = ABS(dVar12);
+  uVar4 = (uint)((ulonglong)dVar12 >> 0x34) & 0x7ff;
+  if (uVar2 == 0) {
+LAB_18021a915:
+    if (uVar2 < 0x7ff) {
+      if (0x7fe < uVar4) {
+        if (((ulonglong)dVar12 & 0xfffffffffffff) == 0) {
+          return param_1;
+        }
+        uVar3 = FUN_18022bc20(param_2);
+        return uVar3;
+      }
+      if ((uVar2 == 0) && (uVar4 != 0)) {
+        return param_1;
+      }
+      goto LAB_18021a975;
+    }
+  }
+  else if (uVar2 < 0x7ff) {
+    if (uVar4 - 1 < 0x7fe) {
+      if (dVar6 == dVar7) {
+        return (ulonglong)(uint)(float)(double)((ulonglong)dVar11 & 0x8000000000000000);
+      }
+      if ((ulonglong)dVar6 < (ulonglong)dVar7) {
+        if (dVar7 * 0.5 < dVar6) {
+          dVar6 = dVar6 - dVar7;
+        }
+        if (fVar8 < 0.0) {
+          dVar6 = -dVar6;
+        }
+        return (ulonglong)(uint)(float)dVar6;
+      }
+      if (uVar4 < uVar2) {
+        iVar5 = 0;
+        iVar1 = (int)(uVar2 - uVar4) / 0x18;
+        dVar7 = dVar7 * (double)((longlong)(iVar1 * 0x18 + 0x3ff) << 0x34);
+        if (7 < iVar1) {
+          uVar2 = (iVar1 - 8U >> 3) + 1;
+          uVar3 = (ulonglong)uVar2;
+          iVar5 = uVar2 * 8;
+          do {
+            dVar11 = dVar7 * 5.9604644775390625e-08;
+            dVar6 = dVar6 - (double)(int)(dVar6 / dVar7) * dVar7;
+            dVar7 = dVar11 * 5.9604644775390625e-08;
+            dVar6 = dVar6 - (double)(int)(dVar6 / dVar11) * dVar11;
+            dVar11 = dVar7 * 5.9604644775390625e-08;
+            dVar6 = dVar6 - (double)(int)(dVar6 / dVar7) * dVar7;
+            dVar7 = dVar11 * 5.9604644775390625e-08;
+            dVar6 = dVar6 - (double)(int)(dVar6 / dVar11) * dVar11;
+            dVar11 = dVar7 * 5.9604644775390625e-08;
+            dVar6 = dVar6 - (double)(int)(dVar6 / dVar7) * dVar7;
+            dVar7 = dVar11 * 5.9604644775390625e-08;
+            dVar6 = dVar6 - (double)(int)(dVar6 / dVar11) * dVar11;
+            dVar11 = dVar7 * 5.9604644775390625e-08;
+            dVar6 = dVar6 - (double)(int)(dVar6 / dVar7) * dVar7;
+            dVar7 = dVar11 * 5.9604644775390625e-08;
+            dVar6 = dVar6 - (double)(int)(dVar6 / dVar11) * dVar11;
+            uVar3 = uVar3 - 1;
+          } while (uVar3 != 0);
+        }
+        if (iVar5 < iVar1) {
+          uVar3 = (ulonglong)(uint)(iVar1 - iVar5);
+          do {
+            dVar11 = (double)(int)(dVar6 / dVar7) * dVar7;
+            dVar7 = dVar7 * 5.9604644775390625e-08;
+            dVar6 = dVar6 - dVar11;
+            uVar3 = uVar3 - 1;
+          } while (uVar3 != 0);
+        }
+      }
+      local_18 = dVar6 - (double)(int)(dVar6 / dVar7) * dVar7;
+      if ((dVar7 * 0.5 < local_18) ||
+         ((local_18 == dVar7 * 0.5 && (((int)(dVar6 / dVar7) & 1U) != 0)))) {
+        local_18 = local_18 - dVar7;
+      }
+      auVar9._8_8_ = 0;
+      auVar9._0_8_ = local_18;
+      if (fVar8 < 0.0) {
+        auVar9._0_8_ = -local_18;
+        auVar9._8_4_ = 0;
+        auVar9._12_4_ = 0x80000000;
+      }
+      auVar10._4_12_ = auVar9._4_12_;
+      auVar10._0_4_ = (float)auVar9._0_8_;
+      return auVar10._0_8_;
+    }
+    goto LAB_18021a915;
+  }
+  if (((ulonglong)dVar11 & 0xfffffffffffff) != 0) {
+    uVar3 = FUN_18022bc20(param_1 & 0xffffffff);
+    return uVar3;
+  }
+LAB_18021a975:
+  uVar3 = FUN_18022bc30("remainderf",6,0xffc00000,1,8,0x21,fVar8,param_2,2);
+  return uVar3;
+}
+
+

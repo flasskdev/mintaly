@@ -1,0 +1,116 @@
+// function: FUN_1801659b0
+// ea: 1801659b0
+// category: nospread
+// depth: 1, via: FUN_180084040 @180084331
+// size: 620 bytes
+// anchors: nospread, trace_geometry, hitbox_backtrack
+// ----------------------------------------------------
+
+ulonglong FUN_1801659b0(longlong *param_1)
+
+{
+  longlong lVar1;
+  char cVar2;
+  bool bVar3;
+  longlong *plVar4;
+  longlong *plVar5;
+  undefined1 *unaff_RDI;
+  ulonglong uVar6;
+  char *pcVar7;
+  longlong *plVar8;
+  undefined1 local_848 [2056];
+  
+  plVar5 = (longlong *)*param_1;
+  plVar8 = (longlong *)param_1[1];
+  if (plVar5 != plVar8) {
+    bVar3 = true;
+    unaff_RDI = local_848;
+    do {
+      if (((*plVar5 == 0) || (plVar5[1] == 0)) || (plVar5[6] == 0)) {
+        lVar1 = plVar5[6];
+        pcVar7 = "invalid hook entry";
+        if (lVar1 == 0) {
+          pcVar7 = "target address missing";
+        }
+        if ((ulonglong)plVar5[5] < 0x10) {
+          plVar4 = plVar5 + 2;
+        }
+        else {
+          plVar4 = (longlong *)plVar5[2];
+        }
+        bVar3 = false;
+        FUN_18023b870(unaff_RDI,0,0x800);
+        FUN_180028ee0(unaff_RDI,0x800,0xffffffffffffffff,
+                      "HOOK STATUS: UNAVAILABLE | name: %s | target: 0x%llX | reason: %s",plVar4,
+                      lVar1,pcVar7);
+        FUN_180023580(4);
+      }
+      plVar5 = plVar5 + 7;
+    } while (plVar5 != plVar8);
+    if (!bVar3) goto LAB_180165c18;
+  }
+  plVar5 = (longlong *)*param_1;
+  plVar8 = (longlong *)param_1[1];
+  uVar6 = CONCAT71((int7)((ulonglong)unaff_RDI >> 8),1);
+  if (plVar5 != plVar8) {
+    pcVar7 = "create failed";
+    do {
+      if (((*plVar5 != 0) && (plVar5[1] != 0)) && (plVar5[6] != 0)) {
+        cVar2 = FUN_180165210();
+        if (cVar2 != '\0') {
+          cVar2 = FUN_180165700(*plVar5);
+          if (cVar2 != '\0') {
+            FUN_180169fd0(plVar5[6],*plVar5 + 0x18,*(undefined8 *)(*plVar5 + 0x48));
+            if ((ulonglong)plVar5[5] < 0x10) {
+              plVar4 = plVar5 + 2;
+            }
+            else {
+              plVar4 = (longlong *)plVar5[2];
+            }
+            lVar1 = plVar5[6];
+            FUN_18023b870(local_848,0,0x800);
+            FUN_180028ee0(local_848,0x800,0xffffffffffffffff,
+                          "HOOK STATUS: INSTALLED | name: %s | target: 0x%llX",plVar4,lVar1);
+            FUN_180023580(2,local_848);
+            goto LAB_180165b0a;
+          }
+          pcVar7 = "enable failed";
+        }
+        lVar1 = plVar5[6];
+        if ((ulonglong)plVar5[5] < 0x10) {
+          plVar8 = plVar5 + 2;
+        }
+        else {
+          plVar8 = (longlong *)plVar5[2];
+        }
+        uVar6 = 0;
+        FUN_18023b870(local_848,0,0x800);
+        FUN_180028ee0(local_848,0x800,0xffffffffffffffff,
+                      "HOOK STATUS: FAIL | name: %s | target: 0x%llX | reason: %s",plVar8,lVar1,
+                      pcVar7);
+        FUN_180023580(4,local_848);
+        FUN_180165960(*plVar5);
+        plVar5 = (longlong *)*param_1;
+        plVar8 = (longlong *)param_1[1];
+        if (plVar5 != plVar8) goto LAB_180165c09;
+        break;
+      }
+LAB_180165b0a:
+      plVar5 = plVar5 + 7;
+    } while (plVar5 != plVar8);
+  }
+  goto LAB_180165c1a;
+LAB_180165c09:
+  do {
+    if (*plVar5 != 0) {
+      FUN_180165960();
+    }
+    plVar5 = plVar5 + 7;
+  } while (plVar5 != plVar8);
+LAB_180165c18:
+  uVar6 = 0;
+LAB_180165c1a:
+  return uVar6 & 0xffffffff;
+}
+
+

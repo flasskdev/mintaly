@@ -195,12 +195,9 @@ namespace rendering::menu_weapons {
             top_dl.rect_filled(main_rect.x, main_rect.y, main_rect.w, main_rect.h, bg_card, xdraw::corner_radius{ 6.0f });
             top_dl.rect(main_rect.x, main_rect.y, main_rect.w, main_rect.h, border_card, xdraw::corner_radius{ 6.0f }, 1.0f);
 
-            // Accent line on top of main panel
-            const auto m_half_w = (main_rect.w - 12.0f) * 0.5f;
-            const auto m_edge = tokens::col_accent.alpha(0);
-            const auto m_center = tokens::col_accent.alpha(static_cast<std::uint8_t>(150.0f * alpha_mult));
-            top_dl.rect_filled_gradient(main_rect.x + 6.0f, main_rect.y, m_half_w, 2.0f, m_edge, m_center, m_center, m_edge);
-            top_dl.rect_filled_gradient(main_rect.x + 6.0f + m_half_w, main_rect.y, m_half_w, 2.0f, m_center, m_edge, m_edge, m_center);
+            // Soft inner highlight instead of the old accent stripe
+            top_dl.line(main_rect.x + 8.0f, main_rect.y + 0.5f, main_rect.x + main_rect.w - 8.0f, main_rect.y + 0.5f,
+                xdraw::color{ 255, 255, 255, static_cast<std::uint8_t>(16.0f * alpha_mult) }, 1.0f);
 
             xdraw::push_font(rendering::g_fonts.inter_medium[rendering::fonts::size::petite]);
 
@@ -257,10 +254,9 @@ namespace rendering::menu_weapons {
             top_dl.rect_filled(sub_rect.x, sub_rect.y, sub_rect.w, sub_rect.h, bg_card, xdraw::corner_radius{ 6.0f });
             top_dl.rect(sub_rect.x, sub_rect.y, sub_rect.w, sub_rect.h, border_card, xdraw::corner_radius{ 6.0f }, 1.0f);
 
-            // Accent top stripe on sub-panel
-            const auto s_half_w = (sub_rect.w - 12.0f) * 0.5f;
-            top_dl.rect_filled_gradient(sub_rect.x + 6.0f, sub_rect.y, s_half_w, 2.0f, m_edge, m_center, m_center, m_edge);
-            top_dl.rect_filled_gradient(sub_rect.x + 6.0f + s_half_w, sub_rect.y, s_half_w, 2.0f, m_center, m_edge, m_edge, m_center);
+            // Soft inner highlight instead of the old accent stripe
+            top_dl.line(sub_rect.x + 8.0f, sub_rect.y + 0.5f, sub_rect.x + sub_rect.w - 8.0f, sub_rect.y + 0.5f,
+                xdraw::color{ 255, 255, 255, static_cast<std::uint8_t>(16.0f * fly_ease) }, 1.0f);
 
             const auto safe_hovered = std::clamp(m_hovered_group, 0, 5);
             const auto& grp_info = cstypes::weapons::k_groups[safe_hovered];

@@ -1,0 +1,18 @@
+// function: FUN_180124d50
+// ea: 180124d50
+// category: hitchance
+// depth: 2, via: FUN_180141210 @1801412c8
+// size: 19 bytes
+// anchors: hitchance, nospread, autowall_damage
+// ----------------------------------------------------
+
+void FUN_180124d50(longlong param_1)
+
+{
+  if (*(longlong *)(param_1 + 0x48) != *(longlong *)(param_1 + 0x50)) {
+    *(longlong *)(param_1 + 0x50) = *(longlong *)(param_1 + 0x50) + -0x10;
+  }
+  return;
+}
+
+

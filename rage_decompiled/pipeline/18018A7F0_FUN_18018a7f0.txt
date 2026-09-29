@@ -1,0 +1,16 @@
+// function: FUN_18018a7f0
+// ea: 18018a7f0
+// category: pipeline
+// depth: 2, via: FUN_18016d4e0 @18016d53a
+// size: 11 bytes
+// anchors: pipeline, hitbox_backtrack
+// ----------------------------------------------------
+
+void FUN_18018a7f0(void)
+
+{
+  FUN_18018b520();
+  return;
+}
+
+

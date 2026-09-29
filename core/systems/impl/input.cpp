@@ -6,6 +6,130 @@
 #include <protection/game_addresses.hpp>
 #include "../systems.hpp"
 
+namespace {
+
+	constexpr int k_max_subtick_moves{ 32 }; // the subtick strafer writes up to 32 steps per tick
+
+	[[nodiscard]] bool valid_runtime_pointer( std::uintptr_t address ) noexcept
+	{
+		return address >= 0x10000ull &&
+			address != ( std::numeric_limits<std::uintptr_t>::max )( ) &&
+			address <= 0x00007FFFFFFFFFFFull;
+	}
+
+	[[nodiscard]] bool read_subtick_rep(
+		proto::repeated_ptr_field<proto::subtick_move_step>* moves,
+		proto::repeated_ptr_field<proto::subtick_move_step>::rep_t*& rep,
+		int& current_size,
+		int& allocated_size ) noexcept
+	{
+		rep = nullptr;
+		current_size = 0;
+		allocated_size = 0;
+		if ( !moves )
+			return false;
+
+		const auto raw = reinterpret_cast<std::uintptr_t>( moves );
+		const auto current = memory::safe_read<int>( raw + offsetof( proto::repeated_ptr_field<proto::subtick_move_step>, m_current_size ) );
+		const auto rep_value = memory::safe_read<proto::repeated_ptr_field<proto::subtick_move_step>::rep_t*>(
+			raw + offsetof( proto::repeated_ptr_field<proto::subtick_move_step>, m_rep ) );
+		if ( !current || !rep_value || *current < 0 || *current > k_max_subtick_moves )
+			return false;
+
+		current_size = *current;
+		rep = *rep_value;
+		if ( !rep )
+			return current_size == 0;
+		if ( !valid_runtime_pointer( reinterpret_cast<std::uintptr_t>( rep ) ) )
+			return false;
+
+		const auto allocated = memory::safe_read<int>( reinterpret_cast<std::uintptr_t>( rep ) +
+			offsetof( proto::repeated_ptr_field<proto::subtick_move_step>::rep_t, allocated_size ) );
+		if ( !allocated || *allocated < current_size || *allocated <= 0 || *allocated > 1024 )
+			return false;
+
+		allocated_size = *allocated;
+		return true;
+	}
+
+	[[nodiscard]] void* read_subtick_element(
+		proto::repeated_ptr_field<proto::subtick_move_step>::rep_t* rep,
+		int index ) noexcept
+	{
+		if ( !rep || index < 0 || index >= k_max_subtick_moves )
+			return nullptr;
+
+		const auto address = reinterpret_cast<std::uintptr_t>( rep ) +
+			offsetof( proto::repeated_ptr_field<proto::subtick_move_step>::rep_t, elements ) +
+			static_cast<std::size_t>( index ) * sizeof( void* );
+		return memory::safe_read<void*>( address ).value_or( nullptr );
+	}
+
+	[[nodiscard]] bool reset_subtick_step( void* element, proto::subtick_move_step*& step ) noexcept
+	{
+		step = nullptr;
+		if ( !valid_runtime_pointer( reinterpret_cast<std::uintptr_t>( element ) ) )
+			return false;
+
+		const auto step_address = reinterpret_cast<std::uintptr_t>( element ) + proto::message_impl_offset;
+		if ( !valid_runtime_pointer( step_address ) )
+			return false;
+
+		// Do NOT zero the message here - the game's allocator returns a properly
+		// initialized protobuf message with vtable/arena pointer intact. Zeroing
+		// the full struct (including protobuf header fields) corrupts the heap.
+		// Fields we need are overwritten in emit_step/apply_landing_steps.
+
+		step = proto::impl_ptr<proto::subtick_move_step>( element );
+		if ( !step || !valid_runtime_pointer( reinterpret_cast<std::uintptr_t>( step ) ) )
+			return false;
+
+		return true;
+	}
+
+	[[nodiscard]] bool sort_subtick_moves_safely(
+		proto::repeated_ptr_field<proto::subtick_move_step>* moves ) noexcept
+	{
+		proto::repeated_ptr_field<proto::subtick_move_step>::rep_t* rep{};
+		int current_size{};
+		int allocated_size{};
+		if ( !read_subtick_rep( moves, rep, current_size, allocated_size ) ||
+			!rep || current_size <= 1 || allocated_size < current_size )
+			return false;
+
+		std::array<void*, k_max_subtick_moves> elements{};
+		for ( auto i = 0; i < current_size; ++i )
+		{
+			elements[ i ] = read_subtick_element( rep, i );
+			if ( !valid_runtime_pointer( reinterpret_cast<std::uintptr_t>( elements[ i ] ) ) )
+				return false;
+		}
+
+		std::stable_sort( elements.begin( ), elements.begin( ) + current_size,
+			[]( void* lhs, void* rhs )
+			{
+				const auto left_when = memory::safe_read<float>(
+					reinterpret_cast<std::uintptr_t>( lhs ) + proto::message_impl_offset +
+					offsetof( proto::subtick_move_step, m_when ) ).value_or( 0.0f );
+				const auto right_when = memory::safe_read<float>(
+					reinterpret_cast<std::uintptr_t>( rhs ) + proto::message_impl_offset +
+					offsetof( proto::subtick_move_step, m_when ) ).value_or( 0.0f );
+				return left_when < right_when;
+			} );
+
+		for ( auto i = 0; i < current_size; ++i )
+		{
+			const auto address = reinterpret_cast<std::uintptr_t>( rep ) +
+				offsetof( proto::repeated_ptr_field<proto::subtick_move_step>::rep_t, elements ) +
+				static_cast<std::size_t>( i ) * sizeof( void* );
+			if ( !memory::safe_write<void*>( address, elements[ i ] ) )
+				return false;
+		}
+		return true;
+	}
+
+} // namespace
+
 namespace systems {
 
 	void input::update( )
@@ -26,9 +150,20 @@ namespace systems {
 		{
 			return false;
 		}
-		for ( int i = 0; i < base->subtick_moves_size( ); ++i )
+
+		auto* const moves = base->mutable_subtick_moves( );
+		proto::repeated_ptr_field<proto::subtick_move_step>::rep_t* rep{};
+		int current_size{};
+		int allocated_size{};
+		if ( !read_subtick_rep( moves, rep, current_size, allocated_size ) || !rep )
+			return false;
+
+		for ( int i = 0; i < current_size; ++i )
 		{
-			const auto step = base->mutable_subtick_moves( i );
+			const auto element = read_subtick_element( rep, i );
+			if ( !valid_runtime_pointer( reinterpret_cast<std::uintptr_t>( element ) ) )
+				continue;
+			const auto step = proto::impl_ptr<proto::subtick_move_step>( element );
 			if ( step && ( ( step->m_has_bits.test( 0x8 ) && step->analog_forward_delta( ) != 0.0f ) ||
 				( step->m_has_bits.test( 0x10 ) && step->analog_left_delta( ) != 0.0f ) ) )
 			{
@@ -36,6 +171,34 @@ namespace systems {
 			}
 		}
 		return false;
+	}
+
+	float input::max_subtick_when( proto::base_usercmd_pb* base ) const
+	{
+		if ( !base )
+			return 0.0f;
+
+		proto::repeated_ptr_field<proto::subtick_move_step>::rep_t* rep{};
+		int current_size{};
+		int allocated_size{};
+		if ( !read_subtick_rep( base->mutable_subtick_moves( ), rep, current_size, allocated_size ) || !rep )
+			return 0.0f;
+
+		float max_when = 0.0f;
+		for ( int i = 0; i < current_size; ++i )
+		{
+			const auto element = read_subtick_element( rep, i );
+			if ( !valid_runtime_pointer( reinterpret_cast<std::uintptr_t>( element ) ) )
+				continue;
+
+			const auto when = memory::safe_read<float>(
+				reinterpret_cast<std::uintptr_t>( element ) + proto::message_impl_offset +
+				offsetof( proto::subtick_move_step, m_when ) ).value_or( 0.0f );
+			if ( std::isfinite( when ) )
+				max_when = std::fmaxf( max_when, std::clamp( when, 0.0f, 1.0f ) );
+		}
+
+		return max_when;
 	}
 
 	void input::apply( )
@@ -68,19 +231,9 @@ namespace systems {
 			}
 		}
 
-		// A later feature may append an event at time zero. Serialize chronologically.
-		const auto moves = base->mutable_subtick_moves( );
-		if ( moves && moves->m_rep && moves->m_current_size > 1 )
-		{
-			std::stable_sort( moves->m_rep->elements,
-				moves->m_rep->elements + moves->m_current_size,
-				[]( void* lhs, void* rhs )
-				{
-					const auto left = proto::impl_ptr<proto::subtick_move_step>( lhs );
-					const auto right = proto::impl_ptr<proto::subtick_move_step>( rhs );
-					return ( left ? left->when( ) : 0.0f ) < ( right ? right->when( ) : 0.0f );
-				} );
-		}
+		// A later feature may append an event at time zero. Serialize only after
+		// validating the protobuf representation; never sort through a stale rep.
+		(void) sort_subtick_moves_safely( base->mutable_subtick_moves( ) );
 
 		diag::set_exception_phase( "input apply: buttons" );
 		auto buttons = const_cast<proto::in_button_state_pb*>( base->buttons_pb( ) );
@@ -148,26 +301,65 @@ namespace systems {
 			return nullptr;
 		}
 
-		if ( subtick_moves->m_rep )
+		proto::repeated_ptr_field<proto::subtick_move_step>::rep_t* rep{};
+		int current_size{};
+		int allocated_size{};
+		if ( !read_subtick_rep( subtick_moves, rep, current_size, allocated_size ) ||
+			current_size >= k_max_subtick_moves )
+			return nullptr;
+
+		if ( rep )
 		{
-			if ( subtick_moves->m_current_size < subtick_moves->m_rep->allocated_size )
+			if ( current_size < allocated_size )
 			{
-				const auto element = subtick_moves->m_rep->elements[ subtick_moves->m_current_size ];
-				if ( element )
+				const auto element = read_subtick_element( rep, current_size );
+				proto::subtick_move_step* step{};
+				if ( reset_subtick_step( element, step ) )
 				{
-					subtick_moves->m_current_size++;
-					const auto step = proto::impl_ptr<proto::subtick_move_step>( element );
-					*step = {};
+					if ( !valid_runtime_pointer( reinterpret_cast<std::uintptr_t>( step ) ) )
+						return nullptr;
+					subtick_moves->m_current_size = current_size + 1;
 					return step;
 				}
 			}
 		}
 
-		const auto move_step = memory::call<void*>(PATTERN (patterns::subtick_move_alloc), subtick_moves->m_arena );
-		if ( move_step )
+		const auto allocator = PATTERN (patterns::subtick_move_alloc);
+		const auto push = PATTERN (patterns::utl_vector_push);
+		if ( !allocator || !push )
+			return nullptr;
+
+		const auto arena = memory::safe_read<void*>( reinterpret_cast<std::uintptr_t>( subtick_moves ) +
+			offsetof( proto::repeated_ptr_field<proto::subtick_move_step>, m_arena ) ).value_or( nullptr );
+		const auto move_step = memory::safe_call<void*>( allocator, arena );
+		if ( !valid_runtime_pointer( reinterpret_cast<std::uintptr_t>( move_step ) ) )
+			return nullptr;
+
+		const auto field_address = reinterpret_cast<std::uintptr_t>( subtick_moves );
+		const auto before_size = memory::safe_read<int>( field_address +
+			offsetof( proto::repeated_ptr_field<proto::subtick_move_step>, m_current_size ) ).value_or( -1 );
+		if ( before_size < 0 || before_size >= k_max_subtick_moves )
+			return nullptr;
+
+		(void) memory::safe_call<std::uintptr_t>( push, field_address,
+			reinterpret_cast<std::uintptr_t>( move_step ) );
+
+		const auto after_size = memory::safe_read<int>( field_address +
+			offsetof( proto::repeated_ptr_field<proto::subtick_move_step>, m_current_size ) ).value_or( -1 );
+		const auto after_rep = memory::safe_read<proto::repeated_ptr_field<proto::subtick_move_step>::rep_t*>(
+			field_address + offsetof( proto::repeated_ptr_field<proto::subtick_move_step>, m_rep ) ).value_or( nullptr );
+		if ( after_size != before_size + 1 || after_size > k_max_subtick_moves || !after_rep )
+			return nullptr;
+
+		const auto stored = read_subtick_element( after_rep, before_size );
+		if ( stored != move_step )
+			return nullptr;
+
+		if ( auto* const step = proto::impl_ptr<proto::subtick_move_step>( move_step ) )
 		{
-			memory::call<std::uintptr_t>(PATTERN (patterns::utl_vector_push), reinterpret_cast< std::uintptr_t >( subtick_moves ), reinterpret_cast< std::uintptr_t >( move_step ) );
-			return proto::impl_ptr<proto::subtick_move_step>( move_step );
+			if ( !valid_runtime_pointer( reinterpret_cast<std::uintptr_t>( step ) ) )
+				return nullptr;
+			return step;
 		}
 
 		return nullptr;
