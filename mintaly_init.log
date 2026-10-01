@@ -1,0 +1,331 @@
+[2026-10-01 23:56:35.454] [INFO ] [P2472:T17676] diagnostics log path=C:\Users\stass\AppData\Local\Temp\nemesis-2472\mintaly_init.log
+[2026-10-01 23:56:35.454] [INFO ] [P2472:T17676] diagnostics initialized; module=0x000001EE1CEB0000 size=0x59A000
+[2026-10-01 23:56:35.454] [DEBUG] [P2472:T17676] stage: dll attach
+[2026-10-01 23:56:35.454] [DEBUG] [P2472:T17676] build: development diagnostics
+[2026-10-01 23:56:35.454] [DEBUG] [P2472:T17676] stage: crt done, spawning thread
+[2026-10-01 23:56:35.456] [DEBUG] [P2472:T19876] stage: thread start
+[2026-10-01 23:56:35.464] [INFO ] [P2472:T19876] crash dumps enabled; path=C:\Users\stass\AppData\Local\Temp\nemesis-2472\mintaly_crash.dmp
+[2026-10-01 23:56:35.464] [DEBUG] [P2472:T19876] stage: loader session connected (protocol v1)
+[2026-10-01 23:56:35.464] [INFO ] [P2472:T19876] crash handlers installed
+[2026-10-01 23:56:35.464] [DEBUG] [P2472:T19876] stage: coinit
+[2026-10-01 23:56:35.464] [DEBUG] [P2472:T19876] stage: config
+[2026-10-01 23:56:36.415] [INFO ] [P2472:T19876] [config] startup profile=рейджуха toggles_reset=4905 reveal_radar=0 chams_enemy=0 chams_local=0
+[2026-10-01 23:56:36.415] [DEBUG] [P2472:T19876] stage: regions
+[2026-10-01 23:56:36.415] [DEBUG] [P2472:T19876] stage: logging
+[2026-10-01 23:56:36.448] [DEBUG] [P2472:T19876] stage: integrity
+[2026-10-01 23:56:36.452] [DEBUG] [P2472:T19876] stage: addresses
+[2026-10-01 23:56:36.452] [INFO ] [P2472:T19876] [modules] client:              0x7ffcc9040000
+[2026-10-01 23:56:36.452] [INFO ] [P2472:T19876] [modules] engine2:             0x7ffda88b0000
+[2026-10-01 23:56:36.452] [INFO ] [P2472:T19876] [modules] server:              0x7ffccb9e0000
+[2026-10-01 23:56:36.452] [INFO ] [P2472:T19876] [modules] scene_system:        0x7ffceab60000
+[2026-10-01 23:56:36.452] [INFO ] [P2472:T19876] [modules] material_system2:    0x7ffd0fdd0000
+[2026-10-01 23:56:36.452] [INFO ] [P2472:T19876] [modules] render_system_dx11:  0x7ffd109c0000
+[2026-10-01 23:56:36.452] [INFO ] [P2472:T19876] [modules] panorama:            0x7ffcce240000
+[2026-10-01 23:56:36.452] [INFO ] [P2472:T19876] [modules] game_overlay:        0x7ffda9640000
+[2026-10-01 23:56:36.452] [INFO ] [P2472:T19876] [modules] schema_system:       0x7ffda8370000
+[2026-10-01 23:56:36.452] [INFO ] [P2472:T19876] [modules] input_system:        0x7ffdcf150000
+[2026-10-01 23:56:36.452] [INFO ] [P2472:T19876] [modules] sound_system:        0x7ffcf0920000
+[2026-10-01 23:56:36.452] [INFO ] [P2472:T19876] [modules] tier0:               0x7ffda9230000
+[2026-10-01 23:56:36.452] [INFO ] [P2472:T19876] [modules] particles:           0x7ffcea2e0000
+[2026-10-01 23:56:36.452] [INFO ] [P2472:T19876] [modules] resource_system:     0x7ffda83f0000
+[2026-10-01 23:56:36.452] [INFO ] [P2472:T19876] [modules] localize:            0x7ffdb8d10000
+[2026-10-01 23:56:36.452] [INFO ] [P2472:T19876] [modules] mesh_system:         0x7ffd025c0000
+[2026-10-01 23:56:36.452] [INFO ] [P2472:T19876] [modules] file_system_stdio:   0x7ffd10e80000
+[2026-10-01 23:56:36.452] [INFO ] [P2472:T19876] [modules] vphysics2:           0x7ffcf0fe0000
+[2026-10-01 23:56:39.580] [INFO ] [P2472:T19876] DXGI vtable resolved: present=00007FFE506D9530 resize=00007FFE506F7180
+[2026-10-01 23:56:39.620] [DEBUG] [P2472:T19876] stage: systems
+[2026-10-01 23:56:39.623] [INFO ] [P2472:T19876] [materials] flat=000003BE95015800 flat_ignorez=000003BE95175800 metallic=000003BE9500B000 outlines=000003BE9501A800 glow=000003BE95020000 loaded_core=1
+[2026-10-01 23:56:39.685] [INFO ] [P2472:T19876] event signature warmup: 17/17 resolved in 62.93 ms
+[2026-10-01 23:56:41.328] [INFO ] [P2472:T19876] [model-preview] initialized build=skin-preview-20260930-r5
+[2026-10-01 23:56:41.328] [DEBUG] [P2472:T19876] stage: econ
+[2026-10-01 23:56:41.331] [INFO ] [P2472:T19876] [econ] waiting for item schema
+[2026-10-01 23:56:43.079] [DEBUG] [P2472:T19876] stage: hooks
+[2026-10-01 23:56:43.080] [INFO ] [P2472:T19876] DXGI bootstrap target: get_desc=00007FFE50700370 present=00007FFE506D9530 resize=00007FFE506F7180
+[2026-10-01 23:56:43.080] [INFO ] [P2472:T19876] DXGI bootstrap hook created: target=00007FFE50700370 len=20 trampoline=00007FFE506B0000
+[2026-10-01 23:56:43.150] [INFO ] [P2472:T19876] [error] pattern not found | 488BC844886C2430>E8????????84C00F84????????
+[2026-10-01 23:56:43.193] [INFO ] [P2472:T19876] failed to hook: render_crosshair
+[2026-10-01 23:56:43.193] [INFO ] [P2472:T19876] skipping unavailable hook: render_crosshair
+[2026-10-01 23:56:43.199] [INFO ] [P2472:T19876] [model-preview] frame-stage hook available=1
+[2026-10-01 23:56:43.199] [INFO ] [P2472:T19876] [hooks] generate_primitives base=1 target=00007FFCEABD8170 trampoline=00007FFCE6F70000 animatable=1 target=00007FFCEABDD7C0 trampoline=00007FFCE6F60000
+[2026-10-01 23:56:43.199] [INFO ] [P2472:T19876] feature hooks initialized with 1 unavailable
+[2026-10-01 23:56:43.199] [DEBUG] [P2472:T19876] stage: cvars
+[2026-10-01 23:56:43.199] [DEBUG] [P2472:T19876] stage: skyboxes
+[2026-10-01 23:56:43.200] [DEBUG] [P2472:T19876] stage: done
+[2026-10-01 23:56:43.720] [INFO ] [P2472:T27820] DXGI swap-chain vtable patched: vtable=00007FFE5078D688 present=00007FFE506D9530 resize=00007FFE506F7180
+[2026-10-01 23:56:47.666] [INFO ] [P2472:T23428] [game log] mintalynews.t.me
+[2026-10-01 23:56:48.171] [WARN ] [P2472:T23428] [fsn-diag] stage=1 ctlptr=0x7ffccb578008 ctl=0x0 shutdown=0
+[2026-10-01 23:56:48.183] [WARN ] [P2472:T23428] [lobby-music] awaiting playback generation=1 kit=76 attempt=1 hook=1 refresh=1 thread=23428
+[2026-10-01 23:56:48.185] [INFO ] [P2472:T23428] [game log] mintalynews.t.me
+[2026-10-01 23:56:48.204] [INFO ] [P2472:T23428] [game log] ClientPutInServer create new player controller [mintalynews.t.me]
+[2026-10-01 23:56:48.925] [INFO ] [P2472:T23428] [game log] mintalynews.t.me подключается.
+[2026-10-01 23:56:48.925] [WARN ] [P2472:T23428] [local-diag] ctl=0x3bee1b39e00 elist=0x3be6d440000 empty=0 off_pawn=1724 off_hp=844 off_team=999 pawn_h=0x7e800c pawn=0x3bee1de0800 hp=0 vm=0x7ffccb5a6910 gv=0x7ffccb26be98
+[2026-10-01 23:56:52.341] [INFO ] [P2472:T23068] [chams-hook] GeneratePrimitives first call hook=animatable target=00007FFCEABDD7C0 desc=00007FFCEB1D57B0 object=000003BEE167D910 a3=0000003F6CDBFA30 buffer=0000003F6CDBEFF0
+[2026-10-01 23:56:52.342] [INFO ] [P2472:T31756] [chams-hook] draw_scene_object first call a1=00007FFCEB1D57B0 a2=000003BDE9938000 batch=000003BDEA910010 count=5 a5=000003BEE3890010 a6=000003BEE38D0910 a7=000003BEC799B6D8
+[2026-10-01 23:56:52.342] [INFO ] [P2472:T4924] [chams-state] enabled-mask=0x00 local-pawn=0000000000000000 generate-hook=1
+[2026-10-01 23:56:53.171] [WARN ] [P2472:T23428] [fsn-diag] stage=0 ctlptr=0x7ffccb578008 ctl=0x3bee1b39e00 shutdown=0
+[2026-10-01 23:56:53.926] [WARN ] [P2472:T23428] [local-diag] ctl=0x3bee1b39e00 elist=0x3be6d440000 empty=0 off_pawn=1724 off_hp=844 off_team=999 pawn_h=0x7e800c pawn=0x3bee1de0800 hp=0 vm=0x7ffccb5a6910 gv=0x7ffccb26be98
+[2026-10-01 23:56:58.171] [WARN ] [P2472:T23428] [fsn-diag] stage=10 ctlptr=0x7ffccb578008 ctl=0x3bee1b39e00 shutdown=0
+[2026-10-01 23:56:58.930] [WARN ] [P2472:T23428] [local-diag] ctl=0x3bee1b39e00 elist=0x3be6d440000 empty=0 off_pawn=1724 off_hp=844 off_team=999 pawn_h=0x7e800c pawn=0x3bee1de0800 hp=0 vm=0x7ffccb5a6910 gv=0x7ffccb26be98
+[2026-10-01 23:57:01.770] [DEBUG] [P2472:T27820] [config] settings saved to the active profile
+[2026-10-01 23:57:03.176] [WARN ] [P2472:T23428] [fsn-diag] stage=0 ctlptr=0x7ffccb578008 ctl=0x3bee1b39e00 shutdown=0
+[2026-10-01 23:57:03.930] [WARN ] [P2472:T23428] [local-diag] ctl=0x3bee1b39e00 elist=0x3be6d440000 empty=0 off_pawn=1724 off_hp=844 off_team=999 pawn_h=0x7e800c pawn=0x3bee1de0800 hp=0 vm=0x7ffccb5a6910 gv=0x7ffccb26be98
+[2026-10-01 23:57:07.757] [DEBUG] [P2472:T27820] [config] settings saved to the active profile
+[2026-10-01 23:57:08.175] [WARN ] [P2472:T23428] [fsn-diag] stage=11 ctlptr=0x7ffccb578008 ctl=0x3bee1b39e00 shutdown=0
+[2026-10-01 23:57:08.931] [WARN ] [P2472:T23428] [local-diag] ctl=0x3bee1b39e00 elist=0x3be6d440000 empty=0 off_pawn=1724 off_hp=844 off_team=999 pawn_h=0x7e800c pawn=0x3bee1de0800 hp=0 vm=0x7ffccb5a6910 gv=0x7ffccb26be98
+[2026-10-01 23:57:11.765] [DEBUG] [P2472:T27820] [config] settings saved to the active profile
+[2026-10-01 23:57:12.828] [INFO ] [P2472:T23428] [game log] mintalynews.t.me
+[2026-10-01 23:57:12.837] [INFO ] [P2472:T23428] [game log] mintalynews.t.me
+[2026-10-01 23:57:13.177] [WARN ] [P2472:T23428] [fsn-diag] stage=0 ctlptr=0x7ffccb578008 ctl=0x3bee1b39e00 shutdown=0
+[2026-10-01 23:57:13.930] [WARN ] [P2472:T23428] [local-diag] ctl=0x3bee1b39e00 elist=0x3be6d440000 empty=0 off_pawn=1724 off_hp=844 off_team=999 pawn_h=0x7e800c pawn=0x3bee1de0800 hp=0 vm=0x7ffccb5a6910 gv=0x7ffccb26be98
+[2026-10-01 23:57:13.947] [INFO ] [P2472:T23428] [game log] mintalynews.t.me
+[2026-10-01 23:57:16.051] [INFO ] [P2472:T23428] [game log] mintalynews.t.me
+[2026-10-01 23:57:16.087] [INFO ] [P2472:T23428] [game log] mintalynews.t.me
+[2026-10-01 23:57:16.106] [DEBUG] [P2472:T23428] level shutdown: pre-engine cleanup
+[2026-10-01 23:57:16.106] [INFO ] [P2472:T23428] [scoreboard_weapons] level change — state reset
+[2026-10-01 23:57:16.106] [DEBUG] [P2472:T23428] level shutdown: cleanup complete
+[2026-10-01 23:57:19.248] [WARN ] [P2472:T23428] [fsn-diag] stage=1 ctlptr=0x7ffccb578008 ctl=0x0 shutdown=1
+[2026-10-01 23:57:19.248] [WARN ] [P2472:T23428] [lobby-music] awaiting playback generation=3 kit=76 attempt=1 hook=1 refresh=1 thread=23428
+[2026-10-01 23:57:19.263] [INFO ] [P2472:T23428] [game log] ClientPutInServer create new player controller [mintalynews.t.me]
+[2026-10-01 23:57:19.694] [INFO ] [P2472:T23428] [game log] mintalynews.t.me подключается.
+[2026-10-01 23:57:19.694] [WARN ] [P2472:T23428] [local-diag] ctl=0x3bf2eebb400 elist=0x3be6d440000 empty=0 off_pawn=1724 off_hp=844 off_team=999 pawn_h=0x1c501a2 pawn=0x3bf2f9a5800 hp=0 vm=0x7ffccb5a6910 gv=0x7ffccb26be98
+[2026-10-01 23:57:23.569] [WARN ] [P2472:T23428] [skin-hud] active=13893946 candidates=0 matches=0 reverse_offset=0 forward_offset=0
+[2026-10-01 23:57:23.569] [INFO ] [P2472:T23428] [skin-schema] class=C_CS2HudModelWeapon fields=0
+[2026-10-01 23:57:23.569] [INFO ] [P2472:T23428] [skin-schema] class=C_CS2HudModelBase fields=0
+[2026-10-01 23:57:23.569] [INFO ] [P2472:T23428] [skin-schema] class=C_CSWeaponBase fields=57
+[2026-10-01 23:57:23.569] [INFO ] [P2472:T23428] [skin-schema] class=C_CSWeaponBase field=m_iWeaponGameplayAnimState offset=6568
+[2026-10-01 23:57:23.569] [INFO ] [P2472:T23428] [skin-schema] class=C_CSWeaponBase field=m_flWeaponGameplayAnimStateTimestamp offset=6572
+[2026-10-01 23:57:23.569] [INFO ] [P2472:T23428] [skin-schema] class=C_CSWeaponBase field=m_flInspectCancelCompleteTime offset=6576
+[2026-10-01 23:57:23.569] [INFO ] [P2472:T23428] [skin-schema] class=C_CSWeaponBase field=m_bInspectPending offset=6580
+[2026-10-01 23:57:23.569] [INFO ] [P2472:T23428] [skin-schema] class=C_CSWeaponBase field=m_bInspectShouldLoop offset=6581
+[2026-10-01 23:57:23.569] [INFO ] [P2472:T23428] [skin-schema] class=C_CSWeaponBase field=m_nLastEmptySoundCmdNum offset=6624
+[2026-10-01 23:57:23.570] [INFO ] [P2472:T23428] [skin-schema] class=C_CSWeaponBase field=m_bFireOnEmpty offset=6628
+[2026-10-01 23:57:23.570] [INFO ] [P2472:T23428] [skin-schema] class=C_CSWeaponBase field=m_OnPlayerPickup offset=6632
+[2026-10-01 23:57:23.570] [INFO ] [P2472:T23428] [skin-schema] class=C_CSWeaponBase field=m_weaponMode offset=6656
+[2026-10-01 23:57:23.570] [INFO ] [P2472:T23428] [skin-schema] class=C_CSWeaponBase field=m_flTurningInaccuracyDelta offset=6660
+[2026-10-01 23:57:23.570] [INFO ] [P2472:T23428] [skin-schema] class=C_CSWeaponBase field=m_vecTurningInaccuracyEyeDirLast offset=6664
+[2026-10-01 23:57:23.570] [INFO ] [P2472:T23428] [skin-schema] class=C_CSWeaponBase field=m_flTurningInaccuracy offset=6676
+[2026-10-01 23:57:23.570] [INFO ] [P2472:T23428] [skin-schema] class=C_CSWeaponBase field=m_fAccuracyPenalty offset=6680
+[2026-10-01 23:57:23.570] [INFO ] [P2472:T23428] [skin-schema] class=C_CSWeaponBase field=m_flLastAccuracyUpdateTime offset=6684
+[2026-10-01 23:57:23.570] [INFO ] [P2472:T23428] [skin-schema] class=C_CSWeaponBase field=m_fAccuracySmoothedForZoom offset=6688
+[2026-10-01 23:57:23.570] [INFO ] [P2472:T23428] [skin-schema] class=C_CSWeaponBase field=m_iRecoilIndex offset=6692
+[2026-10-01 23:57:23.570] [INFO ] [P2472:T23428] [skin-schema] class=C_CSWeaponBase field=m_flRecoilIndex offset=6696
+[2026-10-01 23:57:23.570] [INFO ] [P2472:T23428] [skin-schema] class=C_CSWeaponBase field=m_bBurstMode offset=6700
+[2026-10-01 23:57:23.570] [INFO ] [P2472:T23428] [skin-schema] class=C_CSWeaponBase field=m_flLastBurstModeChangeTime offset=6704
+[2026-10-01 23:57:23.570] [INFO ] [P2472:T23428] [skin-schema] class=C_CSWeaponBase field=m_nPostponeFireReadyTicks offset=6708
+[2026-10-01 23:57:23.570] [INFO ] [P2472:T23428] [skin-schema] class=C_CSWeaponBase field=m_flPostponeFireReadyFrac offset=6712
+[2026-10-01 23:57:23.570] [INFO ] [P2472:T23428] [skin-schema] class=C_CSWeaponBase field=m_bInReload offset=6716
+[2026-10-01 23:57:23.570] [INFO ] [P2472:T23428] [skin-schema] class=C_CSWeaponBase field=m_nDeployTick offset=6720
+[2026-10-01 23:57:23.570] [INFO ] [P2472:T23428] [skin-schema] class=C_CSWeaponBase field=m_flAttackHoldStartTime offset=6724
+[2026-10-01 23:57:23.570] [INFO ] [P2472:T23428] [skin-schema] class=C_CSWeaponBase field=m_flDroppedAtTime offset=6728
+[2026-10-01 23:57:23.570] [INFO ] [P2472:T23428] [skin-schema] class=C_CSWeaponBase field=m_bIsHauledBack offset=6736
+[2026-10-01 23:57:23.570] [INFO ] [P2472:T23428] [skin-schema] class=C_CSWeaponBase field=m_bSilencerOn offset=6737
+[2026-10-01 23:57:23.570] [INFO ] [P2472:T23428] [skin-schema] class=C_CSWeaponBase field=m_flTimeSilencerSwitchComplete offset=6740
+[2026-10-01 23:57:23.570] [INFO ] [P2472:T23428] [skin-schema] class=C_CSWeaponBase field=m_bStealthy offset=6744
+[2026-10-01 23:57:23.570] [INFO ] [P2472:T23428] [skin-schema] class=C_CSWeaponBase field=m_bInSilentReloadSection offset=6745
+[2026-10-01 23:57:23.570] [INFO ] [P2472:T23428] [skin-schema] class=C_CSWeaponBase field=m_flStealthHoldStartTime offset=6748
+[2026-10-01 23:57:23.570] [INFO ] [P2472:T23428] [skin-schema] class=C_CSWeaponBase field=m_bReloadHeldSinceStart offset=6752
+[2026-10-01 23:57:23.570] [INFO ] [P2472:T23428] [skin-schema] class=C_CSWeaponBase field=m_flWeaponActionPlaybackRate offset=6756
+[2026-10-01 23:57:23.570] [INFO ] [P2472:T23428] [skin-schema] class=C_CSWeaponBase field=m_iOriginalTeamNumber offset=6760
+[2026-10-01 23:57:23.570] [INFO ] [P2472:T23428] [skin-schema] class=C_CSWeaponBase field=m_iMostRecentTeamNumber offset=6764
+[2026-10-01 23:57:23.570] [INFO ] [P2472:T23428] [skin-schema] class=C_CSWeaponBase field=m_bDroppedNearBuyZone offset=6768
+[2026-10-01 23:57:23.571] [INFO ] [P2472:T23428] [skin-schema] class=C_CSWeaponBase field=m_flNextAttackRenderTimeOffset offset=6772
+[2026-10-01 23:57:23.571] [INFO ] [P2472:T23428] [skin-schema] class=C_CSWeaponBase field=m_bClearWeaponIdentifyingUGC offset=6944
+[2026-10-01 23:57:23.571] [INFO ] [P2472:T23428] [skin-schema] class=C_CSWeaponBase field=m_bVisualsDataSet offset=6945
+[2026-10-01 23:57:23.571] [INFO ] [P2472:T23428] [skin-schema] class=C_CSWeaponBase field=m_bUIWeapon offset=6946
+[2026-10-01 23:57:23.571] [INFO ] [P2472:T23428] [skin-schema] class=C_CSWeaponBase field=m_nCustomEconReloadEventId offset=6948
+[2026-10-01 23:57:23.571] [INFO ] [P2472:T23428] [skin-schema] class=C_CSWeaponBase field=m_bCanBePickedUp offset=6960
+[2026-10-01 23:57:23.571] [INFO ] [P2472:T23428] [skin-schema] class=C_CSWeaponBase field=m_nextPrevOwnerUseTime offset=6964
+[2026-10-01 23:57:23.571] [INFO ] [P2472:T23428] [skin-schema] class=C_CSWeaponBase field=m_hPrevOwner offset=6968
+[2026-10-01 23:57:23.571] [INFO ] [P2472:T23428] [skin-schema] class=C_CSWeaponBase field=m_nDropTick offset=6972
+[2026-10-01 23:57:23.571] [INFO ] [P2472:T23428] [skin-schema] class=C_CSWeaponBase field=m_bWasActiveWeaponWhenDropped offset=6976
+[2026-10-01 23:57:23.571] [INFO ] [P2472:T23428] [skin-schema] class=C_CSWeaponBase field=m_donated offset=7012
+[2026-10-01 23:57:23.571] [INFO ] [P2472:T23428] [skin-schema] class=C_CSWeaponBase field=m_fLastShotTime offset=7016
+[2026-10-01 23:57:23.571] [INFO ] [P2472:T23428] [skin-schema] class=C_CSWeaponBase field=m_bWasOwnedByCT offset=7020
+[2026-10-01 23:57:23.571] [INFO ] [P2472:T23428] [skin-schema] class=C_CSWeaponBase field=m_bWasOwnedByTerrorist offset=7021
+[2026-10-01 23:57:23.571] [INFO ] [P2472:T23428] [skin-schema] class=C_CSWeaponBase field=m_flNextClientFireBulletTime offset=7024
+[2026-10-01 23:57:23.571] [INFO ] [P2472:T23428] [skin-schema] class=C_CSWeaponBase field=m_flNextClientFireBulletTime_Repredict offset=7028
+[2026-10-01 23:57:23.572] [INFO ] [P2472:T23428] [skin-schema] class=C_CSWeaponBase field=m_IronSightController offset=7120
+[2026-10-01 23:57:23.572] [INFO ] [P2472:T23428] [skin-schema] class=C_CSWeaponBase field=m_iIronSightMode offset=7296
+[2026-10-01 23:57:23.572] [INFO ] [P2472:T23428] [skin-schema] class=C_CSWeaponBase field=m_flLastLOSTraceFailureTime offset=7416
+[2026-10-01 23:57:23.572] [INFO ] [P2472:T23428] [skin-schema] class=C_CSWeaponBase field=m_flWatTickOffset offset=7512
+[2026-10-01 23:57:23.572] [INFO ] [P2472:T23428] [skin-schema] class=C_CSWeaponBase field=m_flLastShakeTime offset=7532
+[2026-10-01 23:57:23.572] [INFO ] [P2472:T23428] [skin-schema] class=C_BasePlayerWeapon fields=7
+[2026-10-01 23:57:23.572] [INFO ] [P2472:T23428] [skin-schema] class=C_BasePlayerWeapon field=m_nNextPrimaryAttackTick offset=6424
+[2026-10-01 23:57:23.572] [INFO ] [P2472:T23428] [skin-schema] class=C_BasePlayerWeapon field=m_flNextPrimaryAttackTickRatio offset=6428
+[2026-10-01 23:57:23.572] [INFO ] [P2472:T23428] [skin-schema] class=C_BasePlayerWeapon field=m_nNextSecondaryAttackTick offset=6432
+[2026-10-01 23:57:23.572] [INFO ] [P2472:T23428] [skin-schema] class=C_BasePlayerWeapon field=m_flNextSecondaryAttackTickRatio offset=6436
+[2026-10-01 23:57:23.572] [INFO ] [P2472:T23428] [skin-schema] class=C_BasePlayerWeapon field=m_iClip1 offset=6440
+[2026-10-01 23:57:23.572] [INFO ] [P2472:T23428] [skin-schema] class=C_BasePlayerWeapon field=m_iClip2 offset=6444
+[2026-10-01 23:57:23.572] [INFO ] [P2472:T23428] [skin-schema] class=C_BasePlayerWeapon field=m_pReserveAmmo offset=6448
+[2026-10-01 23:57:23.653] [INFO ] [P2472:T23068] [chams-state] enabled-mask=0x40 local-pawn=000003BEE0444800 generate-hook=1
+[2026-10-01 23:57:23.715] [DEBUG] [P2472:T23428] create_move: feature pipeline begin
+[2026-10-01 23:57:23.715] [DEBUG] [P2472:T23428] create_move: shared, movement and combat misc ready
+[2026-10-01 23:57:23.715] [DEBUG] [P2472:T23428] create_move: rage begin
+[2026-10-01 23:57:23.715] [INFO ] [P2472:T23428] [rage-diag:build] patch=scan-v1 patch_base=8bb666b compiled=Oct  1 2026 23:51:55
+[2026-10-01 23:57:23.715] [DEBUG] [P2472:T23428] create_move: rage end
+[2026-10-01 23:57:23.715] [DEBUG] [P2472:T23428] create_move: legit begin
+[2026-10-01 23:57:23.715] [DEBUG] [P2472:T23428] create_move: legit end
+[2026-10-01 23:57:23.715] [DEBUG] [P2472:T23428] create_move: post-combat movement end
+[2026-10-01 23:57:23.715] [DEBUG] [P2472:T23428] create_move: quickpeek end
+[2026-10-01 23:57:23.716] [DEBUG] [P2472:T23428] create_move: final subtick begin
+[2026-10-01 23:57:23.716] [DEBUG] [P2472:T23428] create_move: final subtick end
+[2026-10-01 23:57:23.716] [DEBUG] [P2472:T23428] create_move: input apply begin
+[2026-10-01 23:57:23.735] [DEBUG] [P2472:T23428] create_move: input apply end
+[2026-10-01 23:57:24.255] [WARN ] [P2472:T23428] [fsn-diag] stage=0 ctlptr=0x7ffccb578008 ctl=0x3bf2eebb400 shutdown=0
+[2026-10-01 23:57:24.694] [WARN ] [P2472:T23428] [local-diag] ctl=0x3bf2eebb400 elist=0x3be6d440000 empty=0 off_pawn=1724 off_hp=844 off_team=999 pawn_h=0x1bf81a1 pawn=0x3bee0444800 hp=100 vm=0x7ffccb5a6910 gv=0x7ffccb26be98
+[2026-10-01 23:57:27.592] [WARN ] [P2472:T23428] [skin-hud] lookup=ambiguous-children candidates=2 found=0
+[2026-10-01 23:57:27.592] [WARN ] [P2472:T23428] [skin-apply] reason=hud-pending handle=9142590 paint=1360 hud_weapon_offset=0 attribute_list=520 attribute_vector=8 attribute_index=48 attribute_value=52
+[2026-10-01 23:57:28.719] [DEBUG] [P2472:T23428] [rage-diag:pipeline] entry=1037 gun_calls=0 targets=0 no_targets=0 scan_empty=0 scan_nonempty=0 scan_hits=0 selection=0 selected=0 fire_calls=0 attack_set=0 fire_abort_viewangles=0 fire_history_pushed=0 fire_history_missing=0 gate_inactive=76 gate_no_enemies=0 gate_disabled=268 gate_cannot_shoot=236
+[2026-10-01 23:57:28.719] [DEBUG] [P2472:T23428] [rage-diag:scan] prepare_calls=0 prepare_invalid=0 prepare_fov=0 prepare_geometry=0 prepared_points=0 points=0 invalid_hitbox=0 fov=0 budget=0 penetration_failed=0 damage=0 headgroup=0 accepted=0
+[2026-10-01 23:57:28.719] [DEBUG] [P2472:T23428] [rage-diag:penetration] pen_calls=0 no_weapon_damage=0 tls_failed=0 invalid_filter=0 no_trace_hits=0 contacts=0 damage_exhausted=0 contact_mismatch=0 no_target_hit=0 geometry_miss=0 pen_success=0 pen_contact_accept=0 pen_geometry_accept=0
+[2026-10-01 23:57:28.719] [DEBUG] [P2472:T23428] [rage-diag:config] patch=scan-v1 item=1 no_spread=1 max_fov=180.00 min_damage=34.00 damage_override=0 override_value=11.00 weapon_damage=53.00 range=4096.00 penetration=2.00 range_modifier=0.8500
+[2026-10-01 23:57:28.719] [DEBUG] [P2472:T23428] rage perf: rage_total calls=1037 avg_ms=0.029 max_ms=5.997
+[2026-10-01 23:57:29.257] [WARN ] [P2472:T23428] [fsn-diag] stage=12 ctlptr=0x7ffccb578008 ctl=0x3bf2eebb400 shutdown=0
+[2026-10-01 23:57:29.694] [WARN ] [P2472:T23428] [local-diag] ctl=0x3bf2eebb400 elist=0x3be6d440000 empty=0 off_pawn=1724 off_hp=844 off_team=999 pawn_h=0x1bf81a1 pawn=0x3bee0444800 hp=100 vm=0x7ffccb5a6910 gv=0x7ffccb26be98
+[2026-10-01 23:57:33.722] [DEBUG] [P2472:T23428] [rage-diag:pipeline] entry=1101 gun_calls=0 targets=0 no_targets=0 scan_empty=0 scan_nonempty=0 scan_hits=0 selection=0 selected=0 fire_calls=0 attack_set=0 fire_abort_viewangles=0 fire_history_pushed=0 fire_history_missing=0 gate_inactive=0 gate_no_enemies=0 gate_disabled=1101 gate_cannot_shoot=0
+[2026-10-01 23:57:33.722] [DEBUG] [P2472:T23428] [rage-diag:scan] prepare_calls=0 prepare_invalid=0 prepare_fov=0 prepare_geometry=0 prepared_points=0 points=0 invalid_hitbox=0 fov=0 budget=0 penetration_failed=0 damage=0 headgroup=0 accepted=0
+[2026-10-01 23:57:33.722] [DEBUG] [P2472:T23428] [rage-diag:penetration] pen_calls=0 no_weapon_damage=0 tls_failed=0 invalid_filter=0 no_trace_hits=0 contacts=0 damage_exhausted=0 contact_mismatch=0 no_target_hit=0 geometry_miss=0 pen_success=0 pen_contact_accept=0 pen_geometry_accept=0
+[2026-10-01 23:57:33.722] [DEBUG] [P2472:T23428] [rage-diag:config] patch=scan-v1 item=1 no_spread=1 max_fov=180.00 min_damage=34.00 damage_override=0 override_value=11.00 weapon_damage=53.00 range=4096.00 penetration=2.00 range_modifier=0.8500
+[2026-10-01 23:57:33.722] [DEBUG] [P2472:T23428] rage perf: rage_total calls=1101 avg_ms=0.026 max_ms=0.246
+[2026-10-01 23:57:34.257] [WARN ] [P2472:T23428] [fsn-diag] stage=12 ctlptr=0x7ffccb578008 ctl=0x3bf2eebb400 shutdown=0
+[2026-10-01 23:57:34.699] [WARN ] [P2472:T23428] [local-diag] ctl=0x3bf2eebb400 elist=0x3be6d440000 empty=0 off_pawn=1724 off_hp=844 off_team=999 pawn_h=0x1bf81a1 pawn=0x3bee0444800 hp=100 vm=0x7ffccb5a6910 gv=0x7ffccb26be98
+[2026-10-01 23:57:38.722] [DEBUG] [P2472:T23428] [rage-diag:pipeline] entry=1043 gun_calls=0 targets=0 no_targets=0 scan_empty=0 scan_nonempty=0 scan_hits=0 selection=0 selected=0 fire_calls=0 attack_set=0 fire_abort_viewangles=0 fire_history_pushed=0 fire_history_missing=0 gate_inactive=0 gate_no_enemies=0 gate_disabled=535 gate_cannot_shoot=496
+[2026-10-01 23:57:38.722] [DEBUG] [P2472:T23428] [rage-diag:scan] prepare_calls=0 prepare_invalid=0 prepare_fov=0 prepare_geometry=0 prepared_points=0 points=0 invalid_hitbox=0 fov=0 budget=0 penetration_failed=0 damage=0 headgroup=0 accepted=0
+[2026-10-01 23:57:38.722] [DEBUG] [P2472:T23428] [rage-diag:penetration] pen_calls=0 no_weapon_damage=0 tls_failed=0 invalid_filter=0 no_trace_hits=0 contacts=0 damage_exhausted=0 contact_mismatch=0 no_target_hit=0 geometry_miss=0 pen_success=0 pen_contact_accept=0 pen_geometry_accept=0
+[2026-10-01 23:57:38.722] [DEBUG] [P2472:T23428] [rage-diag:config] patch=scan-v1 item=1 no_spread=1 max_fov=180.00 min_damage=34.00 damage_override=0 override_value=11.00 weapon_damage=53.00 range=4096.00 penetration=2.00 range_modifier=0.8500
+[2026-10-01 23:57:38.723] [DEBUG] [P2472:T23428] rage perf: rage_total calls=1043 avg_ms=0.026 max_ms=0.234
+[2026-10-01 23:57:39.258] [WARN ] [P2472:T23428] [fsn-diag] stage=12 ctlptr=0x7ffccb578008 ctl=0x3bf2eebb400 shutdown=0
+[2026-10-01 23:57:39.702] [WARN ] [P2472:T23428] [local-diag] ctl=0x3bf2eebb400 elist=0x3be6d440000 empty=0 off_pawn=1724 off_hp=844 off_team=999 pawn_h=0x1bf81a1 pawn=0x3bee0444800 hp=100 vm=0x7ffccb5a6910 gv=0x7ffccb26be98
+[2026-10-01 23:57:43.428] [DEBUG] [P2472:T23428] [rage-eye:v3] source=current-eye native=(nan,nan,nan) eye=(318.006,-1660.685,-114.500) selected=(318.006,-1660.685,-114.500)
+[2026-10-01 23:57:43.437] [DEBUG] [P2472:T22600] [rage-contact:v2] sample=1 patch=contact-v2 compiled=Oct  1 2026 23:51:55 records_before=2 records_after=2 hits_ptr_changed=0 surfaces_ptr_changed=0 start=(318.006,-1660.685,-114.500) end=(12.645,-1614.816,-123.337)
+[2026-10-01 23:57:43.437] [DEBUG] [P2472:T22600] [rage-contact:v2] sample=1 role=target entity=000003BF4840A000 identity=000003BE8AB8C398 readable=1 raw=005701bf flags=00000000 normalized=005701bf strict_raw=000003BF4840A000 strict_normalized=000003BF4840A000
+[2026-10-01 23:57:43.437] [DEBUG] [P2472:T22600] [rage-contact:v2] sample=1 role=local entity=000003BEE0444800 identity=000003BE8AB8B678 readable=1 raw=01bf81a1 flags=00000000 normalized=01bf81a1 strict_raw=000003BEE0444800 strict_normalized=000003BEE0444800
+[2026-10-01 23:57:43.437] [DEBUG] [P2472:T22600] [rage-contact:v2] sample=1 record=0 damage=52.0671 enter=0.000000 exit=0.067595 team=4 enter_ix=0000 exit_ix=0000 bits=00
+[2026-10-01 23:57:43.437] [DEBUG] [P2472:T22600] [rage-contact:v2] sample=1 record=0 token_2c=00008000 strict=000003BF0B453800 by_index=000003BF0B453800 slot_raw=00008000 slot_flags=00000000 slot_normalized=00008000 owner=ffffffff owner_strict=0000000000000000 owner_by_index=0000000000000000
+[2026-10-01 23:57:43.437] [DEBUG] [P2472:T22600] [rage-contact:v2] sample=1 record=0 raw14=3f800000 00000000 00000000 3d8a6f12 2f495b40 000003bf 3e1dbb80 000003bf ffffffff 0000f4b5 ffffffff 00008000 0000002e 00000000
+[2026-10-01 23:57:43.437] [DEBUG] [P2472:T22600] [rage-contact:v2] sample=1 record=1 damage=0.0000 enter=0.067595 exit=1.000000 team=4 enter_ix=0000 exit_ix=0001 bits=01
+[2026-10-01 23:57:43.437] [DEBUG] [P2472:T22600] [rage-contact:v2] sample=1 record=1 token_2c=00008000 strict=000003BF0B453800 by_index=000003BF0B453800 slot_raw=00008000 slot_flags=00000000 slot_normalized=00008000 owner=ffffffff owner_strict=0000000000000000 owner_by_index=0000000000000000
+[2026-10-01 23:57:43.437] [DEBUG] [P2472:T22600] [rage-contact:v2] sample=1 record=1 raw14=3f800000 00000000 00000000 3d8a6f12 2f495b40 000003bf 3e1dbb80 000003bf ffffffff 0000f4b5 ffffffff 00008000 0000002e 00000000
+[2026-10-01 23:57:43.727] [DEBUG] [P2472:T23428] [rage-diag:pipeline] entry=986 gun_calls=12 targets=60 no_targets=0 scan_empty=0 scan_nonempty=12 scan_hits=72 selection=12 selected=12 fire_calls=12 attack_set=1 fire_abort_viewangles=0 fire_history_pushed=0 fire_history_missing=0 gate_inactive=0 gate_no_enemies=0 gate_disabled=940 gate_cannot_shoot=34
+[2026-10-01 23:57:43.727] [DEBUG] [P2472:T23428] [rage-diag:scan] prepare_calls=132 prepare_invalid=0 prepare_fov=0 prepare_geometry=0 prepared_points=2232 points=2232 invalid_hitbox=0 fov=0 budget=312 penetration_failed=1848 damage=0 headgroup=0 accepted=72
+[2026-10-01 23:57:43.727] [DEBUG] [P2472:T23428] [rage-diag:penetration] pen_calls=1921 no_weapon_damage=0 tls_failed=0 invalid_filter=0 no_trace_hits=0 contacts=3842 damage_exhausted=3769 contact_mismatch=1921 no_target_hit=1848 geometry_miss=0 pen_success=73 pen_contact_accept=0 pen_geometry_accept=73
+[2026-10-01 23:57:43.727] [DEBUG] [P2472:T23428] [rage-diag:config] patch=scan-v1 item=1 no_spread=1 max_fov=180.00 min_damage=34.00 damage_override=0 override_value=11.00 weapon_damage=53.00 range=4096.00 penetration=2.00 range_modifier=0.8500
+[2026-10-01 23:57:43.727] [DEBUG] [P2472:T23428] rage perf: rage_total calls=986 avg_ms=0.058 max_ms=22.367
+[2026-10-01 23:57:43.727] [DEBUG] [P2472:T23428] rage perf: gather calls=12 avg_ms=0.085 max_ms=0.118
+[2026-10-01 23:57:43.727] [DEBUG] [P2472:T23428] rage perf: prepare_scan calls=132 avg_ms=0.011 max_ms=0.958
+[2026-10-01 23:57:43.727] [DEBUG] [P2472:T23428] rage perf: scan_batch calls=48 avg_ms=0.444 max_ms=12.802
+[2026-10-01 23:57:43.727] [DEBUG] [P2472:T23428] rage perf: selection calls=12 avg_ms=0.002 max_ms=0.003
+[2026-10-01 23:57:43.727] [DEBUG] [P2472:T23428] rage perf: pool_dispatch_wait calls=48 avg_ms=0.000 max_ms=0.000
+[2026-10-01 23:57:43.727] [DEBUG] [P2472:T23428] rage perf: pool_join_wait calls=48 avg_ms=0.139 max_ms=4.955
+[2026-10-01 23:57:44.229] [DEBUG] [P2472:T27820] [config] settings saved to the active profile
+[2026-10-01 23:57:44.258] [WARN ] [P2472:T23428] [fsn-diag] stage=11 ctlptr=0x7ffccb578008 ctl=0x3bf2eebb400 shutdown=0
+[2026-10-01 23:57:44.703] [WARN ] [P2472:T23428] [local-diag] ctl=0x3bf2eebb400 elist=0x3be6d440000 empty=0 off_pawn=1724 off_hp=844 off_team=999 pawn_h=0x1bf81a1 pawn=0x3bee0444800 hp=80 vm=0x7ffccb5a6910 gv=0x7ffccb26be98
+[2026-10-01 23:57:45.649] [DEBUG] [P2472:T31288] [rage-contact:v2] sample=2 patch=contact-v2 compiled=Oct  1 2026 23:51:55 records_before=2 records_after=2 hits_ptr_changed=0 surfaces_ptr_changed=0 start=(321.296,-1450.625,-112.000) end=(36.895,-1926.954,-56.585)
+[2026-10-01 23:57:45.649] [DEBUG] [P2472:T31288] [rage-contact:v2] sample=2 role=target entity=000003BF48D3D800 identity=000003BE8AB8C7F8 readable=1 raw=001601c9 flags=00000000 normalized=001601c9 strict_raw=000003BF48D3D800 strict_normalized=000003BF48D3D800
+[2026-10-01 23:57:45.649] [DEBUG] [P2472:T31288] [rage-contact:v2] sample=2 role=local entity=000003BEE0444800 identity=000003BE8AB8B678 readable=1 raw=01bf81a1 flags=00000000 normalized=01bf81a1 strict_raw=000003BEE0444800 strict_normalized=000003BEE0444800
+[2026-10-01 23:57:45.649] [DEBUG] [P2472:T31288] [rage-contact:v2] sample=2 record=0 damage=49.9813 enter=0.000000 exit=0.043101 team=4 enter_ix=0000 exit_ix=0000 bits=00
+[2026-10-01 23:57:45.649] [DEBUG] [P2472:T31288] [rage-contact:v2] sample=2 record=0 token_2c=00008000 strict=000003BF0B453800 by_index=000003BF0B453800 slot_raw=00008000 slot_flags=00000000 slot_normalized=00008000 owner=ffffffff owner_strict=0000000000000000 owner_by_index=0000000000000000
+[2026-10-01 23:57:45.649] [DEBUG] [P2472:T31288] [rage-contact:v2] sample=2 record=0 raw14=33702cad 3f800000 b2f0cd9b 3d308af2 2f495b40 000003bf 3e1da240 000003bf ffffffff ffffffff ffffffff 00008000 0000002e 00000000
+[2026-10-01 23:57:45.649] [DEBUG] [P2472:T31288] [rage-contact:v2] sample=2 record=1 damage=0.0000 enter=0.043101 exit=1.000000 team=4 enter_ix=0000 exit_ix=0003 bits=01
+[2026-10-01 23:57:45.649] [DEBUG] [P2472:T31288] [rage-contact:v2] sample=2 record=1 token_2c=00008000 strict=000003BF0B453800 by_index=000003BF0B453800 slot_raw=00008000 slot_flags=00000000 slot_normalized=00008000 owner=ffffffff owner_strict=0000000000000000 owner_by_index=0000000000000000
+[2026-10-01 23:57:45.649] [DEBUG] [P2472:T31288] [rage-contact:v2] sample=2 record=1 raw14=33702cad 3f800000 b2f0cd9b 3d308af2 2f495b40 000003bf 3e1da240 000003bf ffffffff ffffffff ffffffff 00008000 0000002e 00000000
+[2026-10-01 23:57:48.104] [DEBUG] [P2472:T5708] [rage-contact:v2] sample=3 patch=contact-v2 compiled=Oct  1 2026 23:51:55 records_before=4 records_after=4 hits_ptr_changed=0 surfaces_ptr_changed=0 start=(518.955,-1625.403,-200.000) end=(-133.583,-1717.938,-128.395)
+[2026-10-01 23:57:48.104] [DEBUG] [P2472:T5708] [rage-contact:v2] sample=3 role=target entity=000003BF43D49800 identity=000003BE8AB8BF38 readable=1 raw=001281b5 flags=00000000 normalized=001281b5 strict_raw=000003BF43D49800 strict_normalized=000003BF43D49800
+[2026-10-01 23:57:48.104] [DEBUG] [P2472:T5708] [rage-contact:v2] sample=3 role=local entity=000003BEE0444800 identity=000003BE8AB8B678 readable=1 raw=01bf81a1 flags=00000000 normalized=01bf81a1 strict_raw=000003BEE0444800 strict_normalized=000003BEE0444800
+[2026-10-01 23:57:48.104] [DEBUG] [P2472:T5708] [rage-contact:v2] sample=3 record=0 damage=49.5530 enter=0.000000 exit=0.135447 team=4 enter_ix=0000 exit_ix=0000 bits=00
+[2026-10-01 23:57:48.104] [DEBUG] [P2472:T5708] [rage-contact:v2] sample=3 record=0 token_2c=00008000 strict=000003BF0B453800 by_index=000003BF0B453800 slot_raw=00008000 slot_flags=00000000 slot_normalized=00008000 owner=ffffffff owner_strict=0000000000000000 owner_by_index=0000000000000000
+[2026-10-01 23:57:48.104] [DEBUG] [P2472:T5708] [rage-contact:v2] sample=3 record=0 raw14=3ee4f92e 00000000 3f64f92e 3e0ab285 2f495b40 000003bf 3e1dbb80 000003bf ffffffff 0000f506 ffffffff 00008000 0000002e 00000000
+[2026-10-01 23:57:48.104] [DEBUG] [P2472:T5708] [rage-contact:v2] sample=3 record=1 damage=10.8618 enter=0.135447 exit=0.145464 team=3 enter_ix=0000 exit_ix=0001 bits=01
+[2026-10-01 23:57:48.104] [DEBUG] [P2472:T5708] [rage-contact:v2] sample=3 record=1 token_2c=00008000 strict=000003BF0B453800 by_index=000003BF0B453800 slot_raw=00008000 slot_flags=00000000 slot_normalized=00008000 owner=ffffffff owner_strict=0000000000000000 owner_by_index=0000000000000000
+[2026-10-01 23:57:48.104] [DEBUG] [P2472:T5708] [rage-contact:v2] sample=3 record=1 raw14=3ee4f92e 00000000 3f64f92e 3e0ab285 2f495b40 000003bf 3e1dbb80 000003bf ffffffff 0000f506 ffffffff 00008000 0000002e 00000000
+[2026-10-01 23:57:48.105] [DEBUG] [P2472:T5708] [rage-contact:v2] sample=3 record=2 damage=10.8374 enter=0.145464 exit=0.150005 team=3 enter_ix=0001 exit_ix=0002 bits=00
+[2026-10-01 23:57:48.105] [DEBUG] [P2472:T5708] [rage-contact:v2] sample=3 record=2 token_2c=00008000 strict=000003BF0B453800 by_index=000003BF0B453800 slot_raw=00008000 slot_flags=00000000 slot_normalized=00008000 owner=ffffffff owner_strict=0000000000000000 owner_by_index=0000000000000000
+[2026-10-01 23:57:48.105] [DEBUG] [P2472:T5708] [rage-contact:v2] sample=3 record=2 raw14=00000000 00000000 3f800000 3e14f490 2f495b40 000003bf 3e1dbb80 000003bf ffffffff 0000f4bb ffffffff 00008000 0001002e 00000000
+[2026-10-01 23:57:48.436] [DEBUG] [P2472:T23428] [rage-eye:v3] source=current-eye native=(nan,nan,nan) eye=(506.211,-1631.815,-200.000) selected=(506.211,-1631.815,-200.000)
+[2026-10-01 23:57:48.731] [DEBUG] [P2472:T23428] [rage-diag:pipeline] entry=862 gun_calls=103 targets=490 no_targets=0 scan_empty=0 scan_nonempty=103 scan_hits=9835 selection=103 selected=103 fire_calls=103 attack_set=21 fire_abort_viewangles=0 fire_history_pushed=0 fire_history_missing=0 gate_inactive=0 gate_no_enemies=0 gate_disabled=0 gate_cannot_shoot=759
+[2026-10-01 23:57:48.731] [DEBUG] [P2472:T23428] [rage-diag:scan] prepare_calls=1100 prepare_invalid=0 prepare_fov=0 prepare_geometry=0 prepared_points=18840 points=18840 invalid_hitbox=0 fov=0 budget=2450 penetration_failed=6499 damage=0 headgroup=56 accepted=9835
+[2026-10-01 23:57:48.731] [DEBUG] [P2472:T23428] [rage-diag:penetration] pen_calls=16411 no_weapon_damage=0 tls_failed=0 invalid_filter=0 no_trace_hits=0 contacts=51026 damage_exhausted=18542 contact_mismatch=19695 no_target_hit=6499 geometry_miss=0 pen_success=9912 pen_contact_accept=3975 pen_geometry_accept=5937
+[2026-10-01 23:57:48.731] [DEBUG] [P2472:T23428] [rage-diag:config] patch=scan-v1 item=1 no_spread=1 max_fov=180.00 min_damage=34.00 damage_override=0 override_value=11.00 weapon_damage=53.00 range=4096.00 penetration=2.00 range_modifier=0.8500
+[2026-10-01 23:57:48.731] [DEBUG] [P2472:T23428] rage perf: rage_total calls=862 avg_ms=0.160 max_ms=2.092
+[2026-10-01 23:57:48.731] [DEBUG] [P2472:T23428] rage perf: gather calls=103 avg_ms=0.079 max_ms=0.225
+[2026-10-01 23:57:48.731] [DEBUG] [P2472:T23428] rage perf: prepare_scan calls=1100 avg_ms=0.004 max_ms=0.080
+[2026-10-01 23:57:48.731] [DEBUG] [P2472:T23428] rage perf: scan_batch calls=408 avg_ms=0.179 max_ms=0.754
+[2026-10-01 23:57:48.731] [DEBUG] [P2472:T23428] rage perf: selection calls=103 avg_ms=0.005 max_ms=0.010
+[2026-10-01 23:57:48.731] [DEBUG] [P2472:T23428] rage perf: pool_dispatch_wait calls=408 avg_ms=0.000 max_ms=0.001
+[2026-10-01 23:57:48.731] [DEBUG] [P2472:T23428] rage perf: pool_join_wait calls=408 avg_ms=0.041 max_ms=0.537
+[2026-10-01 23:57:49.260] [WARN ] [P2472:T23428] [fsn-diag] stage=12 ctlptr=0x7ffccb578008 ctl=0x3bf2eebb400 shutdown=0
+[2026-10-01 23:57:49.705] [WARN ] [P2472:T23428] [local-diag] ctl=0x3bf2eebb400 elist=0x3be6d440000 empty=0 off_pawn=1724 off_hp=844 off_team=999 pawn_h=0x1bf81a1 pawn=0x3bee0444800 hp=59 vm=0x7ffccb5a6910 gv=0x7ffccb26be98
+[2026-10-01 23:57:53.089] [DEBUG] [P2472:T10568] [rage-contact:v2] sample=4 patch=contact-v2 compiled=Oct  1 2026 23:51:55 records_before=4 records_after=4 hits_ptr_changed=0 surfaces_ptr_changed=0 start=(-138.440,-1821.351,-62.000) end=(-267.404,-1527.450,-77.934)
+[2026-10-01 23:57:53.089] [DEBUG] [P2472:T10568] [rage-contact:v2] sample=4 role=target entity=000003BF42DFD000 identity=000003BE8AB8B8A8 readable=1 raw=01ac81a6 flags=00000000 normalized=01ac81a6 strict_raw=000003BF42DFD000 strict_normalized=000003BF42DFD000
+[2026-10-01 23:57:53.089] [DEBUG] [P2472:T10568] [rage-contact:v2] sample=4 role=local entity=000003BEE0444800 identity=000003BE8AB8B678 readable=1 raw=01bf81a1 flags=00000000 normalized=01bf81a1 strict_raw=000003BEE0444800 strict_normalized=000003BEE0444800
+[2026-10-01 23:57:53.089] [DEBUG] [P2472:T10568] [rage-contact:v2] sample=4 record=0 damage=48.6657 enter=0.000000 exit=0.062705 team=4 enter_ix=0000 exit_ix=0000 bits=00
+[2026-10-01 23:57:53.089] [DEBUG] [P2472:T10568] [rage-contact:v2] sample=4 record=0 token_2c=00008000 strict=000003BF0B453800 by_index=000003BF0B453800 slot_raw=00008000 slot_flags=00000000 slot_normalized=00008000 owner=ffffffff owner_strict=0000000000000000 owner_by_index=0000000000000000
+[2026-10-01 23:57:53.089] [DEBUG] [P2472:T10568] [rage-contact:v2] sample=4 record=0 raw14=bddf3916 bf7e798f 00000000 3d806b9e 2f495b40 000003bf 3e1db940 000003bf ffffffff ffffffff ffffffff 00008000 00000030 00000000
+[2026-10-01 23:57:53.089] [DEBUG] [P2472:T10568] [rage-contact:v2] sample=4 record=1 damage=23.1368 enter=0.062705 exit=0.064814 team=3 enter_ix=0000 exit_ix=0001 bits=01
+[2026-10-01 23:57:53.089] [DEBUG] [P2472:T10568] [rage-contact:v2] sample=4 record=1 token_2c=00008000 strict=000003BF0B453800 by_index=000003BF0B453800 slot_raw=00008000 slot_flags=00000000 slot_normalized=00008000 owner=ffffffff owner_strict=0000000000000000 owner_by_index=0000000000000000
+[2026-10-01 23:57:53.089] [DEBUG] [P2472:T10568] [rage-contact:v2] sample=4 record=1 raw14=bddf3916 bf7e798f 00000000 3d806b9e 2f495b40 000003bf 3e1db940 000003bf ffffffff ffffffff ffffffff 00008000 00000030 00000000
+[2026-10-01 23:57:53.089] [DEBUG] [P2472:T10568] [rage-contact:v2] sample=4 record=2 damage=22.8384 enter=0.064814 exit=0.074353 team=3 enter_ix=0001 exit_ix=0002 bits=00
+[2026-10-01 23:57:53.090] [DEBUG] [P2472:T10568] [rage-contact:v2] sample=4 record=2 token_2c=00008000 strict=000003BF0B453800 by_index=000003BF0B453800 slot_raw=00008000 slot_flags=00000000 slot_normalized=00008000 owner=ffffffff owner_strict=0000000000000000 owner_by_index=0000000000000000
+[2026-10-01 23:57:53.090] [DEBUG] [P2472:T10568] [rage-contact:v2] sample=4 record=2 raw14=bf7e9e28 3dd488c4 00000000 3d84bd21 2f495b40 000003bf 3e1db940 000003bf ffffffff ffffffff ffffffff 00008000 00010030 00000000
+[2026-10-01 23:57:53.433] [DEBUG] [P2472:T23428] [rage-eye:v3] source=current-eye native=(nan,nan,nan) eye=(-186.369,-1880.957,-58.078) selected=(-186.369,-1880.957,-58.078)
+[2026-10-01 23:57:53.732] [DEBUG] [P2472:T23428] [rage-diag:pipeline] entry=922 gun_calls=180 targets=595 no_targets=0 scan_empty=0 scan_nonempty=180 scan_hits=24926 selection=180 selected=180 fire_calls=180 attack_set=24 fire_abort_viewangles=0 fire_history_pushed=0 fire_history_missing=0 gate_inactive=0 gate_no_enemies=0 gate_disabled=0 gate_cannot_shoot=742
+[2026-10-01 23:57:53.732] [DEBUG] [P2472:T23428] [rage-diag:scan] prepare_calls=1675 prepare_invalid=0 prepare_fov=0 prepare_geometry=0 prepared_points=31650 points=31650 invalid_hitbox=0 fov=0 budget=2850 penetration_failed=3561 damage=0 headgroup=313 accepted=24926
+[2026-10-01 23:57:53.732] [DEBUG] [P2472:T23428] [rage-diag:penetration] pen_calls=28827 no_weapon_damage=0 tls_failed=0 invalid_filter=0 no_trace_hits=0 contacts=85756 damage_exhausted=19593 contact_mismatch=42531 no_target_hit=3563 geometry_miss=0 pen_success=25264 pen_contact_accept=6914 pen_geometry_accept=18350
+[2026-10-01 23:57:53.733] [DEBUG] [P2472:T23428] [rage-diag:config] patch=scan-v1 item=1 no_spread=1 max_fov=180.00 min_damage=34.00 damage_override=0 override_value=11.00 weapon_damage=53.00 range=4096.00 penetration=2.00 range_modifier=0.8500
+[2026-10-01 23:57:53.733] [DEBUG] [P2472:T23428] rage perf: rage_total calls=922 avg_ms=0.294 max_ms=2.295
+[2026-10-01 23:57:53.733] [DEBUG] [P2472:T23428] rage perf: gather calls=180 avg_ms=0.054 max_ms=0.158
+[2026-10-01 23:57:53.733] [DEBUG] [P2472:T23428] rage perf: prepare_scan calls=1675 avg_ms=0.004 max_ms=0.099
+[2026-10-01 23:57:53.733] [DEBUG] [P2472:T23428] rage perf: scan_batch calls=720 avg_ms=0.128 max_ms=0.616
+[2026-10-01 23:57:53.733] [DEBUG] [P2472:T23428] rage perf: selection calls=180 avg_ms=0.006 max_ms=0.009
+[2026-10-01 23:57:53.733] [DEBUG] [P2472:T23428] rage perf: pool_dispatch_wait calls=720 avg_ms=0.000 max_ms=0.000
+[2026-10-01 23:57:53.733] [DEBUG] [P2472:T23428] rage perf: pool_join_wait calls=720 avg_ms=0.030 max_ms=0.435
+[2026-10-01 23:57:54.263] [WARN ] [P2472:T23428] [fsn-diag] stage=0 ctlptr=0x7ffccb578008 ctl=0x3bf2eebb400 shutdown=0
+[2026-10-01 23:57:54.707] [WARN ] [P2472:T23428] [local-diag] ctl=0x3bf2eebb400 elist=0x3be6d440000 empty=0 off_pawn=1724 off_hp=844 off_team=999 pawn_h=0x1bf81a1 pawn=0x3bee0444800 hp=59 vm=0x7ffccb5a6910 gv=0x7ffccb26be98
+[2026-10-01 23:57:58.433] [DEBUG] [P2472:T23428] [rage-eye:v3] source=current-eye native=(nan,nan,nan) eye=(45.697,-1823.394,56.609) selected=(45.697,-1823.394,56.609)
+[2026-10-01 23:57:58.733] [DEBUG] [P2472:T23428] [rage-diag:pipeline] entry=1015 gun_calls=229 targets=306 no_targets=0 scan_empty=0 scan_nonempty=229 scan_hits=25088 selection=229 selected=229 fire_calls=229 attack_set=15 fire_abort_viewangles=0 fire_history_pushed=0 fire_history_missing=0 gate_inactive=0 gate_no_enemies=16 gate_disabled=0 gate_cannot_shoot=770
+[2026-10-01 23:57:58.733] [DEBUG] [P2472:T23428] [rage-diag:scan] prepare_calls=1224 prepare_invalid=0 prepare_fov=0 prepare_geometry=0 prepared_points=25704 points=25704 invalid_hitbox=0 fov=0 budget=616 penetration_failed=0 damage=0 headgroup=0 accepted=25088
+[2026-10-01 23:57:58.733] [DEBUG] [P2472:T23428] [rage-diag:penetration] pen_calls=25103 no_weapon_damage=0 tls_failed=0 invalid_filter=0 no_trace_hits=0 contacts=79840 damage_exhausted=4907 contact_mismatch=15409 no_target_hit=0 geometry_miss=0 pen_success=25103 pen_contact_accept=15309 pen_geometry_accept=9794
+[2026-10-01 23:57:58.733] [DEBUG] [P2472:T23428] [rage-diag:config] patch=scan-v1 item=1 no_spread=1 max_fov=180.00 min_damage=34.00 damage_override=0 override_value=11.00 weapon_damage=53.00 range=4096.00 penetration=2.00 range_modifier=0.8500
+[2026-10-01 23:57:58.733] [DEBUG] [P2472:T23428] rage perf: rage_total calls=1015 avg_ms=0.366 max_ms=2.627
+[2026-10-01 23:57:58.733] [DEBUG] [P2472:T23428] rage perf: gather calls=229 avg_ms=0.029 max_ms=0.215
+[2026-10-01 23:57:58.733] [DEBUG] [P2472:T23428] rage perf: prepare_scan calls=1224 avg_ms=0.005 max_ms=0.088
+[2026-10-01 23:57:58.733] [DEBUG] [P2472:T23428] rage perf: scan_batch calls=308 avg_ms=0.132 max_ms=0.511
+[2026-10-01 23:57:58.733] [DEBUG] [P2472:T23428] rage perf: selection calls=229 avg_ms=0.005 max_ms=0.022
+[2026-10-01 23:57:58.733] [DEBUG] [P2472:T23428] rage perf: pool_dispatch_wait calls=308 avg_ms=0.000 max_ms=0.000
+[2026-10-01 23:57:58.734] [DEBUG] [P2472:T23428] rage perf: pool_join_wait calls=308 avg_ms=0.034 max_ms=0.352
+[2026-10-01 23:57:59.267] [WARN ] [P2472:T23428] [fsn-diag] stage=0 ctlptr=0x7ffccb578008 ctl=0x3bf2eebb400 shutdown=0
+[2026-10-01 23:57:59.709] [WARN ] [P2472:T23428] [local-diag] ctl=0x3bf2eebb400 elist=0x3be6d440000 empty=0 off_pawn=1724 off_hp=844 off_team=999 pawn_h=0x1bf81a1 pawn=0x3bee0444800 hp=36 vm=0x7ffccb5a6910 gv=0x7ffccb26be98
+[2026-10-01 23:58:03.757] [DEBUG] [P2472:T23428] [rage-diag:pipeline] entry=1054 gun_calls=0 targets=0 no_targets=0 scan_empty=0 scan_nonempty=0 scan_hits=0 selection=0 selected=0 fire_calls=0 attack_set=0 fire_abort_viewangles=0 fire_history_pushed=0 fire_history_missing=0 gate_inactive=0 gate_no_enemies=1054 gate_disabled=0 gate_cannot_shoot=0
+[2026-10-01 23:58:03.757] [DEBUG] [P2472:T23428] [rage-diag:scan] prepare_calls=0 prepare_invalid=0 prepare_fov=0 prepare_geometry=0 prepared_points=0 points=0 invalid_hitbox=0 fov=0 budget=0 penetration_failed=0 damage=0 headgroup=0 accepted=0
+[2026-10-01 23:58:03.757] [DEBUG] [P2472:T23428] [rage-diag:penetration] pen_calls=0 no_weapon_damage=0 tls_failed=0 invalid_filter=0 no_trace_hits=0 contacts=0 damage_exhausted=0 contact_mismatch=0 no_target_hit=0 geometry_miss=0 pen_success=0 pen_contact_accept=0 pen_geometry_accept=0
+[2026-10-01 23:58:03.757] [DEBUG] [P2472:T23428] [rage-diag:config] patch=scan-v1 item=526 no_spread=0 max_fov=180.00 min_damage=35.00 damage_override=0 override_value=11.00 weapon_damage=50.00 range=4096.00 penetration=1.00 range_modifier=0.9900
+[2026-10-01 23:58:03.757] [DEBUG] [P2472:T23428] rage perf: rage_total calls=1054 avg_ms=0.000 max_ms=0.001
+[2026-10-01 23:58:04.368] [WARN ] [P2472:T23428] [fsn-diag] stage=0 ctlptr=0x7ffccb578008 ctl=0x3bf2eebb400 shutdown=0
+[2026-10-01 23:58:04.725] [WARN ] [P2472:T23428] [local-diag] ctl=0x3bf2eebb400 elist=0x3be6d440000 empty=0 off_pawn=1724 off_hp=844 off_team=999 pawn_h=0x1bf81a1 pawn=0x3bee0444800 hp=36 vm=0x7ffccb5a6910 gv=0x7ffccb26be98
+[2026-10-01 23:58:08.810] [DEBUG] [P2472:T23428] [rage-diag:pipeline] entry=311 gun_calls=0 targets=0 no_targets=0 scan_empty=0 scan_nonempty=0 scan_hits=0 selection=0 selected=0 fire_calls=0 attack_set=0 fire_abort_viewangles=0 fire_history_pushed=0 fire_history_missing=0 gate_inactive=0 gate_no_enemies=311 gate_disabled=0 gate_cannot_shoot=0
+[2026-10-01 23:58:08.810] [DEBUG] [P2472:T23428] [rage-diag:scan] prepare_calls=0 prepare_invalid=0 prepare_fov=0 prepare_geometry=0 prepared_points=0 points=0 invalid_hitbox=0 fov=0 budget=0 penetration_failed=0 damage=0 headgroup=0 accepted=0
+[2026-10-01 23:58:08.810] [DEBUG] [P2472:T23428] [rage-diag:penetration] pen_calls=0 no_weapon_damage=0 tls_failed=0 invalid_filter=0 no_trace_hits=0 contacts=0 damage_exhausted=0 contact_mismatch=0 no_target_hit=0 geometry_miss=0 pen_success=0 pen_contact_accept=0 pen_geometry_accept=0
+[2026-10-01 23:58:08.810] [DEBUG] [P2472:T23428] [rage-diag:config] patch=scan-v1 item=526 no_spread=0 max_fov=180.00 min_damage=35.00 damage_override=0 override_value=11.00 weapon_damage=50.00 range=4096.00 penetration=1.00 range_modifier=0.9900
+[2026-10-01 23:58:08.810] [DEBUG] [P2472:T23428] rage perf: rage_total calls=311 avg_ms=0.000 max_ms=0.001
+[2026-10-01 23:58:09.390] [WARN ] [P2472:T23428] [fsn-diag] stage=0 ctlptr=0x7ffccb578008 ctl=0x3bf2eebb400 shutdown=0
+[2026-10-01 23:58:09.692] [WARN ] [P2472:T23428] [skin-hud] active=22544587 candidates=2 matches=0 reverse_offset=0 forward_offset=0
+[2026-10-01 23:58:09.827] [WARN ] [P2472:T23428] [local-diag] ctl=0x3bf2eebb400 elist=0x3be6d440000 empty=0 off_pawn=1724 off_hp=844 off_team=999 pawn_h=0x1bf81a1 pawn=0x3bee0444800 hp=100 vm=0x7ffccb5a6910 gv=0x7ffccb26be98
+[2026-10-01 23:58:13.834] [DEBUG] [P2472:T23428] [rage-diag:pipeline] entry=303 gun_calls=0 targets=0 no_targets=0 scan_empty=0 scan_nonempty=0 scan_hits=0 selection=0 selected=0 fire_calls=0 attack_set=0 fire_abort_viewangles=0 fire_history_pushed=0 fire_history_missing=0 gate_inactive=245 gate_no_enemies=58 gate_disabled=0 gate_cannot_shoot=0
+[2026-10-01 23:58:13.834] [DEBUG] [P2472:T23428] [rage-diag:scan] prepare_calls=0 prepare_invalid=0 prepare_fov=0 prepare_geometry=0 prepared_points=0 points=0 invalid_hitbox=0 fov=0 budget=0 penetration_failed=0 damage=0 headgroup=0 accepted=0
+[2026-10-01 23:58:13.834] [DEBUG] [P2472:T23428] [rage-diag:penetration] pen_calls=0 no_weapon_damage=0 tls_failed=0 invalid_filter=0 no_trace_hits=0 contacts=0 damage_exhausted=0 contact_mismatch=0 no_target_hit=0 geometry_miss=0 pen_success=0 pen_contact_accept=0 pen_geometry_accept=0
+[2026-10-01 23:58:13.834] [DEBUG] [P2472:T23428] [rage-diag:config] patch=scan-v1 item=49 no_spread=0 max_fov=180.00 min_damage=35.00 damage_override=0 override_value=11.00 weapon_damage=50.00 range=4096.00 penetration=1.00 range_modifier=0.9900
+[2026-10-01 23:58:13.834] [DEBUG] [P2472:T23428] rage perf: rage_total calls=303 avg_ms=0.000 max_ms=0.001
+[2026-10-01 23:58:14.423] [WARN ] [P2472:T23428] [fsn-diag] stage=0 ctlptr=0x7ffccb578008 ctl=0x3bf2eebb400 shutdown=0
+[2026-10-01 23:58:14.896] [WARN ] [P2472:T23428] [local-diag] ctl=0x3bf2eebb400 elist=0x3be6d440000 empty=0 off_pawn=1724 off_hp=844 off_team=999 pawn_h=0x1bf81a1 pawn=0x3bee0444800 hp=100 vm=0x7ffccb5a6910 gv=0x7ffccb26be98
+[2026-10-01 23:58:18.430] [DEBUG] [P2472:T23428] level shutdown: pre-engine cleanup
+[2026-10-01 23:58:18.430] [INFO ] [P2472:T23428] [scoreboard_weapons] level change — state reset
+[2026-10-01 23:58:18.430] [DEBUG] [P2472:T23428] level shutdown: cleanup complete
+[2026-10-01 23:58:19.427] [WARN ] [P2472:T23428] [fsn-diag] stage=1 ctlptr=0x7ffccb578008 ctl=0x0 shutdown=1
+[2026-10-01 23:58:19.427] [WARN ] [P2472:T23428] [lobby-music] awaiting playback generation=5 kit=76 attempt=1 hook=1 refresh=1 thread=23428
+[2026-10-01 23:58:19.440] [INFO ] [P2472:T23428] [game log] ClientPutInServer create new player controller [mintalynews.t.me]
+[2026-10-01 23:58:19.661] [INFO ] [P2472:T23428] [game log] mintalynews.t.me подключается.
+[2026-10-01 23:58:19.911] [WARN ] [P2472:T23428] [local-diag] ctl=0x3bf0b21e800 elist=0x3be6d440000 empty=0 off_pawn=1724 off_hp=844 off_team=999 pawn_h=0x4c00ed pawn=0x3bee2a52800 hp=0 vm=0x7ffccb5a6910 gv=0x7ffccb26be98
+[2026-10-01 23:58:20.453] [INFO ] [P2472:T23068] [chams-state] enabled-mask=0x00 local-pawn=0000000000000000 generate-hook=1
+[2026-10-01 23:58:22.836] [DEBUG] [P2472:T23428] level shutdown: pre-engine cleanup
+[2026-10-01 23:58:22.836] [INFO ] [P2472:T23428] [scoreboard_weapons] level change — state reset
+[2026-10-01 23:58:22.836] [DEBUG] [P2472:T23428] level shutdown: cleanup complete
