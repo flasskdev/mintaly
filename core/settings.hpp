@@ -1536,6 +1536,7 @@ namespace settings {
                                 xui::setting molotov{ true,{}, "molotov", "esp projectiles" };
                                 xui::setting decoy{ true,{}, "decoy", "esp projectiles" };
                                 xui::setting inferno{ true,{}, "inferno", "esp projectiles" };
+                                xui::setting timer{ true,{}, "grenade / molotov timer", "esp projectiles" };
 
                                 std::array<group, 5> groups{};
 

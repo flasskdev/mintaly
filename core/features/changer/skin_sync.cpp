@@ -10,6 +10,7 @@
 #include <utilities/addresses/addresses.hpp>
 #include <core/systems/systems.hpp>
 #include <external/nlohmann/json.hpp>
+#include <utilities/skin_options.hpp>
 
 namespace features::changer {
 namespace {
@@ -144,7 +145,7 @@ void skin_sync::capture_local_snapshot(std::uint64_t sid) {
     auto skins = nlohmann::json::object();
     for (const auto& [def, skin] : snapshot.skins) {
         skins[std::to_string(def)] = {{"p", skin.paint_kit_id}, {"w", skin.wear}, {"s", skin.seed},
-            {"t", skin.stattrak}, {"c", skin.stattrak_count}, {"n", ""}};
+            {"t", skin.stattrak}, {"c", skin.stattrak_count}, {"n", skin_options::normalize_name_tag(skin.name_tag)}};
     }
     const nlohmann::json payload = {{"action", "skin_sync_push"}, {"steam_id", std::to_string(sid)},
         {"skin_data", skins}, {"music_kit_id", snapshot.music_kit_id}, {"agent_ct", snapshot.agent_ct}, {"agent_t", snapshot.agent_t}};

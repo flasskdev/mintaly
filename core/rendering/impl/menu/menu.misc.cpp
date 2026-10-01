@@ -525,6 +525,8 @@ namespace rendering {
                                         xui::end_popup( );
                                 }
                                 xui::layout::spacing( 3.0f );
+                                xui::toggle( "Grenade / Molotov timer", settings::g_esp.m_projectile.m_overlay.timer );
+                                xui::layout::spacing( 3.0f );
                                 xui::toggle( "Molotov Radius", settings::g_esp.m_projectile.m_overlay.m_infernos.enabled );
                                 if ( xui::begin_popup( "##restore_molo_rad_misc", 220.0f ) )
                                 {

@@ -10,6 +10,7 @@
 #include <utilities/memory/memory.hpp>
 #include <utilities/paint_attributes.hpp>
 #include <protection/game_addresses.hpp>
+#include <utilities/skin_options.hpp>
 
 namespace features::changer::cosmetic_attributes {
     inline constexpr std::array<std::uint16_t, 5> indices{ 6, 7, 8, 80, 81 };
@@ -28,7 +29,7 @@ namespace features::changer::cosmetic_attributes {
     [[nodiscard]] inline settings::changer::applied_skin normalize(settings::changer::applied_skin skin) {
         skin.wear = std::isfinite(skin.wear) ? std::clamp(skin.wear, 0.0f, 1.0f) : 0.01f;
         skin.seed = std::clamp(skin.seed, 0, 1000);
-        skin.name_tag.clear();
+        skin.name_tag = skin_options::normalize_name_tag(skin.name_tag);
         return skin;
     }
 

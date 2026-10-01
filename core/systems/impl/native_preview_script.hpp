@@ -250,6 +250,8 @@ inline constexpr const char* bootstrap = R"MINTALY_JS(
             anchor.style.height = Math.max(64, Number(a.screen_height) || 1080) + 'px';
             anchor.style.visibility = 'visible';
         }
+        var rCard = (rgb >> 16) & 0xff, gCard = (rgb >> 8) & 0xff, bCard = rgb & 0xff;
+        var elevatedColor = '#' + ('000000' + (((Math.min(255, rCard + 8) << 16) | (Math.min(255, gCard + 9) << 8) | Math.min(255, bCard + 12))).toString(16)).slice(-6);
         if (bg && bg.IsValid()) {
             bg.style.position = x + 'px ' + y + 'px 0px';
             bg.style.width = w + 'px';
@@ -257,7 +259,7 @@ inline constexpr const char* bootstrap = R"MINTALY_JS(
             bg.style.visibility = 'visible';
             bg.style.zIndex = 99998;
             bg.style.backgroundImage = 'none';
-            bg.style.backgroundColor = color;
+            bg.style.backgroundColor = elevatedColor;
             bg.style.borderRadius = '0px';
             bg.style.opacity = '1.0';
         }
@@ -270,6 +272,9 @@ inline constexpr const char* bootstrap = R"MINTALY_JS(
         p.style.borderRadius = '0px';
         p.style.backgroundImage = 'none';
         p.style.washColor = 'rgba(0,0,0,0)';
+        p.style.brightness = '1.20';
+        p.style.contrast = '1.08';
+        p.style.saturation = '1.14';
     }
     state.update = function (a) {
         state.touched = Date.now();
@@ -341,7 +346,8 @@ inline constexpr const char* bootstrap = R"MINTALY_JS(
             anchor.style.visibility = 'visible';
             anchor.style.zIndex = 99997;
             var initialRgb = Number(a.background_rgb || 0x0c0d10) & 0xffffff;
-            var initialColor = '#' + ('000000' + initialRgb.toString(16)).slice(-6);
+            var rCardInit = (initialRgb >> 16) & 0xff, gCardInit = (initialRgb >> 8) & 0xff, bCardInit = initialRgb & 0xff;
+            var initialColor = '#' + ('000000' + (((Math.min(255, rCardInit + 8) << 16) | (Math.min(255, gCardInit + 9) << 8) | Math.min(255, bCardInit + 12))).toString(16)).slice(-6);
             var bg = $.CreatePanel('Panel', anchor, 'MintalyNativePreviewBg_' + panelSuffix, {});
             state.background = bg;
             if (bg) {
@@ -400,6 +406,9 @@ inline constexpr const char* bootstrap = R"MINTALY_JS(
             p.style.transform = 'scale3d(1, 1, 1)';
             p.style.transformOrigin = '50% 50%';
             p.style.borderRadius = '0px';
+            p.style.brightness = '1.20';
+            p.style.contrast = '1.08';
+            p.style.saturation = '1.14';
             optional(p, 'SetTransparentBackground', [true]);
             optional(p, 'SetHideStaticGeometry', [true]);
             optional(p, 'SetHideParticles', [true]);
@@ -520,55 +529,46 @@ inline constexpr const char* bootstrap = R"MINTALY_JS(
                     optional(p, 'SetTransparentBackground', [true]);
                     optional(p, 'SetCSMSplitPlane0DistanceOverride', [200.0]);
                     optional(p, 'SetBarnlightShadowScaleOverride', [1.0]);
+                    var itemLightNames = ['light_item', 'light_item_new', 'light_weapon', 'light_item_key', 'light_item_fill', 'light_item_rim'];
+                    for (var li = 0; li < itemLightNames.length; ++li) {
+                        optional(p, 'FireEntityInput', [itemLightNames[li], 'Enable']);
+                        optional(p, 'FireEntityInput', [itemLightNames[li], 'SetColor', '255 255 255']);
+                        optional(p, 'FireEntityInput', [itemLightNames[li], 'SetLightBrightness', '7.0']);
+                        optional(p, 'FireEntityInput', [itemLightNames[li], 'SetBrightness', '7.0']);
+                    }
                     for (var i = 0; i <= 10; ++i) {
-                        var mod = i === 0 ? '' : String(i);
-                        if (i === current.active) {
-                            optional(p, 'FireEntityInput', ['light_item' + mod, 'Enable']);
-                            optional(p, 'FireEntityInput', ['light_item' + mod, 'SetColor', '255 255 255']);
-                            optional(p, 'FireEntityInput', ['light_item' + mod, 'SetLightBrightness', '3.5']);
-                            optional(p, 'FireEntityInput', ['light_item' + mod, 'SetBrightness', '3.5']);
-                            optional(p, 'FireEntityInput', ['light_item' + i, 'Enable']);
-                            optional(p, 'FireEntityInput', ['light_item' + i, 'SetColor', '255 255 255']);
-                            optional(p, 'FireEntityInput', ['light_item' + i, 'SetLightBrightness', '3.5']);
-                            optional(p, 'FireEntityInput', ['light_item' + i, 'SetBrightness', '3.5']);
-
-                            optional(p, 'FireEntityInput', ['light_item_new' + mod, 'Enable']);
-                            optional(p, 'FireEntityInput', ['light_item_new' + mod, 'SetColor', '255 255 255']);
-                            optional(p, 'FireEntityInput', ['light_item_new' + mod, 'SetLightBrightness', '3.0']);
-                            optional(p, 'FireEntityInput', ['light_item_new' + mod, 'SetBrightness', '3.0']);
-                            optional(p, 'FireEntityInput', ['light_item_new' + i, 'Enable']);
-                            optional(p, 'FireEntityInput', ['light_item_new' + i, 'SetColor', '255 255 255']);
-                            optional(p, 'FireEntityInput', ['light_item_new' + i, 'SetLightBrightness', '3.0']);
-                            optional(p, 'FireEntityInput', ['light_item_new' + i, 'SetBrightness', '3.0']);
-                        } else {
-                            optional(p, 'FireEntityInput', ['light_item' + mod, 'Disable']);
-                            optional(p, 'FireEntityInput', ['light_item' + i, 'Disable']);
-                            optional(p, 'FireEntityInput', ['light_item_new' + mod, 'Disable']);
-                            optional(p, 'FireEntityInput', ['light_item_new' + i, 'Disable']);
-                        }
+                        optional(p, 'FireEntityInput', ['light_item' + i, 'Enable']);
+                        optional(p, 'FireEntityInput', ['light_item' + i, 'SetColor', '255 255 255']);
+                        optional(p, 'FireEntityInput', ['light_item' + i, 'SetLightBrightness', '6.5']);
+                        optional(p, 'FireEntityInput', ['light_item' + i, 'SetBrightness', '6.5']);
+                        optional(p, 'FireEntityInput', ['light_item_new' + i, 'Enable']);
+                        optional(p, 'FireEntityInput', ['light_item_new' + i, 'SetColor', '255 255 255']);
+                        optional(p, 'FireEntityInput', ['light_item_new' + i, 'SetLightBrightness', '6.5']);
+                        optional(p, 'FireEntityInput', ['light_item_new' + i, 'SetBrightness', '6.5']);
                     }
                     optional(p, 'FireEntityInput', ['acknowledge_particle', 'DestroyImmediately']);
                     optional(p, 'FireEntityInput', ['acknowledge_particle', 'Disable']);
                     optional(p, 'FireEntityInput', ['sun', 'Enable']);
-                    optional(p, 'FireEntityInput', ['sun', 'SetLightBrightness', '3.0']);
-                    optional(p, 'FireEntityInput', ['sun', 'SetBrightness', '3.0']);
+                    optional(p, 'FireEntityInput', ['sun', 'SetLightBrightness', '6.0']);
+                    optional(p, 'FireEntityInput', ['sun', 'SetBrightness', '6.0']);
                     optional(p, 'FireEntityInput', ['main_light', 'Enable']);
-                    optional(p, 'FireEntityInput', ['main_light', 'SetBrightness', '3.0']);
-                    optional(p, 'FireEntityInput', ['main_light', 'SetLightBrightness', '3.0']);
+                    optional(p, 'FireEntityInput', ['main_light', 'SetBrightness', '6.0']);
+                    optional(p, 'FireEntityInput', ['main_light', 'SetLightBrightness', '6.0']);
                     if (current.agent) {
-                        optional(p, 'FireEntityInput', ['light_char', 'Enable']);
-                        optional(p, 'FireEntityInput', ['light_char', 'SetLightBrightness', '3.5']);
-                        optional(p, 'FireEntityInput', ['light_char', 'SetBrightness', '3.5']);
-                        optional(p, 'FireEntityInput', ['light_character', 'Enable']);
-                        optional(p, 'FireEntityInput', ['light_character', 'SetLightBrightness', '3.5']);
-                        optional(p, 'FireEntityInput', ['light_character', 'SetBrightness', '3.5']);
-                        optional(p, 'FireEntityInput', ['light_player', 'Enable']);
-                        optional(p, 'FireEntityInput', ['light_player', 'SetLightBrightness', '3.5']);
-                        optional(p, 'FireEntityInput', ['light_player', 'SetBrightness', '3.5']);
+                        var charLightNames = ['light_char', 'light_character', 'light_player', 'light_agent', 'light_head', 'light_rim', 'light_fill', 'light_key'];
+                        for (var cli = 0; cli < charLightNames.length; ++cli) {
+                            optional(p, 'FireEntityInput', [charLightNames[cli], 'Enable']);
+                            optional(p, 'FireEntityInput', [charLightNames[cli], 'SetColor', '255 255 255']);
+                            optional(p, 'FireEntityInput', [charLightNames[cli], 'SetLightBrightness', '7.0']);
+                            optional(p, 'FireEntityInput', [charLightNames[cli], 'SetBrightness', '7.0']);
+                        }
                     }
                     applyRotation();
                     applyLayout();
                     p.style.opacity = '1.0';
+                    p.style.brightness = '1.20';
+                    p.style.contrast = '1.08';
+                    p.style.saturation = '1.14';
                     var validId = false;
                     try { validId = !!(current.id && InventoryAPI.IsValidItemID(current.id)); } catch (_) {}
                     logMsg('item id=' + current.id + ' paint=' + currentArgs.paint + ' valid=' + validId);

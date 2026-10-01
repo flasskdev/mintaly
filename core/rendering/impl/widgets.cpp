@@ -439,13 +439,13 @@ namespace rendering {
             draw_list.rect_filled_blurred( x, y, w, height, xdraw::corner_radius{ 7.0f },
                 tint({ 255, 255, 255, 255 }) );
 
-            // 2. White frosted acrylic glass body (like options)
-            const auto glass_top = tint( xdraw::color{ 255, 255, 255, 75 } );
-            const auto glass_bot = tint( xdraw::color{ 240, 246, 255, 45 } );
+            // 2. Dark frosted acrylic glass body
+            const auto glass_top = tint( xdraw::color{ 18, 22, 30, 165 } );
+            const auto glass_bot = tint( xdraw::color{ 10, 12, 17, 195 } );
             draw_list.rect_filled_gradient( x, y, w, height, glass_top, glass_top, glass_bot, glass_bot, xdraw::corner_radius{ 7.0f } );
 
-            // 3. Whitish border
-            draw_list.rect( x, y, w, height, tint( xdraw::color{ 255, 255, 255, 150 } ), xdraw::corner_radius{ 7.0f } );
+            // 3. Subtle refined border
+            draw_list.rect( x, y, w, height, tint( xdraw::color{ 255, 255, 255, 45 } ), xdraw::corner_radius{ 7.0f } );
 
             const auto accent_x = x + 10.0f;
             const auto accent_w = std::max(0.0f, w - 20.0f);

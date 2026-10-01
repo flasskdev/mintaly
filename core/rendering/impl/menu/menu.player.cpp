@@ -222,8 +222,8 @@ void menu::draw_player(float group_w, int subtab) const
 		const auto [vw, vh] = xdraw::viewport_size();
 		req.screen_width = static_cast<int>(vw);
 		req.screen_height = static_cast<int>(vh);
-		req.background_rgb = (static_cast<std::uint32_t>(tokens::col_dark.r) << 16) |
-			(static_cast<std::uint32_t>(tokens::col_dark.g) << 8) | tokens::col_dark.b;
+		req.background_rgb = (static_cast<std::uint32_t>(tokens::col_card.r) << 16) |
+			(static_cast<std::uint32_t>(tokens::col_card.g) << 8) | tokens::col_card.b;
 		req.visible = true;
 		systems::g_model_preview.submit(std::move(req));
 

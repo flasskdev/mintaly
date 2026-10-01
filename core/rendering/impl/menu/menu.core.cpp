@@ -2272,10 +2272,10 @@ namespace rendering {
 
         top_dl.rect_filled_blurred(main_x, main_y, main_w, main_h, xdraw::corner_radius{ 8.0f },
             xdraw::color{ 255, 255, 255, static_cast<std::uint8_t>(255.0f * anim) });
-        const auto glass_top = xdraw::color{ 255, 255, 255, static_cast<std::uint8_t>(75.0f * anim) };
-        const auto glass_bot = xdraw::color{ 240, 245, 255, static_cast<std::uint8_t>(45.0f * anim) };
+        const auto glass_top = xdraw::color{ 20, 24, 34, static_cast<std::uint8_t>(210.0f * anim) };
+        const auto glass_bot = xdraw::color{ 12, 14, 20, static_cast<std::uint8_t>(235.0f * anim) };
         top_dl.rect_filled_gradient(main_x, main_y, main_w, main_h, glass_top, glass_top, glass_bot, glass_bot, xdraw::corner_radius{ 8.0f });
-        top_dl.rect(main_x, main_y, main_w, main_h, xdraw::color{ 255, 255, 255, static_cast<std::uint8_t>(160.0f * anim) }, xdraw::corner_radius{ 8.0f }, 1.0f);
+        top_dl.rect(main_x, main_y, main_w, main_h, xdraw::color{ 255, 255, 255, static_cast<std::uint8_t>(45.0f * anim) }, xdraw::corner_radius{ 8.0f }, 1.0f);
         float item_y = main_y + 8.0f;
         const float item_h = 36.0f;
         // --- ITEM 1: Theme > ---
@@ -2625,10 +2625,10 @@ namespace rendering {
 
             top_dl.rect_filled_blurred(sub_x, sub_y, sub_w, sub_h, xdraw::corner_radius{ 8.0f },
                 xdraw::color{ 255, 255, 255, static_cast<std::uint8_t>(255.0f * sub_anim) });
-            const auto s_glass_top = xdraw::color{ 255, 255, 255, static_cast<std::uint8_t>(75.0f * sub_anim) };
-            const auto s_glass_bot = xdraw::color{ 240, 245, 255, static_cast<std::uint8_t>(45.0f * sub_anim) };
+            const auto s_glass_top = xdraw::color{ 20, 24, 34, static_cast<std::uint8_t>(210.0f * sub_anim) };
+            const auto s_glass_bot = xdraw::color{ 12, 14, 20, static_cast<std::uint8_t>(235.0f * sub_anim) };
             top_dl.rect_filled_gradient(sub_x, sub_y, sub_w, sub_h, s_glass_top, s_glass_top, s_glass_bot, s_glass_bot, xdraw::corner_radius{ 8.0f });
-            top_dl.rect(sub_x, sub_y, sub_w, sub_h, xdraw::color{ 255, 255, 255, static_cast<std::uint8_t>(160.0f * sub_anim) }, xdraw::corner_radius{ 8.0f }, 1.0f);
+            top_dl.rect(sub_x, sub_y, sub_w, sub_h, xdraw::color{ 255, 255, 255, static_cast<std::uint8_t>(45.0f * sub_anim) }, xdraw::corner_radius{ 8.0f }, 1.0f);
             // Header: Title + Close Button
             xdraw::push_font(g_fonts.inter_bold[fonts::size::petite]);
             const char* sub_title = (this->m_user_subtab == 1) ? "THEMES" : "WATERMARK";

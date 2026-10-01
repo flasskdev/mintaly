@@ -49,22 +49,21 @@ class UserRequestsValidation(unittest.TestCase):
         self.assertIn('draw_animated_item( "rb_auto_scope_anim", is_sniper', rage_menu)
         self.assertIn('xui::toggle( "Auto Scope", autos.scope );', rage_menu)
 
-    # 8. Skinchanger name tag system removal
-    def test_item_8_name_tag_removal(self):
+    # 8. Skinchanger name tag system support
+    def test_item_8_name_tag_system(self):
         skin_menu = read_source("core/rendering/impl/menu/menu.skins.cpp")
-        self.assertNotIn("Name Tag", skin_menu)
-        self.assertNotIn("skin.name_tag", skin_menu)
+        self.assertIn("Name tag", skin_menu)
+        self.assertIn("skin.name_tag", skin_menu)
 
         name_tag_h = read_source("core/features/changer/name_tag.hpp")
-        self.assertIn("return std::nullopt;", name_tag_h)
-        self.assertNotIn("m_szCustomName", name_tag_h)
-        self.assertNotIn("m_szCustomNameOverride", name_tag_h)
+        self.assertIn("m_szCustomName", name_tag_h)
+        self.assertIn("m_szCustomNameOverride", name_tag_h)
 
         cosmetics = read_source("core/features/changer/cosmetic_attributes.hpp")
-        self.assertIn("skin.name_tag.clear();", cosmetics)
+        self.assertNotIn("skin.name_tag.clear();", cosmetics)
 
         skin_sync = read_source("core/features/changer/skin_sync.cpp")
-        self.assertIn('{"n", ""}', skin_sync)
+        self.assertIn('skin_options::normalize_name_tag(skin.name_tag)', skin_sync)
 
     # 12. Custom hitsounds and killsounds (mintaly/sounds) removal
     def test_item_12_custom_sounds_removal(self):

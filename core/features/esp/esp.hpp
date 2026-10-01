@@ -259,8 +259,17 @@ namespace features::esp {
 				bool was_active{};
 			};
 
+			struct smoke_timer_state
+			{
+				std::chrono::steady_clock::time_point spawn_time{};
+				math::vector3 origin{};
+				float fade_alpha{};
+				bool was_active{};
+			};
+
 			void add_landing_indicators( xdraw::draw_list& draw_list );
 			void add_indicator( xdraw::draw_list& draw_list, float cx, float cy, float dir_angle, bool has_arrow, float timer_frac, float alpha, bool is_fire, const settings::esp::projectile::overlay::indicator::group& cfg );
+			void add_grenade_timer_badge( xdraw::draw_list& draw_list, const math::vector3& center, float radius, float remaining, float total_lifetime, float alpha, bool is_molotov );
 
 			void add_inferno( xdraw::draw_list& draw_list, xdraw::draw_list& middle_draw_list, const systems::entities::cached& entity, const settings::esp::projectile::overlay::infernos& cfg );
 			void add_label( xdraw::draw_list& draw_list, const math::vector2& screen, const info& info, const settings::esp::projectile::overlay::group& cfg );
@@ -270,6 +279,7 @@ namespace features::esp {
 
 			std::unordered_map<std::uintptr_t, inferno_state> m_inferno_states{};
 			std::unordered_map<std::uintptr_t, indicator_state> m_indicator_states{};
+			std::unordered_map<std::uintptr_t, smoke_timer_state> m_smoke_states{};
 		};
 
 		class tracers

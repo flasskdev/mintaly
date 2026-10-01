@@ -1768,7 +1768,7 @@ namespace rendering {
 			xui::layout::spacing( 4.0f );
 			xui::text( "Name tag", tokens::col_text_dim );
 			static std::unordered_map<std::uintptr_t, std::string> name_tag_buffers;
-			const auto name_tag_id = xui::make_id( "Name tag" );
+			const auto name_tag_id = xui::make_id( "##name_tag_input" );
 			auto& name_tag_buffer = name_tag_buffers[ name_tag_id ];
 			if ( xui::ctx( ).active_text_input != name_tag_id ) name_tag_buffer = skin.name_tag;
 			if ( xui::text_input( "##name_tag_input", name_tag_buffer, 20, "Optional name tag" ) )

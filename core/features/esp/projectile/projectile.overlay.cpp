@@ -1,4 +1,5 @@
 #include <pch/pch.hpp>
+#include <unordered_set>
 #include <utilities/memory/memory.hpp>
 #include <core/rendering/rendering.hpp>
 #include <core/settings.hpp>
@@ -9,8 +10,16 @@ namespace features::esp::projectile {
 	namespace detail {
 
 		static constexpr const char* k_fire_svg{ R"(<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24"><path fill="#ffffff" d="M12 23a7.5 7.5 0 0 1-5.138-12.963C8.204 8.774 11.5 6.5 11 1.5c6 4 9 8 3 14c1 0 2.5 0 5-2.47c.27.773.5 1.604.5 2.47A7.5 7.5 0 0 1 12 23"/></svg>)" };
+		static constexpr const char* k_smoke_svg{ R"(<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24"><path fill="#ffffff" d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z"/></svg>)" };
 
 		struct fire_icon
+		{
+			Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> texture{};
+			int width{};
+			int height{};
+		};
+
+		struct smoke_icon
 		{
 			Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> texture{};
 			int width{};
@@ -25,6 +34,20 @@ namespace features::esp::projectile {
 			if ( !loaded )
 			{
 				ico.texture = xdraw::load_svg( k_fire_svg, 0.75f, &ico.width, &ico.height );
+				loaded = true;
+			}
+
+			return ico.texture ? &ico : nullptr;
+		}
+
+		[[nodiscard]] static const smoke_icon* get_smoke_icon( )
+		{
+			static smoke_icon ico{};
+			static auto loaded{ false };
+
+			if ( !loaded )
+			{
+				ico.texture = xdraw::load_svg( k_smoke_svg, 0.65f, &ico.width, &ico.height );
 				loaded = true;
 			}
 
@@ -51,73 +74,141 @@ namespace features::esp::projectile {
 	void overlay::on_render( xdraw::draw_list& draw_list, xdraw::draw_list& middle_draw_list )
 	{
 		const auto& overlay_cfg = settings::g_esp.m_projectile.m_overlay;
+		const auto delta_time = xdraw::delta_time( );
+		std::unordered_set<std::uintptr_t> active_smokes{};
 
 		for ( const auto& projectile : systems::g_entities.get_by_type( systems::entities::type::projectile ) )
 		{
-			if ( projectile.schema_hash == "C_SmokeGrenadeProjectile"_hash && settings::g_misc.m_smoke_and_fire_color.custom_smoke.value )
+			if ( projectile.schema_hash == "C_SmokeGrenadeProjectile"_hash )
 			{
-				static auto smoke_col_offset = SCHEMA( "C_SmokeGrenadeProjectile", "m_vSmokeColor"_hash );
-				if ( !smoke_col_offset )
+				if ( settings::g_misc.m_smoke_and_fire_color.custom_smoke.value )
 				{
-					smoke_col_offset = SCHEMA( "C_SmokeGrenadeProjectile", "m_vSmokeColor"_hash );
+					static auto smoke_col_offset = SCHEMA( "C_SmokeGrenadeProjectile", "m_vSmokeColor"_hash );
 					if ( !smoke_col_offset )
 					{
-						const auto det_offset = SCHEMA( "C_SmokeGrenadeProjectile", "m_vSmokeDetonationPos"_hash );
-						if ( det_offset >= 12 )
+						smoke_col_offset = SCHEMA( "C_SmokeGrenadeProjectile", "m_vSmokeColor"_hash );
+						if ( !smoke_col_offset )
 						{
-							smoke_col_offset = det_offset - 12;
+							const auto det_offset = SCHEMA( "C_SmokeGrenadeProjectile", "m_vSmokeDetonationPos"_hash );
+							if ( det_offset >= 12 )
+							{
+								smoke_col_offset = det_offset - 12;
+							}
+						}
+					}
+
+					if ( smoke_col_offset )
+					{
+						const auto& col = settings::g_misc.m_smoke_and_fire_color.smoke_color.value;
+						const auto cur = memory::read<math::vector3>( projectile.ptr + smoke_col_offset );
+						math::vector3 smoke_col;
+						if ( cur.x > 1.5f || cur.y > 1.5f || cur.z > 1.5f )
+						{
+							smoke_col = math::vector3{ static_cast<float>( col.r ), static_cast<float>( col.g ), static_cast<float>( col.b ) };
+						}
+						else
+						{
+							smoke_col = math::vector3{ static_cast<float>( col.r ) / 255.0f, static_cast<float>( col.g ) / 255.0f, static_cast<float>( col.b ) / 255.0f };
+						}
+						memory::write<math::vector3>( projectile.ptr + smoke_col_offset, smoke_col );
+					}
+
+					const auto effect_offset = SCHEMA( "C_SmokeGrenadeProjectile", "m_bDidSmokeEffect"_hash );
+					const auto is_active = effect_offset ? memory::read<bool>( projectile.ptr + effect_offset ) : false;
+					if ( is_active )
+					{
+						const auto scene = memory::read<std::uintptr_t>( projectile.ptr + SCHEMA( "C_BaseEntity", "m_pGameSceneNode"_hash ) );
+						math::vector3 origin{};
+						if ( scene )
+						{
+							origin = memory::read<math::vector3>( scene + SCHEMA( "CGameSceneNode", "m_vecAbsOrigin"_hash ) );
+						}
+						if ( origin.length_sqr( ) <= 1.0f )
+						{
+							const auto det_offset = SCHEMA( "C_SmokeGrenadeProjectile", "m_vSmokeDetonationPos"_hash );
+							if ( det_offset )
+							{
+								origin = memory::read<math::vector3>( projectile.ptr + det_offset );
+							}
+						}
+
+						if ( origin.length_sqr( ) > 1.0f )
+						{
+							const auto dist = systems::g_view.origin( ).distance( origin );
+							if ( dist > 10.0f && dist < 4500.0f )
+							{
+								const auto center_proj = systems::g_view.project( origin + math::vector3{ 0.0f, 0.0f, 32.0f } );
+								if ( systems::g_view.projection_valid( center_proj ) )
+								{
+									const auto& col = settings::g_misc.m_smoke_and_fire_color.smoke_color.value;
+									const auto r_proj = std::clamp( ( 144.0f / dist ) * 600.0f, 20.0f, 350.0f );
+									auto& glow = xdraw::get_glow( );
+									glow.circle_filled( center_proj.x, center_proj.y, r_proj, xdraw::color{ col.r, col.g, col.b, 28 } );
+									glow.circle_filled( center_proj.x, center_proj.y, r_proj * 0.65f, xdraw::color{ col.r, col.g, col.b, 45 } );
+								}
+							}
 						}
 					}
 				}
 
-				if ( smoke_col_offset )
+				if ( overlay_cfg.timer.value && projectile.ptr )
 				{
-					const auto& col = settings::g_misc.m_smoke_and_fire_color.smoke_color.value;
-					const auto cur = memory::read<math::vector3>( projectile.ptr + smoke_col_offset );
-					math::vector3 smoke_col;
-					if ( cur.x > 1.5f || cur.y > 1.5f || cur.z > 1.5f )
-					{
-						smoke_col = math::vector3{ static_cast<float>( col.r ), static_cast<float>( col.g ), static_cast<float>( col.b ) };
-					}
-					else
-					{
-						smoke_col = math::vector3{ static_cast<float>( col.r ) / 255.0f, static_cast<float>( col.g ) / 255.0f, static_cast<float>( col.b ) / 255.0f };
-					}
-					memory::write<math::vector3>( projectile.ptr + smoke_col_offset, smoke_col );
-				}
+					static const auto effect_offset = SCHEMA( "C_SmokeGrenadeProjectile", "m_bDidSmokeEffect"_hash );
+					static const auto tick_offset = SCHEMA( "C_SmokeGrenadeProjectile", "m_nSmokeEffectTickBegin"_hash );
+					static const auto scene_offset = SCHEMA( "C_BaseEntity", "m_pGameSceneNode"_hash );
+					static const auto origin_offset = SCHEMA( "CGameSceneNode", "m_vecAbsOrigin"_hash );
+					static const auto det_offset = SCHEMA( "C_SmokeGrenadeProjectile", "m_vSmokeDetonationPos"_hash );
 
-				const auto effect_offset = SCHEMA( "C_SmokeGrenadeProjectile", "m_bDidSmokeEffect"_hash );
-				const auto is_active = effect_offset ? memory::read<bool>( projectile.ptr + effect_offset ) : false;
-				if ( is_active )
-				{
-					const auto scene = memory::read<std::uintptr_t>( projectile.ptr + SCHEMA( "C_BaseEntity", "m_pGameSceneNode"_hash ) );
-					math::vector3 origin{};
-					if ( scene )
+					const auto is_active = effect_offset ? memory::read<bool>( projectile.ptr + effect_offset ) : false;
+					const auto start_tick = tick_offset ? memory::read<int>( projectile.ptr + tick_offset ) : 0;
+
+					if ( is_active || start_tick > 0 )
 					{
-						origin = memory::read<math::vector3>( scene + SCHEMA( "CGameSceneNode", "m_vecAbsOrigin"_hash ) );
-					}
-					if ( origin.length_sqr( ) <= 1.0f )
-					{
-						const auto det_offset = SCHEMA( "C_SmokeGrenadeProjectile", "m_vSmokeDetonationPos"_hash );
+						math::vector3 origin{};
 						if ( det_offset )
 						{
 							origin = memory::read<math::vector3>( projectile.ptr + det_offset );
 						}
-					}
-
-					if ( origin.length_sqr( ) > 1.0f )
-					{
-						const auto dist = systems::g_view.origin( ).distance( origin );
-						if ( dist > 10.0f && dist < 4500.0f )
+						if ( origin.length_sqr( ) <= 1.0f && scene_offset && origin_offset )
 						{
-							const auto center_proj = systems::g_view.project( origin + math::vector3{ 0.0f, 0.0f, 32.0f } );
-							if ( systems::g_view.projection_valid( center_proj ) )
+							const auto scene = memory::read<std::uintptr_t>( projectile.ptr + scene_offset );
+							if ( scene )
 							{
-								const auto& col = settings::g_misc.m_smoke_and_fire_color.smoke_color.value;
-								const auto r_proj = std::clamp( ( 144.0f / dist ) * 600.0f, 20.0f, 350.0f );
-								auto& glow = xdraw::get_glow( );
-								glow.circle_filled( center_proj.x, center_proj.y, r_proj, xdraw::color{ col.r, col.g, col.b, 28 } );
-								glow.circle_filled( center_proj.x, center_proj.y, r_proj * 0.65f, xdraw::color{ col.r, col.g, col.b, 45 } );
+								origin = memory::read<math::vector3>( scene + origin_offset );
+							}
+						}
+
+						if ( origin.length_sqr( ) > 1.0f )
+						{
+							constexpr float k_smoke_lifetime = 20.5f;
+							const auto current_tick = features::combat::g_shared.ctx( ).current_tick;
+							auto& state = this->m_smoke_states[ projectile.ptr ];
+
+							if ( state.spawn_time == std::chrono::steady_clock::time_point{} )
+							{
+								state.spawn_time = std::chrono::steady_clock::now( );
+							}
+
+							float remaining = 0.0f;
+							if ( start_tick > 0 && current_tick >= start_tick )
+							{
+								const auto age = ( static_cast< float >( current_tick ) - static_cast< float >( start_tick ) ) * static_cast< float >( cstypes::tick_interval );
+								remaining = std::clamp( k_smoke_lifetime - age, 0.0f, k_smoke_lifetime );
+							}
+							else
+							{
+								const auto elapsed = std::chrono::duration<float>( std::chrono::steady_clock::now( ) - state.spawn_time ).count( );
+								remaining = std::clamp( k_smoke_lifetime - elapsed, 0.0f, k_smoke_lifetime );
+							}
+
+							if ( remaining > 0.0f && is_active )
+							{
+								state.fade_alpha = std::fminf( state.fade_alpha + detail::fade_speed * delta_time, 1.0f );
+								state.was_active = true;
+								state.origin = origin;
+								active_smokes.insert( projectile.ptr );
+
+								this->add_grenade_timer_badge( middle_draw_list, origin, 144.0f, remaining, k_smoke_lifetime, state.fade_alpha, false );
 							}
 						}
 					}
@@ -126,7 +217,7 @@ namespace features::esp::projectile {
 
 			if ( projectile.schema_hash == "C_Inferno"_hash )
 			{
-				if ( overlay_cfg.is_active( 5 ) || overlay_cfg.m_infernos.enabled.value || overlay_cfg.m_indicator.get_group( 2 ).enabled.value )
+				if ( overlay_cfg.is_active( 5 ) || overlay_cfg.m_infernos.enabled.value || overlay_cfg.m_indicator.get_group( 2 ).enabled.value || overlay_cfg.timer.value )
 				{
 					this->add_inferno( draw_list, middle_draw_list, projectile, overlay_cfg.m_infernos );
 				}
@@ -154,6 +245,24 @@ namespace features::esp::projectile {
 			}
 
 			this->add_label( middle_draw_list, screen, info, cfg );
+		}
+
+		for ( auto it = this->m_smoke_states.begin( ); it != this->m_smoke_states.end( ); )
+		{
+			if ( !active_smokes.contains( it->first ) )
+			{
+				it->second.fade_alpha -= detail::fade_speed * delta_time;
+				if ( it->second.fade_alpha <= 0.0f )
+				{
+					it = this->m_smoke_states.erase( it );
+					continue;
+				}
+				else if ( it->second.origin.length_sqr( ) > 1.0f )
+				{
+					this->add_grenade_timer_badge( middle_draw_list, it->second.origin, 144.0f, 0.0f, 20.5f, it->second.fade_alpha, false );
+				}
+			}
+			++it;
 		}
 
 		this->add_landing_indicators( middle_draw_list );
@@ -421,9 +530,239 @@ namespace features::esp::projectile {
 		}
 	}
 
+	void overlay::add_grenade_timer_badge( xdraw::draw_list& draw_list, const math::vector3& center, float radius, float remaining, float total_lifetime, float alpha, bool is_molotov )
+	{
+		if ( alpha <= 0.001f )
+		{
+			return;
+		}
+
+		const auto [screen_w, screen_h] = xdraw::viewport_size( );
+		if ( screen_w <= 0 || screen_h <= 0 )
+		{
+			return;
+		}
+
+		const auto sw = static_cast< float >( screen_w );
+		const auto sh = static_cast< float >( screen_h );
+		const auto center_x = sw * 0.5f;
+		const auto center_y = sh * 0.5f;
+
+		// Calculate edge anchor facing the camera
+		const auto cam_pos = systems::g_view.origin( );
+		auto to_cam = cam_pos - center;
+		to_cam.z = 0.0f;
+		const auto dist_2d = to_cam.length( );
+
+		math::vector3 anchor_pos = center;
+		if ( dist_2d > 1.0f )
+		{
+			const auto dir_norm = to_cam * ( 1.0f / dist_2d );
+			const auto edge_dist = std::min( radius * 0.82f, std::max( 0.0f, dist_2d - 25.0f ) );
+			anchor_pos = center + dir_norm * edge_dist;
+		}
+		anchor_pos.z = center.z + ( is_molotov ? 4.0f : 8.0f );
+
+		math::vector3 badge_pos_3d = anchor_pos;
+		badge_pos_3d.z += ( is_molotov ? 28.0f : 42.0f );
+
+		const auto target_proj = systems::g_view.project_full( center );
+		const auto anchor_proj = systems::g_view.project_full( anchor_pos );
+		const auto badge_proj = systems::g_view.project_full( badge_pos_3d );
+
+		// Prepare badge contents and dimensions
+		const auto time_str = std::format( "{:.1f} S", std::max( 0.0f, remaining ) );
+		auto* const font = rendering::g_fonts.inter_bold[ rendering::fonts::size::petite ];
+		const auto [text_w, text_h] = xdraw::measure_text( time_str, font );
+
+		constexpr float icon_sz = 13.0f;
+		constexpr float pad_left = 7.0f;
+		constexpr float gap = 5.0f;
+		constexpr float pad_right = 7.0f;
+		const float bw = std::ceilf( pad_left + icon_sz + gap + text_w + pad_right );
+		constexpr float bh = 22.0f;
+
+		const auto accent = is_molotov
+			? xdraw::color{ 255, 122, 24, 255 }
+			: xdraw::color{ 96, 185, 255, 255 };
+
+		constexpr float margin = 28.0f;
+		const bool on_screen = badge_proj.on_screen && badge_proj.w > 0.0f
+			&& badge_proj.screen.x >= margin && badge_proj.screen.x <= sw - margin
+			&& badge_proj.screen.y >= margin && badge_proj.screen.y <= sh - margin;
+
+		auto draw_badge_pill = [ & ]( float bx, float by )
+		{
+			constexpr auto pill_r = xdraw::corner_radius{ 6.0f };
+
+			// Soft multi-layer drop shadow
+			draw_list.rect_filled( bx - 2.5f, by + 2.0f, bw + 5.0f, bh + 3.5f, xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 35.0f * alpha ) }, xdraw::corner_radius{ 8.0f } );
+			draw_list.rect_filled( bx - 1.0f, by + 1.0f, bw + 2.0f, bh + 2.0f, xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 65.0f * alpha ) }, xdraw::corner_radius{ 7.0f } );
+
+			// Frosted dark acrylic blur
+			draw_list.rect_filled_blurred( bx, by, bw, bh, pill_r );
+			draw_list.rect_filled( bx, by, bw, bh, xdraw::color{ 14, 17, 23, static_cast< std::uint8_t >( 225.0f * alpha ) }, pill_r );
+
+			// Subtle themed border
+			const auto border_col = xdraw::color{ accent.r, accent.g, accent.b, static_cast< std::uint8_t >( 85.0f * alpha ) };
+			draw_list.rect( bx, by, bw, bh, border_col, pill_r, 1.0f );
+
+			// Mini progress bar at the bottom
+			const float bar_x = bx + 5.0f;
+			const float bar_y = by + bh - 2.5f;
+			const float bar_w = bw - 10.0f;
+			const float bar_h = 1.5f;
+			draw_list.rect_filled( bar_x, bar_y, bar_w, bar_h, xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 22.0f * alpha ) }, xdraw::corner_radius{ 1.0f } );
+
+			const float frac = total_lifetime > 0.0f ? std::clamp( remaining / total_lifetime, 0.0f, 1.0f ) : 0.0f;
+			if ( frac > 0.005f )
+			{
+				draw_list.rect_filled( bar_x, bar_y, bar_w * frac, bar_h, accent.alpha( static_cast< std::uint8_t >( 230.0f * alpha ) ), xdraw::corner_radius{ 1.0f } );
+				auto& glow = xdraw::get_glow( );
+				glow.rect_filled( bar_x, bar_y, bar_w * frac, bar_h, accent.alpha( static_cast< std::uint8_t >( 70.0f * alpha ) ), xdraw::corner_radius{ 1.0f } );
+			}
+
+			// Icon
+			const float icon_x = bx + pad_left;
+			const float icon_y = by + std::floorf( ( bh - 2.0f - icon_sz ) * 0.5f );
+			if ( is_molotov )
+			{
+				const auto ico = detail::get_fire_icon( );
+				if ( ico && ico->texture )
+				{
+					draw_list.image( icon_x, icon_y, icon_sz, icon_sz, ico->texture.Get( ), accent.alpha( static_cast< std::uint8_t >( 255.0f * alpha ) ) );
+				}
+			}
+			else
+			{
+				const auto ico = detail::get_smoke_icon( );
+				if ( ico && ico->texture )
+				{
+					draw_list.image( icon_x, icon_y, icon_sz, icon_sz, ico->texture.Get( ), accent.alpha( static_cast< std::uint8_t >( 255.0f * alpha ) ) );
+				}
+				else
+				{
+					const auto game_ico = systems::g_icons.get( "smokegrenade", 0.35f );
+					if ( game_ico && game_ico->texture )
+					{
+						draw_list.image( icon_x, icon_y, icon_sz, icon_sz, game_ico->texture.Get( ), accent.alpha( static_cast< std::uint8_t >( 255.0f * alpha ) ) );
+					}
+				}
+			}
+
+			// Remaining time text
+			const float text_x = icon_x + icon_sz + gap;
+			const float text_y = by + std::floorf( ( bh - 2.0f - text_h ) * 0.5f );
+			draw_list.text( text_x + 1.0f, text_y + 1.0f, time_str, xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 180.0f * alpha ) }, font );
+			draw_list.text( text_x, text_y, time_str, xdraw::color{ 245, 248, 255, static_cast< std::uint8_t >( 245.0f * alpha ) }, font );
+		};
+
+		if ( on_screen )
+		{
+			const float bx = std::floorf( badge_proj.screen.x - bw * 0.5f );
+			const float by = std::floorf( badge_proj.screen.y - bh - 5.0f );
+			const float pin_tip_x = std::floorf( badge_proj.screen.x );
+			const float pin_tip_y = by + bh + 4.5f;
+
+			// Ground contact circle and stem
+			if ( anchor_proj.on_screen && anchor_proj.w > 0.0f )
+			{
+				const float gx = anchor_proj.screen.x;
+				const float gy = anchor_proj.screen.y;
+				const float stem_len = std::sqrtf( ( gx - pin_tip_x ) * ( gx - pin_tip_x ) + ( gy - pin_tip_y ) * ( gy - pin_tip_y ) );
+				if ( stem_len > 4.0f && stem_len < 250.0f )
+				{
+					draw_list.circle_filled( gx, gy, 3.5f, accent.alpha( static_cast< std::uint8_t >( 65.0f * alpha ) ) );
+					draw_list.circle_filled( gx, gy, 1.8f, accent.alpha( static_cast< std::uint8_t >( 210.0f * alpha ) ) );
+					draw_list.line( pin_tip_x, pin_tip_y, gx, gy, accent.alpha( static_cast< std::uint8_t >( 120.0f * alpha ) ), 1.2f );
+				}
+			}
+
+			// Geolocation pin pointer triangle at bottom of pill badge
+			const auto pin_bg = xdraw::color{ 14, 17, 23, static_cast< std::uint8_t >( 230.0f * alpha ) };
+			const auto border_col = xdraw::color{ accent.r, accent.g, accent.b, static_cast< std::uint8_t >( 90.0f * alpha ) };
+			draw_list.triangle_filled( pin_tip_x - 4.5f, by + bh - 0.5f, pin_tip_x + 4.5f, by + bh - 0.5f, pin_tip_x, pin_tip_y, pin_bg );
+			draw_list.line( pin_tip_x - 4.5f, by + bh, pin_tip_x, pin_tip_y, border_col, 1.0f );
+			draw_list.line( pin_tip_x + 4.5f, by + bh, pin_tip_x, pin_tip_y, border_col, 1.0f );
+
+			draw_badge_pill( bx, by );
+		}
+		else
+		{
+			// Off-screen indicator: ray from screen center to grenade direction
+			auto dx = target_proj.screen.x - center_x;
+			auto dy = target_proj.screen.y - center_y;
+
+			if ( target_proj.w <= 0.0f )
+			{
+				dx = -dx;
+				dy = -dy;
+			}
+
+			const auto len = std::sqrtf( dx * dx + dy * dy );
+			if ( len >= 0.001f )
+			{
+				dx /= len;
+				dy /= len;
+			}
+			else
+			{
+				dx = 0.0f;
+				dy = -1.0f;
+			}
+
+			const float pad_x = bw * 0.5f + 16.0f;
+			const float pad_y = bh * 0.5f + 16.0f;
+
+			auto t_min = std::numeric_limits< float >::max( );
+			if ( std::fabsf( dx ) > 0.001f )
+			{
+				const auto t_left = ( pad_x - center_x ) / dx;
+				const auto t_right = ( sw - pad_x - center_x ) / dx;
+				if ( t_left > 0.0f ) t_min = std::fminf( t_min, t_left );
+				if ( t_right > 0.0f ) t_min = std::fminf( t_min, t_right );
+			}
+
+			if ( std::fabsf( dy ) > 0.001f )
+			{
+				const auto t_top = ( pad_y - center_y ) / dy;
+				const auto t_bottom = ( sh - pad_y - center_y ) / dy;
+				if ( t_top > 0.0f ) t_min = std::fminf( t_min, t_top );
+				if ( t_bottom > 0.0f ) t_min = std::fminf( t_min, t_bottom );
+			}
+
+			const auto edge_x = std::clamp( center_x + dx * t_min, pad_x, sw - pad_x );
+			const auto edge_y = std::clamp( center_y + dy * t_min, pad_y, sh - pad_y );
+
+			const float bx = std::floorf( edge_x - bw * 0.5f );
+			const float by = std::floorf( edge_y - bh * 0.5f );
+
+			// Direction arrow pointing towards off-screen smoke / molotov
+			const float arrow_len = 7.0f;
+			const float arrow_spread = 5.0f;
+			const float perp_x = -dy;
+			const float perp_y = dx;
+
+			const float tip_x = edge_x + dx * ( bw * 0.5f + arrow_len );
+			const float tip_y = edge_y + dy * ( bh * 0.5f + arrow_len );
+			const float b1_x = edge_x + dx * ( bw * 0.5f + 1.0f ) + perp_x * arrow_spread;
+			const float b1_y = edge_y + dy * ( bh * 0.5f + 1.0f ) + perp_y * arrow_spread;
+			const float b2_x = edge_x + dx * ( bw * 0.5f + 1.0f ) - perp_x * arrow_spread;
+			const float b2_y = edge_y + dy * ( bh * 0.5f + 1.0f ) - perp_y * arrow_spread;
+
+			const auto arrow_col = accent.alpha( static_cast< std::uint8_t >( 230.0f * alpha ) );
+			draw_list.triangle_filled( b1_x, b1_y, b2_x, b2_y, tip_x, tip_y, arrow_col );
+
+			auto& glow = xdraw::get_glow( );
+			glow.triangle_filled( b1_x, b1_y, b2_x, b2_y, tip_x, tip_y, accent.alpha( static_cast< std::uint8_t >( 75.0f * alpha ) ) );
+
+			draw_badge_pill( bx, by );
+		}
+	}
+
 	void overlay::add_inferno( xdraw::draw_list& draw_list, xdraw::draw_list& middle_draw_list, const systems::entities::cached& entity, const settings::esp::projectile::overlay::infernos& cfg )
 	{
-		if ( !cfg.enabled.value && !settings::g_esp.m_projectile.m_overlay.m_indicator.get_group( 2 ).enabled.value )
+		if ( !cfg.enabled.value && !settings::g_esp.m_projectile.m_overlay.m_indicator.get_group( 2 ).enabled.value && !settings::g_esp.m_projectile.m_overlay.timer.value )
 		{
 			return;
 		}
@@ -665,7 +1004,8 @@ namespace features::esp::projectile {
 		}
 
 		const auto& ind_cfg = settings::g_esp.m_projectile.m_overlay.m_indicator.get_group( 2 );
-		if ( ind_cfg.enabled.value )
+		const auto timer_enabled = settings::g_esp.m_projectile.m_overlay.timer.value;
+		if ( ind_cfg.enabled.value || timer_enabled )
 		{
 			if ( active_count > 0 )
 			{
@@ -680,96 +1020,104 @@ namespace features::esp::projectile {
 				const auto remaining = std::max( 0.0f, fire_lifetime - elapsed );
 				const auto frac = std::clamp( remaining / fire_lifetime, 0.0f, 1.0f );
 
-				const auto target_proj = systems::g_view.project_full( indicator_pos );
-				const auto anchor_proj = systems::g_view.project_full( indicator_pos + math::vector3{ 0.0f, 0.0f, detail::anchor_world_offset_z } );
-
-				const auto [screen_w, screen_h] = xdraw::viewport_size( );
-				const auto sw = static_cast< float >( screen_w );
-				const auto sh = static_cast< float >( screen_h );
-				const auto center_x = sw * 0.5f;
-				const auto center_y = sh * 0.5f;
-
-				constexpr auto half_pi{ std::numbers::pi_v<float> *0.5f };
-
-				float icx{}, icy{};
-				float dir_angle{};
-
-				if ( anchor_proj.on_screen && target_proj.w > 0.0f )
+				if ( timer_enabled && remaining > 0.0f )
 				{
-					icx = anchor_proj.screen.x;
-					icy = anchor_proj.screen.y;
-
-					const auto dx = target_proj.screen.x - icx;
-					const auto dy = target_proj.screen.y - icy;
-					const auto len = std::sqrtf( dx * dx + dy * dy );
-
-					dir_angle = len > 0.1f ? std::atan2f( dy, dx ) : half_pi;
-				}
-				else
-				{
-					auto dx = target_proj.screen.x - center_x;
-					auto dy = target_proj.screen.y - center_y;
-
-					if ( target_proj.w <= 0.0f )
-					{
-						dx = -dx;
-						dy = -dy;
-					}
-
-					const auto len = std::sqrtf( dx * dx + dy * dy );
-					if ( len >= 1.0f )
-					{
-						dx /= len;
-						dy /= len;
-
-						auto t_min = std::numeric_limits<float>::max( );
-
-						if ( std::fabsf( dx ) > 0.001f )
-						{
-							const auto t_left = ( detail::edge_padding - center_x ) / dx;
-							const auto t_right = ( sw - detail::edge_padding - center_x ) / dx;
-
-							if ( t_left > 0.0f )
-							{
-								t_min = std::fminf( t_min, t_left );
-							}
-
-							if ( t_right > 0.0f ) 
-							{
-								t_min = std::fminf( t_min, t_right );
-							}
-						}
-
-						if ( std::fabsf( dy ) > 0.001f )
-						{
-							const auto t_top = ( detail::edge_padding - center_y ) / dy;
-							const auto t_bottom = ( sh - detail::edge_padding - center_y ) / dy;
-
-							if ( t_top > 0.0f ) 
-							{
-								t_min = std::fminf( t_min, t_top );
-							}
-
-							if ( t_bottom > 0.0f ) 
-							{
-								t_min = std::fminf( t_min, t_bottom );
-							}
-						}
-
-						const auto edge_x = std::clamp( center_x + dx * t_min, detail::edge_padding, sw - detail::edge_padding );
-						const auto edge_y = std::clamp( center_y + dy * t_min, detail::edge_padding, sh - detail::edge_padding );
-
-						dir_angle = std::atan2f( dy, dx );
-						icx = edge_x - std::cosf( dir_angle ) * detail::arrow_tip_r;
-						icy = edge_y - std::sinf( dir_angle ) * detail::arrow_tip_r;
-
-						this->add_indicator( middle_draw_list, icx, icy, dir_angle, true, frac, state.fade_alpha, true, ind_cfg );
-					}
-
-					return;
+					this->add_grenade_timer_badge( middle_draw_list, state.last_avg_pos, 110.0f, remaining, fire_lifetime, state.fade_alpha, true );
 				}
 
-				this->add_indicator( middle_draw_list, icx, icy, dir_angle, true, frac, state.fade_alpha, true, ind_cfg );
+				if ( ind_cfg.enabled.value )
+				{
+					const auto target_proj = systems::g_view.project_full( indicator_pos );
+					const auto anchor_proj = systems::g_view.project_full( indicator_pos + math::vector3{ 0.0f, 0.0f, detail::anchor_world_offset_z } );
+
+					const auto [screen_w, screen_h] = xdraw::viewport_size( );
+					const auto sw = static_cast< float >( screen_w );
+					const auto sh = static_cast< float >( screen_h );
+					const auto center_x = sw * 0.5f;
+					const auto center_y = sh * 0.5f;
+
+					constexpr auto half_pi{ std::numbers::pi_v<float> *0.5f };
+
+					float icx{}, icy{};
+					float dir_angle{};
+
+					if ( anchor_proj.on_screen && target_proj.w > 0.0f )
+					{
+						icx = anchor_proj.screen.x;
+						icy = anchor_proj.screen.y;
+
+						const auto dx = target_proj.screen.x - icx;
+						const auto dy = target_proj.screen.y - icy;
+						const auto len = std::sqrtf( dx * dx + dy * dy );
+
+						dir_angle = len > 0.1f ? std::atan2f( dy, dx ) : half_pi;
+					}
+					else
+					{
+						auto dx = target_proj.screen.x - center_x;
+						auto dy = target_proj.screen.y - center_y;
+
+						if ( target_proj.w <= 0.0f )
+						{
+							dx = -dx;
+							dy = -dy;
+						}
+
+						const auto len = std::sqrtf( dx * dx + dy * dy );
+						if ( len >= 1.0f )
+						{
+							dx /= len;
+							dy /= len;
+
+							auto t_min = std::numeric_limits<float>::max( );
+
+							if ( std::fabsf( dx ) > 0.001f )
+							{
+								const auto t_left = ( detail::edge_padding - center_x ) / dx;
+								const auto t_right = ( sw - detail::edge_padding - center_x ) / dx;
+
+								if ( t_left > 0.0f )
+								{
+									t_min = std::fminf( t_min, t_left );
+								}
+
+								if ( t_right > 0.0f ) 
+								{
+									t_min = std::fminf( t_min, t_right );
+								}
+							}
+
+							if ( std::fabsf( dy ) > 0.001f )
+							{
+								const auto t_top = ( detail::edge_padding - center_y ) / dy;
+								const auto t_bottom = ( sh - detail::edge_padding - center_y ) / dy;
+
+								if ( t_top > 0.0f ) 
+								{
+									t_min = std::fminf( t_min, t_top );
+								}
+
+								if ( t_bottom > 0.0f ) 
+								{
+									t_min = std::fminf( t_min, t_bottom );
+								}
+							}
+
+							const auto edge_x = std::clamp( center_x + dx * t_min, detail::edge_padding, sw - detail::edge_padding );
+							const auto edge_y = std::clamp( center_y + dy * t_min, detail::edge_padding, sh - detail::edge_padding );
+
+							dir_angle = std::atan2f( dy, dx );
+							icx = edge_x - std::cosf( dir_angle ) * detail::arrow_tip_r;
+							icy = edge_y - std::sinf( dir_angle ) * detail::arrow_tip_r;
+
+							this->add_indicator( middle_draw_list, icx, icy, dir_angle, true, frac, state.fade_alpha, true, ind_cfg );
+						}
+
+						return;
+					}
+
+					this->add_indicator( middle_draw_list, icx, icy, dir_angle, true, frac, state.fade_alpha, true, ind_cfg );
+				}
 			}
 		}
 	}

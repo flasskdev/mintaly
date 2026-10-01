@@ -246,6 +246,10 @@ namespace rendering {
             xui::layout::spacing(4.0f);
             xui::layout::separator();
             xui::layout::spacing(4.0f);
+            xui::toggle("Grenade / Molotov timer", proj.m_overlay.timer);
+            xui::layout::spacing(4.0f);
+            xui::layout::separator();
+            xui::layout::spacing(4.0f);
             xui::toggle("Molotov Radius", proj.m_overlay.m_infernos.enabled);
             if (xui::begin_popup("##molo_radius_direct_cfg", 220.0f))
             {

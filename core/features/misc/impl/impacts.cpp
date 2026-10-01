@@ -223,7 +223,7 @@ namespace features::misc {
 		const auto current_time = *time;
 
 		this->render_hit_markers( draw_list, current_time );
-		this->render_logs( draw_list, current_time );
+		this->render_logs( xdraw::get( xdraw::layer::top ), current_time );
 	}
 
 	void impacts::on_report_hit( std::uintptr_t msg )
@@ -1653,25 +1653,23 @@ namespace features::misc {
 			const auto pill_radius = xdraw::corner_radius{ height * 0.5f };
 			const auto pr = height * 0.5f;
 
-			// 1. Progressive smooth ambient drop shadow expanding around the pill
-			draw_list.rect_filled( x - 12.0f, y - 8.0f, card_w + 24.0f, height + 18.0f, tint( { 0, 0, 0, 12 } ), xdraw::corner_radius{ pr + 10.0f } );
-			draw_list.rect_filled( x - 8.0f,  y - 5.0f, card_w + 16.0f, height + 13.0f, tint( { 0, 0, 0, 22 } ), xdraw::corner_radius{ pr + 7.0f } );
-			draw_list.rect_filled( x - 5.0f,  y - 3.0f, card_w + 10.0f, height + 9.0f,  tint( { 0, 0, 0, 36 } ), xdraw::corner_radius{ pr + 4.5f } );
-			draw_list.rect_filled( x - 3.0f,  y - 1.5f, card_w + 6.0f,  height + 5.5f,  tint( { 0, 0, 0, 55 } ), xdraw::corner_radius{ pr + 2.5f } );
-			draw_list.rect_filled( x - 1.0f,  y + 0.5f, card_w + 2.0f,  height + 2.5f,  tint( { 0, 0, 0, 80 } ), xdraw::corner_radius{ pr + 1.0f } );
-			draw_list.rect_filled( x,         y + 2.0f, card_w,          height,         tint( { 0, 0, 0, 110 } ), pill_radius );
+			// 1. Smooth ambient drop shadow expanding around and below the pill
+			draw_list.rect_filled( x - 12.0f, y - 6.0f, card_w + 24.0f, height + 16.0f, tint( { 0, 0, 0, 14 } ), xdraw::corner_radius{ pr + 9.0f } );
+			draw_list.rect_filled( x - 7.0f,  y - 4.0f, card_w + 14.0f, height + 12.0f, tint( { 0, 0, 0, 26 } ), xdraw::corner_radius{ pr + 6.0f } );
+			draw_list.rect_filled( x - 3.5f,  y - 2.0f, card_w + 7.0f,  height + 7.5f,  tint( { 0, 0, 0, 45 } ), xdraw::corner_radius{ pr + 3.0f } );
+			draw_list.rect_filled( x - 1.5f,  y + 1.0f, card_w + 3.0f,  height + 3.0f,  tint( { 0, 0, 0, 65 } ), xdraw::corner_radius{ pr + 1.5f } );
 
 			// 2. Real frosted glass blur
 			draw_list.rect_filled_blurred( x, y, card_w, height, pill_radius, tint( { 255, 255, 255, 255 } ) );
 
-			// 3. Dark frosted acrylic glass body and subtle border
-			const auto card_top = tint( xdraw::color{ 24, 27, 34, 220 } );
-			const auto card_bot = tint( xdraw::color{ 14, 16, 21, 230 } );
+			// 3. Dark frosted acrylic glass body (dark, but translucent enough for blur to clearly shine through)
+			const auto card_top = tint( xdraw::color{ 14, 17, 24, 165 } );
+			const auto card_bot = tint( xdraw::color{ 8, 10, 15, 195 } );
 			draw_list.rect_filled_gradient( x, y, card_w, height, card_top, card_top, card_bot, card_bot, pill_radius );
 
 			const auto border_col = is_miss
-				? tint( xdraw::color{ 255, 75, 85, 90 } )
-				: tint( xdraw::color{ 255, 255, 255, 30 } );
+				? tint( xdraw::color{ 255, 80, 95, 120 } )
+				: tint( xdraw::color{ 255, 255, 255, 35 } );
 			draw_list.rect( x, y, card_w, height, border_col, pill_radius, 1.0f );
 
 			// 4. Left circle icon
