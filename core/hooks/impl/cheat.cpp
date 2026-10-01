@@ -1409,7 +1409,7 @@ namespace hooks {
 			diag::set_exception_phase( "create_move: duckpeek" );
 			features::combat::g_misc.duckpeek( ).on_create_move( current_cmd );
 			diag::set_exception_phase( "create_move: airstrafe" );
-			features::movement::g_test_strafer.on_create_move( current_cmd );
+			features::movement::g_test_strafer.on_create_move( current_cmd, original_movement_buttons );
 			if ( trace )
 			{
 				diag::step( "create_move: post-combat movement end" );
