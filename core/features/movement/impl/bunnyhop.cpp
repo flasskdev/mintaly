@@ -97,11 +97,11 @@ namespace features::movement {
 		this->m_landing_ok = false;
 
 		constexpr auto jump = cstypes::command_buttons::in_jump;
-		if ( !cmd || !settings::g_movement.bhop.value || !( cmd->buttons.value & jump ) )
+		if ( !cmd || !settings::g_movement.bhop.value || !( ( cmd->buttons.value | cmd->buttons.value_scroll ) & jump ) )
 			return;
 
 		const auto local = systems::g_local.get( );
-		if ( !local.pawn )
+		if ( !local.pawn || !local.is_alive )
 			return;
 
 		// If the schema entry is unavailable, keep the normal jump behavior. Only
@@ -114,6 +114,8 @@ namespace features::movement {
 		}
 
 		const auto& prestate = systems::g_prediction.pre( );
+		if ( !prestate.movement_valid || prestate.pawn != local.pawn )
+			return;
 		const bool on_ground = ( prestate.flags & cstypes::entity_flags::on_ground ) != 0;
 
 		// Jumpbug owns the falling edge when it is armed. Let it keep the jump
@@ -125,19 +127,41 @@ namespace features::movement {
 		if ( jumpbug_active && prestate.networked_velocity.z < 0.0f )
 			return;
 
-		if ( on_ground )
+		const auto base = cmd->csgo_user_cmd.has_base( ) ? cmd->csgo_user_cmd.mutable_base( ) : nullptr;
+		const auto moves = base ? base->mutable_subtick_moves( ) : nullptr;
+		if ( !moves )
+			return;
+		const auto old_size = moves->m_current_size;
+		const auto release = systems::g_input.acquire_subtick_step( moves );
+		if ( !release )
+			return;
+		const auto press = on_ground ? systems::g_input.acquire_subtick_step( moves ) : nullptr;
+		if ( on_ground && !press )
 		{
-			// The physical key is still held. Mark it as a fresh press so landing
-			// on this command immediately starts the next hop.
-			cmd->buttons.value |= jump;
-			cmd->buttons.value_changed |= jump;
+			moves->m_current_size = old_size;
 			return;
 		}
-
-		// Release jump for every airborne command. The ground branch above then
-		// turns the held key into a new press at the first grounded command.
-		cmd->buttons.value &= ~jump;
+		const auto initialize = [jump]( proto::subtick_move_step* step, bool pressed, float when )
+		{
+			step->set_button( jump ); step->set_pressed( pressed ); step->set_when( when );
+			step->set_analog_forward_delta( 0.0f ); step->set_analog_left_delta( 0.0f );
+			step->set_pitch_delta( 0.0f ); step->set_yaw_delta( 0.0f );
+		};
+		for ( int i = 0; i < old_size; ++i )
+		{
+			if ( const auto step = base->mutable_subtick_moves( i ); step && ( step->button( ) & jump ) )
+				step->set_button( step->button( ) & ~jump );
+		}
+		initialize( release, false, 0.0f );
+		cmd->buttons.value_scroll &= ~jump;
 		cmd->buttons.value_changed |= jump;
+		if ( on_ground )
+		{
+			initialize( press, true, 0.001f );
+			cmd->buttons.value |= jump;
+			return;
+		}
+		cmd->buttons.value &= ~jump;
 
 		// If this command also contains the landing, schedule the next jump at
 		// contact time. Otherwise the release above is the safe fallback and the

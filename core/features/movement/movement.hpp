@@ -71,12 +71,12 @@ namespace features::movement {
 	class test_strafer
 	{
 	public:
-		void on_create_move( systems::input::usercmd* cmd );
+		void on_create_move( systems::input::usercmd* cmd, std::uint64_t original_buttons );
 		[[nodiscard]] bool is_active( ) const;
 		[[nodiscard]] bool handled_this_tick( ) const { return this->m_handled_this_tick; }
 
 	private:
-		[[nodiscard]] bool emit_step( proto::base_usercmd_pb* base, float when, float yaw_delta ) const;
+		[[nodiscard]] bool emit_step( proto::base_usercmd_pb* base, float when, float forward_delta, float left_delta ) const;
 		void check_button( std::uintptr_t current_buttons, std::uintptr_t button );
 
 		std::uintptr_t m_last_buttons{};
