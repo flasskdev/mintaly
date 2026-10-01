@@ -2,6 +2,7 @@
 #include <cassert>
 #include <cmath>
 #include <cstring>
+#include <initializer_list>
 #include <limits>
 
 int main()
