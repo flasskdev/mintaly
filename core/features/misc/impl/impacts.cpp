@@ -1661,8 +1661,8 @@ namespace features::misc {
 
 			// 3. Crisp white frosted acrylic glass body and crisp border
 			draw_list.rect_filled_gradient( x, y, card_w, height,
-				tint( { 255, 255, 255, 140 } ), tint( { 255, 255, 255, 140 } ),
-				tint( { 240, 246, 255, 110 } ), tint( { 240, 246, 255, 110 } ),
+				tint( { 255, 255, 255, 75 } ), tint( { 255, 255, 255, 75 } ),
+				tint( { 240, 246, 255, 45 } ), tint( { 240, 246, 255, 45 } ),
 				pill_radius );
 			draw_list.rect( x, y, card_w, height, tint( { 255, 255, 255, 160 } ), pill_radius, 1.0f );
 

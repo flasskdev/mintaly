@@ -2273,8 +2273,8 @@ namespace rendering {
 
         top_dl.rect_filled_blurred(main_x, main_y, main_w, main_h, xdraw::corner_radius{ 8.0f },
             xdraw::color{ 255, 255, 255, static_cast<std::uint8_t>(255.0f * anim) });
-        const auto glass_top = xdraw::color{ 255, 255, 255, static_cast<std::uint8_t>(145.0f * anim) };
-        const auto glass_bot = xdraw::color{ 240, 245, 255, static_cast<std::uint8_t>(115.0f * anim) };
+        const auto glass_top = xdraw::color{ 255, 255, 255, static_cast<std::uint8_t>(75.0f * anim) };
+        const auto glass_bot = xdraw::color{ 240, 245, 255, static_cast<std::uint8_t>(45.0f * anim) };
         top_dl.rect_filled_gradient(main_x, main_y, main_w, main_h, glass_top, glass_top, glass_bot, glass_bot, xdraw::corner_radius{ 8.0f });
         top_dl.rect(main_x, main_y, main_w, main_h, xdraw::color{ 255, 255, 255, static_cast<std::uint8_t>(160.0f * anim) }, xdraw::corner_radius{ 8.0f }, 1.0f);
         top_dl.line(main_x + 10.0f, main_y + 0.5f, main_x + main_w - 10.0f, main_y + 0.5f,
@@ -2628,8 +2628,8 @@ namespace rendering {
 
             top_dl.rect_filled_blurred(sub_x, sub_y, sub_w, sub_h, xdraw::corner_radius{ 8.0f },
                 xdraw::color{ 255, 255, 255, static_cast<std::uint8_t>(255.0f * sub_anim) });
-            const auto s_glass_top = xdraw::color{ 255, 255, 255, static_cast<std::uint8_t>(145.0f * sub_anim) };
-            const auto s_glass_bot = xdraw::color{ 240, 245, 255, static_cast<std::uint8_t>(115.0f * sub_anim) };
+            const auto s_glass_top = xdraw::color{ 255, 255, 255, static_cast<std::uint8_t>(75.0f * sub_anim) };
+            const auto s_glass_bot = xdraw::color{ 240, 245, 255, static_cast<std::uint8_t>(45.0f * sub_anim) };
             top_dl.rect_filled_gradient(sub_x, sub_y, sub_w, sub_h, s_glass_top, s_glass_top, s_glass_bot, s_glass_bot, xdraw::corner_radius{ 8.0f });
             top_dl.rect(sub_x, sub_y, sub_w, sub_h, xdraw::color{ 255, 255, 255, static_cast<std::uint8_t>(160.0f * sub_anim) }, xdraw::corner_radius{ 8.0f }, 1.0f);
             top_dl.line(sub_x + 10.0f, sub_y + 0.5f, sub_x + sub_w - 10.0f, sub_y + 0.5f,

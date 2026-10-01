@@ -190,8 +190,8 @@ namespace rendering::menu_weapons {
             // Draw Left Panel (Groups)
             top_dl.rect_filled_blurred(main_rect.x, main_rect.y, main_rect.w, main_rect.h, xdraw::corner_radius{ 6.0f },
                 xdraw::color{ 255, 255, 255, static_cast<std::uint8_t>(255.0f * alpha_mult) });
-            const auto glass_top = xdraw::color{ 255, 255, 255, static_cast<std::uint8_t>(145.0f * alpha_mult) };
-            const auto glass_bot = xdraw::color{ 240, 245, 255, static_cast<std::uint8_t>(115.0f * alpha_mult) };
+            const auto glass_top = xdraw::color{ 255, 255, 255, static_cast<std::uint8_t>(75.0f * alpha_mult) };
+            const auto glass_bot = xdraw::color{ 240, 245, 255, static_cast<std::uint8_t>(45.0f * alpha_mult) };
             top_dl.rect_filled_gradient(main_rect.x, main_rect.y, main_rect.w, main_rect.h, glass_top, glass_top, glass_bot, glass_bot, xdraw::corner_radius{ 6.0f });
             top_dl.rect(main_rect.x, main_rect.y, main_rect.w, main_rect.h, xdraw::color{ 255, 255, 255, static_cast<std::uint8_t>(160.0f * alpha_mult) }, xdraw::corner_radius{ 6.0f }, 1.0f);
 
@@ -251,8 +251,8 @@ namespace rendering::menu_weapons {
 
             top_dl.rect_filled_blurred(sub_rect.x, sub_rect.y, sub_rect.w, sub_rect.h, xdraw::corner_radius{ 6.0f },
                 xdraw::color{ 255, 255, 255, static_cast<std::uint8_t>(255.0f * fly_ease) });
-            const auto sub_glass_top = xdraw::color{ 255, 255, 255, static_cast<std::uint8_t>(145.0f * fly_ease) };
-            const auto sub_glass_bot = xdraw::color{ 240, 245, 255, static_cast<std::uint8_t>(115.0f * fly_ease) };
+            const auto sub_glass_top = xdraw::color{ 255, 255, 255, static_cast<std::uint8_t>(75.0f * fly_ease) };
+            const auto sub_glass_bot = xdraw::color{ 240, 245, 255, static_cast<std::uint8_t>(45.0f * fly_ease) };
             top_dl.rect_filled_gradient(sub_rect.x, sub_rect.y, sub_rect.w, sub_rect.h, sub_glass_top, sub_glass_top, sub_glass_bot, sub_glass_bot, xdraw::corner_radius{ 6.0f });
             top_dl.rect(sub_rect.x, sub_rect.y, sub_rect.w, sub_rect.h, xdraw::color{ 255, 255, 255, static_cast<std::uint8_t>(160.0f * fly_ease) }, xdraw::corner_radius{ 6.0f }, 1.0f);
 

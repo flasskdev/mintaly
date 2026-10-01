@@ -396,7 +396,7 @@ namespace xdraw {
 			g.device->CreateShaderResourceView( g.glow_tex.Get( ), nullptr, &g.glow_srv );
 		}
 
-		static void update_blur_cb( float tex_w, float tex_h, float scale = 2.0f )
+		static void update_blur_cb( float tex_w, float tex_h, float scale = 1.3333334f )
 		{
 			D3D11_MAPPED_SUBRESOURCE mapped{};
 			if ( SUCCEEDED( g.context->Map( g.blur_cb.Get( ), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped ) ) )
@@ -497,7 +497,7 @@ namespace xdraw {
 				vp.Height = static_cast< float >( dst.h );
 				ctx->RSSetViewports( 1, &vp );
 
-				update_blur_cb( src_w, src_h, 2.0f );
+				update_blur_cb( src_w, src_h, 1.3333334f );
 				ctx->PSSetConstantBuffers( 0, 1, g.blur_cb.GetAddressOf( ) );
 				ctx->PSSetShaderResources( 0, 1, &src_srv );
 				ctx->Draw( 3, 0 );
@@ -517,7 +517,7 @@ namespace xdraw {
 				vp.Height = static_cast< float >( dst.h );
 				ctx->RSSetViewports( 1, &vp );
 
-				update_blur_cb( static_cast< float >( src.w ), static_cast< float >( src.h ), 2.0f );
+				update_blur_cb( static_cast< float >( src.w ), static_cast< float >( src.h ), 1.3333334f );
 				ctx->PSSetConstantBuffers( 0, 1, g.blur_cb.GetAddressOf( ) );
 				ctx->PSSetShaderResources( 0, 1, src.srv.GetAddressOf( ) );
 				ctx->Draw( 3, 0 );

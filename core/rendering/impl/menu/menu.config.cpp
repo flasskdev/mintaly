@@ -424,8 +424,8 @@ namespace rendering {
 
 		top_dl.rect_filled_blurred( panel_x, panel_y, k_panel_w, panel_h, xdraw::corner_radius{ 10.0f },
 			xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 255.0f * alpha_mult ) } );
-		const auto glass_top = xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 145.0f * alpha_mult ) };
-		const auto glass_bot = xdraw::color{ 240, 245, 255, static_cast< std::uint8_t >( 115.0f * alpha_mult ) };
+		const auto glass_top = xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 75.0f * alpha_mult ) };
+		const auto glass_bot = xdraw::color{ 240, 245, 255, static_cast< std::uint8_t >( 45.0f * alpha_mult ) };
 		top_dl.rect_filled_gradient( panel_x, panel_y, k_panel_w, panel_h,
 			glass_top, glass_top, glass_bot, glass_bot, xdraw::corner_radius{ 10.0f } );
 		top_dl.rect( panel_x, panel_y, k_panel_w, panel_h,
@@ -727,8 +727,8 @@ namespace rendering {
 				// Blurred glass
 				top_dl.rect_filled_blurred( px, py, popup_w, popup_h, xdraw::corner_radius{ 6.0f }, xdraw::color{ 255, 255, 255, 255 } );
 				// Frosted body
-				const auto reset_glass_top = xdraw::color{ 255, 255, 255, 145 };
-				const auto reset_glass_bot = xdraw::color{ 240, 245, 255, 115 };
+				const auto reset_glass_top = xdraw::color{ 255, 255, 255, 75 };
+				const auto reset_glass_bot = xdraw::color{ 240, 245, 255, 45 };
 				top_dl.rect_filled_gradient( px, py, popup_w, popup_h, reset_glass_top, reset_glass_top, reset_glass_bot, reset_glass_bot, xdraw::corner_radius{ 6.0f } );
 				// Top specular line
 				top_dl.line( px + 6.0f, py + 0.5f, px + popup_w - 6.0f, py + 0.5f, xdraw::color{ 255, 255, 255, 200 }, 1.0f );

@@ -207,15 +207,28 @@ namespace rendering {
 
 			std::string model_path = path_utf8;
 			std::replace( model_path.begin( ), model_path.end( ), '\\', '/' );
+			std::string lower_path = model_path;
+			for ( auto& c : lower_path ) {
+				if ( c >= 'A' && c <= 'Z' ) c = static_cast<char>( c + 32 );
+			}
 
-			if ( auto p = model_path.find( "game/csgo/" ); p != std::string::npos )
-				model_path = model_path.substr( p + ( sizeof( "game/csgo/" ) - 1 ) );
-			else if ( auto p = model_path.find( "csgo/" ); p != std::string::npos )
-				model_path = model_path.substr( p + ( sizeof( "csgo/" ) - 1 ) );
+			if ( auto p = lower_path.find( "game/csgo/" ); p != std::string::npos )
+				model_path = model_path.substr( p + 10 );
+			else if ( auto p = lower_path.find( "csgo/" ); p != std::string::npos )
+				model_path = model_path.substr( p + 5 );
+			else if ( auto p = lower_path.find( "characters/" ); p != std::string::npos )
+				model_path = model_path.substr( p );
+			else if ( auto p = lower_path.find( "models/" ); p != std::string::npos )
+				model_path = model_path.substr( p );
 
 			// CS2 engine requires .vmdl, not compiled .vmdl_c
-			if ( model_path.size( ) >= 7 && model_path.substr( model_path.size( ) - 7 ) == ".vmdl_c" )
-				model_path = model_path.substr( 0, model_path.size( ) - 2 );
+			if ( model_path.size( ) >= 7 )
+			{
+				std::string ext = model_path.substr( model_path.size( ) - 7 );
+				for ( auto& c : ext ) if ( c >= 'A' && c <= 'Z' ) c = static_cast<char>( c + 32 );
+				if ( ext == ".vmdl_c" )
+					model_path = model_path.substr( 0, model_path.size( ) - 2 );
+			}
 
 			std::string model_name = "Custom";
 			auto last_slash = model_path.find_last_of( '/' );
@@ -244,7 +257,7 @@ namespace rendering {
 				return false;
 			};
 
-			const bool is_arm = bad_model( "_arm", 4 ) || bad_model( "arms", 4 ) || bad_model( "viewmodel", 8 ) || bad_model( "/arm.", 5 ) || bad_model( "\\arm.", 5 );
+			const bool is_arm = bad_model( "_arms.", 6 ) || bad_model( "/arms/", 6 ) || bad_model( "\\arms\\", 6 ) || bad_model( "viewmodel", 8 ) || bad_model( "/arm.", 5 ) || bad_model( "\\arm.", 5 );
 
 			if ( !is_arm && !model_path.empty( ) )
 			{
@@ -261,6 +274,7 @@ namespace rendering {
 			features::changer::g_knives.invalidate( );
 			features::changer::g_guns.invalidate( );
 			features::changer::g_gloves.reset( );
+			features::changer::g_agents.reset( );
 			features::changer::g_skin_sync.trigger_push( );
 		}
 
@@ -976,7 +990,7 @@ namespace rendering {
 
 			// 1. Frosted glass blur background
 			dl.rect_filled_blurred( card.x, card.y, card.w, card.h, xdraw::corner_radius{ 8.0f },
-				xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 150.0f * fade_alpha ) } );
+				xdraw::color{ 160, 170, 190, static_cast< std::uint8_t >( 55.0f * fade_alpha ) } );
 
 			// 2. Translucent frosted body with whitish tint on hover
 			const auto card_top = xdraw::color{ 34, 38, 50, static_cast< std::uint8_t >( ( 125.0f + 30.0f * hover_anim ) * fade_alpha ) };
@@ -2105,11 +2119,15 @@ namespace rendering {
 							break;
 						}
 					}
+					if ( preview.def_index <= 0 )
+					{
+						preview.def_index = ( skin_workspace::team == 3 ) ? 5105 : 500;
+					}
 				}
 				if ( custom_index >= 0 && custom_index < static_cast<int>( custom_agents.entries.size( ) ) )
 				{
 					const auto& selected = custom_agents.entries[ custom_index ];
-					if ( selected.team == 0 || selected.team == skin_workspace::team )
+					if ( !selected.model_path.empty( ) )
 					{
 						preview.model_path = selected.model_path;
 					}

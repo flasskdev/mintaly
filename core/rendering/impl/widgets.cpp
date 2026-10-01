@@ -436,8 +436,8 @@ namespace rendering {
                 tint({ 255, 255, 255, 255 }) );
 
             // 2. White frosted acrylic glass body (like options)
-            const auto glass_top = tint( xdraw::color{ 255, 255, 255, 145 } );
-            const auto glass_bot = tint( xdraw::color{ 240, 246, 255, 115 } );
+            const auto glass_top = tint( xdraw::color{ 255, 255, 255, 75 } );
+            const auto glass_bot = tint( xdraw::color{ 240, 246, 255, 45 } );
             draw_list.rect_filled_gradient( x, y, w, height, glass_top, glass_top, glass_bot, glass_bot, xdraw::corner_radius{ 7.0f } );
 
             // 3. Whitish border and top specular rim

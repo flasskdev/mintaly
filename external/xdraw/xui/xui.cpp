@@ -3494,7 +3494,7 @@ namespace xui {
 				xdraw::corner_radius{ r + 3.0f }, xdraw::color{ 0, 0, 0, 60 } );
 
 			// Frosted glass base.
-			dl.rect_filled_blurred( abs.x, abs.y, abs.w, abs.h, rounding, xdraw::color{ 255, 255, 255, 180 } );
+			dl.rect_filled_blurred( abs.x, abs.y, abs.w, abs.h, rounding, xdraw::color{ 255, 255, 255, 90 } );
 
 			// Smooth vertical falloff instead of a flat card fill: the panel is
 			// slightly lit at the top and settles into the window colour below.
@@ -3771,8 +3771,8 @@ namespace xui {
 					pr, xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 255.0f * alpha_mult ) } );
 
 				// 2. Translucent white frosted acrylic glass body
-				const auto glass_top = xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 145.0f * alpha_mult ) };
-				const auto glass_bot = xdraw::color{ 240, 246, 255, static_cast< std::uint8_t >( 115.0f * alpha_mult ) };
+				const auto glass_top = xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 75.0f * alpha_mult ) };
+				const auto glass_bot = xdraw::color{ 240, 246, 255, static_cast< std::uint8_t >( 45.0f * alpha_mult ) };
 				top_dl.rect_filled_gradient( popup_rect.x, popup_rect.y, popup_rect.w, animated_h,
 					glass_top, glass_top, glass_bot, glass_bot, pr );
 
@@ -4207,8 +4207,8 @@ namespace xui {
 					dl.rect_filled_blurred( popup.x, popup.y, popup.w, animated_h,
 						xdraw::corner_radius{ pr }, xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 255.0f * alpha_mult ) } );
 
-					const auto glass_top = xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 145.0f * alpha_mult ) };
-					const auto glass_bot = xdraw::color{ 240, 246, 255, static_cast< std::uint8_t >( 115.0f * alpha_mult ) };
+					const auto glass_top = xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 75.0f * alpha_mult ) };
+					const auto glass_bot = xdraw::color{ 240, 246, 255, static_cast< std::uint8_t >( 45.0f * alpha_mult ) };
 					dl.rect_filled_gradient( popup.x, popup.y, popup.w, animated_h,
 						glass_top, glass_top, glass_bot, glass_bot, xdraw::corner_radius{ pr } );
 
@@ -6405,8 +6405,8 @@ namespace xui {
 					dl.rect_filled_blurred( dd.x, dd.y, dd.w, animated_h,
 						xdraw::corner_radius{ pr }, xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 255.0f * alpha_mult ) } );
 
-					const auto glass_top = xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 145.0f * alpha_mult ) };
-					const auto glass_bot = xdraw::color{ 240, 246, 255, static_cast< std::uint8_t >( 115.0f * alpha_mult ) };
+					const auto glass_top = xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 75.0f * alpha_mult ) };
+					const auto glass_bot = xdraw::color{ 240, 246, 255, static_cast< std::uint8_t >( 45.0f * alpha_mult ) };
 					dl.rect_filled_gradient( dd.x, dd.y, dd.w, animated_h,
 						glass_top, glass_top, glass_bot, glass_bot, xdraw::corner_radius{ pr } );
 
@@ -6853,8 +6853,8 @@ namespace xui {
 					dl.rect_filled_blurred( dd.x, dd.y, dd.w, animated_h,
 						xdraw::corner_radius{ pr }, xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 255.0f * alpha_mult ) } );
 
-					const auto glass_top = xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 145.0f * alpha_mult ) };
-					const auto glass_bot = xdraw::color{ 240, 246, 255, static_cast< std::uint8_t >( 115.0f * alpha_mult ) };
+					const auto glass_top = xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 75.0f * alpha_mult ) };
+					const auto glass_bot = xdraw::color{ 240, 246, 255, static_cast< std::uint8_t >( 45.0f * alpha_mult ) };
 					dl.rect_filled_gradient( dd.x, dd.y, dd.w, animated_h,
 						glass_top, glass_top, glass_bot, glass_bot, xdraw::corner_radius{ pr } );
 
@@ -7312,8 +7312,8 @@ namespace xui {
 				dl.rect_filled_blurred( sx, sy, sw, sh,
 					pr, xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 255.0f * alpha_mult ) } );
 
-				const auto glass_top = xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 145.0f * alpha_mult ) };
-				const auto glass_bot = xdraw::color{ 240, 246, 255, static_cast< std::uint8_t >( 115.0f * alpha_mult ) };
+				const auto glass_top = xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 75.0f * alpha_mult ) };
+				const auto glass_bot = xdraw::color{ 240, 246, 255, static_cast< std::uint8_t >( 45.0f * alpha_mult ) };
 				dl.rect_filled_gradient( sx, sy, sw, sh,
 					glass_top, glass_top, glass_bot, glass_bot, pr );
 
@@ -7624,8 +7624,8 @@ namespace xui {
 					dl.rect_filled_blurred( popup.x, popup.y, popup.w, animated_h,
 						xdraw::corner_radius{ pr }, xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 255.0f * alpha_mult ) } );
 
-					const auto glass_top = xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 145.0f * alpha_mult ) };
-					const auto glass_bot = xdraw::color{ 240, 246, 255, static_cast< std::uint8_t >( 115.0f * alpha_mult ) };
+					const auto glass_top = xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 75.0f * alpha_mult ) };
+					const auto glass_bot = xdraw::color{ 240, 246, 255, static_cast< std::uint8_t >( 45.0f * alpha_mult ) };
 					dl.rect_filled_gradient( popup.x, popup.y, popup.w, animated_h,
 						glass_top, glass_top, glass_bot, glass_bot, xdraw::corner_radius{ pr } );
 
