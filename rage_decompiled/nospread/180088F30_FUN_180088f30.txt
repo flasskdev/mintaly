@@ -1,0 +1,20 @@
+// function: FUN_180088f30
+// ea: 180088f30
+// category: nospread
+// depth: 1, via: FUN_180084040 @180085f0a
+// size: 60 bytes
+// anchors: nospread, trace_geometry, hitbox_backtrack
+// ----------------------------------------------------
+
+void FUN_180088f30(undefined8 param_1,undefined8 param_2)
+
+{
+  if (DAT_1804733c0 != (code *)0x0) {
+    (*DAT_1804733c0)(param_1,param_2);
+  }
+  FUN_180071ef0(&DAT_1803562fc,param_2);
+  FUN_1800763c0(&DAT_180473af0,param_2);
+  return;
+}
+
+

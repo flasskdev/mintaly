@@ -1,0 +1,24 @@
+// function: FUN_180113e50
+// ea: 180113e50
+// category: nospread
+// depth: 0, via: seed:nospread
+// size: 113 bytes
+// anchors: nospread
+// ----------------------------------------------------
+
+undefined8 FUN_180113e50(void)
+
+{
+  if (*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+              0x2638) < DAT_180474438) {
+    FUN_180183614(&DAT_180474438);
+    if (DAT_180474438 == -1) {
+      DAT_180474430 = FUN_180162ed0(&DAT_180462948);
+      _Init_thread_footer(&DAT_180474438);
+      return DAT_180474430;
+    }
+  }
+  return DAT_180474430;
+}
+
+

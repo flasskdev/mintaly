@@ -1,0 +1,43 @@
+// function: FUN_18016ead0
+// ea: 18016ead0
+// category: trace_geometry
+// depth: 2, via: FUN_1800c0c40 @1800c0fd4
+// size: 240 bytes
+// anchors: trace_geometry, hitbox_backtrack
+// ----------------------------------------------------
+
+int FUN_18016ead0(undefined8 param_1,undefined4 param_2)
+
+{
+  int iVar1;
+  undefined4 uVar2;
+  
+  iVar1 = FUN_18016c6d0(param_1,0xffffffff);
+  if (iVar1 == 0) {
+    FUN_18016c3a0(param_1,0xfffffffe);
+    return -1;
+  }
+  uVar2 = FUN_18016c350(param_1,param_2);
+  iVar1 = FUN_18016d040(param_1,uVar2,1);
+  if (iVar1 == 3) {
+    iVar1 = FUN_18016c760(param_1,0xffffffff,0);
+    FUN_18016c3a0(param_1,0xfffffffe);
+    if (iVar1 != 0) {
+      FUN_18016d040(param_1,uVar2,(longlong)iVar1);
+      FUN_18016d3d0(param_1,uVar2,1);
+      goto LAB_18016eba1;
+    }
+  }
+  else {
+    FUN_18016cb30(param_1,0);
+    FUN_18016d3d0(param_1,uVar2,1);
+    FUN_18016c3a0(param_1,0xfffffffe);
+  }
+  iVar1 = FUN_18016c8c0(param_1,uVar2);
+  iVar1 = iVar1 + 1;
+LAB_18016eba1:
+  FUN_18016d3d0(param_1,uVar2,(longlong)iVar1);
+  return iVar1;
+}
+
+

@@ -1,0 +1,90 @@
+// function: FUN_1800eaee0
+// ea: 1800eaee0
+// category: trace_geometry
+// depth: 2, via: FUN_1800d9670 @1800d9cde
+// size: 432 bytes
+// anchors: trace_geometry, hitbox_backtrack
+// ----------------------------------------------------
+
+longlong FUN_1800eaee0(ulonglong *param_1,ulonglong param_2,undefined4 *param_3)
+
+{
+  undefined4 *puVar1;
+  ulonglong uVar2;
+  undefined4 uVar3;
+  undefined4 uVar4;
+  undefined4 uVar5;
+  longlong lVar6;
+  ulonglong uVar7;
+  ulonglong uVar8;
+  ulonglong uVar9;
+  ulonglong uVar10;
+  ulonglong uVar11;
+  
+  uVar2 = *param_1;
+  uVar10 = ((longlong)(param_1[1] - uVar2) >> 3) * -0x5555555555555555 + 1;
+  uVar7 = ((longlong)(param_1[2] - uVar2) >> 3) * -0x5555555555555555;
+  uVar9 = 0xaaaaaaaaaaaaaaa - (uVar7 >> 1);
+  uVar11 = (uVar7 >> 1) + uVar7;
+  if (uVar11 <= uVar10) {
+    uVar11 = uVar10;
+  }
+  if (uVar9 <= uVar7 && uVar7 - uVar9 != 0) {
+    uVar11 = 0xaaaaaaaaaaaaaaa;
+  }
+  if (uVar11 < 0xaaaaaaaaaaaaaab) {
+    if (uVar11 == 0) {
+      uVar7 = 0;
+    }
+    else if (uVar11 < 0xab) {
+      uVar7 = FUN_1801695a0(uVar11 * 0x18);
+    }
+    else {
+      if (uVar11 == 0xaaaaaaaaaaaaaaa) goto LAB_1800eb073;
+      lVar6 = FUN_1801695a0(uVar11 * 0x18 + 0x27);
+      uVar7 = lVar6 + 0x27U & 0xffffffffffffffe0;
+      *(longlong *)(uVar7 - 8) = lVar6;
+    }
+    lVar6 = param_2 - uVar2;
+    *(undefined8 *)(uVar7 + 0x10 + lVar6) = *(undefined8 *)(param_3 + 4);
+    uVar3 = param_3[1];
+    uVar4 = param_3[2];
+    uVar5 = param_3[3];
+    puVar1 = (undefined4 *)(uVar7 + lVar6);
+    *puVar1 = *param_3;
+    puVar1[1] = uVar3;
+    puVar1[2] = uVar4;
+    puVar1[3] = uVar5;
+    if (param_1[1] == param_2) {
+      FUN_18023b1d0(uVar7);
+      uVar2 = *param_1;
+    }
+    else {
+      FUN_18023b1d0(uVar7,*param_1,param_2 - *param_1);
+      FUN_18023b1d0(uVar7 + lVar6 + 0x18,param_2);
+      uVar2 = *param_1;
+    }
+    if (uVar2 != 0) {
+      uVar8 = param_1[2] - uVar2;
+      uVar9 = uVar2;
+      if (0xfff < uVar8) {
+        uVar9 = *(ulonglong *)(uVar2 - 8);
+        if (0x1f < (uVar2 - 8) - uVar9) {
+                    /* WARNING: Subroutine does not return */
+          _invoke_watson((wchar_t *)0x0,(wchar_t *)0x0,(wchar_t *)0x0,0,0);
+        }
+        uVar8 = uVar8 + 0x27;
+      }
+      FUN_1801695f0(uVar9,uVar8);
+    }
+    *param_1 = uVar7;
+    param_1[1] = uVar7 + uVar10 * 0x18;
+    param_1[2] = uVar7 + uVar11 * 0x18;
+    return uVar7 + lVar6;
+  }
+LAB_1800eb073:
+                    /* WARNING: Subroutine does not return */
+  FUN_18000b130();
+}
+
+

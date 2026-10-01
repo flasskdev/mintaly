@@ -1,0 +1,90 @@
+// function: FUN_180040c10
+// ea: 180040c10
+// category: pipeline
+// depth: 1, via: FUN_180039560 @180039f86
+// size: 654 bytes
+// anchors: pipeline, autowall_damage
+// ----------------------------------------------------
+
+/* WARNING: Type propagation algorithm not settling */
+
+void FUN_180040c10(undefined8 param_1,float *param_2)
+
+{
+  ulonglong **local_158;
+  ulonglong *puStack_150;
+  undefined8 local_148;
+  ulonglong uStack_140;
+  double local_138 [2];
+  ulonglong *local_128;
+  undefined1 *puStack_120;
+  undefined8 local_118;
+  ulonglong uStack_110;
+  double local_108 [2];
+  ulonglong local_f8 [4];
+  double local_d8 [2];
+  undefined1 local_c8 [8];
+  undefined1 *local_c0;
+  undefined1 *local_b8;
+  ulonglong ***local_b0;
+  ulonglong **local_a8;
+  undefined1 local_a0 [8];
+  undefined1 local_98 [8];
+  undefined8 local_90;
+  undefined1 local_88 [8];
+  undefined1 local_80 [8];
+  undefined8 local_78;
+  undefined1 local_70 [8];
+  undefined1 local_68 [8];
+  undefined8 local_60;
+  undefined1 local_58 [24];
+  
+  local_f8[0] = 0;
+  local_f8[1] = 0;
+  FUN_1800121c0(local_f8,"x");
+  local_f8[2] = 0;
+  local_d8[0] = (double)*param_2;
+  local_f8[3] = 7;
+  local_d8[1] = 0.0;
+  puStack_120 = local_c8;
+  local_128 = local_f8;
+  FUN_180011ef0(local_a0,&local_128,1,2);
+  local_90 = 0;
+  local_128 = (ulonglong *)0x0;
+  puStack_120 = (undefined1 *)0x0;
+  FUN_1800121c0(&local_128,"y");
+  local_118 = 0;
+  local_108[0] = (double)param_2[1];
+  uStack_110 = 7;
+  local_108[1] = 0.0;
+  puStack_150 = local_f8;
+  local_158 = &local_128;
+  FUN_180011ef0(local_88,&local_158,1,2);
+  local_78 = 0;
+  local_158 = (ulonglong **)0x0;
+  puStack_150 = (ulonglong *)0x0;
+  FUN_1800121c0(&local_158,"z");
+  local_148 = 0;
+  local_138[0] = (double)param_2[2];
+  uStack_140 = 7;
+  local_138[1] = 0.0;
+  local_a8 = &local_128;
+  local_b0 = &local_158;
+  FUN_180011ef0(local_70,&local_b0,1,2);
+  local_60 = 0;
+  local_b8 = local_58;
+  local_c0 = local_a0;
+  FUN_180011ef0(param_1,&local_c0,1,2);
+  FUN_18000b5d0(local_68,local_70[0]);
+  FUN_18000b5d0(local_80,local_88[0]);
+  FUN_18000b5d0(local_98,local_a0[0]);
+  FUN_18000b5d0(local_138,uStack_140 & 0xff);
+  FUN_18000b5d0(&puStack_150,(ulonglong)local_158 & 0xff);
+  FUN_18000b5d0(local_108,uStack_110 & 0xff);
+  FUN_18000b5d0(&puStack_120,(ulonglong)local_128 & 0xff);
+  FUN_18000b5d0(local_d8,local_f8[3] & 0xff);
+  FUN_18000b5d0(local_f8 + 1,local_f8[0] & 0xff);
+  return;
+}
+
+

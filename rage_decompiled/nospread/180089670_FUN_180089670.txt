@@ -1,0 +1,72 @@
+// function: FUN_180089670
+// ea: 180089670
+// category: nospread
+// depth: 1, via: FUN_180084040 @180086ad7
+// size: 387 bytes
+// anchors: nospread, trace_geometry, hitbox_backtrack
+// ----------------------------------------------------
+
+/* WARNING: Globals starting with '_' overlap smaller symbols at the same address */
+
+undefined8 FUN_180089670(undefined8 param_1,char *param_2)
+
+{
+  longlong lVar1;
+  size_t sVar2;
+  undefined8 *puVar3;
+  undefined8 uVar4;
+  char *pcVar5;
+  undefined1 local_828 [2056];
+  
+  FUN_180032670(&DAT_180470d88);
+  FUN_180038710(&DAT_180355048);
+  FUN_180069910(&DAT_1804709e0);
+  FUN_180109980(&DAT_180355000);
+  FUN_18010e890(&DAT_180471348);
+  FUN_180038010(&DAT_180470d50);
+  pcVar5 = "<none>";
+  if (param_2 != (char *)0x0) {
+    pcVar5 = param_2;
+  }
+  FUN_18023b870(local_828,0,0x800);
+  FUN_180028ee0(local_828,0x800,0xffffffffffffffff,"COMBAT SESSION RESET | init | map: %s",pcVar5);
+  FUN_180023580(1,local_828);
+  if ((param_2 == (char *)0x0) || (*param_2 == '\0')) {
+    _DAT_180356068 = 0;
+    puVar3 = DAT_180356058;
+    if (DAT_180356070 < 0x10) {
+      puVar3 = &DAT_180356058;
+    }
+    *(undefined1 *)puVar3 = 0;
+  }
+  else {
+    lVar1 = FUN_180204740(param_2,0x2f);
+    pcVar5 = (char *)(lVar1 + 1);
+    if (lVar1 == 0) {
+      pcVar5 = param_2;
+    }
+    sVar2 = strlen(pcVar5);
+    if (DAT_180356070 < sVar2) {
+      FUN_18000b210(&DAT_180356058,sVar2);
+    }
+    else {
+      puVar3 = DAT_180356058;
+      if (DAT_180356070 < 0x10) {
+        puVar3 = &DAT_180356058;
+      }
+      _DAT_180356068 = sVar2;
+      FUN_18023b1d0(puVar3,pcVar5,sVar2);
+      *(undefined1 *)((longlong)puVar3 + sVar2) = 0;
+    }
+  }
+  FUN_18007dca0(&DAT_180470ee8);
+  if (DAT_1804736c0 == (code *)0x0) {
+    uVar4 = 0;
+  }
+  else {
+    uVar4 = (*DAT_1804736c0)(param_1,param_2);
+  }
+  return uVar4;
+}
+
+

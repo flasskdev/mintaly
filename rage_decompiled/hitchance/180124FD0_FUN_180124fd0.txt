@@ -1,0 +1,69 @@
+// function: FUN_180124fd0
+// ea: 180124fd0
+// category: hitchance
+// depth: 3, via: FUN_180128210 @1801282eb
+// size: 210 bytes
+// anchors: hitchance, nospread, autowall_damage
+// ----------------------------------------------------
+
+void FUN_180124fd0(longlong param_1,ulonglong param_2)
+
+{
+  longlong lVar1;
+  longlong lVar2;
+  ulonglong *puVar3;
+  int iVar4;
+  undefined1 auVar5 [16];
+  ulonglong local_28;
+  ulonglong uStack_20;
+  undefined1 local_18 [16];
+  undefined1 local_8;
+  undefined7 uStack_7;
+  
+  if (param_2 == 0) {
+    param_2 = DAT_180494f80;
+  }
+  lVar1 = *(longlong *)(param_1 + 0x48);
+  lVar2 = *(longlong *)(param_1 + 0x50);
+  local_8 = lVar1 != lVar2;
+  if (lVar1 == lVar2) {
+    local_18 = (undefined1  [16])0x0;
+    puVar3 = *(ulonglong **)(param_1 + 0x38);
+    if (*(ulonglong **)(param_1 + 0x30) == puVar3) goto LAB_180125035;
+  }
+  else {
+    local_18 = *(undefined1 (*) [16])(lVar2 + -0x10);
+    puVar3 = *(ulonglong **)(param_1 + 0x38);
+    if (*(ulonglong **)(param_1 + 0x30) == puVar3) goto LAB_180125035;
+  }
+  if ((puVar3[-4] == param_2) && ((char)puVar3[-1] == local_8)) {
+    if (lVar1 == lVar2) {
+      return;
+    }
+    auVar5._0_4_ = -(uint)((int)puVar3[-3] == local_18._0_4_);
+    auVar5._4_4_ = -(uint)(*(int *)((longlong)puVar3 + -0x14) == local_18._4_4_);
+    auVar5._8_4_ = -(uint)((int)puVar3[-2] == local_18._8_4_);
+    auVar5._12_4_ = -(uint)(*(int *)((longlong)puVar3 + -0xc) == local_18._12_4_);
+    iVar4 = movmskps((int)lVar1,auVar5);
+    if (iVar4 == 0xf) {
+      return;
+    }
+  }
+LAB_180125035:
+  local_28 = (ulonglong)(*(longlong *)(param_1 + 0x20) - *(longlong *)(param_1 + 0x18)) >> 2 &
+             0xffffffff;
+  if (puVar3 != *(ulonglong **)(param_1 + 0x40)) {
+    puVar3[4] = CONCAT71(uStack_7,local_8);
+    puVar3[2] = local_18._0_8_;
+    puVar3[3] = local_18._8_8_;
+    *puVar3 = local_28;
+    puVar3[1] = param_2;
+    *(longlong *)(param_1 + 0x38) = *(longlong *)(param_1 + 0x38) + 0x28;
+    return;
+  }
+  uStack_20 = param_2;
+  FUN_180139870(param_1 + 0x30,puVar3,&local_28);
+  return;
+}
+
+

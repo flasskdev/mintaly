@@ -1,0 +1,58 @@
+// function: FUN_180191c40
+// ea: 180191c40
+// category: trace_geometry
+// depth: 3, via: FUN_180190dd0 @180190e15
+// size: 237 bytes
+// anchors: trace_geometry, hitbox_backtrack
+// ----------------------------------------------------
+
+void FUN_180191c40(undefined8 param_1,longlong param_2,int param_3)
+
+{
+  longlong lVar1;
+  byte bVar2;
+  uint uVar3;
+  undefined8 uVar4;
+  longlong *plVar5;
+  ulonglong uVar6;
+  longlong lVar7;
+  
+  if (param_3 == 0) {
+    *(byte *)(param_2 + 10) = *(byte *)(param_2 + 10) | 0x40;
+    *(undefined **)(param_2 + 0x18) = &DAT_1802f2dc0;
+    *(undefined1 *)(param_2 + 0xb) = 0;
+    return;
+  }
+  bVar2 = FUN_180187ce0(param_3);
+  if (bVar2 < 0x1f) {
+    uVar3 = 1 << (bVar2 & 0x1f);
+    uVar6 = (ulonglong)uVar3;
+    lVar7 = (ulonglong)uVar3 * 0x18;
+    if (bVar2 < 3) {
+      uVar4 = FUN_180198220(param_1,lVar7,0);
+      *(undefined8 *)(param_2 + 0x18) = uVar4;
+    }
+    else {
+      plVar5 = (longlong *)FUN_180198220(param_1,lVar7 + 8,0);
+      *(longlong **)(param_2 + 0x18) = plVar5 + 1;
+      *plVar5 = (longlong)(plVar5 + 1 + (ulonglong)uVar3 * 3);
+    }
+    *(byte *)(param_2 + 10) = *(byte *)(param_2 + 10) & 0xbf;
+    *(byte *)(param_2 + 0xb) = bVar2;
+    if (0 < (int)uVar3) {
+      lVar7 = 0;
+      do {
+        lVar1 = *(longlong *)(param_2 + 0x18);
+        *(undefined4 *)(lVar7 + 0xc + lVar1) = 0;
+        *(undefined2 *)(lVar7 + 8 + lVar1) = 0x10;
+        uVar6 = uVar6 - 1;
+        lVar7 = lVar7 + 0x18;
+      } while (uVar6 != 0);
+    }
+    return;
+  }
+                    /* WARNING: Subroutine does not return */
+  FUN_18016b4e0(param_1,"table overflow");
+}
+
+

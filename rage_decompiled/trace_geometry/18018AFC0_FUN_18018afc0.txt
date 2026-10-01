@@ -1,0 +1,44 @@
+// function: FUN_18018afc0
+// ea: 18018afc0
+// category: trace_geometry
+// depth: 3, via: FUN_180190dd0 @1801910b6
+// size: 177 bytes
+// anchors: trace_geometry, hitbox_backtrack
+// ----------------------------------------------------
+
+void FUN_18018afc0(longlong param_1,undefined1 param_2)
+
+{
+  longlong lVar1;
+  undefined8 *puVar2;
+  longlong lVar3;
+  undefined8 local_res8;
+  
+  lVar1 = *(longlong *)(param_1 + 0x58);
+  while( true ) {
+    if (lVar1 != 0) {
+      *(undefined1 *)(*(longlong *)(param_1 + 0x58) + 0x110) = param_2;
+      local_res8 = *(undefined8 *)(param_1 + 0x58);
+                    /* WARNING: Subroutine does not return */
+      FUN_180202cdc(&local_res8,&DAT_180354e28);
+    }
+    lVar1 = *(longlong *)(param_1 + 0x18);
+    param_2 = FUN_1801705f0(param_1,param_2);
+    *(undefined1 *)(param_1 + 0xb) = param_2;
+    if (*(longlong *)(lVar1 + 0x5e0) == 0) break;
+    puVar2 = *(undefined8 **)(lVar1 + 0x598);
+    *(undefined8 **)(lVar1 + 0x598) = puVar2 + 2;
+    lVar3 = *(longlong *)(param_1 + 0x10);
+    param_1 = lVar1 + 0x588;
+    *puVar2 = *(undefined8 *)(lVar3 + -0x10);
+    *(undefined1 *)(puVar2 + 1) = *(undefined1 *)(lVar3 + -8);
+    lVar1 = *(longlong *)(lVar1 + 0x5e0);
+  }
+  if (*(code **)(lVar1 + 0x100) != (code *)0x0) {
+    (**(code **)(lVar1 + 0x100))(param_1);
+  }
+                    /* WARNING: Subroutine does not return */
+  abort();
+}
+
+

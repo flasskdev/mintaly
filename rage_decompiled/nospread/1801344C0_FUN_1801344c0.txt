@@ -1,0 +1,86 @@
+// function: FUN_1801344c0
+// ea: 1801344c0
+// category: nospread
+// depth: 1, via: FUN_180131790 @180131a38
+// size: 248 bytes
+// anchors: nospread
+// ----------------------------------------------------
+
+ulonglong FUN_1801344c0(undefined8 param_1)
+
+{
+  char cVar1;
+  double dVar2;
+  char *pcVar3;
+  ulonglong uVar4;
+  ulonglong uVar5;
+  undefined1 local_48 [64];
+  
+  pcVar3 = (char *)FUN_180135470(param_1,local_48);
+  switch(*pcVar3) {
+  case 'c':
+    if (pcVar3[1] == 'm') {
+      uVar5 = 0x500000000;
+      goto LAB_180134585;
+    }
+    break;
+  case 'd':
+  case 'f':
+  case 'g':
+  case 'h':
+  case 'j':
+  case 'k':
+  case 'l':
+  case 'n':
+  case 'o':
+    break;
+  case 'e':
+    uVar4 = 0x900000000;
+    if (pcVar3[1] != 'x') {
+      uVar4 = 0;
+    }
+    uVar5 = 0x800000000;
+    if (pcVar3[1] != 'm') {
+      uVar5 = uVar4;
+    }
+    goto LAB_180134585;
+  case 'i':
+    if (pcVar3[1] == 'n') {
+      uVar5 = 0x600000000;
+      goto LAB_180134585;
+    }
+    break;
+  case 'm':
+    if (pcVar3[1] == 'm') {
+      uVar5 = 0x400000000;
+      goto LAB_180134585;
+    }
+    break;
+  case 'p':
+    cVar1 = pcVar3[1];
+    if (cVar1 == 'c') {
+      uVar5 = 0x300000000;
+      goto LAB_180134585;
+    }
+    if (cVar1 == 't') {
+      uVar5 = 0x200000000;
+      goto LAB_180134585;
+    }
+    if (cVar1 == 'x') {
+      uVar5 = 0x100000000;
+      goto LAB_180134585;
+    }
+    break;
+  default:
+    if (*pcVar3 == '%') {
+      uVar5 = 0x700000000;
+      goto LAB_180134585;
+    }
+  }
+  uVar5 = 0;
+LAB_180134585:
+  dVar2 = (double)FUN_180135300(local_48);
+  return (uint)(float)dVar2 | uVar5;
+}
+
+

@@ -1,0 +1,43 @@
+// function: FUN_1800b8ce0
+// ea: 1800b8ce0
+// category: pipeline
+// depth: 1, via: FUN_1800a3380 @1800a3954
+// size: 176 bytes
+// anchors: pipeline, hitbox_backtrack
+// ----------------------------------------------------
+
+void FUN_1800b8ce0(char *param_1,double *param_2)
+
+{
+  char cVar1;
+  double dVar2;
+  undefined1 local_80 [56];
+  undefined1 local_48 [32];
+  undefined8 local_28;
+  undefined8 local_20;
+  
+  local_20 = 0xfffffffffffffffe;
+  cVar1 = *param_1;
+  if (cVar1 == '\x05') {
+    dVar2 = (double)*(longlong *)(param_1 + 8);
+  }
+  else if (cVar1 == '\a') {
+    dVar2 = *(double *)(param_1 + 8);
+  }
+  else {
+    if (cVar1 != '\x06') {
+      local_28 = FUN_1800b71e0();
+      FUN_1800b7070(local_48,"type must be number, but is ",&local_28);
+      FUN_1800b6d90(local_80,0x12e,local_48,param_1);
+                    /* WARNING: Subroutine does not return */
+      FUN_180202cdc(local_80,&DAT_180337430);
+    }
+    dVar2 = ((double)CONCAT44(0x45300000,(int)((ulonglong)*(undefined8 *)(param_1 + 8) >> 0x20)) -
+            1.9342813113834067e+25) +
+            ((double)CONCAT44(0x43300000,(int)*(undefined8 *)(param_1 + 8)) - 4503599627370496.0);
+  }
+  *param_2 = dVar2;
+  return;
+}
+
+

@@ -1,0 +1,65 @@
+// function: FUN_18018fd50
+// ea: 18018fd50
+// category: trace_geometry
+// depth: 3, via: FUN_18016cb50 @18016cb69
+// size: 287 bytes
+// anchors: trace_geometry, hitbox_backtrack
+// ----------------------------------------------------
+
+longlong FUN_18018fd50(longlong param_1,char *param_2)
+
+{
+  undefined4 uVar1;
+  int iVar2;
+  size_t sVar3;
+  longlong lVar4;
+  char *_Str2;
+  int iVar5;
+  longlong *plVar6;
+  longlong *plVar7;
+  
+  iVar5 = (int)(((ulonglong)param_2 & 0xffffffff) * 0x3521cfb3 >> 0x20);
+  plVar7 = (longlong *)
+           (((ulonglong)((int)param_2 + (((uint)((int)param_2 - iVar5) >> 1) + iVar5 >> 5) * -0x35)
+            + 0x22) * 0x10 + *(longlong *)(param_1 + 0x18));
+  iVar5 = 0;
+  plVar6 = plVar7;
+  while( true ) {
+    lVar4 = *plVar6;
+    _Str2 = (char *)(lVar4 + 0x18);
+    if (*(char *)(lVar4 + 0xb) < '\0') {
+      _Str2 = *(char **)_Str2;
+    }
+    iVar2 = strcmp(param_2,_Str2);
+    if (iVar2 == 0) break;
+    iVar5 = iVar5 + 1;
+    plVar6 = plVar6 + 1;
+    if (1 < iVar5) {
+      plVar7[1] = *plVar7;
+      sVar3 = strlen(param_2);
+      if (sVar3 < 0x29) {
+        lVar4 = FUN_180190060(param_1,param_2,sVar3);
+        *plVar7 = lVar4;
+      }
+      else {
+        if (0x7fffffffffffffce < sVar3) {
+                    /* WARNING: Subroutine does not return */
+          FUN_180197ff0(param_1);
+        }
+        uVar1 = *(undefined4 *)(*(longlong *)(param_1 + 0x18) + 0x60);
+        lVar4 = FUN_18018c400(param_1,0x14,sVar3 + 0x21);
+        *(undefined4 *)(lVar4 + 0xc) = uVar1;
+        *(undefined2 *)(lVar4 + 10) = 0xff00;
+        *(size_t *)(lVar4 + 0x10) = sVar3;
+        *(longlong *)(lVar4 + 0x18) = lVar4 + 0x20;
+        *(undefined1 *)(lVar4 + 0x20 + sVar3) = 0;
+        FUN_18023b1d0(*(undefined8 *)(lVar4 + 0x18),param_2,sVar3);
+        *plVar7 = lVar4;
+      }
+      return lVar4;
+    }
+  }
+  return lVar4;
+}
+
+

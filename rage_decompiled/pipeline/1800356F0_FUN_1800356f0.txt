@@ -1,0 +1,24 @@
+// function: FUN_1800356f0
+// ea: 1800356f0
+// category: pipeline
+// depth: 3, via: FUN_180033660 @1800341b9
+// size: 115 bytes
+// anchors: pipeline
+// ----------------------------------------------------
+
+undefined4 FUN_1800356f0(void)
+
+{
+  if (*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+              0x2638) < DAT_1804719e4) {
+    FUN_180183614(&DAT_1804719e4);
+    if (DAT_1804719e4 == -1) {
+      DAT_1804719e0 = FUN_180114bb0("CCSWeaponBaseVData",0x724cfcb0);
+      _Init_thread_footer(&DAT_1804719e4);
+      return DAT_1804719e0;
+    }
+  }
+  return DAT_1804719e0;
+}
+
+

@@ -1,0 +1,50 @@
+// function: FUN_1800098c0
+// ea: 1800098c0
+// category: nospread
+// depth: 3, via: FUN_180009180 @1800094a6
+// size: 411 bytes
+// anchors: nospread, trace_geometry, hitbox_backtrack
+// ----------------------------------------------------
+
+/* WARNING: Globals starting with '_' overlap smaller symbols at the same address */
+
+void FUN_1800098c0(undefined8 param_1,longlong param_2)
+
+{
+  longlong lVar1;
+  longlong lVar2;
+  undefined4 *puVar3;
+  
+  if ((*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+               0x2638) < DAT_18046c238) && (FUN_180183614(&DAT_18046c238), DAT_18046c238 == -1)) {
+    DAT_18046c234 = FUN_180114bb0("C_BasePlayerPawn",0x51b23a93);
+    _Init_thread_footer(&DAT_18046c238);
+  }
+  lVar1 = *(longlong *)(DAT_18046c234 + param_2);
+  if (lVar1 != 0) {
+    if ((*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+                 0x2638) < DAT_18046c240) && (FUN_180183614(&DAT_18046c240), DAT_18046c240 == -1)) {
+      DAT_18046c23c = FUN_180114bb0("CPlayer_WeaponServices",0x4c8a13a6);
+      _Init_thread_footer(&DAT_18046c240);
+    }
+    lVar2 = (longlong)*(int *)(lVar1 + DAT_18046c23c);
+    puVar3 = *(undefined4 **)(lVar1 + 8 + (longlong)DAT_18046c23c);
+    if (puVar3 != (undefined4 *)0x0 && 0 < lVar2) {
+      do {
+        lVar1 = FUN_180109b70(&DAT_180355000,*puVar3);
+        if (((lVar1 != 0) &&
+            (*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8)
+                     + 0x2638) < DAT_18046c248)) &&
+           (FUN_180183614(&DAT_18046c248), DAT_18046c248 == -1)) {
+          _DAT_18046c244 = FUN_180114bb0("C_BaseEntity",0x6d279c31);
+          _Init_thread_footer(&DAT_18046c248);
+        }
+        puVar3 = puVar3 + 1;
+        lVar2 = lVar2 + -1;
+      } while (lVar2 != 0);
+    }
+  }
+  return;
+}
+
+

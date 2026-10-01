@@ -1,0 +1,85 @@
+// function: FUN_1800e6f90
+// ea: 1800e6f90
+// category: hitchance
+// depth: 1, via: FUN_1800d1710 @1800d19f1
+// size: 483 bytes
+// anchors: hitchance
+// ----------------------------------------------------
+
+longlong FUN_1800e6f90(undefined8 param_1,undefined8 param_2,undefined4 param_3)
+
+{
+  int iVar1;
+  longlong *plVar2;
+  ulonglong uVar3;
+  longlong lVar4;
+  double dVar5;
+  double dVar6;
+  longlong *local_48;
+  longlong *local_40;
+  longlong local_38;
+  undefined8 local_30;
+  
+  local_30 = 0xfffffffffffffffe;
+  FUN_180068710(&DAT_180470a40,&local_48);
+  iVar1 = FUN_18016c6d0(param_1,param_3);
+  if (iVar1 < 1) {
+    plVar2 = local_48;
+    if (local_48 == local_40) goto LAB_1800e70fa;
+  }
+  else {
+    iVar1 = FUN_18016c6d0(param_1,param_3);
+    if (iVar1 != 3) {
+                    /* WARNING: Subroutine does not return */
+      FUN_1800e24d0("expected number");
+    }
+    dVar5 = (double)FUN_18016c710(param_1,param_3);
+    if ((0x7fefffffffffffff < (ulonglong)ABS(dVar5)) || (1000000000000.0 < ABS(dVar5))) {
+                    /* WARNING: Subroutine does not return */
+      FUN_1800e24d0("number out of range");
+    }
+    dVar6 = (double)FUN_180215100(dVar5);
+    if ((((2147483647.0 < dVar5) || (dVar5 < 0.0)) || (dVar5 != dVar6)) ||
+       (NAN(dVar5) || NAN(dVar6))) {
+                    /* WARNING: Subroutine does not return */
+      FUN_1800e24d0("integer out of range");
+    }
+    if (local_48 == local_40) goto LAB_1800e70fa;
+    plVar2 = local_48;
+    if ((int)dVar5 != -1) {
+      do {
+        lVar4 = *plVar2;
+        if (((lVar4 != 0) && (*(char *)(lVar4 + 0x204c) == '\x01')) &&
+           ((*(char *)(lVar4 + 0x2050) == '\0' && (*(int *)(lVar4 + 0x2048) == (int)dVar5))))
+        goto joined_r0x0001800e70f6;
+        plVar2 = plVar2 + 1;
+      } while (plVar2 != local_40);
+      goto LAB_1800e70fa;
+    }
+  }
+  do {
+    lVar4 = *plVar2;
+    if (((lVar4 != 0) && (*(char *)(lVar4 + 0x204c) == '\x01')) &&
+       (*(char *)(lVar4 + 0x2050) != '\x01')) goto joined_r0x0001800e70f6;
+    plVar2 = plVar2 + 1;
+  } while (plVar2 != local_40);
+LAB_1800e70fa:
+  lVar4 = 0;
+joined_r0x0001800e70f6:
+  if (local_48 != (longlong *)0x0) {
+    uVar3 = local_38 - (longlong)local_48;
+    plVar2 = local_48;
+    if (0xfff < uVar3) {
+      plVar2 = (longlong *)local_48[-1];
+      if (0x1f < (ulonglong)((longlong)local_48 + (-8 - (longlong)plVar2))) {
+                    /* WARNING: Subroutine does not return */
+        _invoke_watson((wchar_t *)0x0,(wchar_t *)0x0,(wchar_t *)0x0,0,0);
+      }
+      uVar3 = uVar3 + 0x27;
+    }
+    FUN_1801695f0(plVar2,uVar3);
+  }
+  return lVar4;
+}
+
+

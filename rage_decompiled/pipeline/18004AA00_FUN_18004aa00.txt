@@ -1,0 +1,58 @@
+// function: FUN_18004aa00
+// ea: 18004aa00
+// category: pipeline
+// depth: 3, via: FUN_1800392f0 @180039309
+// size: 458 bytes
+// anchors: pipeline
+// ----------------------------------------------------
+
+void FUN_18004aa00(longlong *param_1)
+
+{
+  longlong lVar1;
+  longlong lVar2;
+  undefined8 uVar3;
+  undefined4 uVar4;
+  
+  lVar1 = *(longlong *)(param_1[1] + 8);
+  if (*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+              0x2638) < DAT_180471b20) {
+    FUN_180183614(&DAT_180471b20);
+    if (DAT_180471b20 == -1) {
+      DAT_180471b1c = FUN_180114bb0("C_BaseEntity",0x16c096cc);
+      _Init_thread_footer(&DAT_180471b20);
+    }
+  }
+  lVar2 = *param_1;
+  uVar3 = *(undefined8 *)(lVar1 + DAT_180471b1c);
+  *(undefined4 *)(lVar2 + 0x14) = *(undefined4 *)(lVar1 + 8 + (longlong)DAT_180471b1c);
+  *(undefined8 *)(lVar2 + 0xc) = uVar3;
+  uVar4 = FUN_18006b590(&DAT_1804709e0);
+  *(undefined4 *)(*param_1 + 0x1c) = uVar4;
+  uVar4 = FUN_18006b6a0(&DAT_1804709e0,1);
+  *(undefined4 *)(*param_1 + 0x18) = uVar4;
+  lVar1 = *(longlong *)(param_1[1] + 8);
+  if (*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+              0x2638) < DAT_180471b28) {
+    FUN_180183614(&DAT_180471b28);
+    if (DAT_180471b28 == -1) {
+      DAT_180471b24 = FUN_180114bb0("C_BaseEntity",0xa4a37590);
+      _Init_thread_footer(&DAT_180471b28);
+    }
+  }
+  *(byte *)(*param_1 + 0x28) = *(byte *)(lVar1 + DAT_180471b24) & 1;
+  lVar1 = *(longlong *)param_1[2];
+  if (*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+              0x2638) < DAT_180471b30) {
+    FUN_180183614(&DAT_180471b30);
+    if (DAT_180471b30 == -1) {
+      DAT_180471b2c = FUN_180114bb0("C_CSWeaponBase",0xd779e87b);
+      _Init_thread_footer(&DAT_180471b30);
+    }
+  }
+  *(undefined4 *)(param_1[2] + 0x24) = *(undefined4 *)(lVar1 + DAT_180471b2c);
+  *(undefined1 *)param_1[3] = 1;
+  return;
+}
+
+

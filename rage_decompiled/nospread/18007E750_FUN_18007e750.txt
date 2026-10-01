@@ -1,0 +1,27 @@
+// function: FUN_18007e750
+// ea: 18007e750
+// category: nospread
+// depth: 2, via: FUN_180088940 @180088957
+// size: 116 bytes
+// anchors: nospread, trace_geometry, hitbox_backtrack
+// ----------------------------------------------------
+
+/* WARNING: Globals starting with '_' overlap smaller symbols at the same address */
+
+void FUN_18007e750(undefined8 param_1,longlong param_2)
+
+{
+  uint uVar1;
+  uint uVar2;
+  
+  if ((param_2 != 0) && (DAT_1804704d0 == '\x01')) {
+    uVar1 = (uint)DAT_180470531;
+    uVar2 = (uint)DAT_180470532;
+    *(float *)(param_2 + 0xe4) = ((float)DAT_180470530 / 255.0) * _DAT_180470534;
+    *(float *)(param_2 + 0xe8) = ((float)uVar1 / 255.0) * _DAT_180470534;
+    *(float *)(param_2 + 0xec) = ((float)uVar2 / 255.0) * _DAT_180470534;
+  }
+  return;
+}
+
+

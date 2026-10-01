@@ -1,0 +1,86 @@
+// function: FUN_180192c60
+// ea: 180192c60
+// category: trace_geometry
+// depth: 3, via: FUN_18016ddc0 @18016de1e
+// size: 419 bytes
+// anchors: trace_geometry, hitbox_backtrack
+// ----------------------------------------------------
+
+void FUN_180192c60(longlong param_1,longlong *param_2,undefined8 param_3,longlong *param_4,
+                  int param_5)
+
+{
+  byte bVar1;
+  longlong lVar2;
+  longlong lVar3;
+  longlong *plVar4;
+  int iVar5;
+  
+  iVar5 = 0;
+  do {
+    if (param_5 == 2) {
+      plVar4 = (longlong *)FUN_180189310(param_1,param_2,1);
+      if ((*(byte *)(plVar4 + 1) & 0xf) == 0) {
+                    /* WARNING: Subroutine does not return */
+        FUN_18016b2d0(param_1,param_2,"index");
+      }
+    }
+    else {
+      lVar2 = *param_2;
+      lVar3 = *(longlong *)(lVar2 + 0x20);
+      if (((lVar3 == 0) || ((*(byte *)(lVar3 + 10) & 2) != 0)) ||
+         (plVar4 = (longlong *)
+                   FUN_1801892d0(lVar3,1,*(undefined8 *)(*(longlong *)(param_1 + 0x18) + 0x118)),
+         plVar4 == (longlong *)0x0)) {
+        plVar4 = *(longlong **)(param_1 + 0x10);
+        *plVar4 = lVar2;
+        *(undefined1 *)(plVar4 + 1) = 0x45;
+        *(longlong *)(param_1 + 0x10) = *(longlong *)(param_1 + 0x10) + 0x10;
+        FUN_180190c30(param_1,lVar2,param_3,param_4,param_5);
+        *(longlong *)(param_1 + 0x10) = *(longlong *)(param_1 + 0x10) + -0x10;
+        *(byte *)(lVar2 + 10) = *(byte *)(lVar2 + 10) & 0xc0;
+        if ((*(byte *)(param_4 + 1) & 0x40) == 0) {
+          return;
+        }
+        if ((*(byte *)(lVar2 + 9) & 0x20) == 0) {
+          return;
+        }
+        bVar1 = *(byte *)(*param_4 + 9);
+        goto joined_r0x000180192d12;
+      }
+    }
+    if ((*(byte *)(plVar4 + 1) & 0xf) == 6) {
+      FUN_1801893e0(param_1,plVar4,param_2,param_3,param_4);
+      return;
+    }
+    if (*(byte *)(plVar4 + 1) == 0x45) {
+      param_5 = FUN_180190770(*plVar4,param_3,param_4);
+      if (param_5 == 0) {
+        if ((*(byte *)(param_4 + 1) & 0x40) == 0) {
+          return;
+        }
+        lVar2 = *plVar4;
+        if ((*(byte *)(lVar2 + 9) & 0x20) == 0) {
+          return;
+        }
+        bVar1 = *(byte *)(*param_4 + 9);
+joined_r0x000180192d12:
+        if ((bVar1 & 0x18) != 0) {
+          FUN_18018c4c0(param_1,lVar2);
+        }
+        return;
+      }
+    }
+    else {
+      param_5 = 2;
+    }
+    iVar5 = iVar5 + 1;
+    param_2 = plVar4;
+    if (1999 < iVar5) {
+                    /* WARNING: Subroutine does not return */
+      FUN_18016b4e0(param_1,"\'__newindex\' chain too long; possible loop");
+    }
+  } while( true );
+}
+
+

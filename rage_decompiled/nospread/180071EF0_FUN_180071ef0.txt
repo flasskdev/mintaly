@@ -1,0 +1,60 @@
+// function: FUN_180071ef0
+// ea: 180071ef0
+// category: nospread
+// depth: 2, via: FUN_180088f30 @180088f53
+// size: 419 bytes
+// anchors: nospread, trace_geometry, hitbox_backtrack
+// ----------------------------------------------------
+
+void FUN_180071ef0(undefined8 param_1,longlong param_2)
+
+{
+  longlong lVar1;
+  int iVar2;
+  undefined4 *puVar3;
+  byte bVar4;
+  float fVar5;
+  float fVar6;
+  
+  AcquireSRWLockShared((PSRWLOCK)&DAT_180471378);
+  bVar4 = DAT_180471370;
+  iVar2 = DAT_180471368;
+  lVar1 = DAT_180471350;
+  ReleaseSRWLockShared((PSRWLOCK)&DAT_180471378);
+  if (((bVar4 & 1) != 0) && (bVar4 = 1 < iVar2 & ~DAT_180471381, (lVar1 != 0 & bVar4) == 1)) {
+    FUN_1800720a0(bVar4,param_2,lVar1);
+    if (DAT_18046f8c0 == '\x01') {
+      if (*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+                  0x2638) < DAT_180472390) {
+        FUN_180183614(&DAT_180472390);
+        if (DAT_180472390 == -1) {
+          DAT_18047238c = FUN_180114bb0("C_CSPlayerPawn",0xf3e9a9ed);
+          _Init_thread_footer(&DAT_180472390);
+        }
+      }
+      if ((*(char *)(lVar1 + DAT_18047238c) == '\x01') && (DAT_18046f928 != '\0')) {
+        puVar3 = &DAT_18046f988;
+      }
+      else {
+        puVar3 = &DAT_18046f920;
+      }
+      *(undefined4 *)(param_2 + 0x498) = *puVar3;
+      FUN_1800723f0(param_1,lVar1);
+    }
+  }
+  fVar6 = DAT_18046fa58;
+  if (DAT_18046f9f8 == '\x01') {
+    bVar4 = *(byte *)(param_2 + 0x551);
+    fVar5 = (float)FUN_18021ef00(*(float *)(param_2 + 0x498) * 0.008726646);
+    fVar6 = (float)FUN_1802136e0(fVar5 * fVar6 * 0.75);
+    *(float *)(param_2 + 0x498) = fVar6 * 114.59155;
+    *(float *)(param_2 + 0x4d4) = DAT_18046fa58;
+    *(byte *)(param_2 + 0x551) = bVar4 | 2;
+  }
+  else {
+    *(byte *)(param_2 + 0x551) = *(byte *)(param_2 + 0x551) & 0xfd;
+  }
+  return;
+}
+
+

@@ -1,0 +1,15 @@
+// function: FUN_18022bd70
+// ea: 18022bd70
+// category: trace_geometry
+// depth: 3, via: FUN_18021bbc0 @18021bbfe
+// size: 19 bytes
+// anchors: trace_geometry, hitbox_backtrack
+// ----------------------------------------------------
+
+ulonglong FUN_18022bd70(ulonglong param_1)
+
+{
+  return param_1 | 0x8000000000000;
+}
+
+

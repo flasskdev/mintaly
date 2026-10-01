@@ -1,0 +1,23 @@
+// function: FUN_1801841a0
+// ea: 1801841a0
+// category: pipeline
+// depth: 3, via: FUN_180169a60 @180169ae6
+// size: 39 bytes
+// anchors: pipeline
+// ----------------------------------------------------
+
+undefined4 FUN_1801841a0(void)
+
+{
+  int iVar1;
+  undefined4 local_res8 [8];
+  
+  iVar1 = rand_s(local_res8);
+  if (iVar1 == 0) {
+    return local_res8[0];
+  }
+                    /* WARNING: Subroutine does not return */
+  FUN_1801845c0("invalid random_device value");
+}
+
+

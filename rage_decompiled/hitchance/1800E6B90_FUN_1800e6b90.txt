@@ -1,0 +1,76 @@
+// function: FUN_1800e6b90
+// ea: 1800e6b90
+// category: hitchance
+// depth: 1, via: FUN_1800d1710 @1800d1925
+// size: 423 bytes
+// anchors: hitchance
+// ----------------------------------------------------
+
+undefined8 FUN_1800e6b90(int param_1)
+
+{
+  int *piVar1;
+  longlong lVar2;
+  longlong lVar3;
+  longlong lVar4;
+  undefined8 uVar5;
+  undefined4 uVar6;
+  longlong *plVar7;
+  ulonglong uVar8;
+  longlong *local_50;
+  longlong *local_48;
+  longlong local_40;
+  undefined4 local_38;
+  char local_34;
+  int *local_30;
+  undefined8 local_28;
+  
+  local_28 = 0xfffffffffffffffe;
+  AcquireSRWLockShared((PSRWLOCK)&DAT_180471378);
+  uVar5 = DAT_180471350;
+  ReleaseSRWLockShared((PSRWLOCK)&DAT_180471378);
+  if (param_1 != 0) {
+    FUN_180109bd0(&DAT_180355000,&local_50);
+    uVar5 = 0;
+    for (plVar7 = local_50; plVar7 != local_48; plVar7 = plVar7 + 2) {
+      if (*(short *)((longlong)plVar7 + 0xc) == param_1) {
+        lVar2 = *plVar7;
+        if ((*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8)
+                     + 0x2638) < DAT_180473e44) &&
+           (FUN_180183614(&DAT_180473e44), DAT_180473e44 == -1)) {
+          DAT_180473e40 = FUN_180114bb0("CBasePlayerController",0x7c628c1d);
+          _Init_thread_footer(&DAT_180473e44);
+        }
+        lVar4 = (longlong)DAT_180473e40;
+        lVar3 = *(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8);
+        local_30 = (int *)(lVar3 + 4);
+        piVar1 = (int *)(lVar3 + 4);
+        *piVar1 = *piVar1 + 1;
+        FUN_1800e6b30(&local_38,lVar2 + lVar4);
+        *local_30 = *local_30 + -1;
+        uVar6 = 0;
+        if (local_34 != '\0') {
+          uVar6 = local_38;
+        }
+        uVar5 = FUN_1800e6dc0(uVar6);
+        break;
+      }
+    }
+    if (local_50 != (longlong *)0x0) {
+      uVar8 = local_40 - (longlong)local_50;
+      plVar7 = local_50;
+      if (0xfff < uVar8) {
+        plVar7 = (longlong *)local_50[-1];
+        if (0x1f < (ulonglong)((longlong)local_50 + (-8 - (longlong)plVar7))) {
+                    /* WARNING: Subroutine does not return */
+          _invoke_watson((wchar_t *)0x0,(wchar_t *)0x0,(wchar_t *)0x0,0,0);
+        }
+        uVar8 = uVar8 + 0x27;
+      }
+      FUN_1801695f0(plVar7,uVar8);
+    }
+  }
+  return uVar5;
+}
+
+

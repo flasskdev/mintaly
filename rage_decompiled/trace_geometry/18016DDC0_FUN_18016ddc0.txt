@@ -1,0 +1,44 @@
+// function: FUN_18016ddc0
+// ea: 18016ddc0
+// category: trace_geometry
+// depth: 2, via: FUN_18016d220 @18016d252
+// size: 191 bytes
+// anchors: trace_geometry, hitbox_backtrack
+// ----------------------------------------------------
+
+void FUN_18016ddc0(longlong param_1,longlong *param_2,undefined8 param_3)
+
+{
+  longlong *plVar1;
+  int iVar2;
+  longlong lVar3;
+  longlong *plVar4;
+  
+  lVar3 = FUN_18018fd50(param_1,param_3);
+  plVar1 = (longlong *)(param_1 + 0x10);
+  plVar4 = (longlong *)*plVar1;
+  if ((char)param_2[1] == 'E') {
+    iVar2 = FUN_1801906d0(*param_2,lVar3,plVar4 + -2);
+    plVar4 = (longlong *)*plVar1;
+    if (iVar2 == 0) {
+      if ((((*(byte *)(plVar4 + -1) & 0x40) != 0) && ((*(byte *)(*param_2 + 9) & 0x20) != 0)) &&
+         ((*(byte *)(plVar4[-2] + 9) & 0x18) != 0)) {
+        FUN_18018c4c0(param_1);
+      }
+      *plVar1 = *plVar1 + -0x10;
+      return;
+    }
+  }
+  else {
+    iVar2 = 2;
+  }
+  *plVar4 = lVar3;
+  *(byte *)(plVar4 + 1) = *(byte *)(lVar3 + 8) | 0x40;
+  lVar3 = *plVar1;
+  *plVar1 = lVar3 + 0x10;
+  FUN_180192c60(param_1,param_2,lVar3,lVar3 + -0x10,iVar2);
+  *plVar1 = *plVar1 + -0x20;
+  return;
+}
+
+

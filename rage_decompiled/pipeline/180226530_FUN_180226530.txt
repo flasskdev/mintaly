@@ -1,0 +1,28 @@
+// function: FUN_180226530
+// ea: 180226530
+// category: pipeline
+// depth: 3, via: FUN_18022bc30 @18022bd26
+// size: 47 bytes
+// anchors: pipeline, autowall_damage
+// ----------------------------------------------------
+
+/* WARNING: Function: _guard_dispatch_icall replaced with injection: guard_dispatch_icall */
+
+undefined8 FUN_180226530(undefined8 param_1)
+
+{
+  undefined8 uVar1;
+  byte bVar2;
+  code *pcVar3;
+  
+  bVar2 = (byte)DAT_180469600 & 0x3f;
+  pcVar3 = (code *)((DAT_180498780 ^ DAT_180469600) >> bVar2 |
+                   (DAT_180498780 ^ DAT_180469600) << 0x40 - bVar2);
+  if (pcVar3 == (code *)0x0) {
+    return 0;
+  }
+  uVar1 = (*pcVar3)(param_1);
+  return uVar1;
+}
+
+

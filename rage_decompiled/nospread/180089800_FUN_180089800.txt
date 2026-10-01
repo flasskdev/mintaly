@@ -1,0 +1,41 @@
+// function: FUN_180089800
+// ea: 180089800
+// category: nospread
+// depth: 1, via: FUN_180084040 @180086c2f
+// size: 192 bytes
+// anchors: nospread, trace_geometry, hitbox_backtrack
+// ----------------------------------------------------
+
+/* WARNING: Globals starting with '_' overlap smaller symbols at the same address */
+
+undefined8 FUN_180089800(undefined8 param_1)
+
+{
+  undefined8 *puVar1;
+  undefined8 uVar2;
+  
+  FUN_180074ee0(&DAT_180355180);
+  _DAT_180356068 = 0;
+  puVar1 = DAT_180356058;
+  if (DAT_180356070 < 0x10) {
+    puVar1 = &DAT_180356058;
+  }
+  *(undefined1 *)puVar1 = 0;
+  FUN_180072c60(&DAT_180356308);
+  FUN_180032670(&DAT_180470d88);
+  FUN_180038710(&DAT_180355048);
+  FUN_180069910(&DAT_1804709e0);
+  FUN_180109980(&DAT_180355000);
+  FUN_18010e890(&DAT_180471348);
+  FUN_180038010(&DAT_180470d50);
+  FUN_180023580(1,"COMBAT SESSION RESET | shutdown");
+  if (DAT_180473720 == (code *)0x0) {
+    return 0;
+  }
+                    /* WARNING: Could not recover jumptable at 0x0001800898b5. Too many branches */
+                    /* WARNING: Treating indirect jump as call */
+  uVar2 = (*DAT_180473720)(param_1);
+  return uVar2;
+}
+
+

@@ -1,0 +1,128 @@
+// function: FUN_1800c5c10
+// ea: 1800c5c10
+// category: trace_geometry
+// depth: 1, via: FUN_1800aae50 @1800ab32b
+// size: 830 bytes
+// anchors: trace_geometry, hitbox_backtrack
+// ----------------------------------------------------
+
+undefined8 FUN_1800c5c10(longlong param_1)
+
+{
+  longlong lVar1;
+  undefined8 *puVar2;
+  int iVar3;
+  ulonglong uVar4;
+  ulonglong uVar5;
+  longlong lVar6;
+  ulonglong uVar7;
+  undefined8 uVar8;
+  undefined8 *puVar9;
+  undefined8 uVar10;
+  double dVar11;
+  double dVar12;
+  undefined1 local_468 [1024];
+  undefined1 local_68;
+  undefined7 uStack_67;
+  undefined8 *local_60;
+  longlong local_58;
+  longlong local_50;
+  undefined8 local_48;
+  
+  local_48 = 0xfffffffffffffffe;
+  FUN_18023b870(local_468,0,0x400);
+  lVar1 = *(longlong *)(param_1 + -8);
+  local_50 = param_1;
+  if (*(char *)(lVar1 + 0xc2) == '\x01') {
+                    /* WARNING: Subroutine does not return */
+    FUN_1800e24d0("script is closing");
+  }
+  iVar3 = *(int *)(lVar1 + 0xa8);
+  *(int *)(lVar1 + 0xa8) = iVar3 + 1;
+  if (iVar3 < 0x8000) {
+    uVar4 = FUN_180184cfc();
+    uVar5 = FUN_180184ce0();
+    if (uVar4 == 24000000) {
+      lVar6 = (((longlong)uVar5 % 24000000) * 1000000000) / 24000000 +
+              ((longlong)uVar5 / 24000000) * 1000000000;
+    }
+    else if (uVar4 == 10000000) {
+      lVar6 = uVar5 * 100;
+    }
+    else {
+      if ((uVar5 | uVar4) >> 0x20 == 0) {
+        uVar7 = (uVar5 & 0xffffffff) / (uVar4 & 0xffffffff);
+        uVar5 = (uVar5 & 0xffffffff) % (uVar4 & 0xffffffff);
+      }
+      else {
+        uVar7 = (longlong)uVar5 / (longlong)uVar4;
+        uVar5 = (longlong)uVar5 % (longlong)uVar4;
+      }
+      uVar5 = uVar5 * 1000000000;
+      if ((uVar4 | uVar5) >> 0x20 == 0) {
+        uVar5 = (uVar5 & 0xffffffff) / (uVar4 & 0xffffffff);
+      }
+      else {
+        uVar5 = (longlong)uVar5 / (longlong)uVar4;
+      }
+      lVar6 = uVar5 + uVar7 * 1000000000;
+    }
+    if (lVar6 <= *(longlong *)(lVar1 + 0xb0)) {
+      iVar3 = FUN_18016c6d0(param_1,1);
+      if (iVar3 != 3) {
+                    /* WARNING: Subroutine does not return */
+        FUN_1800e24d0("expected number");
+      }
+      dVar11 = (double)FUN_18016c710(local_50,1,0);
+      if ((0x7fefffffffffffff < (ulonglong)ABS(dVar11)) || (1000000000000.0 < ABS(dVar11))) {
+                    /* WARNING: Subroutine does not return */
+        FUN_1800e24d0("number out of range");
+      }
+      dVar12 = (double)FUN_180215100(dVar11);
+      if ((((16383.0 < dVar11) || (dVar11 < 0.0)) || (dVar11 != dVar12)) ||
+         (NAN(dVar11) || NAN(dVar12))) {
+                    /* WARNING: Subroutine does not return */
+        FUN_1800e24d0("integer out of range");
+      }
+      iVar3 = (int)dVar11;
+      uVar8 = FUN_1800e6b90(iVar3);
+      if (iVar3 == 0) {
+        AcquireSRWLockShared((PSRWLOCK)&DAT_180471378);
+        uVar10 = DAT_180471348;
+        ReleaseSRWLockShared((PSRWLOCK)&DAT_180471378);
+      }
+      else {
+        FUN_180109bd0(&DAT_180355000,&local_68);
+        uVar10 = 0;
+        puVar2 = (undefined8 *)CONCAT71(uStack_67,local_68);
+        for (puVar9 = puVar2; puVar9 != local_60; puVar9 = puVar9 + 2) {
+          if (*(short *)((longlong)puVar9 + 0xc) == iVar3) {
+            uVar10 = *puVar9;
+            break;
+          }
+        }
+        if (puVar2 != (undefined8 *)0x0) {
+          uVar5 = local_58 - (longlong)puVar2;
+          puVar9 = puVar2;
+          if (0xfff < uVar5) {
+            puVar9 = (undefined8 *)puVar2[-1];
+            if (0x1f < (ulonglong)((longlong)puVar2 + (-8 - (longlong)puVar9))) {
+                    /* WARNING: Subroutine does not return */
+              _invoke_watson((wchar_t *)0x0,(wchar_t *)0x0,(wchar_t *)0x0,0,0);
+            }
+            uVar5 = uVar5 + 0x27;
+          }
+          FUN_1801695f0(puVar9,uVar5);
+        }
+      }
+      FUN_1800e4310(&local_68,iVar3,uVar10,uVar8);
+      FUN_1800b8630(local_50,&local_68);
+      FUN_18000b5d0(&local_60,local_68);
+      return 1;
+    }
+  }
+                    /* WARNING: Subroutine does not return */
+  FUN_1800e24d0("callback budget exceeded");
+}
+
+

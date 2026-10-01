@@ -204,7 +204,7 @@ void agents::on_frame_stage_notify( )
 					if ( custom_idx >= 0 && custom_idx < static_cast< int >( custom_agents.entries.size( ) ) )
 					{
 						const auto& entry = custom_agents.entries[ custom_idx ];
-						if ( ( entry.team == team || entry.team == 0 ) && !entry.model_path.empty( ) )
+						if ( !entry.model_path.empty( ) )
 							model_path = entry.model_path;
 					}
 				}
@@ -298,8 +298,9 @@ if ( this->m_tracked_pawn != local_pawn )
 								};
 
 								const bool bad =
-									icontains( model_path, "_arm", 4 ) ||
-									icontains( model_path, "arms", 4 ) ||
+									icontains( model_path, "_arms.", 6 ) ||
+									icontains( model_path, "/arms/", 6 ) ||
+									icontains( model_path, "\\arms\\", 6 ) ||
 									icontains( model_path, "viewmodel", 8 ) ||
 									icontains( model_path, "/arm.", 5 ) ||
 									icontains( model_path, "\\arm.", 5 );
@@ -312,18 +313,26 @@ if ( this->m_tracked_pawn != local_pawn )
 								}
 								else
 								{
-									// Do not cache an old handle while the requested model is loading.
-									if ( !replace_agent_model( local_pawn, model_path ) ||
-										!agent_model_matches( local_pawn, model_path ) ) return;
-									g_last_applied_model = model_path;
+									static auto s_last_call_time = std::chrono::steady_clock::time_point{};
+									const auto now = std::chrono::steady_clock::now();
+									const bool model_changed = ( this->m_applied_model != model_path );
 
-									this->cycle_weapon_owners( local_pawn );
+									if ( model_changed || now - s_last_call_time >= std::chrono::milliseconds( 400 ) )
+									{
+										s_last_call_time = now;
+										replace_agent_model( local_pawn, model_path );
+										g_last_applied_model = model_path;
+									}
 
-									this->m_applied_handle = agent_model_handle( local_pawn );
-									this->m_applied_def = selected ? selected->def_index : 0;
-									this->m_applied_model = model_path;
-									this->m_tracked_team = team;
-									this->m_overridden = true;
+									if ( agent_model_matches( local_pawn, model_path ) )
+									{
+										this->cycle_weapon_owners( local_pawn );
+										this->m_applied_handle = agent_model_handle( local_pawn );
+										this->m_applied_def = selected ? selected->def_index : 0;
+										this->m_applied_model = model_path;
+										this->m_tracked_team = team;
+										this->m_overridden = true;
+									}
 								}
 							}
 						}
@@ -548,7 +557,7 @@ void agents::cycle_weapon_owners( std::uintptr_t pawn )
 				if ( custom_idx >= 0 && custom_idx < static_cast< int >( custom_agents.entries.size( ) ) )
 				{
 					const auto& entry = custom_agents.entries[ custom_idx ];
-					if ( ( entry.team == team || entry.team == 0 ) && !entry.model_path.empty( ) )
+					if ( !entry.model_path.empty( ) )
 						target_model = entry.model_path;
 				}
 

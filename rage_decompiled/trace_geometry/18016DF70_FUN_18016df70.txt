@@ -1,0 +1,26 @@
+// function: FUN_18016df70
+// ea: 18016df70
+// category: trace_geometry
+// depth: 2, via: FUN_180172830 @180172847
+// size: 123 bytes
+// anchors: trace_geometry, hitbox_backtrack
+// ----------------------------------------------------
+
+void FUN_18016df70(undefined8 param_1,double param_2,longlong param_3)
+
+{
+  double dVar1;
+  
+  dVar1 = (double)FUN_18016c340();
+  if (param_3 == 0x88) {
+    if (dVar1 != param_2) {
+      FUN_18016e930(param_1,"version mismatch: app. needs %f, Lua core provides %f",param_2,
+                    SUB84(dVar1,0));
+    }
+    return;
+  }
+  FUN_18016e930(param_1,"core and library have incompatible numeric types");
+  return;
+}
+
+

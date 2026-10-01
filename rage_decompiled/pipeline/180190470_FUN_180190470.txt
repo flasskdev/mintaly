@@ -1,0 +1,39 @@
+// function: FUN_180190470
+// ea: 180190470
+// category: pipeline
+// depth: 2, via: FUN_18016d040 @18016d09c
+// size: 111 bytes
+// anchors: pipeline, hitbox_backtrack
+// ----------------------------------------------------
+
+byte FUN_180190470(longlong param_1,longlong param_2,undefined8 *param_3)
+
+{
+  byte bVar1;
+  undefined8 *puVar2;
+  int iVar3;
+  
+  iVar3 = 0;
+  if (param_2 - 1U < (ulonglong)*(uint *)(param_1 + 0xc)) {
+    iVar3 = (int)param_2;
+  }
+  if (iVar3 == 0) {
+    puVar2 = (undefined8 *)FUN_180192300(param_1);
+    if ((*(byte *)(puVar2 + 1) & 0xf) != 0) {
+      *param_3 = *puVar2;
+      *(undefined1 *)(param_3 + 1) = *(undefined1 *)(puVar2 + 1);
+    }
+    bVar1 = *(byte *)(puVar2 + 1) & 0x3f;
+  }
+  else {
+    bVar1 = *(byte *)(*(longlong *)(param_1 + 0x10) + 4 + (ulonglong)(iVar3 - 1));
+    if ((bVar1 & 0xf) != 0) {
+      *(byte *)(param_3 + 1) = bVar1;
+      *param_3 = *(undefined8 *)(*(longlong *)(param_1 + 0x10) - ((ulonglong)(iVar3 - 1) * 8 + 8));
+      return bVar1;
+    }
+  }
+  return bVar1;
+}
+
+

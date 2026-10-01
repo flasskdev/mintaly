@@ -1,0 +1,48 @@
+// function: FUN_18018fbf0
+// ea: 18018fbf0
+// category: trace_geometry
+// depth: 3, via: FUN_18016d140 @18016d14d
+// size: 181 bytes
+// anchors: trace_geometry, hitbox_backtrack
+// ----------------------------------------------------
+
+void FUN_18018fbf0(undefined8 param_1,ulonglong param_2,ushort param_3)
+
+{
+  undefined1 *puVar1;
+  ulonglong uVar2;
+  longlong lVar3;
+  
+  uVar2 = (ulonglong)param_3;
+  if (param_3 == 0) {
+    lVar3 = -0x20;
+  }
+  else {
+    lVar3 = uVar2 * -0x10 + -0x28;
+  }
+  if (param_2 <= lVar3 + 0x7fffffffffffffffU) {
+    if (param_3 == 0) {
+      lVar3 = 0x20;
+    }
+    else {
+      lVar3 = uVar2 * 0x10 + 0x28;
+    }
+    lVar3 = FUN_18018c400(param_1,7,lVar3 + param_2);
+    *(ulonglong *)(lVar3 + 0x10) = param_2;
+    *(ushort *)(lVar3 + 10) = param_3;
+    *(undefined8 *)(lVar3 + 0x18) = 0;
+    if (uVar2 != 0) {
+      puVar1 = (undefined1 *)(lVar3 + 0x30);
+      do {
+        *puVar1 = 0;
+        puVar1 = puVar1 + 0x10;
+        uVar2 = uVar2 - 1;
+      } while (uVar2 != 0);
+    }
+    return;
+  }
+                    /* WARNING: Subroutine does not return */
+  FUN_180197ff0(param_1);
+}
+
+

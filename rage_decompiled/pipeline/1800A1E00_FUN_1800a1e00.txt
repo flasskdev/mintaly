@@ -1,0 +1,15 @@
+// function: FUN_1800a1e00
+// ea: 1800a1e00
+// category: pipeline
+// depth: 1, via: FUN_180039560 @18003960a
+// size: 13 bytes
+// anchors: pipeline, autowall_damage
+// ----------------------------------------------------
+
+undefined4 FUN_1800a1e00(uint param_1)
+
+{
+  return CONCAT31((int3)(DAT_180473de4 >> 8),(DAT_180473de4 >> (param_1 & 0x1f) & 1) != 0);
+}
+
+

@@ -1,0 +1,33 @@
+// function: FUN_180069c50
+// ea: 180069c50
+// category: trace_geometry
+// depth: 0, via: seed:trace_geometry
+// size: 295 bytes
+// anchors: trace_geometry
+// ----------------------------------------------------
+
+undefined8 * FUN_180069c50(undefined8 param_1,undefined8 *param_2,longlong param_3)
+
+{
+  undefined8 uVar1;
+  
+  *param_2 = 0;
+  *(undefined4 *)(param_2 + 1) = 0;
+  if ((*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+               0x2638) < DAT_180472100) && (FUN_180183614(&DAT_180472100), DAT_180472100 == -1)) {
+    DAT_1804720fc = FUN_180114bb0("C_CSPlayerPawn",0x268624b4);
+    _Init_thread_footer(&DAT_180472100);
+  }
+  uVar1 = *(undefined8 *)(DAT_1804720fc + param_3);
+  if ((*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+               0x2638) < DAT_180472110) && (FUN_180183614(&DAT_180472110), DAT_180472110 == -1)) {
+    DAT_180472108 = (code *)FUN_180162ed0(&DAT_18045d858);
+    _Init_thread_footer(&DAT_180472110);
+  }
+  if (DAT_180472108 != (code *)0x0) {
+    (*DAT_180472108)(uVar1,param_2,0);
+  }
+  return param_2;
+}
+
+

@@ -1,0 +1,15 @@
+// function: FUN_180239e20
+// ea: 180239e20
+// category: nospread
+// depth: 3, via: FUN_18022ce10 @18022cf0b
+// size: 9 bytes
+// anchors: nospread, hitbox_backtrack
+// ----------------------------------------------------
+
+uint FUN_180239e20(uint param_1)
+
+{
+  return param_1 | 0x400000;
+}
+
+

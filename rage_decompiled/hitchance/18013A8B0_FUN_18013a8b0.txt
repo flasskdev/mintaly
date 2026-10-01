@@ -1,0 +1,75 @@
+// function: FUN_18013a8b0
+// ea: 18013a8b0
+// category: hitchance
+// depth: 2, via: FUN_1801484e0 @180148b79
+// size: 372 bytes
+// anchors: hitchance, nospread, autowall_damage
+// ----------------------------------------------------
+
+/* WARNING: Globals starting with '_' overlap smaller symbols at the same address */
+
+float * FUN_18013a8b0(float *param_1,uint param_2)
+
+{
+  float *pfVar1;
+  float fVar2;
+  float fVar3;
+  undefined1 auVar4 [16];
+  float fVar5;
+  float fVar6;
+  float fVar8;
+  undefined1 auVar7 [16];
+  undefined8 local_58;
+  float local_50;
+  undefined1 local_4c [60];
+  
+  fVar6 = (float)(param_2 >> 0x10 & 0xff) / 255.0;
+  auVar4._4_4_ = param_2 >> 8;
+  auVar4._0_4_ = param_2;
+  auVar4._8_8_ = 0;
+  auVar4 = auVar4 & _DAT_180264790;
+  auVar7._0_4_ = (float)auVar4._0_4_;
+  auVar7._4_4_ = (float)auVar4._4_4_;
+  auVar7._8_4_ = (float)auVar4._8_4_;
+  auVar7._12_4_ = (float)auVar4._12_4_;
+  auVar4 = divps(auVar7,_DAT_180244a90);
+  local_58 = auVar4._0_8_;
+  local_50 = fVar6;
+  pfVar1 = (float *)FUN_180185430(&local_58,local_4c,0);
+  fVar3 = *pfVar1;
+  local_58 = auVar4._0_8_;
+  local_50 = fVar6;
+  pfVar1 = (float *)FUN_180185040(&local_58,local_4c,0);
+  fVar2 = fVar3 - *pfVar1;
+  *param_1 = 0.0;
+  param_1[2] = fVar3;
+  fVar5 = 0.0;
+  if ((fVar3 != 0.0) || (NAN(fVar3))) {
+    fVar5 = fVar2 / fVar3;
+  }
+  param_1[1] = fVar5;
+  param_1[3] = (float)(param_2 >> 0x18) / 255.0;
+  if ((fVar2 != 0.0) || (NAN(fVar2))) {
+    fVar5 = auVar4._0_4_;
+    if ((fVar3 != fVar5) || (NAN(fVar3) || NAN(fVar5))) {
+      fVar8 = auVar4._4_4_;
+      if ((fVar3 != fVar8) || (NAN(fVar3) || NAN(fVar8))) {
+        fVar3 = (fVar5 - fVar8) / fVar2 + 4.0;
+      }
+      else {
+        fVar3 = (fVar6 - fVar5) / fVar2 + 2.0;
+      }
+    }
+    else {
+      fVar3 = (float)FUN_180215670();
+    }
+    fVar3 = fVar3 * 60.0;
+    *param_1 = fVar3;
+    if (fVar3 < 0.0) {
+      *param_1 = fVar3 + 360.0;
+    }
+  }
+  return param_1;
+}
+
+

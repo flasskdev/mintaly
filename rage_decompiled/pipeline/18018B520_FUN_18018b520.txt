@@ -1,0 +1,56 @@
+// function: FUN_18018b520
+// ea: 18018b520
+// category: pipeline
+// depth: 3, via: FUN_18018a7e0 @18018a7e6
+// size: 269 bytes
+// anchors: pipeline, hitbox_backtrack
+// ----------------------------------------------------
+
+void FUN_18018b520(longlong param_1,longlong param_2,undefined4 param_3,int param_4)
+
+{
+  longlong lVar1;
+  int iVar2;
+  uint uVar3;
+  ulonglong uVar4;
+  ulonglong uVar5;
+  
+  *(int *)(param_1 + 0xb0) = *(int *)(param_1 + 0xb0) + param_4;
+  if (199 < *(ushort *)(param_1 + 0xb0)) {
+    if ((longlong)
+        (*(longlong *)(param_1 + 0x28) - *(longlong *)(param_1 + 0x10) & 0xfffffffffffffff0U) < 1) {
+      lVar1 = *(longlong *)(param_1 + 0x30);
+      iVar2 = (int)(*(longlong *)(param_1 + 0x28) - lVar1 >> 4);
+      if (1000000 < iVar2) {
+                    /* WARNING: Subroutine does not return */
+        FUN_180189f40(param_1);
+      }
+      uVar3 = iVar2 + (iVar2 >> 1);
+      uVar4 = *(longlong *)(param_1 + 0x10) - lVar1 >> 4;
+      if (1000000 < (int)uVar3) {
+        uVar3 = 1000000;
+      }
+      uVar5 = uVar4 & 0xffffffff;
+      if ((int)uVar4 <= (int)uVar3) {
+        uVar5 = (ulonglong)uVar3;
+      }
+      if (1000000 < (int)uVar5) {
+        FUN_18018ac50(param_1,0xf4308,1);
+                    /* WARNING: Subroutine does not return */
+        FUN_18016b4e0(param_1,"stack overflow");
+      }
+      FUN_18018ac50(param_1,uVar5,1);
+      param_2 = param_2 + (*(longlong *)(param_1 + 0x30) - lVar1);
+    }
+    FUN_180170440(param_1);
+  }
+  lVar1 = FUN_18018a5a0(param_1,param_2,param_3);
+  if (lVar1 != 0) {
+    *(uint *)(lVar1 + 0x3c) = *(uint *)(lVar1 + 0x3c) | 0x10000;
+    FUN_180192e10(param_1,lVar1);
+  }
+  *(int *)(param_1 + 0xb0) = *(int *)(param_1 + 0xb0) - param_4;
+  return;
+}
+
+

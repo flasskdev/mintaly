@@ -89,8 +89,10 @@ inline void setup_agent_request(
     const auto custom_index = team == 3 ? changer.custom_agents.selected_ct : changer.custom_agents.selected_t;
     if (custom_index >= 0 && custom_index < static_cast<int>(changer.custom_agents.entries.size())) {
         const auto& custom = changer.custom_agents.entries[custom_index];
-        if ((custom.team == 0 || custom.team == team) && !custom.model_path.empty())
+        if (!custom.model_path.empty()) {
             model_path = custom.model_path;
+            agent_name = custom.name;
+        }
     }
 
     auto& items = features::changer::g_econ_item_system;
@@ -98,18 +100,21 @@ inline void setup_agent_request(
         def_index ? items.find_def(def_index) : nullptr;
     if (!def) {
         for (const auto* candidate : items.agents()) {
-            if (candidate && candidate->team() == team) {
+            if (candidate && (candidate->team() == 0 || candidate->team() == team)) {
                 def = candidate;
                 def_index = candidate->def_index;
                 break;
             }
         }
     }
+    if (def_index <= 0) {
+        def_index = (team == 3) ? 5105 : 500;
+    }
     if (model_path.empty() && def) model_path = def->model_player;
     if (model_path.empty()) {
         model_path = team == 3
-            ? "agents/models/ctm_sas/ctm_sas.vmdl"
-            : "agents/models/tm_phoenix/tm_phoenix.vmdl";
+            ? "characters/models/ctm_sas/ctm_sas.vmdl"
+            : "characters/models/tm_phoenix/tm_phoenix.vmdl";
     }
 
     request.type = systems::model_preview::kind::agent;
@@ -117,8 +122,10 @@ inline void setup_agent_request(
     request.def_index = def_index;
     request.paint_kit = request.music_kit = 0;
     request.model_path = std::move(model_path);
-    agent_name = def ? (def->localized_name.empty() ? def->name : def->localized_name)
-        : (team == 3 ? "Counter-Terrorist" : "Terrorist");
+    if (agent_name == "CS2 Agent") {
+        agent_name = def ? (def->localized_name.empty() ? def->name : def->localized_name)
+            : (team == 3 ? "Counter-Terrorist" : "Terrorist");
+    }
 }
 
 inline void draw_agent_esp_overlay(

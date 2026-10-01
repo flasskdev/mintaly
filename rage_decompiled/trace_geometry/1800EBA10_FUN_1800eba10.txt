@@ -1,0 +1,51 @@
+// function: FUN_1800eba10
+// ea: 1800eba10
+// category: trace_geometry
+// depth: 3, via: FUN_1800eb720 @1800eb7c2
+// size: 205 bytes
+// anchors: trace_geometry, hitbox_backtrack
+// ----------------------------------------------------
+
+longlong * FUN_1800eba10(longlong *param_1,longlong *param_2,longlong *param_3)
+
+{
+  char cVar1;
+  longlong *plVar2;
+  longlong *plVar3;
+  undefined8 uVar4;
+  
+  plVar2 = (longlong *)*param_1;
+  if (((longlong *)*plVar2 == param_2) && (*(char *)((longlong)param_3 + 0x19) != '\0')) {
+    FUN_18000bfa0(param_1,param_1,plVar2[1]);
+    plVar2[1] = (longlong)plVar2;
+    *plVar2 = (longlong)plVar2;
+    plVar2[2] = (longlong)plVar2;
+    param_1[1] = 0;
+  }
+  else {
+    while (param_2 != param_3) {
+      plVar2 = (longlong *)param_2[2];
+      if (*(char *)(param_2[2] + 0x19) == '\0') {
+        do {
+          param_2 = plVar2;
+          plVar2 = (longlong *)*param_2;
+        } while (*(char *)(*param_2 + 0x19) == '\0');
+      }
+      else {
+        cVar1 = *(char *)(param_2[1] + 0x19);
+        plVar3 = (longlong *)param_2[1];
+        plVar2 = param_2;
+        while ((param_2 = plVar3, cVar1 == '\0' && (plVar2 == (longlong *)param_2[2]))) {
+          cVar1 = *(char *)(param_2[1] + 0x19);
+          plVar3 = (longlong *)param_2[1];
+          plVar2 = param_2;
+        }
+      }
+      uVar4 = FUN_18009cec0(param_1);
+      FUN_1800b6cd0(param_1,uVar4);
+    }
+  }
+  return param_3;
+}
+
+

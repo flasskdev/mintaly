@@ -1,0 +1,206 @@
+// function: FUN_180009180
+// ea: 180009180
+// category: nospread
+// depth: 2, via: FUN_180087d10 @180087daa
+// size: 1841 bytes
+// anchors: nospread, trace_geometry, hitbox_backtrack
+// ----------------------------------------------------
+
+void FUN_180009180(undefined8 *param_1)
+
+{
+  int iVar1;
+  short sVar2;
+  longlong lVar3;
+  byte bVar4;
+  int iVar5;
+  short *psVar6;
+  undefined8 *puVar7;
+  longlong lVar8;
+  longlong lVar9;
+  longlong lVar10;
+  short *psVar11;
+  undefined1 local_58 [32];
+  
+  AcquireSRWLockShared((PSRWLOCK)&DAT_180471378);
+  bVar4 = DAT_180471370;
+  lVar3 = DAT_180471350;
+  ReleaseSRWLockShared((PSRWLOCK)&DAT_180471378);
+  if ((bVar4 & lVar3 != 0) == 0) {
+    param_1[2] = 0;
+    puVar7 = param_1;
+    if (0xf < (ulonglong)param_1[3]) {
+      puVar7 = (undefined8 *)*param_1;
+    }
+    *(undefined1 *)puVar7 = 0;
+    *(undefined4 *)((longlong)param_1 + 0x34) = 0;
+    param_1[4] = 0;
+    param_1[5] = 0;
+    *(undefined4 *)((longlong)param_1 + 0x2f) = 0;
+  }
+  else if ((DAT_180471381 & 1) == 0) {
+    if ((*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+                 0x2638) < DAT_18046c1cc) && (FUN_180183614(&DAT_18046c1cc), DAT_18046c1cc == -1)) {
+      DAT_18046c1c8 = FUN_180114bb0("C_BaseEntity",0xa5bfefb3);
+      _Init_thread_footer(&DAT_18046c1cc);
+    }
+    iVar1 = *(int *)(lVar3 + DAT_18046c1c8);
+    sVar2 = DAT_18046f4ca;
+    if ((iVar1 != 2) && (sVar2 = 0, iVar1 == 3)) {
+      sVar2 = DAT_18046f4c8;
+    }
+    psVar11 = (short *)0x0;
+    if (sVar2 != 0) {
+      psVar6 = (short *)FUN_180021560(&DAT_180470f78);
+      psVar11 = (short *)0x0;
+      if ((psVar6 != (short *)0x0) && ((char)psVar6[0x58] == '\x03')) {
+        psVar11 = psVar6;
+      }
+    }
+    if (param_1[4] != lVar3) {
+      param_1[2] = 0;
+      puVar7 = param_1;
+      if (0xf < (ulonglong)param_1[3]) {
+        puVar7 = (undefined8 *)*param_1;
+      }
+      *(undefined1 *)puVar7 = 0;
+      *(undefined1 *)((longlong)param_1 + 0x32) = 0;
+      param_1[5] = 0;
+      *(undefined2 *)(param_1 + 6) = 0;
+      *(undefined4 *)((longlong)param_1 + 0x34) = 0;
+      param_1[4] = lVar3;
+    }
+    if ((*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+                 0x2638) < DAT_18046c1d4) && (FUN_180183614(&DAT_18046c1d4), DAT_18046c1d4 == -1)) {
+      DAT_18046c1d0 = FUN_180114bb0("C_BaseEntity",0x9d930423);
+      _Init_thread_footer(&DAT_18046c1d4);
+    }
+    lVar9 = *(longlong *)(lVar3 + DAT_18046c1d0);
+    if (lVar9 != 0) {
+      if ((*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+                   0x2638) < DAT_18046c1dc) && (FUN_180183614(&DAT_18046c1dc), DAT_18046c1dc == -1))
+      {
+        DAT_18046c1d8 = FUN_180114bb0("CSkeletonInstance",0x52ac8c4f);
+        _Init_thread_footer(&DAT_18046c1dc);
+      }
+      if ((psVar11 == (short *)0x0) || (*(longlong *)(psVar11 + 0x3c) == 0)) {
+        if ((*(char *)((longlong)param_1 + 0x32) == '\x01') && (param_1[2] != 0)) {
+          puVar7 = param_1;
+          if (0xf < (ulonglong)param_1[3]) {
+            puVar7 = (undefined8 *)*param_1;
+          }
+          if ((*(int *)(*(longlong *)
+                         ((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) + 0x2638)
+               < DAT_18046c1e8) && (FUN_180183614(&DAT_18046c1e8), DAT_18046c1e8 == -1)) {
+            DAT_18046c1e0 = (code *)FUN_180162ed0(&DAT_180464a18,puVar7);
+            _Init_thread_footer(&DAT_18046c1e8);
+          }
+          if (DAT_18046c1e0 != (code *)0x0) {
+            (*DAT_18046c1e0)(lVar3,puVar7);
+          }
+          FUN_1800098c0();
+          param_1[5] = 0;
+          *(undefined2 *)(param_1 + 6) = 0;
+          *(undefined4 *)((longlong)param_1 + 0x34) = 0;
+          *(undefined1 *)((longlong)param_1 + 0x32) = 0;
+          param_1[2] = 0;
+          if (0xf < (ulonglong)param_1[3]) {
+            param_1 = (undefined8 *)*param_1;
+          }
+          *(undefined1 *)param_1 = 0;
+        }
+      }
+      else {
+        lVar9 = lVar9 + DAT_18046c1d8;
+        if ((*(char *)((longlong)param_1 + 0x32) == '\0') && (param_1[2] == 0)) {
+          iVar5 = FUN_180009a70();
+          if (*(longlong *)(lVar9 + iVar5) != 0) {
+            FUN_180167640(local_58,*(longlong *)(lVar9 + iVar5),0x100);
+            FUN_180009af0(param_1,local_58);
+            FUN_180007e80(local_58);
+          }
+        }
+        if ((*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8)
+                     + 0x2638) < DAT_18046c1f8) &&
+           (FUN_180183614(&DAT_18046c1f8), DAT_18046c1f8 == -1)) {
+          DAT_18046c1f4 = FUN_180114bb0("CModelState",0xe100c814);
+          _Init_thread_footer(&DAT_18046c1f8);
+        }
+        if ((((*(char *)((longlong)param_1 + 0x32) != '\x01') ||
+             (*(short *)(param_1 + 6) != *psVar11)) || (*(int *)((longlong)param_1 + 0x34) != iVar1)
+            ) || ((param_1[5] == 0 || (*(longlong *)(lVar9 + DAT_18046c1f4) != param_1[5])))) {
+          if ((*(char *)((longlong)param_1 + 0x32) != '\0') &&
+             (*(int *)((longlong)param_1 + 0x34) != iVar1)) {
+            param_1[2] = 0;
+            puVar7 = param_1;
+            if (0xf < (ulonglong)param_1[3]) {
+              puVar7 = (undefined8 *)*param_1;
+            }
+            *(undefined1 *)puVar7 = 0;
+            *(undefined1 *)((longlong)param_1 + 0x32) = 0;
+            iVar5 = FUN_180009bb0();
+            if (*(longlong *)(lVar9 + iVar5) != 0) {
+              FUN_180167640(local_58,*(longlong *)(lVar9 + iVar5),0x100);
+              FUN_180009af0(param_1,local_58);
+              FUN_180007e80(local_58);
+            }
+          }
+          if (*(ulonglong *)(psVar11 + 0x40) < 0x10) {
+            psVar6 = psVar11 + 0x34;
+          }
+          else {
+            psVar6 = *(short **)(psVar11 + 0x34);
+          }
+          if ((*(int *)(*(longlong *)
+                         ((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) + 0x2638)
+               < DAT_18046c210) && (FUN_180183614(&DAT_18046c210), DAT_18046c210 == -1)) {
+            DAT_18046c208 = (code *)FUN_180162ed0(&DAT_180464a18,psVar6);
+            _Init_thread_footer(&DAT_18046c210);
+          }
+          if (DAT_18046c208 != (code *)0x0) {
+            (*DAT_18046c208)(lVar3,psVar6);
+          }
+          if ((*(int *)(*(longlong *)
+                         ((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) + 0x2638)
+               < DAT_18046c218) && (FUN_180183614(&DAT_18046c218), DAT_18046c218 == -1)) {
+            DAT_18046c214 = FUN_180114bb0("C_BaseModelEntity",0xae8e690f);
+            _Init_thread_footer(&DAT_18046c218);
+          }
+          lVar10 = lVar3 + DAT_18046c214;
+          if ((*(int *)(*(longlong *)
+                         ((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) + 0x2638)
+               < DAT_18046c220) && (FUN_180183614(&DAT_18046c220), DAT_18046c220 == -1)) {
+            DAT_18046c21c = FUN_180114bb0("CCollisionProperty",0xe57f80c);
+            _Init_thread_footer(&DAT_18046c220);
+          }
+          lVar8 = (longlong)DAT_18046c21c;
+          *(undefined8 *)(lVar10 + lVar8) = 0xc1800000c1800000;
+          *(undefined4 *)(lVar10 + 8 + lVar8) = 0;
+          if ((*(int *)(*(longlong *)
+                         ((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) + 0x2638)
+               < DAT_18046c228) && (FUN_180183614(&DAT_18046c228), DAT_18046c228 == -1)) {
+            DAT_18046c224 = FUN_180114bb0("CCollisionProperty",0x7d388d3e);
+            _Init_thread_footer(&DAT_18046c228);
+          }
+          lVar8 = (longlong)DAT_18046c224;
+          *(undefined8 *)(lVar10 + lVar8) = 0x4180000041800000;
+          *(undefined4 *)(lVar10 + 8 + lVar8) = 0x42900000;
+          FUN_1800098c0(0x41800000,lVar3);
+          if ((*(int *)(*(longlong *)
+                         ((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) + 0x2638)
+               < DAT_18046c230) && (FUN_180183614(&DAT_18046c230), DAT_18046c230 == -1)) {
+            DAT_18046c22c = FUN_180114bb0("CModelState",0xe100c814);
+            _Init_thread_footer(&DAT_18046c230);
+          }
+          param_1[5] = *(undefined8 *)(lVar9 + DAT_18046c22c);
+          *(short *)(param_1 + 6) = *psVar11;
+          *(int *)((longlong)param_1 + 0x34) = iVar1;
+          *(undefined1 *)((longlong)param_1 + 0x32) = 1;
+        }
+      }
+    }
+  }
+  return;
+}
+
+

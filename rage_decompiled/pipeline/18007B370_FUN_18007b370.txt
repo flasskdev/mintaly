@@ -1,0 +1,24 @@
+// function: FUN_18007b370
+// ea: 18007b370
+// category: pipeline
+// depth: 2, via: FUN_18007aa00 @18007ac4a
+// size: 115 bytes
+// anchors: pipeline
+// ----------------------------------------------------
+
+undefined4 FUN_18007b370(void)
+
+{
+  if (*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+              0x2638) < DAT_180472770) {
+    FUN_180183614(&DAT_180472770);
+    if (DAT_180472770 == -1) {
+      DAT_18047276c = FUN_180114bb0("C_BaseEntity",0x328a3947);
+      _Init_thread_footer(&DAT_180472770);
+      return DAT_18047276c;
+    }
+  }
+  return DAT_18047276c;
+}
+
+

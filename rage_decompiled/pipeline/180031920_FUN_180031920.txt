@@ -1,0 +1,25 @@
+// function: FUN_180031920
+// ea: 180031920
+// category: pipeline
+// depth: 3, via: FUN_180030f00 @1800315b5
+// size: 75 bytes
+// anchors: pipeline, autowall_damage
+// ----------------------------------------------------
+
+void FUN_180031920(longlong *param_1,ulonglong param_2)
+
+{
+  ulonglong local_8;
+  
+  if ((ulonglong)((param_1[2] - *param_1 >> 3) * -0x34307aae9fc8985d) < param_2) {
+    local_8 = param_2;
+    if (0x7ea3bdb64ab29 < param_2) {
+                    /* WARNING: Subroutine does not return */
+      FUN_18000bd30();
+    }
+    FUN_180031aa0(param_1,&local_8);
+  }
+  return;
+}
+
+

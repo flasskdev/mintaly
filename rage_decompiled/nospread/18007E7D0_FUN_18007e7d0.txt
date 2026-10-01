@@ -1,0 +1,89 @@
+// function: FUN_18007e7d0
+// ea: 18007e7d0
+// category: nospread
+// depth: 2, via: FUN_1800889b0 @180088a03
+// size: 464 bytes
+// anchors: nospread, trace_geometry, hitbox_backtrack
+// ----------------------------------------------------
+
+void FUN_18007e7d0(undefined8 param_1,longlong param_2)
+
+{
+  int *piVar1;
+  int *piVar2;
+  int iVar3;
+  undefined2 uVar4;
+  undefined1 uVar5;
+  undefined8 uVar6;
+  undefined4 *puVar7;
+  longlong lVar8;
+  longlong lVar9;
+  ulonglong local_88;
+  char local_80;
+  longlong local_78;
+  byte local_70;
+  longlong local_68;
+  byte local_60;
+  ulonglong local_58;
+  byte local_50;
+  undefined1 local_48 [3];
+  undefined1 local_45;
+  char local_44;
+  uint local_40;
+  char local_3c;
+  int local_38;
+  char local_34;
+  
+  if ((param_2 != 0) && (DAT_180470548 == '\x01')) {
+    lVar8 = *(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8);
+    piVar1 = (int *)(lVar8 + 4);
+    piVar2 = (int *)(lVar8 + 4);
+    *piVar2 = *piVar2 + 1;
+    FUN_180019fe0(&local_68,param_2 + 8);
+    iVar3 = *piVar1;
+    *piVar1 = iVar3 + -1;
+    uVar6 = DAT_1804728d0;
+    if (((local_60 & 1) != 0) && (local_68 != 0)) {
+      *piVar1 = iVar3;
+      FUN_180019fe0(&local_78,uVar6);
+      iVar3 = *piVar1;
+      *piVar1 = iVar3 + -1;
+      if (((local_70 & 1) != 0) && (local_78 != 0)) {
+        *piVar1 = iVar3;
+        FUN_180019fe0(&local_58,local_78 + 0x18);
+        *piVar1 = *piVar1 + -1;
+        if (((local_50 & 1) != 0) && (local_58 != 0)) {
+          FUN_18007e9b0(&local_38,local_68 + 4);
+          FUN_18007e9b0(&local_40,local_68 + 0x38);
+          if ((((local_34 == '\x01') && (local_3c == '\x01')) && (0xffefffff < local_38 - 0x100001U)
+              ) && (local_40 < 0x400001)) {
+            FUN_180072b50(&local_88,local_78 + 8);
+            if (((local_80 == '\x01') && (local_58 <= local_88)) &&
+               (0 < local_38 &&
+                (ulonglong)((longlong)local_38 + (longlong)(int)local_40) <=
+                local_88 - local_58 >> 5)) {
+              lVar8 = (longlong)(int)local_40 << 5;
+              lVar9 = 0;
+              do {
+                puVar7 = (undefined4 *)(local_58 + lVar8);
+                FUN_18007e9b0(local_48,puVar7);
+                uVar5 = DAT_1804705aa;
+                uVar4 = DAT_1804705a8;
+                if (local_44 == '\x01') {
+                  *piVar1 = *piVar1 + 1;
+                  *puVar7 = CONCAT13(local_45,CONCAT12(uVar5,uVar4));
+                  *piVar1 = *piVar1 + -1;
+                }
+                lVar9 = lVar9 + 1;
+                lVar8 = lVar8 + 0x20;
+              } while (lVar9 < local_38);
+            }
+          }
+        }
+      }
+    }
+  }
+  return;
+}
+
+

@@ -1,0 +1,81 @@
+// function: FUN_1801669e0
+// ea: 1801669e0
+// category: nospread
+// depth: 2, via: FUN_180166b40 @180166c4b
+// size: 341 bytes
+// anchors: nospread, trace_geometry
+// ----------------------------------------------------
+
+FARPROC FUN_1801669e0(HMODULE param_1,undefined8 *param_2)
+
+{
+  undefined8 uVar1;
+  ulonglong uVar2;
+  LPCSTR ***ppppCVar3;
+  FARPROC pFVar4;
+  ulonglong uVar5;
+  LPCSTR ****pppppCVar6;
+  ulonglong uVar7;
+  LPCSTR ***local_48;
+  undefined8 uStack_40;
+  ulonglong local_38;
+  ulonglong uStack_30;
+  
+  local_38 = 0;
+  uStack_30 = 0;
+  local_48 = (LPCSTR ***)0x0;
+  uStack_40 = 0;
+  uVar5 = param_2[1];
+  if ((longlong)uVar5 < 0) {
+                    /* WARNING: Subroutine does not return */
+    FUN_18000b110();
+  }
+  uVar1 = *param_2;
+  if (uVar5 < 0x10) {
+    uStack_30 = 0xf;
+    local_38 = uVar5;
+    FUN_18023b1d0(&local_48,uVar1,uVar5);
+    *(undefined1 *)((longlong)&local_48 + uVar5) = 0;
+  }
+  else {
+    uVar2 = uVar5 | 0xf;
+    uVar7 = 0x16;
+    if (0x16 < uVar2) {
+      uVar7 = uVar2;
+    }
+    if (uVar2 < 0xfff) {
+      pppppCVar6 = (LPCSTR ****)FUN_1801695a0(uVar7 + 1);
+    }
+    else {
+      ppppCVar3 = (LPCSTR ***)FUN_1801695a0(uVar7 + 0x28);
+      pppppCVar6 = (LPCSTR ****)((longlong)ppppCVar3 + 0x27U & 0xffffffffffffffe0);
+      pppppCVar6[-1] = ppppCVar3;
+    }
+    local_48 = (LPCSTR ***)pppppCVar6;
+    local_38 = uVar5;
+    uStack_30 = uVar7;
+    FUN_18023b1d0(pppppCVar6,uVar1,uVar5);
+    *(CHAR *)((longlong)pppppCVar6 + uVar5) = '\0';
+  }
+  pppppCVar6 = (LPCSTR ****)local_48;
+  if (uStack_30 < 0x10) {
+    pppppCVar6 = &local_48;
+  }
+  pFVar4 = GetProcAddress(param_1,(LPCSTR)pppppCVar6);
+  if (0xf < uStack_30) {
+    uVar5 = uStack_30 + 1;
+    pppppCVar6 = (LPCSTR ****)local_48;
+    if (0xfff < uVar5) {
+      if ((LPCSTR)0x1f < (LPCSTR)((longlong)local_48 + (-8 - (longlong)local_48[-1]))) {
+                    /* WARNING: Subroutine does not return */
+        _invoke_watson((wchar_t *)0x0,(wchar_t *)0x0,(wchar_t *)0x0,0,0);
+      }
+      uVar5 = uStack_30 + 0x28;
+      pppppCVar6 = (LPCSTR ****)local_48[-1];
+    }
+    FUN_1801695f0(pppppCVar6,uVar5);
+  }
+  return pFVar4;
+}
+
+

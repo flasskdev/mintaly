@@ -1,0 +1,31 @@
+// function: FUN_180115500
+// ea: 180115500
+// category: trace_geometry
+// depth: 0, via: seed:trace_geometry
+// size: 206 bytes
+// anchors: trace_geometry
+// ----------------------------------------------------
+
+undefined8
+FUN_180115500(undefined8 param_1,undefined8 param_2,undefined8 param_3,undefined8 param_4,
+             undefined8 param_5,undefined8 param_6,longlong param_7)
+
+{
+  FUN_18023b870(param_2,0,0x108);
+  if (param_7 != 0) {
+    if (*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+                0x2638) < DAT_180474888) {
+      FUN_180183614(&DAT_180474888);
+      if (DAT_180474888 == -1) {
+        DAT_180474880 = (code *)FUN_180162ed0(&DAT_1804668b8);
+        _Init_thread_footer(&DAT_180474888);
+      }
+    }
+    if (DAT_180474880 != (code *)0x0) {
+      (*DAT_180474880)(param_7 + 0x7b0,param_2,param_3,param_4,param_5,param_6);
+    }
+  }
+  return param_2;
+}
+
+

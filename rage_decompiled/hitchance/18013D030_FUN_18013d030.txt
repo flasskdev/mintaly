@@ -1,0 +1,36 @@
+// function: FUN_18013d030
+// ea: 18013d030
+// category: hitchance
+// depth: 2, via: FUN_1801462d0 @1801465f2
+// size: 201 bytes
+// anchors: hitchance, nospread, autowall_damage
+// ----------------------------------------------------
+
+void FUN_18013d030(undefined8 param_1)
+
+{
+  undefined1 local_19;
+  undefined4 local_18 [4];
+  undefined8 local_8;
+  
+  local_8 = param_1;
+  if (*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+              0x2638) < DAT_180495870) {
+    FUN_180183614(&DAT_180495870);
+    if (DAT_180495870 == -1) {
+      DAT_1804957d8 = 0;
+      DAT_1804957e0 = 0;
+      DAT_1804957e8 = 0;
+      local_18[0] = 0;
+      FUN_18006ca00(&DAT_1804957f0,local_18,&local_19);
+      local_18[0] = 0;
+      FUN_18006ca00(&DAT_180495830,local_18,&local_19);
+      atexit(FUN_18014bee0);
+      _Init_thread_footer(&DAT_180495870);
+    }
+  }
+  FUN_18006cb10(&DAT_1804957f0,local_18,&local_8);
+  return;
+}
+
+

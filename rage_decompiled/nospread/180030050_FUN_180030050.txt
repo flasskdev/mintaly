@@ -1,0 +1,66 @@
+// function: FUN_180030050
+// ea: 180030050
+// category: nospread
+// depth: 0, via: seed:nospread
+// size: 523 bytes
+// anchors: nospread
+// ----------------------------------------------------
+
+void FUN_180030050(undefined8 param_1,longlong param_2,undefined8 param_3,undefined4 param_4)
+
+{
+  undefined4 uVar1;
+  char *pcVar2;
+  
+  uVar1 = FUN_18002f5a0(param_4);
+  if (*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+              0x2638) < DAT_180471864) {
+    FUN_180183614(&DAT_180471864);
+    if (DAT_180471864 == -1) {
+      DAT_180471860 = FUN_180114bb0("C_BaseEntity",0xc02ce796);
+      _Init_thread_footer(&DAT_180471864);
+    }
+  }
+  *(undefined4 *)(DAT_180471860 + param_2) = uVar1;
+  if (*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+              0x2638) < DAT_180471870) {
+    FUN_180183614(&DAT_180471870);
+    if (DAT_180471870 == -1) {
+      DAT_180471868 = (code *)FUN_180162ed0(&DAT_180467c68);
+      _Init_thread_footer(&DAT_180471870);
+    }
+  }
+  if (DAT_180471868 != (code *)0x0) {
+    (*DAT_180471868)(param_2);
+  }
+  if (*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+              0x2638) < DAT_180471880) {
+    FUN_180183614(&DAT_180471880);
+    if (DAT_180471880 == -1) {
+      DAT_180471878 = (code *)FUN_180162ed0(&DAT_180467a38);
+      _Init_thread_footer(&DAT_180471880);
+    }
+  }
+  if (DAT_180471878 != (code *)0x0) {
+    pcVar2 = (char *)(*DAT_180471878)(param_3);
+    if ((pcVar2 != (char *)0x0) && (*pcVar2 != '\0')) {
+      if (*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+                  0x2638) < DAT_180471890) {
+        FUN_180183614(&DAT_180471890);
+        if (DAT_180471890 == -1) {
+          DAT_180471888 = (code *)FUN_180162ed0(&DAT_180464a18);
+          _Init_thread_footer(&DAT_180471890);
+        }
+      }
+      if (DAT_180471888 != (code *)0x0) {
+                    /* WARNING: Could not recover jumptable at 0x000180030148. Too many branches */
+                    /* WARNING: Treating indirect jump as call */
+        (*DAT_180471888)(param_2,pcVar2);
+        return;
+      }
+    }
+  }
+  return;
+}
+
+

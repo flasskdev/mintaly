@@ -1,0 +1,61 @@
+// function: FUN_180115130
+// ea: 180115130
+// category: trace_geometry
+// depth: 0, via: seed:trace_geometry
+// size: 317 bytes
+// anchors: trace_geometry
+// ----------------------------------------------------
+
+undefined8
+FUN_180115130(undefined8 param_1,undefined8 param_2,undefined8 param_3,undefined8 param_4,
+             undefined8 *param_5,undefined8 *param_6,undefined8 param_7)
+
+{
+  int *piVar1;
+  int *piVar2;
+  longlong lVar3;
+  longlong lVar4;
+  undefined8 local_70;
+  undefined4 local_68;
+  undefined8 local_64;
+  undefined4 local_5c;
+  undefined8 local_58;
+  undefined8 uStack_50;
+  undefined8 local_48;
+  longlong local_40;
+  byte local_38;
+  
+  local_68 = *(undefined4 *)(param_5 + 1);
+  local_70 = *param_5;
+  local_58 = 0;
+  uStack_50 = 0;
+  local_64 = *param_6;
+  local_5c = *(undefined4 *)(param_6 + 1);
+  local_48 = 2;
+  FUN_18023b870(param_2,0,0x108);
+  lVar4 = DAT_180471950;
+  if (DAT_180471950 != 0) {
+    lVar3 = *(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8);
+    piVar1 = (int *)(lVar3 + 4);
+    piVar2 = (int *)(lVar3 + 4);
+    *piVar2 = *piVar2 + 1;
+    FUN_180019fe0(&local_40,lVar4);
+    *piVar1 = *piVar1 + -1;
+    if (((local_38 & 1) != 0) && (local_40 != 0)) {
+      if (*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+                  0x2638) < DAT_180474838) {
+        FUN_180183614(&DAT_180474838);
+        if (DAT_180474838 == -1) {
+          DAT_180474830 = (code *)FUN_180162ed0(&DAT_180466ae8);
+          _Init_thread_footer(&DAT_180474838);
+        }
+      }
+      if (DAT_180474830 != (code *)0x0) {
+        (*DAT_180474830)(lVar4,&local_70,param_3,param_4,param_7,param_2);
+      }
+    }
+  }
+  return param_2;
+}
+
+

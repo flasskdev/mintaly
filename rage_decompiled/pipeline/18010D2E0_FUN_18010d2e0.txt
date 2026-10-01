@@ -1,0 +1,138 @@
+// function: FUN_18010d2e0
+// ea: 18010d2e0
+// category: pipeline
+// depth: 1, via: FUN_180087f70 @180088683
+// size: 1187 bytes
+// anchors: pipeline
+// ----------------------------------------------------
+
+void FUN_18010d2e0(longlong *param_1,code *param_2,char param_3)
+
+{
+  undefined8 *puVar1;
+  undefined1 auVar2 [16];
+  longlong lVar3;
+  char cVar4;
+  int iVar5;
+  int iVar6;
+  longlong lVar7;
+  longlong lVar8;
+  longlong lVar9;
+  ulonglong uVar10;
+  longlong lVar11;
+  undefined8 *puVar12;
+  float fVar13;
+  undefined8 extraout_XMM0_Qa;
+  undefined8 uVar14;
+  undefined8 extraout_XMM0_Qa_00;
+  undefined1 auVar15 [16];
+  
+  AcquireSRWLockShared((PSRWLOCK)&DAT_180471378);
+  lVar11 = DAT_180471350;
+  ReleaseSRWLockShared((PSRWLOCK)&DAT_180471378);
+  if ((*param_1 == 0) || (lVar7 = FUN_180169a20(*param_1 + 0x20), lVar7 == 0)) {
+    return;
+  }
+  lVar3 = *(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8);
+  *(char **)(lVar3 + 8) = "input apply: subtick movement";
+  if (param_3 == '\0') {
+    iVar5 = FUN_180169850(lVar7);
+    if (0 < iVar5) {
+      iVar5 = 0;
+      do {
+        lVar8 = FUN_180169860(lVar7,iVar5);
+        if ((lVar8 != 0) &&
+           (((cVar4 = FUN_180169640(lVar8,8), cVar4 != '\0' &&
+             (fVar13 = (float)FUN_180169770(lVar8), 1e-05 < ABS(fVar13))) ||
+            ((cVar4 = FUN_180169640(lVar8,0x10), cVar4 != '\0' &&
+             (fVar13 = (float)FUN_180169790(lVar8), 1e-05 < ABS(fVar13))))))) goto LAB_18010d57e;
+        iVar5 = iVar5 + 1;
+        iVar6 = FUN_180169850(lVar7);
+      } while (iVar5 < iVar6);
+    }
+    if (lVar11 == 0) {
+      lVar11 = 0;
+    }
+    else {
+      if ((*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+                   0x2638) < DAT_180474174) && (FUN_180183614(&DAT_180474174), DAT_180474174 == -1))
+      {
+        DAT_180474170 = FUN_180114bb0("C_BasePlayerPawn",0xcf73e28a);
+        _Init_thread_footer(&DAT_180474174);
+      }
+      lVar11 = *(longlong *)(lVar11 + DAT_180474170);
+    }
+    lVar8 = FUN_18002d7a0(lVar7);
+    if ((lVar8 != 0 && lVar11 != 0) &&
+       (lVar9 = FUN_18010d790(lVar8 == 0 || lVar11 == 0,lVar8), lVar9 != 0)) {
+      FUN_180169760(lVar9,0);
+      FUN_180169710(lVar9,0);
+      FUN_180169740(lVar9,0);
+      FUN_1801697c0(lVar9,0);
+      FUN_1801697e0(lVar9,0);
+      fVar13 = (float)FUN_1801698e0(lVar7);
+      if ((*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+                   0x2638) < DAT_18047417c) && (FUN_180183614(&DAT_18047417c), DAT_18047417c == -1))
+      {
+        DAT_180474178 = FUN_180114bb0("CPlayer_MovementServices",0x3976c40f);
+        _Init_thread_footer(&DAT_18047417c);
+      }
+      FUN_180169780(lVar9,fVar13 - *(float *)(lVar11 + DAT_180474178));
+      fVar13 = (float)FUN_1801698f0(lVar7);
+      if ((*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+                   0x2638) < DAT_180474184) && (FUN_180183614(&DAT_180474184), DAT_180474184 == -1))
+      {
+        DAT_180474180 = FUN_180114bb0("CPlayer_MovementServices",0xb20fcc65);
+        _Init_thread_footer(&DAT_180474184);
+      }
+      FUN_1801697a0(lVar9,fVar13 - *(float *)(lVar11 + DAT_180474180));
+      if (1 < (longlong)*(int *)(lVar8 + 8)) {
+        uVar10 = (longlong)*(int *)(lVar8 + 8) + 1;
+        do {
+          auVar2 = *(undefined1 (*) [16])(*(longlong *)(lVar8 + 0x10) + -0x10 + uVar10 * 8);
+          auVar15._0_8_ = auVar2._8_8_;
+          auVar15._8_4_ = auVar2._0_4_;
+          auVar15._12_4_ = auVar2._4_4_;
+          *(undefined1 (*) [16])(*(longlong *)(lVar8 + 0x10) + -0x10 + uVar10 * 8) = auVar15;
+          uVar10 = uVar10 - 1;
+        } while (2 < uVar10);
+      }
+    }
+  }
+LAB_18010d57e:
+  puVar1 = (undefined8 *)(lVar3 + 8);
+  if (param_2 != (code *)0x0) {
+    (*param_2)(*param_1);
+  }
+  *puVar1 = "input apply: buttons";
+  lVar11 = FUN_1801697f0(lVar7);
+  if (lVar11 == 0) {
+    puVar12 = (undefined8 *)(*(ulonglong *)(lVar7 + -8) & 0xfffffffffffffffc);
+    if ((*(ulonglong *)(lVar7 + -8) & 1) != 0) {
+      puVar12 = (undefined8 *)*puVar12;
+    }
+    uVar14 = extraout_XMM0_Qa;
+    if ((*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+                 0x2638) < DAT_180474190) &&
+       (uVar14 = FUN_180183614(&DAT_180474190), DAT_180474190 == -1)) {
+      DAT_180474188 = (code *)FUN_180162ed0(&DAT_180459f78);
+      uVar14 = _Init_thread_footer(&DAT_180474190);
+    }
+    if ((DAT_180474188 == (code *)0x0) ||
+       (lVar11 = (*DAT_180474188)(puVar12), uVar14 = extraout_XMM0_Qa_00, lVar11 == 0))
+    goto LAB_18010d5e4;
+    *(longlong *)(lVar7 + 0x28) = lVar11;
+    lVar11 = lVar11 + 0x10;
+    if (lVar11 == 0) goto LAB_18010d5e4;
+  }
+  FUN_180169650(lVar7,2);
+  FUN_180169710(lVar11,*(undefined8 *)(*param_1 + 0x60));
+  FUN_180169720(lVar11,*(undefined8 *)(*param_1 + 0x68));
+  uVar14 = FUN_180169730(lVar11,*(undefined8 *)(*param_1 + 0x70));
+LAB_18010d5e4:
+  *puVar1 = "input apply: crc";
+  FUN_18010d900(uVar14,lVar7);
+  return;
+}
+
+

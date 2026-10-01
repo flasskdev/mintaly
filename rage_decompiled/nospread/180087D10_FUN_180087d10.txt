@@ -1,0 +1,82 @@
+// function: FUN_180087d10
+// ea: 180087d10
+// category: nospread
+// depth: 1, via: FUN_180084040 @1800847a9
+// size: 600 bytes
+// anchors: nospread, trace_geometry, hitbox_backtrack
+// ----------------------------------------------------
+
+void FUN_180087d10(undefined8 param_1,int param_2)
+
+{
+  longlong lVar1;
+  longlong lVar2;
+  char cVar3;
+  
+  cVar3 = FUN_1801099c0(&DAT_180355000);
+  if (cVar3 != '\0') {
+    FUN_180109a00(&DAT_180355000);
+  }
+  FUN_18010e0d0(&DAT_180471348);
+  AcquireSRWLockShared((PSRWLOCK)&DAT_180472508);
+  AcquireSRWLockShared((PSRWLOCK)&DAT_180471378);
+  lVar2 = DAT_180471358;
+  lVar1 = DAT_180471350;
+  ReleaseSRWLockShared((PSRWLOCK)&DAT_180471378);
+  if ((lVar1 != 0 || lVar2 != 0) && ((DAT_1804708f0 & 1) != 0)) {
+    if (param_2 == 7) {
+      FUN_180009180(&DAT_1803551f0);
+      FUN_180018910(&DAT_180473a40);
+      FUN_18002e190(&DAT_180473a88);
+      FUN_18007dcb0(&DAT_180470ee8);
+      FUN_180082da0(&DAT_1803562e8);
+      ReleaseSRWLockShared((PSRWLOCK)&DAT_180472508);
+      FUN_180075c50(&DAT_180355120);
+      AcquireSRWLockShared((PSRWLOCK)&DAT_180472508);
+    }
+    else if (param_2 == 6) {
+      FUN_180019ff0(&DAT_180471250);
+    }
+  }
+  if (*(int *)(*(longlong *)((longlong)ThreadLocalStoragePointer + (ulonglong)_tls_index * 8) +
+              0x2638) < DAT_180472bd0) {
+    FUN_180183614(&DAT_180472bd0);
+    if (DAT_180472bd0 == -1) {
+      DAT_180472bc8 = FUN_1801642a0(DAT_180471968,0x5eacc865);
+      _Init_thread_footer(&DAT_180472bd0);
+    }
+  }
+  if ((DAT_180472bc8 != 0) && (DAT_18046f798 == *(byte *)(DAT_180472bc8 + 0x58))) {
+    *(byte *)(DAT_180472bc8 + 0x58) = DAT_18046f798 ^ 1;
+  }
+  if (param_2 == 6) {
+    FUN_180072cd0(&DAT_180356308);
+    ReleaseSRWLockShared((PSRWLOCK)&DAT_180472508);
+    if (DAT_180472dc0 != (code *)0x0) {
+      (*DAT_180472dc0)(param_1,6);
+    }
+  }
+  else {
+    ReleaseSRWLockShared((PSRWLOCK)&DAT_180472508);
+    if (DAT_180472dc0 != (code *)0x0) {
+      (*DAT_180472dc0)(param_1,param_2);
+    }
+    if (param_2 == 0xc) {
+      FUN_1801157f0(&DAT_180470860);
+      FUN_18010a980(&DAT_180470910);
+    }
+  }
+  AcquireSRWLockShared((PSRWLOCK)&DAT_180472508);
+  AcquireSRWLockShared((PSRWLOCK)&DAT_180471378);
+  lVar2 = DAT_180471358;
+  lVar1 = DAT_180471350;
+  ReleaseSRWLockShared((PSRWLOCK)&DAT_180471378);
+  if (((lVar1 != 0 || lVar2 != 0) && (param_2 == 6)) && ((DAT_1804708f0 & 1) != 0)) {
+    FUN_180067a30(&DAT_180470a40);
+  }
+  ReleaseSRWLockShared((PSRWLOCK)&DAT_180472508);
+  FUN_1800b08e0(param_2);
+  return;
+}
+
+

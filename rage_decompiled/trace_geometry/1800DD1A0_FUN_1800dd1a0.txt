@@ -1,0 +1,127 @@
+// function: FUN_1800dd1a0
+// ea: 1800dd1a0
+// category: trace_geometry
+// depth: 1, via: FUN_1800aae50 @1800ab978
+// size: 770 bytes
+// anchors: trace_geometry, hitbox_backtrack
+// ----------------------------------------------------
+
+undefined8 FUN_1800dd1a0(longlong param_1)
+
+{
+  int iVar1;
+  ulonglong uVar2;
+  ulonglong uVar3;
+  longlong lVar4;
+  ulonglong uVar5;
+  int *piVar6;
+  longlong lVar7;
+  undefined8 ***pppuVar8;
+  undefined1 local_478 [1032];
+  undefined8 **local_70 [2];
+  undefined8 local_60;
+  ulonglong local_58;
+  undefined8 **local_50;
+  undefined8 local_48;
+  float local_40;
+  float local_3c;
+  longlong local_38;
+  undefined8 local_30;
+  
+  local_30 = 0xfffffffffffffffe;
+  FUN_18023b870(local_478,0,0x400);
+  lVar7 = *(longlong *)(param_1 + -8);
+  local_38 = param_1;
+  if (*(char *)(lVar7 + 0xc2) == '\x01') {
+                    /* WARNING: Subroutine does not return */
+    FUN_1800e24d0("script is closing");
+  }
+  iVar1 = *(int *)(lVar7 + 0xa8);
+  *(int *)(lVar7 + 0xa8) = iVar1 + 1;
+  if (0x7fff < iVar1) {
+LAB_1800dd466:
+                    /* WARNING: Subroutine does not return */
+    FUN_1800e24d0("callback budget exceeded");
+  }
+  uVar2 = FUN_180184cfc();
+  uVar3 = FUN_180184ce0();
+  if (uVar2 == 24000000) {
+    lVar4 = (((longlong)uVar3 % 24000000) * 1000000000) / 24000000 +
+            ((longlong)uVar3 / 24000000) * 1000000000;
+  }
+  else if (uVar2 == 10000000) {
+    lVar4 = uVar3 * 100;
+  }
+  else {
+    if ((uVar3 | uVar2) >> 0x20 == 0) {
+      uVar5 = (uVar3 & 0xffffffff) / (uVar2 & 0xffffffff);
+      uVar3 = (uVar3 & 0xffffffff) % (uVar2 & 0xffffffff);
+    }
+    else {
+      uVar5 = (longlong)uVar3 / (longlong)uVar2;
+      uVar3 = (longlong)uVar3 % (longlong)uVar2;
+    }
+    uVar3 = uVar3 * 1000000000;
+    if ((uVar2 | uVar3) >> 0x20 == 0) {
+      uVar3 = (uVar3 & 0xffffffff) / (uVar2 & 0xffffffff);
+    }
+    else {
+      uVar3 = (longlong)uVar3 / (longlong)uVar2;
+    }
+    lVar4 = uVar3 + uVar5 * 1000000000;
+  }
+  if (*(longlong *)(lVar7 + 0xb0) < lVar4) goto LAB_1800dd466;
+  FUN_1800e2500(local_70,param_1,1);
+  iVar1 = FUN_18016c6d0(local_38,2);
+  if (0 < iVar1) {
+    lVar7 = *(longlong *)(local_38 + -8);
+    if (*(longlong *)(lVar7 + 0x58) != 5) {
+LAB_1800dd472:
+                    /* WARNING: Subroutine does not return */
+      FUN_1800e24d0("render drawing is only available in paint");
+    }
+    if (*(ulonglong *)(lVar7 + 0x60) < 0x10) {
+      piVar6 = (int *)(lVar7 + 0x48);
+    }
+    else {
+      piVar6 = *(int **)(lVar7 + 0x48);
+    }
+    if ((char)piVar6[1] != 't' || *piVar6 != 0x6e696170) goto LAB_1800dd472;
+    FUN_1801304f0(0);
+    lVar7 = FUN_1800e80c0(local_38,2);
+    if (lVar7 != 0) {
+      local_50 = local_70;
+      if (0xf < local_58) {
+        local_50 = local_70[0];
+      }
+      local_48 = local_60;
+      FUN_180124840(lVar7,&local_40,&local_50);
+      goto LAB_1800dd3e1;
+    }
+  }
+  local_50 = local_70[0];
+  if (local_58 < 0x10) {
+    local_50 = local_70;
+  }
+  local_48 = local_60;
+  FUN_180131330(&local_40,&local_50,0);
+LAB_1800dd3e1:
+  FUN_18016cb10(local_38,(double)local_40);
+  FUN_18016cb10(local_38,(double)local_3c);
+  if (0xf < local_58) {
+    uVar3 = local_58 + 1;
+    pppuVar8 = (undefined8 ***)local_70[0];
+    if (0xfff < uVar3) {
+      pppuVar8 = (undefined8 ***)local_70[0][-1];
+      if (0x1f < (ulonglong)((longlong)local_70[0] + (-8 - (longlong)pppuVar8))) {
+                    /* WARNING: Subroutine does not return */
+        _invoke_watson((wchar_t *)0x0,(wchar_t *)0x0,(wchar_t *)0x0,0,0);
+      }
+      uVar3 = local_58 + 0x28;
+    }
+    FUN_1801695f0(pppuVar8,uVar3);
+  }
+  return 2;
+}
+
+

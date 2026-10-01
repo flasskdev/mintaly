@@ -1,0 +1,190 @@
+// function: FUN_180109600
+// ea: 180109600
+// category: nospread
+// depth: 3, via: FUN_180109420 @180109487
+// size: 720 bytes
+// anchors: nospread, trace_geometry, hitbox_backtrack
+// ----------------------------------------------------
+
+undefined8 FUN_180109600(undefined8 param_1,int param_2)
+
+{
+  if (0x1dad3a4f < param_2) {
+    if (0x4886380c < param_2) {
+      if (param_2 < 0x6c6d41e3) {
+        if (param_2 < 0x5e46422b) {
+          if (((param_2 == 0x4886380d) || (param_2 == 0x4b5e16db)) || (param_2 == 0x5afb8c13)) {
+            return 2;
+          }
+        }
+        else {
+          if (param_2 == 0x5e46422b) {
+            return 2;
+          }
+          if (param_2 == 0x6458186a) {
+            return 2;
+          }
+          if (param_2 == 0x65361a68) {
+            return 2;
+          }
+        }
+      }
+      else if (param_2 < 0x7733b557) {
+        if (param_2 == 0x6c6d41e3) {
+          return 2;
+        }
+        if (param_2 == 0x6d33a599) {
+          return 2;
+        }
+        if (param_2 == 0x75ddc158) {
+          return 2;
+        }
+      }
+      else {
+        if (param_2 == 0x7733b557) {
+          return 2;
+        }
+        if (param_2 == 0x7cc9865a) {
+          return 2;
+        }
+        if (param_2 == 0x7a0ce381) {
+          return 2;
+        }
+      }
+      return 0;
+    }
+    if (0x2bddebec < param_2) {
+      if (0x39576cb6 < param_2) {
+        if (param_2 == 0x39576cb7) {
+          return 2;
+        }
+        if (param_2 != 0x3aa8e25e) {
+          if (param_2 != 0x461e9086) {
+            return 0;
+          }
+          return 2;
+        }
+        return 2;
+      }
+      if (param_2 == 0x2bddebed) {
+        return 2;
+      }
+      if (param_2 != 0x2d0e9a50) {
+        if (param_2 != 0x3134d2d0) {
+          return 0;
+        }
+        return 2;
+      }
+      return 2;
+    }
+    if (param_2 < 0x24c21f44) {
+      if (param_2 == 0x1dad3a50) {
+        return 2;
+      }
+      if (param_2 != 0x22245a9c) {
+        return 0;
+      }
+      return 2;
+    }
+    if (param_2 == 0x24c21f44) {
+      return 2;
+    }
+    if (param_2 != 0x271ab2b7) {
+      if (param_2 != 0x28ecd7a1) {
+        return 0;
+      }
+      return 1;
+    }
+    return 2;
+  }
+  if (param_2 < -0x21a57dba) {
+    if (param_2 < -0x5c38646b) {
+      if (param_2 < -0x72a15e69) {
+        if (param_2 == -0x7dec3a1c) {
+          return 2;
+        }
+        if (param_2 != -0x72e62c7c) {
+          return 0;
+        }
+        return 2;
+      }
+      if (param_2 == -0x72a15e69) {
+        return 2;
+      }
+      if (param_2 != -0x673cccc5) {
+        if (param_2 != -0x5e8386ca) {
+          return 0;
+        }
+        return 2;
+      }
+      return 2;
+    }
+    if (-0x2becc275 < param_2) {
+      if (param_2 == -0x2becc274) {
+        return 2;
+      }
+      if (param_2 != -0x21bd189c) {
+        if (param_2 != -0x21a58010) {
+          return 0;
+        }
+        return 2;
+      }
+      return 2;
+    }
+    if (param_2 == -0x5c38646b) {
+      return 2;
+    }
+    if (param_2 != -0x5a6e7ecf) {
+      if (param_2 != -0x48307da9) {
+        return 0;
+      }
+      return 2;
+    }
+    return 2;
+  }
+  if (param_2 < 0x114dde4d) {
+    if (param_2 < 0x8e7614) {
+      if (param_2 == -0x21a57dba) {
+        return 2;
+      }
+      if (param_2 != -0x1a05d307) {
+        return 0;
+      }
+      return 2;
+    }
+    if (param_2 == 0x8e7614) {
+      return 2;
+    }
+    if (param_2 != 0x49279d6) {
+      if (param_2 != 0x9dbd8fd) {
+        return 0;
+      }
+      return 2;
+    }
+    return 2;
+  }
+  if (0x17061a05 < param_2) {
+    if (param_2 == 0x17061a06) {
+      return 2;
+    }
+    if (param_2 != 0x17799fae) {
+      if (param_2 != 0x17a1dc72) {
+        return 0;
+      }
+      return 2;
+    }
+    return 2;
+  }
+  if (param_2 == 0x114dde4d) {
+    return 2;
+  }
+  if (param_2 != 0x1426943f) {
+    if (param_2 != 0x15748ed2) {
+      return 0;
+    }
+    return 2;
+  }
+  return 2;
+}
+
+

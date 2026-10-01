@@ -1,0 +1,28 @@
+// function: FUN_180089db0
+// ea: 180089db0
+// category: pipeline
+// depth: 1, via: FUN_180087f70 @180088209
+// size: 91 bytes
+// anchors: pipeline
+// ----------------------------------------------------
+
+void FUN_180089db0(char *param_1)
+
+{
+  int iVar1;
+  
+  if (param_1 != (char *)0x0) {
+    iVar1 = strncmp(param_1,"stage:",6);
+    if (iVar1 == 0) {
+      PTR_s_not_started_1803563d8 = param_1;
+    }
+    iVar1 = strncmp(param_1,"stage:",6);
+    if (iVar1 == 0) {
+      FUN_180023580(1,param_1);
+      return;
+    }
+  }
+  return;
+}
+
+

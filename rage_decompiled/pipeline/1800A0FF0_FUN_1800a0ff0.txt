@@ -1,0 +1,79 @@
+// function: FUN_1800a0ff0
+// ea: 1800a0ff0
+// category: pipeline
+// depth: 1, via: FUN_1800a3380 @1800a3f65
+// size: 335 bytes
+// anchors: pipeline, hitbox_backtrack
+// ----------------------------------------------------
+
+longlong FUN_1800a0ff0(char *param_1,char *param_2)
+
+{
+  size_t sVar1;
+  ulonglong uVar2;
+  undefined8 ***pppuVar3;
+  longlong lVar4;
+  ulonglong uVar5;
+  undefined8 ****ppppuVar6;
+  undefined8 ***local_48;
+  undefined8 uStack_40;
+  size_t local_38;
+  ulonglong uStack_30;
+  
+  local_38 = 0;
+  uStack_30 = 0;
+  local_48 = (undefined8 ****)0x0;
+  uStack_40 = 0;
+  sVar1 = strlen(param_2);
+  if ((longlong)sVar1 < 0) {
+                    /* WARNING: Subroutine does not return */
+    FUN_18000b110();
+  }
+  if (sVar1 < 0x10) {
+    uStack_30 = 0xf;
+    local_38 = sVar1;
+    FUN_18023b1d0(&local_48,param_2,sVar1);
+    ppppuVar6 = &local_48;
+  }
+  else {
+    uVar2 = sVar1 | 0xf;
+    uVar5 = 0x16;
+    if (0x16 < uVar2) {
+      uVar5 = uVar2;
+    }
+    if (uVar2 < 0xfff) {
+      ppppuVar6 = (undefined8 ****)FUN_1801695a0(uVar5 + 1);
+    }
+    else {
+      pppuVar3 = (undefined8 ***)FUN_1801695a0(uVar5 + 0x28);
+      ppppuVar6 = (undefined8 ****)((longlong)pppuVar3 + 0x27U & 0xffffffffffffffe0);
+      ppppuVar6[-1] = pppuVar3;
+    }
+    local_48 = ppppuVar6;
+    local_38 = sVar1;
+    uStack_30 = uVar5;
+    FUN_18023b1d0(ppppuVar6,param_2,sVar1);
+  }
+  *(undefined1 *)((longlong)ppppuVar6 + sVar1) = 0;
+  if (*param_1 != '\x01') {
+                    /* WARNING: Subroutine does not return */
+    abort();
+  }
+  lVar4 = FUN_1800a1870(*(undefined8 *)(param_1 + 8),&local_48);
+  if (0xf < uStack_30) {
+    uVar5 = uStack_30 + 1;
+    ppppuVar6 = (undefined8 ****)local_48;
+    if (0xfff < uVar5) {
+      if (0x1f < (ulonglong)((longlong)local_48 + (-8 - (longlong)local_48[-1]))) {
+                    /* WARNING: Subroutine does not return */
+        _invoke_watson((wchar_t *)0x0,(wchar_t *)0x0,(wchar_t *)0x0,0,0);
+      }
+      uVar5 = uStack_30 + 0x28;
+      ppppuVar6 = (undefined8 ****)local_48[-1];
+    }
+    FUN_1801695f0(ppppuVar6,uVar5);
+  }
+  return lVar4 + 0x40;
+}
+
+

@@ -1,0 +1,87 @@
+// function: FUN_1800ccc30
+// ea: 1800ccc30
+// category: trace_geometry
+// depth: 1, via: FUN_1800aae50 @1800ab4b8
+// size: 507 bytes
+// anchors: trace_geometry, hitbox_backtrack
+// ----------------------------------------------------
+
+undefined8 FUN_1800ccc30(longlong param_1)
+
+{
+  int iVar1;
+  longlong lVar2;
+  ulonglong uVar3;
+  ulonglong uVar4;
+  longlong lVar5;
+  ulonglong uVar6;
+  undefined1 local_458 [1028];
+  undefined1 local_54 [12];
+  undefined1 local_48 [8];
+  undefined1 local_40 [8];
+  longlong local_38;
+  undefined8 local_30;
+  
+  local_30 = 0xfffffffffffffffe;
+  FUN_18023b870(local_458,0,0x400);
+  lVar2 = *(longlong *)(param_1 + -8);
+  local_38 = param_1;
+  if (*(char *)(lVar2 + 0xc2) == '\x01') {
+                    /* WARNING: Subroutine does not return */
+    FUN_1800e24d0("script is closing");
+  }
+  iVar1 = *(int *)(lVar2 + 0xa8);
+  *(int *)(lVar2 + 0xa8) = iVar1 + 1;
+  if (iVar1 < 0x8000) {
+    uVar3 = FUN_180184cfc();
+    uVar4 = FUN_180184ce0();
+    if (uVar3 == 24000000) {
+      lVar5 = (((longlong)uVar4 % 24000000) * 1000000000) / 24000000 +
+              ((longlong)uVar4 / 24000000) * 1000000000;
+    }
+    else if (uVar3 == 10000000) {
+      lVar5 = uVar4 * 100;
+    }
+    else {
+      if ((uVar4 | uVar3) >> 0x20 == 0) {
+        uVar6 = (uVar4 & 0xffffffff) / (uVar3 & 0xffffffff);
+        uVar4 = (uVar4 & 0xffffffff) % (uVar3 & 0xffffffff);
+      }
+      else {
+        uVar6 = (longlong)uVar4 / (longlong)uVar3;
+        uVar4 = (longlong)uVar4 % (longlong)uVar3;
+      }
+      uVar4 = uVar4 * 1000000000;
+      if ((uVar3 | uVar4) >> 0x20 == 0) {
+        uVar4 = (uVar4 & 0xffffffff) / (uVar3 & 0xffffffff);
+      }
+      else {
+        uVar4 = (longlong)uVar4 / (longlong)uVar3;
+      }
+      lVar5 = uVar4 + uVar6 * 1000000000;
+    }
+    if (lVar5 <= *(longlong *)(lVar2 + 0xb0)) {
+      if (*(longlong *)(*(longlong *)(param_1 + -8) + 0xb8) != 0) {
+        AcquireSRWLockShared((PSRWLOCK)&DAT_180471378);
+        lVar2 = DAT_180471350;
+        ReleaseSRWLockShared((PSRWLOCK)&DAT_180471378);
+        if (lVar2 == 0) {
+          FUN_18016cb00(param_1);
+        }
+        else {
+          FUN_180069c50(&DAT_1804709e0,local_54,lVar2);
+          FUN_1800b19a0(local_48,local_54);
+          FUN_1800b8630(local_38,local_48);
+          FUN_18000b5d0(local_40,local_48[0]);
+        }
+        return 1;
+      }
+                    /* WARNING: Subroutine does not return */
+      FUN_1800e24d0("available only in command callbacks");
+    }
+  }
+                    /* WARNING: Subroutine does not return */
+  FUN_1800e24d0("callback budget exceeded");
+}
+
+

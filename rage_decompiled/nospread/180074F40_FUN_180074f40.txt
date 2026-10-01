@@ -1,0 +1,47 @@
+// function: FUN_180074f40
+// ea: 180074f40
+// category: nospread
+// depth: 3, via: FUN_180075c50 @180075c5f
+// size: 204 bytes
+// anchors: nospread, trace_geometry, hitbox_backtrack
+// ----------------------------------------------------
+
+void FUN_180074f40(longlong param_1)
+
+{
+  longlong lVar1;
+  byte bVar2;
+  int iVar3;
+  longlong lVar4;
+  
+  AcquireSRWLockShared((PSRWLOCK)&DAT_180472508);
+  iVar3 = FUN_180184b14(param_1);
+  if (iVar3 != 0) {
+                    /* WARNING: Subroutine does not return */
+    FUN_180184228(5);
+  }
+  if (*(int *)(param_1 + 0x4c) == 0x7fffffff) {
+    *(undefined4 *)(param_1 + 0x4c) = 0x7ffffffe;
+                    /* WARNING: Subroutine does not return */
+    FUN_180184228(6);
+  }
+  if (DAT_18046f5b0 == '\x01') {
+    AcquireSRWLockShared((PSRWLOCK)&DAT_180471378);
+    bVar2 = DAT_180471370;
+    ReleaseSRWLockShared((PSRWLOCK)&DAT_180471378);
+    if ((bVar2 & 1) != 0) {
+      lVar1 = *(longlong *)(param_1 + 0x58);
+      for (lVar4 = *(longlong *)(param_1 + 0x50); lVar4 != lVar1; lVar4 = lVar4 + 0x1c) {
+        FUN_180075010(param_1,lVar4,lVar4 + 0xc);
+      }
+    }
+  }
+  if (*(longlong *)(param_1 + 0x50) != *(longlong *)(param_1 + 0x58)) {
+    *(longlong *)(param_1 + 0x58) = *(longlong *)(param_1 + 0x50);
+  }
+  FUN_180184b1c(param_1);
+  ReleaseSRWLockShared((PSRWLOCK)&DAT_180472508);
+  return;
+}
+
+

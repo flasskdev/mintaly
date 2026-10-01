@@ -1,0 +1,87 @@
+// function: FUN_1800a1870
+// ea: 1800a1870
+// category: pipeline
+// depth: 2, via: FUN_1800a0ff0 @1800a10c0
+// size: 274 bytes
+// anchors: pipeline, hitbox_backtrack
+// ----------------------------------------------------
+
+longlong FUN_1800a1870(longlong *param_1,undefined8 *param_2)
+
+{
+  longlong lVar1;
+  ulonglong uVar2;
+  ulonglong uVar3;
+  int iVar4;
+  bool bVar5;
+  void *pvVar6;
+  undefined8 *_Buf2;
+  longlong lVar7;
+  ulonglong uVar8;
+  longlong lVar9;
+  
+  lVar1 = *param_1;
+  lVar9 = *(longlong *)(lVar1 + 8);
+  lVar7 = lVar1;
+  if (*(char *)(lVar9 + 0x19) == '\0') {
+    _Buf2 = param_2;
+    if (0xf < (ulonglong)param_2[3]) {
+      _Buf2 = (undefined8 *)*param_2;
+    }
+    uVar2 = param_2[2];
+    do {
+      if (*(ulonglong *)(lVar9 + 0x38) < 0x10) {
+        pvVar6 = (void *)(lVar9 + 0x20);
+      }
+      else {
+        pvVar6 = *(void **)(lVar9 + 0x20);
+      }
+      uVar3 = *(ulonglong *)(lVar9 + 0x30);
+      uVar8 = uVar3;
+      if (uVar2 < uVar3) {
+        uVar8 = uVar2;
+      }
+      iVar4 = memcmp(pvVar6,_Buf2,uVar8);
+      bVar5 = uVar3 < uVar2;
+      if (iVar4 != 0) {
+        bVar5 = iVar4 < 0;
+      }
+      if (bVar5 == false) {
+        lVar7 = lVar9;
+      }
+      lVar9 = *(longlong *)(lVar9 + (ulonglong)bVar5 * 0x10);
+    } while (*(char *)(lVar9 + 0x19) == '\0');
+  }
+  if (*(char *)(lVar7 + 0x19) == '\0') {
+    if (*(ulonglong *)(lVar7 + 0x38) < 0x10) {
+      pvVar6 = (void *)(lVar7 + 0x20);
+      uVar2 = *(ulonglong *)(lVar7 + 0x30);
+      uVar3 = param_2[2];
+      uVar8 = param_2[3];
+    }
+    else {
+      pvVar6 = *(void **)(lVar7 + 0x20);
+      uVar2 = *(ulonglong *)(lVar7 + 0x30);
+      uVar3 = param_2[2];
+      uVar8 = param_2[3];
+    }
+    if (0xf < uVar8) {
+      param_2 = (undefined8 *)*param_2;
+    }
+    uVar8 = uVar3;
+    if (uVar2 < uVar3) {
+      uVar8 = uVar2;
+    }
+    iVar4 = memcmp(param_2,pvVar6,uVar8);
+    bVar5 = uVar2 <= uVar3;
+    if (iVar4 != 0) {
+      bVar5 = -1 < iVar4;
+    }
+    if (bVar5) {
+      return lVar7;
+    }
+  }
+  return lVar1;
+}
+
+

@@ -1,0 +1,36 @@
+// function: FUN_1801312b0
+// ea: 1801312b0
+// category: pipeline
+// depth: 1, via: FUN_180108100 @1801083a7
+// size: 120 bytes
+// anchors: pipeline, nospread, hitbox_backtrack
+// ----------------------------------------------------
+
+undefined8 * FUN_1801312b0(undefined8 *param_1)
+
+{
+  int iVar1;
+  int iVar2;
+  int local_3c;
+  undefined8 local_38;
+  undefined8 uStack_30;
+  undefined8 local_28;
+  
+  iVar1 = 0;
+  iVar2 = 0;
+  local_38 = 0;
+  uStack_30 = 0;
+  local_28 = 0;
+  local_3c = 1;
+  if (DAT_180494f10 != (longlong *)0x0) {
+    (**(code **)(*DAT_180494f10 + 0x2f8))(DAT_180494f10,&local_3c,&local_38);
+    if ((local_3c != 0) && (0.0 < (float)uStack_30)) {
+      iVar1 = (int)(float)uStack_30;
+      iVar2 = (int)uStack_30._4_4_;
+    }
+  }
+  *param_1 = CONCAT44(iVar2,iVar1);
+  return param_1;
+}
+
+

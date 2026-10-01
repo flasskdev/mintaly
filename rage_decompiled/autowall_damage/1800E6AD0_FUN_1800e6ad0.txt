@@ -1,0 +1,16 @@
+// function: FUN_1800e6ad0
+// ea: 1800e6ad0
+// category: autowall_damage
+// depth: 1, via: FUN_1800e4310 @1800e43ac
+// size: 29 bytes
+// anchors: autowall_damage
+// ----------------------------------------------------
+
+undefined8 FUN_1800e6ad0(undefined8 param_1)
+
+{
+  FUN_180019fe0();
+  return param_1;
+}
+
+

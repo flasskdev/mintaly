@@ -1,0 +1,44 @@
+// function: FUN_180109f30
+// ea: 180109f30
+// category: hitbox_backtrack
+// depth: 0, via: seed:hitbox_backtrack
+// size: 319 bytes
+// anchors: hitbox_backtrack
+// ----------------------------------------------------
+
+byte FUN_180109f30(void)
+
+{
+  byte bVar1;
+  byte bVar2;
+  byte bVar3;
+  byte bVar4;
+  byte bVar5;
+  byte bVar6;
+  byte bVar7;
+  byte bVar8;
+  undefined8 local_48;
+  undefined8 uStack_40;
+  undefined8 local_38;
+  undefined8 uStack_30;
+  
+  local_38 = 0xa4ac3bcaefcce5c3;
+  uStack_30 = 0x275ab2b73c051f28;
+  local_48 = 0x695f74656c6c7562;
+  uStack_40 = 0x746361706d;
+  bVar1 = FUN_18010a070(&local_48,&LAB_18010a3b0);
+  local_38 = 0xa4ac3bcaefcce5c3;
+  uStack_30 = 0x275ab2b73c051f28;
+  local_48 = 0x74735f646e756f72;
+  uStack_40 = 0x747261;
+  bVar2 = FUN_18010a070(&local_48,&LAB_18010a3c0);
+  bVar3 = FUN_18010a070("player_hurt",FUN_180017840);
+  bVar4 = FUN_18010a070("player_death",FUN_180017840);
+  bVar5 = FUN_18010a070("weapon_fire",FUN_180017840);
+  bVar6 = FUN_18010a070("round_end",FUN_180017840);
+  bVar7 = FUN_18010a070("round_freeze_end",FUN_180017840);
+  bVar8 = FUN_18010a070("player_spawn",FUN_180017840);
+  return bVar8 & bVar7 & bVar6 & bVar5 & bVar4 & bVar3 & bVar2 & bVar1;
+}
+
+

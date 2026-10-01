@@ -1,0 +1,60 @@
+// function: FUN_1800e2610
+// ea: 1800e2610
+// category: trace_geometry
+// depth: 2, via: FUN_1800bd920 @1800bdd46
+// size: 242 bytes
+// anchors: trace_geometry, hitbox_backtrack
+// ----------------------------------------------------
+
+undefined8 * FUN_1800e2610(undefined8 *param_1)
+
+{
+  char *_Str;
+  undefined8 *puVar1;
+  size_t sVar2;
+  ulonglong uVar3;
+  longlong lVar4;
+  undefined8 *puVar5;
+  ulonglong uVar6;
+  
+  puVar1 = (undefined8 *)FUN_1801695a0(0x20);
+  _Str = (char *)*param_1;
+  *puVar1 = 0;
+  puVar1[1] = 0;
+  puVar1[2] = 0;
+  puVar1[3] = 0;
+  sVar2 = strlen(_Str);
+  if (-1 < (longlong)sVar2) {
+    if (sVar2 < 0x10) {
+      puVar1[2] = sVar2;
+      puVar1[3] = 0xf;
+      FUN_18023b1d0(puVar1,_Str,sVar2);
+      puVar5 = puVar1;
+    }
+    else {
+      uVar3 = sVar2 | 0xf;
+      uVar6 = 0x16;
+      if (0x16 < uVar3) {
+        uVar6 = uVar3;
+      }
+      if (uVar3 < 0xfff) {
+        puVar5 = (undefined8 *)FUN_1801695a0(uVar6 + 1);
+      }
+      else {
+        lVar4 = FUN_1801695a0(uVar6 + 0x28);
+        puVar5 = (undefined8 *)(lVar4 + 0x27U & 0xffffffffffffffe0);
+        puVar5[-1] = lVar4;
+      }
+      *puVar1 = puVar5;
+      puVar1[2] = sVar2;
+      puVar1[3] = uVar6;
+      FUN_18023b1d0(puVar5,_Str,sVar2);
+    }
+    *(undefined1 *)(sVar2 + (longlong)puVar5) = 0;
+    return puVar1;
+  }
+                    /* WARNING: Subroutine does not return */
+  FUN_18000b110();
+}
+
+

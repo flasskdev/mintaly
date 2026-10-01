@@ -1,0 +1,51 @@
+// function: FUN_18003dd70
+// ea: 18003dd70
+// category: autowall_damage
+// depth: 1, via: FUN_180044dc0 @18004848c
+// size: 156 bytes
+// anchors: autowall_damage, hitbox_backtrack
+// ----------------------------------------------------
+
+void FUN_18003dd70(longlong param_1,longlong param_2,byte param_3)
+
+{
+  byte *pbVar1;
+  int iVar2;
+  longlong *plVar3;
+  byte bVar4;
+  
+  iVar2 = FUN_180184b14(param_1 + 0x88);
+  if (iVar2 != 0) {
+                    /* WARNING: Subroutine does not return */
+    FUN_180184228(5);
+  }
+  if (*(int *)(param_1 + 0xd4) == 0x7fffffff) {
+    *(undefined4 *)(param_1 + 0xd4) = 0x7ffffffe;
+                    /* WARNING: Subroutine does not return */
+    FUN_180184228(6);
+  }
+  plVar3 = *(longlong **)(param_1 + 0x70);
+  do {
+    if (plVar3 == *(longlong **)(param_1 + 0x78)) {
+LAB_18003dddc:
+      FUN_180184b1c(param_1 + 0x88);
+      return;
+    }
+    if (*plVar3 == param_2) {
+      bVar4 = *(byte *)((longlong)plVar3 + 0x32) ^ 1;
+      if (*(char *)((longlong)plVar3 + 0x35) == '\0') {
+        bVar4 = 0;
+      }
+      pbVar1 = (byte *)((longlong)plVar3 + 0x34);
+      *pbVar1 = *pbVar1 | param_3;
+      if (*pbVar1 != 0) {
+        bVar4 = 0;
+      }
+      *(byte *)((longlong)plVar3 + 0x33) = bVar4;
+      goto LAB_18003dddc;
+    }
+    plVar3 = plVar3 + 7;
+  } while( true );
+}
+
+

@@ -1,0 +1,35 @@
+// function: FUN_180192300
+// ea: 180192300
+// category: pipeline
+// depth: 3, via: FUN_180190470 @1801904bb
+// size: 102 bytes
+// anchors: pipeline, hitbox_backtrack
+// ----------------------------------------------------
+
+undefined8 * FUN_180192300(longlong param_1,ulonglong param_2)
+
+{
+  uint uVar1;
+  undefined8 *puVar2;
+  ulonglong uVar3;
+  
+  uVar1 = (1 << (*(byte *)(param_1 + 0xb) & 0x1f)) - 1;
+  if (param_2 < 0x80000000) {
+    uVar3 = (ulonglong)
+            (int)((longlong)((ulonglong)(uint)((int)param_2 >> 0x1f) << 0x20 | param_2 & 0xffffffff)
+                 % (longlong)(int)(uVar1 | 1));
+  }
+  else {
+    uVar3 = param_2 % ((ulonglong)uVar1 | 1);
+  }
+  for (puVar2 = (undefined8 *)(*(longlong *)(param_1 + 0x18) + uVar3 * 0x18);
+      (*(char *)((longlong)puVar2 + 9) != '\x03' || (puVar2[2] != param_2));
+      puVar2 = puVar2 + (longlong)*(int *)((longlong)puVar2 + 0xc) * 3) {
+    if (*(int *)((longlong)puVar2 + 0xc) == 0) {
+      return &DAT_1802f2dd8;
+    }
+  }
+  return puVar2;
+}
+
+

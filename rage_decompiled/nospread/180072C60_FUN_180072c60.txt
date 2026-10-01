@@ -1,0 +1,30 @@
+// function: FUN_180072c60
+// ea: 180072c60
+// category: nospread
+// depth: 2, via: FUN_180089800 @180089843
+// size: 102 bytes
+// anchors: nospread, trace_geometry, hitbox_backtrack
+// ----------------------------------------------------
+
+void FUN_180072c60(longlong param_1)
+
+{
+  int iVar1;
+  
+  iVar1 = FUN_180184b14();
+  if (iVar1 != 0) {
+                    /* WARNING: Subroutine does not return */
+    FUN_180184228(5);
+  }
+  if (*(int *)(param_1 + 0x4c) != 0x7fffffff) {
+    FUN_180072770();
+    FUN_180072770();
+    FUN_180184b1c(param_1);
+    return;
+  }
+  *(undefined4 *)(param_1 + 0x4c) = 0x7ffffffe;
+                    /* WARNING: Subroutine does not return */
+  FUN_180184228(6);
+}
+
+
