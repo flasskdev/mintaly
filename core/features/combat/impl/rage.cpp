@@ -994,7 +994,7 @@ namespace features::combat {
             rd::mark(rd::event::penetration_failed);
             return false;
         }
-        if (pen.damage < min_damage)
+        if (!damage_validation::meets_minimum(pen.damage, min_damage))
         {
             rd::mark(rd::event::damage);
             return false;
@@ -1463,6 +1463,9 @@ namespace features::combat {
 
         for (auto i = 0; i < static_cast<int>(hits.size()); ++i)
         {
+            // Reject invalid damage before cheap_score/sorting can propagate NaN.
+            if (!damage_validation::positive_finite(hits[i].damage))
+                continue;
             auto rec = hits[i].record;
             auto found{ false };
             for (auto gi = 0; gi < group_count; ++gi)
@@ -1904,6 +1907,10 @@ namespace features::combat {
         const auto tick_base = memory::read<int>(local.controller + SCHEMA("CBasePlayerController", "m_nTickBase"_hash));
         const auto& shared_ctx = g_shared.ctx();
         const auto& config = settings::g_combat.m_ragebot.get_group(shared_ctx.weapon_type, shared_ctx.item_def_idx);
+        const auto minimum_damage = this->get_min_damage(config, tgt.hit.health, config.min_damage_override.value);
+        // Applies to normal, forced and No spread shots before any attack state.
+        if (!damage_validation::meets_minimum(tgt.hit.damage, minimum_damage))
+            return;
         const auto aim_punch = g_shared.get_aim_punch(local.pawn);
 
         auto aim_angle = config.no_spread.value ?
@@ -1994,7 +2001,7 @@ namespace features::combat {
             shared::penetration::result pen{};
             if (!g_shared.pen().run(shoot_eye, shoot_eye + direction * shared_ctx.range,
                     pen_ctx, local.pawn, local.team, pen) ||
-                pen.damage < this->get_min_damage(config, tgt.hit.health, config.min_damage_override.value) ||
+                !damage_validation::meets_minimum(pen.damage, minimum_damage) ||
                 pen.hitgroup != tgt.hit.hitgroup)
                 return;
 

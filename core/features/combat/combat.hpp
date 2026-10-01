@@ -3,6 +3,7 @@
 #include <core/systems/systems.hpp>
 #include <utilities/tls/tls.hpp>
 #include <utilities/rage_shot_diagnostics.hpp>
+#include <core/features/combat/damage_validation.hpp>
 
 namespace features::combat {
 
