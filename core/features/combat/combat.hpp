@@ -2,6 +2,7 @@
 
 #include <core/systems/systems.hpp>
 #include <utilities/tls/tls.hpp>
+#include <utilities/rage_shot_diagnostics.hpp>
 
 namespace features::combat {
 
@@ -138,6 +139,7 @@ namespace features::combat {
                                 int hitbox{ -1 };
                                 int hitgroup{ -1 };
                                 bool penetrated{};
+                                utilities::rage_shot_diagnostics::snapshot trace_diagnostic{};
                         };
 
                         void prepare( std::uintptr_t weapon_vdata, std::uintptr_t weapon );
@@ -467,6 +469,7 @@ namespace features::combat {
                         bool is_backstab{};
                         int attack_type{};
                         shared::shoot_history::eye_candidate source_eye{};
+                        utilities::rage_shot_diagnostics::snapshot trace_diagnostic{};
 
                         std::uintptr_t pawn{};
                         int health{};

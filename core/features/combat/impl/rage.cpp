@@ -22,6 +22,40 @@ namespace features::combat {
         // (needed - noise) real probability. A small floor keeps those sub-threshold
         // shots from being sent. Capped at 1.0 so 100% settings still fire.
         constexpr float k_hitchance_margin = 0.015f;
+
+        void report_shot_trace(std::uint64_t shot, const char* phase,
+            const utilities::rage_shot_diagnostics::snapshot& evidence)
+        {
+            namespace sd = utilities::rage_shot_diagnostics;
+            char line[1536]{};
+            _snprintf_s(line, sizeof(line), _TRUNCATE,
+                "[rage-shot:v1] shot=%llu phase=%s method=%s segment=%d count=%d target_fraction=%.7f target_distance=%.3f range=%.3f first_boundary=%.7f first_boundary_distance=%.3f relation=%s damage_raw=%.4f damage_scaled=%.4f visibility_blocked=%d start=(%.3f,%.3f,%.3f) requested_end=(%.3f,%.3f,%.3f)",
+                static_cast<unsigned long long>(shot), phase, sd::method_name(evidence.method),
+                evidence.selected, evidence.count, static_cast<double>(evidence.target_fraction),
+                static_cast<double>(evidence.target_fraction * evidence.range), static_cast<double>(evidence.range),
+                static_cast<double>(evidence.first_boundary), static_cast<double>(evidence.first_boundary * evidence.range),
+                sd::relation(evidence.target_fraction, evidence.chosen), static_cast<double>(evidence.chosen.damage),
+                static_cast<double>(evidence.damage_scaled), static_cast<int>(evidence.visibility_blocked),
+                static_cast<double>(evidence.start[0]), static_cast<double>(evidence.start[1]), static_cast<double>(evidence.start[2]),
+                static_cast<double>(evidence.requested_end[0]), static_cast<double>(evidence.requested_end[1]), static_cast<double>(evidence.requested_end[2]));
+            diag::write(diag::level::debug, line);
+            const sd::segment* segments[]{&evidence.previous, &evidence.chosen, &evidence.next};
+            const char* roles[]{"previous", "chosen", "next"};
+            for (int i = 0; i < 3; ++i)
+            {
+                const auto& segment = *segments[i];
+                _snprintf_s(line, sizeof(line), _TRUNCATE,
+                    "[rage-shot:v1] shot=%llu phase=%s role=%s present=%d index=%d enter=%.7f exit=%.7f damage=%.4f team_raw=%d enter_ix=%04x exit_ix=%04x flags_raw=%02x target_minus_enter=%.7f exit_minus_target=%.7f",
+                    static_cast<unsigned long long>(shot), phase, roles[i], static_cast<int>(segment.present),
+                    evidence.selected + i - 1, static_cast<double>(segment.enter), static_cast<double>(segment.exit),
+                    static_cast<double>(segment.damage), segment.team_raw, static_cast<unsigned>(segment.enter_index),
+                    static_cast<unsigned>(segment.exit_index), static_cast<unsigned>(segment.flags_raw),
+                    static_cast<double>(evidence.target_fraction - segment.enter),
+                    static_cast<double>(segment.exit - evidence.target_fraction));
+                diag::write(diag::level::debug, line);
+            }
+        }
+
         float hitchance_floor(float needed_hc)
         {
             return std::min(needed_hc + k_hitchance_margin, 1.0f);
@@ -986,6 +1020,7 @@ namespace features::combat {
         out.hitbox = point.hitbox;
         out.is_center = point.is_center;
         out.penetrated = pen.penetrated;
+        out.trace_diagnostic = pen.trace_diagnostic;
         out.pawn = pawn;
         out.health = health;
         out.record = pen_ctx.record;
@@ -1877,6 +1912,7 @@ namespace features::combat {
 
         auto stamp_tick = tick_base;
         auto stamp_frac = 0.0f;
+        auto final_trace_diagnostic = tgt.hit.trace_diagnostic;
 
         if (!tgt.hit.source_eye.is_uninterpolated)
         {
@@ -1962,6 +1998,7 @@ namespace features::combat {
                 pen.hitgroup != tgt.hit.hitgroup)
                 return;
 
+            final_trace_diagnostic = pen.trace_diagnostic;
             aim_angle = corrected;
         }
 
@@ -2123,6 +2160,32 @@ namespace features::combat {
             angles->set_x(command_aim.x);
             angles->set_y(command_aim.y);
             angles->set_z(command_aim.z);
+        }
+
+        // Called only after attack_set and command/history writes, under the
+        // command mutex. These are attack-setting events, not confirmed hits.
+        // At most 32 reports per DLL load, at least one second apart.
+        static utilities::rage_shot_diagnostics::report_budget diagnostic_budget;
+        const auto diagnostic_now = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count());
+        if (diagnostic_budget.take(diagnostic_now))
+        {
+            char line[1024]{};
+            _snprintf_s(line, sizeof(line), _TRUNCATE,
+                "[rage-shot:v1] shot=%llu report=%llu suppressed=%llu limit=32 tick=%d stamp=(%d,%.6f) record_tick=%d target=%llx item=%d no_spread=%d forced=%d hc=%.5f required_hc=%.5f scan_damage=%.4f hitgroup=%d history=%d attack=%llu command_aim=(%.4f,%.4f,%.4f)",
+                static_cast<unsigned long long>(diagnostic_budget.observed),
+                static_cast<unsigned long long>(diagnostic_budget.emitted),
+                static_cast<unsigned long long>(diagnostic_budget.suppressed), tick_base, stamp_tick,
+                static_cast<double>(stamp_frac), tgt.hit.record->tick, static_cast<unsigned long long>(tgt.hit.pawn),
+                static_cast<int>(shared_ctx.item_def_idx), static_cast<int>(config.no_spread.value), static_cast<int>(was_forced),
+                static_cast<double>(tgt.hitchance), static_cast<double>(tgt.required_hitchance),
+                static_cast<double>(tgt.hit.damage), tgt.hit.hitgroup, history_size,
+                static_cast<unsigned long long>(attack_button), static_cast<double>(command_aim.x),
+                static_cast<double>(command_aim.y), static_cast<double>(command_aim.z));
+            diag::write(diag::level::debug, line);
+            report_shot_trace(diagnostic_budget.observed, "scan", tgt.hit.trace_diagnostic);
+            if (config.no_spread.value)
+                report_shot_trace(diagnostic_budget.observed, "final-no-spread", final_trace_diagnostic);
         }
 
         if (!config.silent.value)
