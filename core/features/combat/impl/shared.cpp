@@ -12,12 +12,62 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 
 namespace features::combat {
 
         namespace rd = utilities::rage_scan_diagnostics;
 
         namespace detail {
+
+                // Read-only ABI investigation. One capture per named damage ConVar
+                // per DLL load; raw neighbouring words are evidence, not candidate
+                // offsets to auto-select. Never dereference default/min/max pointers.
+                void report_damage_convar_layout(std::size_t slot, const char* expected_name,
+                        const c_convar* cv, float observed)
+                {
+                        static std::array<std::atomic<bool>, 4> reported{};
+                        if (slot >= reported.size() || !cv || std::isfinite(observed)) return;
+                        if (reported[slot].exchange(true, std::memory_order_relaxed)) return;
+
+                        const auto address = reinterpret_cast<std::uintptr_t>(cv);
+                        const auto words = memory::safe_read<std::array<std::uint32_t, 32>>(address);
+                        char line[1024]{};
+                        if (!words)
+                        {
+                                _snprintf_s(line, sizeof(line), _TRUNCATE,
+                                        "[rage-cvar:layout] expected=%s object=%p readable=0 bytes=128",
+                                        expected_name, static_cast<const void*>(cv));
+                                diag::write(diag::level::warning, line);
+                                return;
+                        }
+
+                        std::uintptr_t name_address{};
+                        std::memcpy(&name_address, words->data(), sizeof(name_address));
+                        const auto name = memory::safe_read<std::array<char, 64>>(name_address);
+                        _snprintf_s(line, sizeof(line), _TRUNCATE,
+                                "[rage-cvar:layout] expected=%s actual_name=%.*s name_readable=%d object=%p observed=%.9g assumed_value_offset=0x48 type_at_28_raw=%04x bytes=128",
+                                expected_name, name ? 64 : 10, name ? name->data() : "unreadable",
+                                static_cast<int>(name.has_value()), static_cast<const void*>(cv),
+                                static_cast<double>(observed), static_cast<unsigned>((*words)[0x28 / 4] & 0xffffu));
+                        diag::write(diag::level::warning, line);
+
+                        // Six bounded rows, with both hex and float interpretations.
+                        // Includes 0x20..0x7f, without inferring the actual field types.
+                        for (std::size_t i = 0x20 / 4; i < words->size(); i += 4)
+                        {
+                                std::array<float, 4> floats{};
+                                std::memcpy(floats.data(), words->data() + i, sizeof(floats));
+                                _snprintf_s(line, sizeof(line), _TRUNCATE,
+                                        "[rage-cvar:layout] expected=%s offset=0x%02x raw=%08x %08x %08x %08x as_float=%.9g %.9g %.9g %.9g",
+                                        expected_name, static_cast<unsigned>(i * 4),
+                                        static_cast<unsigned>((*words)[i]), static_cast<unsigned>((*words)[i + 1]),
+                                        static_cast<unsigned>((*words)[i + 2]), static_cast<unsigned>((*words)[i + 3]),
+                                        static_cast<double>(floats[0]), static_cast<double>(floats[1]),
+                                        static_cast<double>(floats[2]), static_cast<double>(floats[3]));
+                                diag::write(diag::level::warning, line);
+                        }
+                }
 
                 [[nodiscard]] bool finite_position( const math::vector3& value )
                 {
@@ -328,6 +378,11 @@ namespace features::combat {
                         .ct_body = cv_ct_body ? cv_ct_body->get<float>( ) : 1.0f,
                         .t_body = cv_t_body ? cv_t_body->get<float>( ) : 1.0f
                 };
+
+                detail::report_damage_convar_layout(0, "mp_damage_scale_ct_head", cv_ct_head, ctx.scales.ct_head);
+                detail::report_damage_convar_layout(1, "mp_damage_scale_t_head", cv_t_head, ctx.scales.t_head);
+                detail::report_damage_convar_layout(2, "mp_damage_scale_ct_body", cv_ct_body, ctx.scales.ct_body);
+                detail::report_damage_convar_layout(3, "mp_damage_scale_t_body", cv_t_body, ctx.scales.t_body);
 
                 ctx.armor_ratio = this->m_weapon_data.armor_ratio;
                 ctx.headshot_multiplier = this->m_weapon_data.headshot_multiplier;
