@@ -46,10 +46,11 @@ namespace features::combat {
                         std::memcpy(&name_address, words->data(), sizeof(name_address));
                         const auto name = memory::safe_read<std::array<char, 64>>(name_address);
                         _snprintf_s(line, sizeof(line), _TRUNCATE,
-                                "[rage-cvar:layout] expected=%s actual_name=%.*s name_readable=%d object=%p observed=%.9g assumed_value_offset=0x48 type_at_28_raw=%04x bytes=128",
+                                "[rage-cvar:layout] expected=%s actual_name=%.*s name_readable=%d object=%p observed=%.9g assumed_value_offset=0x%02x type_at_28_raw=%04x bytes=128",
                                 expected_name, name ? 64 : 10, name ? name->data() : "unreadable",
                                 static_cast<int>(name.has_value()), static_cast<const void*>(cv),
-                                static_cast<double>(observed), static_cast<unsigned>((*words)[0x28 / 4] & 0xffffu));
+                                static_cast<double>(observed), static_cast<unsigned>(offsetof(c_convar, m_value)),
+                                static_cast<unsigned>((*words)[0x28 / 4] & 0xffffu));
                         diag::write(diag::level::warning, line);
 
                         // Six bounded rows, with both hex and float interpretations.
