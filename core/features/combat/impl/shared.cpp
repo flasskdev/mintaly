@@ -70,6 +70,17 @@ namespace features::combat {
                 static_assert(offsetof(bullet_trace_record, enter_contact_ix) == 0x10);
                 static_assert(offsetof(bullet_trace_record, can_penetrate) == 0x14);
 
+                utilities::rage_shot_diagnostics::segment diagnostic_segment(
+                        std::uintptr_t records, int count, int index)
+                {
+                        if (index < 0 || index >= count) return {};
+                        const auto& value = *reinterpret_cast<const bullet_trace_record*>(
+                                records + static_cast<std::size_t>(index) * sizeof(bullet_trace_record));
+                        return {true, value.enter_fraction, value.exit_fraction, value.damage_applied,
+                                value.team_at_contact, value.enter_contact_ix, value.exit_contact_ix,
+                                value.can_penetrate}; // Raw byte only; never used as an acceptance condition.
+                }
+
                 struct contact_entity_snapshot
                 {
                         std::uintptr_t entity{};
@@ -430,6 +441,7 @@ namespace features::combat {
                         break;
                 }
 
+                const bool diagnostic_contact_confirmed = target_hit_idx >= 0;
                 // Target pawn was hit: now determine the exact hitbox by fine raytracing.
                 auto actual_hitbox{ -1 };
                 auto closest_hitbox_fraction{ 1.0f };
@@ -601,6 +613,24 @@ namespace features::combat {
                 out.damage = target_damage;
 
                 this->scale_damage( out.hitgroup, ctx.target_armor, ctx.has_helmet, ctx.target_team, ctx.armor_ratio, ctx.headshot_multiplier, ctx.scales, out.damage );
+
+                // Copy evidence while this exact trace workspace is alive. No extra
+                // traces, entity lookups, worker logging or changes to acceptance.
+                auto& evidence = out.trace_diagnostic;
+                using acceptance = utilities::rage_shot_diagnostics::acceptance;
+                evidence.method = diagnostic_contact_confirmed ? acceptance::contact : acceptance::geometry;
+                evidence.selected = target_hit_idx;
+                evidence.count = num_hits;
+                evidence.target_fraction = closest_hitbox_fraction;
+                evidence.range = this->m_weapon_data.range;
+                evidence.damage_scaled = out.damage;
+                evidence.visibility_blocked = out.penetrated;
+                evidence.start = {start.x, start.y, start.z};
+                evidence.requested_end = {end.x, end.y, end.z};
+                evidence.first_boundary = detail::diagnostic_segment(hit_array, num_hits, 0).exit;
+                evidence.previous = detail::diagnostic_segment(hit_array, num_hits, target_hit_idx - 1);
+                evidence.chosen = detail::diagnostic_segment(hit_array, num_hits, target_hit_idx);
+                evidence.next = detail::diagnostic_segment(hit_array, num_hits, target_hit_idx + 1);
 
                 rd::mark(rd::event::pen_success);
                 return true;
