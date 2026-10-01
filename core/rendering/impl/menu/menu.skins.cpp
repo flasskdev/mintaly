@@ -260,6 +260,7 @@ namespace rendering {
 		{
 			features::changer::g_knives.invalidate( );
 			features::changer::g_guns.invalidate( );
+			features::changer::g_gloves.reset( );
 			features::changer::g_skin_sync.trigger_push( );
 		}
 
@@ -967,17 +968,29 @@ namespace rendering {
 			const auto hovered = !xui::ctx( ).overlay_blocking( ) && input.in_rect( card );
 			const auto hover_anim = xui::anim::lerp( xui::fnv1a( "ateam" ) + static_cast< std::uintptr_t >( team ), hovered ? 1.0f : 0.0f, 14.0f );
 
-			auto card_bg = tokens::col_card;
-			card_bg = xui::lerp( card_bg, xui::lighten( card_bg, 1.4f ), hover_anim * 0.5f );
-			card_bg.a = static_cast< std::uint8_t >( card_bg.a * fade_alpha );
-			dl.rect_filled( card.x, card.y, card.w, card.h, card_bg, xdraw::corner_radius{ tokens::btn_rounding } );
+			// Ambient drop shadow
+			dl.rect_filled( card.x - 3.0f, card.y - 1.5f, card.w + 6.0f, card.h + 5.0f,
+				xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 24.0f * fade_alpha ) }, xdraw::corner_radius{ 10.0f } );
+			dl.rect_filled( card.x, card.y + 1.5f, card.w, card.h,
+				xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 45.0f * fade_alpha ) }, xdraw::corner_radius{ 8.0f } );
 
-			if ( def )
-			{
-				auto bcol = tokens::col_accent;
-				bcol.a = static_cast< std::uint8_t >( bcol.a * fade_alpha );
-				dl.rect( card.x, card.y, card.w, card.h, bcol, xdraw::corner_radius{ tokens::btn_rounding }, 1.0f );
-			}
+			// 1. Frosted glass blur background
+			dl.rect_filled_blurred( card.x, card.y, card.w, card.h, xdraw::corner_radius{ 8.0f },
+				xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 150.0f * fade_alpha ) } );
+
+			// 2. Translucent frosted body with whitish tint on hover
+			const auto card_top = xdraw::color{ 34, 38, 50, static_cast< std::uint8_t >( ( 125.0f + 30.0f * hover_anim ) * fade_alpha ) };
+			const auto card_bot = xdraw::color{ 20, 23, 30, static_cast< std::uint8_t >( ( 150.0f + 30.0f * hover_anim ) * fade_alpha ) };
+			dl.rect_filled_gradient( card.x, card.y, card.w, card.h, card_top, card_top, card_bot, card_bot, xdraw::corner_radius{ 8.0f } );
+
+			// 3. Specular top rim
+			dl.line( card.x + 8.0f, card.y + 0.5f, card.x + card.w - 8.0f, card.y + 0.5f,
+				xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( ( 25.0f + 35.0f * hover_anim ) * fade_alpha ) }, 1.0f );
+
+			// 4. Border
+			auto bcol = def ? tokens::col_accent : xdraw::color{ 255, 255, 255, 25 };
+			bcol.a = static_cast< std::uint8_t >( ( def ? ( 130.0f + 80.0f * hover_anim ) : ( 25.0f + 55.0f * hover_anim ) ) * fade_alpha );
+			dl.rect( card.x, card.y, card.w, card.h, bcol, xdraw::corner_radius{ 8.0f }, def ? 1.5f : 1.0f );
 
 			const auto img_source = def ? def : default_agent;
 			if ( img_source )
@@ -990,15 +1003,15 @@ namespace rendering {
 					auto iw = target_h * aspect;
 					auto ih = target_h;
 
-					if ( iw > card.w - 12.0f )
+					if ( iw > card.w - 14.0f )
 					{
-						iw = card.w - 12.0f;
+						iw = card.w - 14.0f;
 						ih = iw / aspect;
 					}
 
 					const auto ix = std::floor( card.x + ( card.w - iw ) * 0.5f );
-					const auto iy = std::floor( card.y + ( image_h - ih ) * 0.5f );
-					const auto alpha = def ? 255.0f : 100.0f;
+					const auto iy = std::floor( card.y + ( image_h - ih ) * 0.5f - hover_anim * 2.0f );
+					const auto alpha = def ? 255.0f : 120.0f;
 					const auto tint = xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( alpha * fade_alpha ) };
 
 					dl.image( ix, iy, iw, ih, img->srv.Get( ), tint );
@@ -1137,28 +1150,39 @@ namespace rendering {
 				skin_workspace::focused_weapon[ skin_workspace::team == 3 ? 0 : 1 ] = def->def_index;
 			const auto hover_anim = xui::anim::lerp( xui::fnv1a( "wcard" ) + static_cast< std::uintptr_t >( def->def_index ), hovered ? 1.0f : 0.0f, 14.0f );
 
-			auto card_bg = tokens::col_elevated;
-			card_bg = xui::lerp( card_bg, xui::lighten( card_bg, 1.4f ), hover_anim * 0.5f );
-			card_bg.a = static_cast< std::uint8_t >( card_bg.a * fade_alpha );
-			dl.rect_filled( card.x, card.y, card.w, card.h, card_bg, xdraw::corner_radius{ tokens::btn_rounding } );
+			// Ambient drop shadow
+			dl.rect_filled( card.x - 3.0f, card.y - 1.5f, card.w + 6.0f, card.h + 5.0f,
+				xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 24.0f * fade_alpha ) }, xdraw::corner_radius{ 10.0f } );
+			dl.rect_filled( card.x, card.y + 1.5f, card.w, card.h,
+				xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 45.0f * fade_alpha ) }, xdraw::corner_radius{ 8.0f } );
 
-			if ( is_skinned )
+			// 1. Frosted glass blur background
+			dl.rect_filled_blurred( card.x, card.y, card.w, card.h, xdraw::corner_radius{ 8.0f },
+				xdraw::color{ 160, 170, 190, static_cast< std::uint8_t >( 55.0f * fade_alpha ) } );
+
+			// 2. Translucent frosted body with subtle dark tone
+			const auto card_top = xdraw::color{ 22, 25, 34, static_cast< std::uint8_t >( ( 140.0f + 25.0f * hover_anim ) * fade_alpha ) };
+			const auto card_bot = xdraw::color{ 14, 16, 22, static_cast< std::uint8_t >( ( 165.0f + 25.0f * hover_anim ) * fade_alpha ) };
+			dl.rect_filled_gradient( card.x, card.y, card.w, card.h, card_top, card_top, card_bot, card_bot, xdraw::corner_radius{ 8.0f } );
+
+			// 3. Subtle ambient rarity glow
+			if ( pk )
 			{
-				if ( pk )
-				{
-					auto bcol = rarity_col;
-					bcol.a = static_cast< std::uint8_t >( ( 100.0f + 80.0f * hover_anim ) * fade_alpha );
-					dl.rect( card.x, card.y, card.w, card.h, bcol, xdraw::corner_radius{ tokens::btn_rounding }, 1.0f );
-				}
-				else
-				{
-					auto bcol = tokens::col_accent;
-					bcol.a = static_cast< std::uint8_t >( bcol.a * fade_alpha );
-					dl.rect( card.x, card.y, card.w, card.h, bcol, xdraw::corner_radius{ tokens::btn_rounding }, 1.0f );
-				}
+				const auto glow = rarity_col.alpha( static_cast< std::uint8_t >( ( 14.0f + 28.0f * hover_anim ) * fade_alpha ) );
+				dl.rect_filled_gradient( card.x, card.y + card.h * 0.45f, card.w, card.h * 0.55f,
+					glow.alpha( 0 ), glow.alpha( 0 ), glow, glow, xdraw::corner_radius::bottom( 8.0f ) );
 			}
 
-			const auto img = ( is_skinned && pk ) ? econ.get_skin_image( def->def_index, applied_it->second.paint_kit_id ) : econ.get_skin_image( def->image_inventory );
+			// 4. Specular top rim
+			dl.line( card.x + 8.0f, card.y + 0.5f, card.x + card.w - 8.0f, card.y + 0.5f,
+				xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( ( 25.0f + 35.0f * hover_anim ) * fade_alpha ) }, 1.0f );
+
+			// 5. Border
+			auto bcol = is_skinned ? ( pk ? rarity_col : tokens::col_accent ) : xdraw::color{ 255, 255, 255, 25 };
+			bcol.a = static_cast< std::uint8_t >( ( is_skinned ? ( 120.0f + 80.0f * hover_anim ) : ( 25.0f + 55.0f * hover_anim ) ) * fade_alpha );
+			dl.rect( card.x, card.y, card.w, card.h, bcol, xdraw::corner_radius{ 8.0f }, is_skinned ? 1.5f : 1.0f );
+
+			const auto img = ( is_skinned && pk ) ? econ.get_skin_image( def->def_index, applied_it->second.paint_kit_id ) : econ.get_skin_image( def->def_index, 0 );
 			if ( img )
 			{
 				const auto target_h = image_h - 12.0f;
@@ -1166,14 +1190,14 @@ namespace rendering {
 				auto iw = target_h * aspect;
 				auto ih = target_h;
 
-				if ( iw > card.w - 12.0f )
+				if ( iw > card.w - 14.0f )
 				{
-					iw = card.w - 12.0f;
+					iw = card.w - 14.0f;
 					ih = iw / aspect;
 				}
 
 				const auto ix = std::floor( card.x + ( card.w - iw ) * 0.5f );
-				const auto iy = std::floor( card.y + ( image_h - ih ) * 0.5f );
+				const auto iy = std::floor( card.y + ( image_h - ih ) * 0.5f - hover_anim * 2.0f );
 				const auto tint = xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 255.0f * fade_alpha ) };
 
 				dl.image( ix, iy, iw, ih, img->srv.Get( ), tint );
@@ -1195,27 +1219,27 @@ namespace rendering {
 						auto iw = target_h * aspect;
 						auto ih = target_h;
 
-						if ( iw > card.w - 12.0f )
+						if ( iw > card.w - 14.0f )
 						{
-							iw = card.w - 12.0f;
+							iw = card.w - 14.0f;
 							ih = iw / aspect;
 						}
 
 						const auto ix = std::floor( card.x + ( card.w - iw ) * 0.5f );
-						const auto iy = std::floor( card.y + ( image_h - ih ) * 0.5f );
+						const auto iy = std::floor( card.y + ( image_h - ih ) * 0.5f - hover_anim * 2.0f );
 						const auto tint = xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 150.0f * fade_alpha ) };
 
 						dl.image( ix, iy, iw, ih, fallback_img->srv.Get( ), tint );
+						break;
 					}
-					break;
 				}
 			}
 
 			if ( pk )
 			{
 				auto bar = rarity_col;
-				bar.a = static_cast< std::uint8_t >( bar.a * fade_alpha );
-				dl.rect_filled( card.x, card.bottom( ) - 3.0f, card.w, 3.0f, bar, xdraw::corner_radius::bottom( tokens::btn_rounding ) );
+				bar.a = static_cast< std::uint8_t >( ( 180.0f + 75.0f * hover_anim ) * fade_alpha );
+				dl.rect_filled( card.x + 8.0f, card.bottom( ) - 3.5f, card.w - 16.0f, 2.5f, bar, xdraw::corner_radius{ 1.25f } );
 			}
 
 			const auto name_y = card.y + image_h + 4.0f;
@@ -1237,30 +1261,6 @@ namespace rendering {
 				const auto ntrunc = xui::truncate( def->localized_name, card.w - 12.0f );
 				const auto [nw2, nh2] = xdraw::measure_text( ntrunc );
 				dl.text( std::floor( card.x + ( card.w - nw2 ) * 0.5f ), std::floor( name_y ), ntrunc, ncol );
-			}
-
-			if ( is_skinned )
-			{
-				constexpr auto badge{ 14.0f };
-				const auto bx = card.right( ) - badge - 4.0f;
-				const auto by = card.y + 4.0f;
-
-				auto badge_bg = tokens::col_accent;
-				badge_bg.a = static_cast< std::uint8_t >( badge_bg.a * fade_alpha );
-				dl.rect_filled( bx, by, badge, badge, badge_bg, xdraw::corner_radius{ badge * 0.5f } );
-
-				const auto cx = bx + badge * 0.5f;
-				const auto cy = by + badge * 0.5f;
-				const auto check = xdraw::color{ tokens::col_dark.r, tokens::col_dark.g, tokens::col_dark.b, static_cast< std::uint8_t >( 255.0f * fade_alpha ) };
-
-				const std::array<float, 6> pts
-				{
-					cx - badge * 0.20f, cy,
-					cx - badge * 0.05f, cy + badge * 0.18f,
-					cx + badge * 0.25f, cy - badge * 0.18f
-				};
-
-				dl.polyline( pts, check, false, 1.5f );
 			}
 
 			if ( !hovered )
@@ -1428,17 +1428,29 @@ namespace rendering {
 			const auto hovered = skin_workspace::hovered(card);
 			const auto hover_anim = xui::anim::lerp( xui::fnv1a( "atile" ) + static_cast< std::uintptr_t >( def->def_index ), hovered ? 1.0f : 0.0f, 14.0f );
 
-			auto card_bg = tokens::col_elevated;
-			card_bg = xui::lerp( card_bg, xui::lighten( card_bg, 1.4f ), hover_anim * 0.5f );
-			card_bg.a = static_cast< std::uint8_t >( card_bg.a * fade_alpha );
-			dl.rect_filled( card.x, card.y, card.w, card.h, card_bg, xdraw::corner_radius{ tokens::btn_rounding } );
+			// Ambient drop shadow
+			dl.rect_filled( card.x - 3.0f, card.y - 1.5f, card.w + 6.0f, card.h + 5.0f,
+				xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 24.0f * fade_alpha ) }, xdraw::corner_radius{ 10.0f } );
+			dl.rect_filled( card.x, card.y + 1.5f, card.w, card.h,
+				xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 45.0f * fade_alpha ) }, xdraw::corner_radius{ 8.0f } );
 
-			if ( is_equipped )
-			{
-				auto bcol = tokens::col_accent;
-				bcol.a = static_cast< std::uint8_t >( bcol.a * fade_alpha );
-				dl.rect( card.x, card.y, card.w, card.h, bcol, xdraw::corner_radius{ tokens::btn_rounding }, 1.5f );
-			}
+			// 1. Frosted glass blur background
+			dl.rect_filled_blurred( card.x, card.y, card.w, card.h, xdraw::corner_radius{ 8.0f },
+				xdraw::color{ 160, 170, 190, static_cast< std::uint8_t >( 55.0f * fade_alpha ) } );
+
+			// 2. Translucent frosted body with subtle dark tone
+			const auto card_top = xdraw::color{ 22, 25, 34, static_cast< std::uint8_t >( ( 140.0f + 25.0f * hover_anim ) * fade_alpha ) };
+			const auto card_bot = xdraw::color{ 14, 16, 22, static_cast< std::uint8_t >( ( 165.0f + 25.0f * hover_anim ) * fade_alpha ) };
+			dl.rect_filled_gradient( card.x, card.y, card.w, card.h, card_top, card_top, card_bot, card_bot, xdraw::corner_radius{ 8.0f } );
+
+			// 3. Specular top rim
+			dl.line( card.x + 8.0f, card.y + 0.5f, card.x + card.w - 8.0f, card.y + 0.5f,
+				xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( ( 25.0f + 35.0f * hover_anim ) * fade_alpha ) }, 1.0f );
+
+			// 4. Border
+			auto bcol = is_equipped ? tokens::col_accent : xdraw::color{ 255, 255, 255, 25 };
+			bcol.a = static_cast< std::uint8_t >( ( is_equipped ? ( 160.0f + 80.0f * hover_anim ) : ( 25.0f + 55.0f * hover_anim ) ) * fade_alpha );
+			dl.rect( card.x, card.y, card.w, card.h, bcol, xdraw::corner_radius{ 8.0f }, is_equipped ? 1.5f : 1.0f );
 
 			const auto img = econ.get_skin_image( def->image_inventory );
 			if ( img )
@@ -1448,14 +1460,14 @@ namespace rendering {
 				auto iw = target_h * aspect;
 				auto ih = target_h;
 
-				if ( iw > card.w - 12.0f )
+				if ( iw > card.w - 14.0f )
 				{
-					iw = card.w - 12.0f;
+					iw = card.w - 14.0f;
 					ih = iw / aspect;
 				}
 
 				const auto ix = std::floor( card.x + ( card.w - iw ) * 0.5f );
-				const auto iy = std::floor( card.y + ( image_h - ih ) * 0.5f );
+				const auto iy = std::floor( card.y + ( image_h - ih ) * 0.5f - hover_anim * 2.0f );
 				const auto tint = xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 255.0f * fade_alpha ) };
 
 				dl.image( ix, iy, iw, ih, img->srv.Get( ), tint );
@@ -1534,17 +1546,40 @@ namespace rendering {
 			const auto hover_id = xui::fnv1a( "mtile" ) + ( kit ? static_cast< std::uintptr_t >( kit->id ) : 0 );
 			const auto hover_anim = xui::anim::lerp( hover_id, hovered ? 1.0f : 0.0f, 14.0f );
 
-			auto card_bg = tokens::col_elevated;
-			card_bg = xui::lerp( card_bg, xui::lighten( card_bg, 1.4f ), hover_anim * 0.5f );
-			card_bg.a = static_cast< std::uint8_t >( card_bg.a * fade_alpha );
-			dl.rect_filled( card.x, card.y, card.w, card.h, card_bg, xdraw::corner_radius{ tokens::btn_rounding } );
+			const auto r_idx = kit ? std::clamp( static_cast< int >( kit->rarity ), 0, 7 ) : 1;
+			const auto rarity_col = k_rarity_colors[ r_idx ];
 
-			if ( is_equipped )
+			// Ambient drop shadow
+			dl.rect_filled( card.x - 3.0f, card.y - 1.5f, card.w + 6.0f, card.h + 5.0f,
+				xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 24.0f * fade_alpha ) }, xdraw::corner_radius{ 10.0f } );
+			dl.rect_filled( card.x, card.y + 1.5f, card.w, card.h,
+				xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 45.0f * fade_alpha ) }, xdraw::corner_radius{ 8.0f } );
+
+			// 1. Frosted glass blur background
+			dl.rect_filled_blurred( card.x, card.y, card.w, card.h, xdraw::corner_radius{ 8.0f },
+				xdraw::color{ 160, 170, 190, static_cast< std::uint8_t >( 55.0f * fade_alpha ) } );
+
+			// 2. Translucent frosted body with subtle dark tone
+			const auto card_top = xdraw::color{ 22, 25, 34, static_cast< std::uint8_t >( ( 140.0f + 25.0f * hover_anim ) * fade_alpha ) };
+			const auto card_bot = xdraw::color{ 14, 16, 22, static_cast< std::uint8_t >( ( 165.0f + 25.0f * hover_anim ) * fade_alpha ) };
+			dl.rect_filled_gradient( card.x, card.y, card.w, card.h, card_top, card_top, card_bot, card_bot, xdraw::corner_radius{ 8.0f } );
+
+			// 3. Ambient rarity glow
+			if ( kit )
 			{
-				auto bcol = tokens::col_accent;
-				bcol.a = static_cast< std::uint8_t >( bcol.a * fade_alpha );
-				dl.rect( card.x, card.y, card.w, card.h, bcol, xdraw::corner_radius{ tokens::btn_rounding }, 1.5f );
+				const auto glow = rarity_col.alpha( static_cast< std::uint8_t >( ( 14.0f + 28.0f * hover_anim ) * fade_alpha ) );
+				dl.rect_filled_gradient( card.x, card.y + card.h * 0.45f, card.w, card.h * 0.55f,
+					glow.alpha( 0 ), glow.alpha( 0 ), glow, glow, xdraw::corner_radius::bottom( 8.0f ) );
 			}
+
+			// 4. Specular top rim
+			dl.line( card.x + 8.0f, card.y + 0.5f, card.x + card.w - 8.0f, card.y + 0.5f,
+				xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( ( 25.0f + 35.0f * hover_anim ) * fade_alpha ) }, 1.0f );
+
+			// 5. Border
+			auto bcol = is_equipped ? tokens::col_accent : ( kit ? rarity_col : xdraw::color{ 255, 255, 255, 25 } );
+			bcol.a = static_cast< std::uint8_t >( ( is_equipped ? ( 160.0f + 80.0f * hover_anim ) : ( 30.0f + 65.0f * hover_anim ) ) * fade_alpha );
+			dl.rect( card.x, card.y, card.w, card.h, bcol, xdraw::corner_radius{ 8.0f }, is_equipped ? 1.5f : 1.0f );
 
 			if ( kit )
 			{
@@ -1556,14 +1591,14 @@ namespace rendering {
 					auto iw = target_h * aspect;
 					auto ih = target_h;
 
-					if ( iw > card.w - 12.0f )
+					if ( iw > card.w - 14.0f )
 					{
-						iw = card.w - 12.0f;
+						iw = card.w - 14.0f;
 						ih = iw / aspect;
 					}
 
 					const auto ix = std::floor( card.x + ( card.w - iw ) * 0.5f );
-					const auto iy = std::floor( card.y + ( image_h - ih ) * 0.5f );
+					const auto iy = std::floor( card.y + ( image_h - ih ) * 0.5f - hover_anim * 2.0f );
 					const auto tint = xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 255.0f * fade_alpha ) };
 
 					dl.image( ix, iy, iw, ih, img->srv.Get( ), tint );
@@ -1589,10 +1624,12 @@ namespace rendering {
 				dl.circle_filled( cx, cy, 3.0f, icon_col );
 			}
 
-			const auto r_idx = kit ? std::clamp( static_cast< int >( kit->rarity ), 0, 7 ) : 1;
-			auto rcol = k_rarity_colors[ r_idx ];
-			rcol.a = static_cast< std::uint8_t >( rcol.a * fade_alpha );
-			dl.rect_filled( card.x, card.bottom( ) - 3.0f, card.w, 3.0f, rcol, xdraw::corner_radius::bottom( tokens::btn_rounding ) );
+			if ( kit )
+			{
+				auto bar = rarity_col;
+				bar.a = static_cast< std::uint8_t >( ( 180.0f + 75.0f * hover_anim ) * fade_alpha );
+				dl.rect_filled( card.x + 8.0f, card.bottom( ) - 3.5f, card.w - 16.0f, 2.5f, bar, xdraw::corner_radius{ 1.25f } );
+			}
 
 			const auto name_y = card.y + image_h + 4.0f;
 			auto ncol = xui::lerp( tokens::col_text_dim, tokens::col_text, hover_anim );
@@ -1688,6 +1725,7 @@ namespace rendering {
 			xui::section_header( "SKIN OPTIONS" );
 			const auto full_title = pk ? std::format( "{} | {}", weapon->localized_name, pk->localized_name ) : weapon->localized_name;
 			xui::text( rendering::theme::fit_text( full_title, xui::layout::item_width( ) ), tokens::col_text );
+			xui::layout::spacing( 4.0f );
 
 			const auto width = ( xui::layout::item_width( ) - xui::ctx( ).style.item_spacing_x * 4.0f ) / 5.0f;
 			for ( int index = 0; index < 5; ++index )
@@ -1700,30 +1738,42 @@ namespace rendering {
 				xui::pop_style_color( );
 			}
 			xui::layout::new_line( );
+			xui::layout::spacing( 4.0f );
+
 			if ( low < high )
 			{
 				if ( xui::slider_float( "Wear", skin.wear, low, high, "%.6f" ) ) notify_skin_changed( );
 			}
 			else xui::text( std::format( "Fixed wear: {:.6f}", low ), tokens::col_text_dim );
-			integer_input( "Pattern seed (0-1000)", skin.seed, 0, 1000 );
+
+			xui::layout::spacing( 4.0f );
+			if ( xui::slider_int( "Pattern seed", skin.seed, 0, 1000, "%d" ) ) notify_skin_changed( );
 
 			const auto supports_stattrak = weapon->category == features::changer::econ_item_system::item_category::gun ||
 				weapon->category == features::changer::econ_item_system::item_category::knife;
 			if ( supports_stattrak )
 			{
+				xui::layout::spacing( 4.0f );
 				if ( xui::button( skin.stattrak ? "StatTrak: ON" : "StatTrak: OFF", 155.0f ) ) { skin.stattrak = !skin.stattrak; notify_skin_changed( ); }
-				if ( skin.stattrak ) integer_input( "StatTrak count", skin.stattrak_count, 0, std::numeric_limits<int>::max( ) );
+				if ( skin.stattrak )
+				{
+					xui::layout::spacing( 4.0f );
+					xui::text( "StatTrak count", tokens::col_text_dim );
+					integer_input( "##stattrak_count", skin.stattrak_count, 0, std::numeric_limits<int>::max( ) );
+				}
 			}
 			else
 			{
 				skin.stattrak = false;
 			}
 
+			xui::layout::spacing( 4.0f );
+			xui::text( "Name tag", tokens::col_text_dim );
 			static std::unordered_map<std::uintptr_t, std::string> name_tag_buffers;
 			const auto name_tag_id = xui::make_id( "Name tag" );
 			auto& name_tag_buffer = name_tag_buffers[ name_tag_id ];
 			if ( xui::ctx( ).active_text_input != name_tag_id ) name_tag_buffer = skin.name_tag;
-			if ( xui::text_input( "Name tag", name_tag_buffer, 20, "Optional name tag" ) )
+			if ( xui::text_input( "##name_tag_input", name_tag_buffer, 20, "Optional name tag" ) )
 			{
 				auto normalized = skin_options::normalize_name_tag( name_tag_buffer );
 				if ( normalized != skin.name_tag )
@@ -1733,7 +1783,7 @@ namespace rendering {
 				}
 			}
 
-			xui::layout::spacing( 6.0f );
+			xui::layout::spacing( 8.0f );
 			if ( xui::button( "Configure Chams for this Weapon", 230.0f ) )
 			{
 				skins_ui.active_tab = browser_tab::chams;
@@ -1751,14 +1801,9 @@ namespace rendering {
 			const auto chams_idx = chams_weapons::index( def_idx );
 
 			xui::push_id( static_cast<std::uintptr_t>( def_idx ) ^ 0xccccull );
-			xui::section_header( "WEAPON CHAMS CONFIGURATION" );
-
-			const auto full_title = std::format( "{} Viewmodel Chams", weapon->localized_name );
-			xui::text( rendering::theme::fit_text( full_title, xui::layout::item_width( ) ), tokens::col_text );
 
 			if ( is_glove )
 			{
-				xui::text( "Glove / Arm viewmodel chams layer applied to first-person arms", tokens::col_text_dim );
 				detail::draw_chams_config( "arms chams", "vm_arms_skins", esp.m_viewmodel.arms );
 			}
 			else if ( chams_idx >= 0 )
@@ -1769,6 +1814,7 @@ namespace rendering {
 				if ( !entry.override_default.value )
 				{
 					entry.cfg.copy_values_from( esp.m_viewmodel.weapon );
+					entry.cfg.enabled.value = false;
 					entry.override_default.value = true;
 				}
 
@@ -1776,7 +1822,6 @@ namespace rendering {
 			}
 			else
 			{
-				xui::text( "Using global default weapon chams", tokens::col_text_dim );
 				detail::draw_chams_config( "default weapon chams", "vm_def_skins_gen", esp.m_viewmodel.weapon );
 			}
 
@@ -1799,19 +1844,39 @@ namespace rendering {
 			const auto hovered = skin_workspace::hovered(card);
 			const auto hover_anim = xui::anim::lerp( xui::fnv1a( "scard" ) + static_cast< std::uintptr_t >( pk->id ), hovered ? 1.0f : 0.0f, 14.0f );
 
-			auto card_bg = tokens::col_elevated;
-			card_bg = xui::lerp( card_bg, xui::lighten( card_bg, 1.4f ), hover_anim * 0.5f );
-			card_bg.a = static_cast< std::uint8_t >( card_bg.a * fade_alpha );
-			dl.rect_filled( card.x, card.y, card.w, card.h, card_bg, xdraw::corner_radius{ tokens::btn_rounding } );
+			// Ambient drop shadow
+			dl.rect_filled( card.x - 3.0f, card.y - 1.5f, card.w + 6.0f, card.h + 5.0f,
+				xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 24.0f * fade_alpha ) }, xdraw::corner_radius{ 10.0f } );
+			dl.rect_filled( card.x, card.y + 1.5f, card.w, card.h,
+				xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 45.0f * fade_alpha ) }, xdraw::corner_radius{ 8.0f } );
 
-			if ( is_equipped )
+			// 1. Frosted glass blur background
+			dl.rect_filled_blurred( card.x, card.y, card.w, card.h, xdraw::corner_radius{ 8.0f },
+				xdraw::color{ 160, 170, 190, static_cast< std::uint8_t >( 55.0f * fade_alpha ) } );
+
+			// 2. Translucent frosted body with subtle dark tone
+			const auto card_top = xdraw::color{ 22, 25, 34, static_cast< std::uint8_t >( ( 140.0f + 25.0f * hover_anim ) * fade_alpha ) };
+			const auto card_bot = xdraw::color{ 14, 16, 22, static_cast< std::uint8_t >( ( 165.0f + 25.0f * hover_anim ) * fade_alpha ) };
+			dl.rect_filled_gradient( card.x, card.y, card.w, card.h, card_top, card_top, card_bot, card_bot, xdraw::corner_radius{ 8.0f } );
+
+			// 3. Ambient rarity glow
+			if ( !is_vanilla )
 			{
-				auto bcol = tokens::col_accent;
-				bcol.a = static_cast< std::uint8_t >( bcol.a * fade_alpha );
-				dl.rect( card.x, card.y, card.w, card.h, bcol, xdraw::corner_radius{ tokens::btn_rounding }, 1.5f );
+				const auto glow = rarity_col.alpha( static_cast< std::uint8_t >( ( 14.0f + 28.0f * hover_anim ) * fade_alpha ) );
+				dl.rect_filled_gradient( card.x, card.y + card.h * 0.45f, card.w, card.h * 0.55f,
+					glow.alpha( 0 ), glow.alpha( 0 ), glow, glow, xdraw::corner_radius::bottom( 8.0f ) );
 			}
 
-			const auto img = ( weapon && pk->id != 0 ) ? econ.get_skin_image( weapon->def_index, pk->id ) : ( weapon ? econ.get_skin_image( weapon->image_inventory ) : nullptr );
+			// 4. Specular top rim
+			dl.line( card.x + 8.0f, card.y + 0.5f, card.x + card.w - 8.0f, card.y + 0.5f,
+				xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( ( 25.0f + 35.0f * hover_anim ) * fade_alpha ) }, 1.0f );
+
+			// 5. Border
+			auto bcol = is_equipped ? tokens::col_accent : ( is_vanilla ? xdraw::color{ 255, 255, 255, 25 } : rarity_col );
+			bcol.a = static_cast< std::uint8_t >( ( is_equipped ? ( 160.0f + 80.0f * hover_anim ) : ( 30.0f + 65.0f * hover_anim ) ) * fade_alpha );
+			dl.rect( card.x, card.y, card.w, card.h, bcol, xdraw::corner_radius{ 8.0f }, is_equipped ? 1.5f : 1.0f );
+
+			const auto img = ( weapon && pk->id != 0 ) ? econ.get_skin_image( weapon->def_index, pk->id ) : ( weapon ? ( !weapon->image_inventory.empty( ) ? econ.get_skin_image( weapon->image_inventory ) : econ.get_skin_image( weapon->def_index, 0 ) ) : nullptr );
 			if ( img )
 			{
 				const auto target_h = image_h - 12.0f;
@@ -1819,14 +1884,14 @@ namespace rendering {
 				auto iw = target_h * aspect;
 				auto ih = target_h;
 
-				if ( iw > card.w - 12.0f )
+				if ( iw > card.w - 14.0f )
 				{
-					iw = card.w - 12.0f;
+					iw = card.w - 14.0f;
 					ih = iw / aspect;
 				}
 
 				const auto ix = std::floor( card.x + ( card.w - iw ) * 0.5f );
-				const auto iy = std::floor( card.y + ( image_h - ih ) * 0.5f );
+				const auto iy = std::floor( card.y + ( image_h - ih ) * 0.5f - hover_anim * 2.0f );
 				const auto tint = xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 255.0f * fade_alpha ) };
 
 				dl.image( ix, iy, iw, ih, img->srv.Get( ), tint );
@@ -1838,9 +1903,12 @@ namespace rendering {
 				dl.rect_filled( card.x + 6.0f, card.y + 6.0f, card.w - 12.0f, image_h - 12.0f, ph_col, xdraw::corner_radius{ 4.0f } );
 			}
 
-			auto bar = rarity_col;
-			bar.a = static_cast< std::uint8_t >( bar.a * fade_alpha );
-			dl.rect_filled( card.x, card.bottom( ) - 3.0f, card.w, 3.0f, bar, xdraw::corner_radius::bottom( tokens::btn_rounding ) );
+			if ( !is_vanilla )
+			{
+				auto bar = rarity_col;
+				bar.a = static_cast< std::uint8_t >( ( 180.0f + 75.0f * hover_anim ) * fade_alpha );
+				dl.rect_filled( card.x + 8.0f, card.bottom( ) - 3.5f, card.w - 16.0f, 2.5f, bar, xdraw::corner_radius{ 1.25f } );
+			}
 
 			auto name_col = xui::lerp( tokens::col_text_dim, tokens::col_text, hover_anim );
 			name_col.a = static_cast< std::uint8_t >( name_col.a * fade_alpha );
@@ -1930,6 +1998,7 @@ namespace rendering {
 						settings::changer::applied_skin selected{};
 						if ( const auto previous = skin_map( ).find( skins_ui.browsing_def ); previous != skin_map( ).end( ) )
 							selected = previous->second;
+						auto target_def = skins_ui.browsing_def;
 						if ( browsing_def )
 						{
 							if ( browsing_def->category == features::changer::econ_item_system::item_category::knife )
@@ -1941,6 +2010,20 @@ namespace rendering {
 							}
 							else if ( browsing_def->category == features::changer::econ_item_system::item_category::glove )
 							{
+								if ( pk->id != 0 )
+								{
+									for ( const auto& s : econ.skins( ) )
+									{
+										if ( s.paint_kit_id == pk->id )
+										{
+											if ( const auto* parent_def = econ.find_def( s.def_index ); parent_def && parent_def->category == features::changer::econ_item_system::item_category::glove )
+											{
+												target_def = s.def_index;
+												break;
+											}
+										}
+									}
+								}
 								for ( const auto* g : econ.gloves( ) )
 								{
 									skin_map( ).erase( g->def_index );
@@ -1952,7 +2035,10 @@ namespace rendering {
 						const auto [low, high] = skin_options::wear_limits( pk->wear_min, pk->wear_max );
 						selected.wear = skin_options::clamp_wear( selected.wear, low, high );
 						if ( browsing_def && browsing_def->category == features::changer::econ_item_system::item_category::glove ) selected.stattrak = false;
-						skin_map( )[ skins_ui.browsing_def ] = selected;
+						skins_ui.browsing_def = target_def;
+						skin_workspace::active_browsing_weapon = target_def;
+						skin_workspace::focused_weapon[ skin_workspace::team == 3 ? 0 : 1 ] = target_def;
+						skin_map( )[ target_def ] = selected;
 					}
 					notify_skin_changed( );
 				}
@@ -1970,13 +2056,14 @@ namespace rendering {
 		{
 			auto& dl = xui::draw::current( );
 			auto& econ = features::changer::g_econ_item_system;
-			auto backdrop = tokens::col_card;
-			backdrop.a = 30;
-			dl.rect_filled( area.x, area.y, area.w, area.h, backdrop, xdraw::corner_radius{ 12.0f } );
-			dl.rect( area.x, area.y, area.w, area.h, tokens::col_border.alpha( 190 ), xdraw::corner_radius{ 12.0f }, 1.0f );
+			const auto rx = std::round( area.x );
+			const auto ry = std::round( area.y );
+			const auto rw = static_cast<float>( std::max( 64, static_cast<int>( std::round( area.w ) ) ) );
+			const auto rh = static_cast<float>( std::max( 64, static_cast<int>( std::round( area.h ) ) ) );
+			dl.rect( rx, ry, rw, rh, tokens::col_border.alpha( 190 ), 1.0f );
 
-			const xui::rect ct_button{ area.right( ) - 130.0f, area.y + 12.0f, 48.0f, 26.0f };
-			const xui::rect t_button{ area.right( ) - 72.0f, area.y + 12.0f, 48.0f, 26.0f };
+			const xui::rect ct_button{ rx + rw - 130.0f, ry + 12.0f, 48.0f, 26.0f };
+			const xui::rect t_button{ rx + rw - 72.0f, ry + 12.0f, 48.0f, 26.0f };
 			if ( skin_workspace::button( ct_button, "CT", skin_workspace::team == 3 ) )
 				skin_workspace::team = 3;
 			if ( skin_workspace::button( t_button, "T", skin_workspace::team == 2 ) )
@@ -1985,14 +2072,16 @@ namespace rendering {
 			systems::model_preview::request preview{};
 			preview.team = skin_workspace::team;
 			preview.visible = true;
-			preview.width = std::max( 64, static_cast<int>( area.w - 2.0f ) );
-			preview.height = std::max( 64, static_cast<int>( area.h - 2.0f ) );
-			preview.x = area.x + 1.0f;
-			preview.y = area.y + 1.0f;
+			preview.width = static_cast<int>( rw );
+			preview.height = static_cast<int>( rh );
+			preview.x = rx;
+			preview.y = ry;
 			const auto [screen_w, screen_h] = xdraw::viewport_size( );
 			preview.screen_width = static_cast<int>( screen_w );
 			preview.screen_height = static_cast<int>( screen_h );
-			preview.background_rgb = 0x10131a;
+			preview.background_rgb = ( static_cast<std::uint32_t>(tokens::col_card.r) << 16 ) |
+				( static_cast<std::uint32_t>(tokens::col_card.g) << 8 ) |
+				static_cast<std::uint32_t>(tokens::col_card.b);
 
 			if ( category == 4 )
 			{
@@ -2057,7 +2146,29 @@ namespace rendering {
 					preview.def_index = weapon->def_index;
 					const auto& applied = settings::g_changer.skins.for_team( skin_workspace::team );
 					if ( const auto it = applied.find( weapon->def_index ); it != applied.end( ) )
+					{
 						preview.paint_kit = it->second.paint_kit_id;
+						preview.wear = it->second.wear;
+						preview.seed = it->second.seed;
+						preview.stattrak = it->second.stattrak;
+						preview.stattrak_count = it->second.stattrak_count;
+						preview.name_tag = it->second.name_tag;
+					}
+
+					if ( category == 2 && preview.paint_kit != 0 && ( preview.def_index == 5028 || preview.def_index == 5029 ) )
+					{
+						for ( const auto& s : econ.skins( ) )
+						{
+							if ( s.paint_kit_id == preview.paint_kit )
+							{
+								if ( const auto* parent_def = econ.find_def( s.def_index ); parent_def && parent_def->category == features::changer::econ_item_system::item_category::glove )
+								{
+									preview.def_index = s.def_index;
+									break;
+								}
+							}
+						}
+					}
 				}
 			}
 
@@ -2170,13 +2281,13 @@ namespace rendering {
 				auto* settings_window = xui::layout::current_window( );
 				const auto settings_bounds = settings_window->bounds;
 				const auto settings_inner_w = settings_bounds.w - style.window_pad_x * 2.0f;
-				xui::layout::set_cursor( style.window_pad_x, style.window_pad_y );
 				xui::section_header( "ITEM SETTINGS" );
 				const auto tab_gap = xui::ctx( ).style.item_spacing_x;
 				const auto tab_w = ( settings_inner_w - tab_gap ) * 0.5f;
 				if ( xui::button( "Skin", tab_w ) ) skins_ui.active_tab = browser_tab::skins;
 				xui::layout::same_line( );
 				if ( xui::button( "Weapon chams", tab_w ) ) skins_ui.active_tab = browser_tab::chams;
+				xui::layout::new_line( );
 				xui::layout::spacing( 8.0f );
 
 				auto& settings_input = xui::ctx( ).input;
@@ -2189,14 +2300,13 @@ namespace rendering {
 				}
 				if ( skins_ui.active_tab == browser_tab::chams )
 				{
-					xui::text( "Applied in game; the preview stays clean.", tokens::col_text_dim );
 					detail::draw_weapon_chams_editor( weapon );
 				}
 				else
 					detail::draw_skin_editor( weapon );
 				settings_input.mouse_clicked = saved_clicked;
 				settings_input.mouse_double_clicked = saved_double_clicked;
-				settings_window->content_h = xui::layout::get_cursor( ).second + style.window_pad_y + 24.0f;
+				settings_window->content_h = ( xui::layout::get_cursor( ).second + settings_window->scroll_y ) + style.window_pad_y + 24.0f;
 				xui::end_child( );
 			}
 		}
@@ -2240,12 +2350,23 @@ namespace rendering {
 		if ( this->m_subtab != last_subtab )
 		{
 			last_subtab = this->m_subtab;
-			detail::skins_ui.current = (this->m_subtab == 3) ? detail::skins_page::browser : detail::skins_page::grid;
-			detail::skins_ui.target = detail::skins_ui.current;
-			detail::skins_ui.fade = 1.0f;
-			detail::skins_ui.browsing_agent_team = (this->m_subtab == 3) ? skin_workspace::team : 0;
-			detail::skins_ui.search_buf.clear( );
+			detail::skins_ui.details_open = false;
+			detail::skins_ui.browsing_def = 0;
 			skin_workspace::active_browsing_weapon = 0;
+			detail::skins_ui.search_buf.clear( );
+			detail::skins_ui.fade = 1.0f;
+			if ( this->m_subtab == 3 )
+			{
+				if ( skin_workspace::team != 2 && skin_workspace::team != 3 )
+					skin_workspace::team = 3;
+				detail::skins_ui.browsing_agent_team = skin_workspace::team;
+				detail::skins_ui.current = detail::skins_ui.target = detail::skins_page::browser;
+			}
+			else
+			{
+				detail::skins_ui.browsing_agent_team = 0;
+				detail::skins_ui.current = detail::skins_ui.target = detail::skins_page::grid;
+			}
 		}
 
 		auto& econ = features::changer::g_econ_item_system;
@@ -2260,10 +2381,18 @@ namespace rendering {
 		const auto body_y = this->m_body_y;
 		const auto content_w = this->m_body_w;
 		const auto body_h = this->m_body_h;
-		if (this->m_subtab == 3 && detail::skins_ui.browsing_agent_team == 0)
+		if ( this->m_subtab == 3 )
 		{
-			detail::skins_ui.current = detail::skins_ui.target = detail::skins_page::browser;
-			detail::skins_ui.browsing_agent_team = skin_workspace::team;
+			if ( skin_workspace::team != 2 && skin_workspace::team != 3 )
+				skin_workspace::team = 3;
+			if ( detail::skins_ui.browsing_agent_team == 0 || detail::skins_ui.browsing_def != 0 || detail::skins_ui.details_open || detail::skins_ui.current != detail::skins_page::browser )
+			{
+				detail::skins_ui.browsing_def = 0;
+				detail::skins_ui.details_open = false;
+				skin_workspace::active_browsing_weapon = 0;
+				detail::skins_ui.current = detail::skins_ui.target = detail::skins_page::browser;
+				detail::skins_ui.browsing_agent_team = skin_workspace::team;
+			}
 		}
 
 		const auto dt = xdraw::delta_time( );
@@ -2614,13 +2743,13 @@ namespace rendering {
 				{
 					auto* settings_window = xui::layout::current_window( );
 					const auto settings_inner_w = settings_window->bounds.w - s.window_pad_x * 2.0f;
-					xui::layout::set_cursor( s.window_pad_x, s.window_pad_y );
 					xui::section_header( "ITEM SETTINGS" );
 					const auto tab_gap = xui::ctx( ).style.item_spacing_x;
 					const auto tab_w = ( settings_inner_w - tab_gap ) * 0.5f;
 					if ( xui::button( "Skin", tab_w ) ) detail::skins_ui.active_tab = detail::browser_tab::skins;
 					xui::layout::same_line( );
 					if ( xui::button( "Weapon chams", tab_w ) ) detail::skins_ui.active_tab = detail::browser_tab::chams;
+					xui::layout::new_line( );
 					xui::layout::spacing( 8.0f );
 
 					auto& settings_input = xui::ctx( ).input;
@@ -2633,14 +2762,13 @@ namespace rendering {
 					}
 					if ( detail::skins_ui.active_tab == detail::browser_tab::chams )
 					{
-						xui::text( "In-game only; the item preview stays clean.", tokens::col_text_dim );
 						detail::draw_weapon_chams_editor( weapon );
 					}
 					else
 						detail::draw_skin_editor( weapon );
 					settings_input.mouse_clicked = saved_clicked;
 					settings_input.mouse_double_clicked = saved_double_clicked;
-					settings_window->content_h = xui::layout::get_cursor( ).second + s.window_pad_y + 24.0f;
+					settings_window->content_h = ( xui::layout::get_cursor( ).second + settings_window->scroll_y ) + s.window_pad_y + 24.0f;
 					xui::end_child( );
 				}
 

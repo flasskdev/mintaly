@@ -299,6 +299,10 @@ namespace features::misc {
 
                 [[nodiscard]] bool is_freecam_active( ) const noexcept { return this->m_was_freecam_active; }
                 [[nodiscard]] bool is_spec_thirdperson_active( ) const noexcept;
+
+                // Ratio applied to the view FOV by the aspect ratio override (1.0 when inactive).
+                [[nodiscard]] float aspect_fov_scale( ) const noexcept;
+                [[nodiscard]] float aspect_viewmodel_scale( ) const noexcept;
                 [[nodiscard]] math::vector3 get_saved_viewangles( ) const noexcept { return this->m_saved_viewangles; }
 
         private:
@@ -524,8 +528,10 @@ namespace features::misc {
                 void on_frame_stage_notify ();
                 void on_level_change ();
                 bool run_script (const std::string& script);
-                // Share the validated Panorama bridge without enabling the scoreboard feature.
+                bool run_hud_script (const std::string& script);
                 bool run_preview_script (const std::string& script);
+                [[nodiscard]] c_ui_panel* find_preview_panel (
+                        c_ui_engine* ui_engine, std::string* diagnostics = nullptr) const;
 
         private:
                 struct weapon_entry {
@@ -547,10 +553,7 @@ namespace features::misc {
                 };
 
                 void try_initialize ();
-                bool run_hud_script (const std::string& script);
                 [[nodiscard]] c_ui_panel* find_hud_panel () const;
-                [[nodiscard]] c_ui_panel* find_preview_panel (
-                        c_ui_engine* ui_engine, std::string* diagnostics = nullptr) const;
                 void send_player_weapons (
                         std::uintptr_t controller,
                         std::span<const systems::entities::cached> items);

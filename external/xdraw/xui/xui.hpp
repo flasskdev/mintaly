@@ -498,6 +498,8 @@ namespace xui {
 		float scroll_y{};
 		bool last_item_is_toggle{ false };
 		float last_toggle_x{ 0.0f };
+		float start_x{};
+		bool on_same_line{ false };
 	}; 
 	
 	struct child_scroll_state
@@ -614,6 +616,7 @@ namespace xui {
 	bool button( std::string_view label, setting& s, std::string_view button_text = "kick" );
 	bool checkbox( std::string_view label, setting& s );
 	bool toggle( std::string_view label, setting& s, std::string_view description = {} );
+	bool nav_row( std::string_view label, float w = 0.0f, float h = 34.0f );
 	void section_header( std::string_view label );
 	void locked_control( std::string_view label );
 

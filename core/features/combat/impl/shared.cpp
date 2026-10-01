@@ -2,6 +2,7 @@
 #include <utilities/memory/memory.hpp>
 #include <utilities/addresses/addresses.hpp>
 #include <utilities/logging/logging.hpp>
+#include <utilities/diag.hpp>
 #include <core/systems/systems.hpp>
 #include <core/features/features.hpp>
 #include <protection/game_addresses.hpp>
@@ -17,6 +18,38 @@ namespace features::combat {
         namespace rd = utilities::rage_scan_diagnostics;
 
         namespace detail {
+
+                [[nodiscard]] bool finite_position( const math::vector3& value )
+                {
+                        return std::isfinite( value.x ) && std::isfinite( value.y ) && std::isfinite( value.z );
+                }
+
+                [[nodiscard]] math::vector3 invalid_shoot_position( )
+                {
+                        const auto invalid = std::numeric_limits<float>::quiet_NaN( );
+                        return { invalid, invalid, invalid };
+                }
+
+                [[nodiscard]] std::optional<math::vector3> read_current_eye( std::uintptr_t pawn )
+                {
+                        if ( !pawn ) return std::nullopt;
+
+                        const auto scene_offset = SCHEMA( "C_BaseEntity", "m_pGameSceneNode"_hash );
+                        const auto origin_offset = SCHEMA( "CGameSceneNode", "m_vecAbsOrigin"_hash );
+                        const auto view_offset = SCHEMA( "C_BaseModelEntity", "m_vecViewOffset"_hash );
+                        if ( !scene_offset || !origin_offset || !view_offset ) return std::nullopt;
+
+                        const auto scene = memory::safe_read<std::uintptr_t>( pawn + scene_offset ).value_or( 0 );
+                        if ( !scene ) return std::nullopt;
+
+                        const auto origin = memory::safe_read<math::vector3>( scene + origin_offset );
+                        const auto view = memory::safe_read<math::vector3>( pawn + view_offset );
+                        if ( !origin || !view || !finite_position( *origin ) || !finite_position( *view ) )
+                                return std::nullopt;
+
+                        const auto eye = *origin + *view;
+                        return finite_position( eye ) ? std::optional<math::vector3>{ eye } : std::nullopt;
+                }
 
                 struct bullet_trace_record
                 {
@@ -294,13 +327,18 @@ namespace features::combat {
         bool shared::penetration::run( const math::vector3& start, const math::vector3& end, const run_context& ctx, std::uintptr_t local_pawn, int local_team, result& out ) const
         {
                 rd::mark(rd::event::pen_calls);
-                if ( this->m_weapon_data.damage <= 0.0f )
+                out = {};
+                const auto delta = end - start;
+                if ( !detail::finite_position( start ) || !detail::finite_position( end ) ||
+                        !detail::finite_position( delta ) || delta.length( ) <= 0.001f ||
+                        !std::isfinite( this->m_weapon_data.damage ) || this->m_weapon_data.damage <= 0.0f ||
+                        !std::isfinite( this->m_weapon_data.range ) || this->m_weapon_data.range <= 0.0f )
                 {
                         rd::mark(rd::event::no_weapon_damage);
                         return false;
                 }
 
-                const auto direction = ( end - start ).normalized( );
+                const auto direction = delta.normalized( );
                 const auto trace_delta = direction * this->m_weapon_data.range;
 
                 auto filter = systems::g_tracing.make_filter( local_pawn, 0x1c300b, 3, 15 );
@@ -332,52 +370,47 @@ namespace features::combat {
                         systems::g_tracing.setup_trace( trace, start, trace_delta, filter, 4, true );
                 }
 
-                const auto num_hits = trace->num_hits;
-                const auto hit_array = reinterpret_cast< std::uintptr_t >( trace->hit_array_pointer );
-
-                if ( num_hits <= 0 )
+                if ( trace->num_hits <= 0 )
                 {
                         rd::mark(rd::event::no_trace_hits);
-                        out = {};
                         return false;
                 }
 
-                rd::mark(rd::event::contacts, static_cast<std::uint64_t>(num_hits));
-                const auto surface_array = reinterpret_cast< std::uintptr_t >( trace->array_pointer );
-
                 memory::call<void> (PATTERN (patterns::trace_bullet), trace, this->m_weapon_data.damage, this->m_weapon_data.penetration, this->m_weapon_data.range_modifier, 4, local_team, static_cast<std::uintptr_t>(0));
 
-                // First confirm if the engine bullet trace actually struck the target pawn.
-                // This avoids ray-vs-capsule tests on all 19 hitboxes for rays that were
-                // stopped by walls or missed completely.
-                auto penetrated{ false };
+                // trace_bullet may shrink the result or replace either backing
+                // array. Read and validate every output field after that call.
+                const auto num_hits = trace->num_hits;
+                const auto hit_array = reinterpret_cast< std::uintptr_t >( trace->hit_array_pointer );
+                const auto surface_array = reinterpret_cast< std::uintptr_t >( trace->array_pointer );
+                if ( num_hits <= 0 || num_hits > trace->hit_capacity || !hit_array ||
+                        !surface_array || trace->unknown3 <= 0 )
+                {
+                        return false;
+                }
+                rd::mark(rd::event::contacts, static_cast<std::uint64_t>(num_hits));
+
+                // Confirm that the engine bullet path actually reaches the target
+                // pawn. The contact index on each record is the fast signal; the
+                // record geometry below is the fallback when it does not resolve.
                 auto target_hit_idx{ -1 };
                 float target_damage{ 0.0f };
 
                 for ( auto i = 0; i < num_hits; ++i )
                 {
                         auto hit = reinterpret_cast< detail::bullet_trace_record* >( hit_array + i * sizeof( detail::bullet_trace_record ) );
-                        const auto damage = *reinterpret_cast< float* >( reinterpret_cast< std::uintptr_t >( hit ) + 8 );
+                        const auto damage = hit->damage_applied;
 
-                        if ( damage <= 0.0f )
+                        if ( !std::isfinite( damage ) || damage <= 0.0f )
                         {
                                 rd::mark(rd::event::damage_exhausted);
                                 break;
                         }
 
-                        if ( ( hit->can_penetrate & 1 ) != 0 )
-                        {
-                                penetrated = true;
-
-                                if ( *reinterpret_cast< float* >( reinterpret_cast< std::uintptr_t >( hit ) + 4 ) == 1.0f )
-                                {
-                                        break;
-                                }
-
-                                continue;
-                        }
-
-                        const auto trace_holder = surface_array + sizeof( systems::tracing::trace_array_element ) * ( hit->enter_contact_ix & 0x7fff );
+                        const auto contact_index = hit->enter_contact_ix & 0x7fff;
+                        if ( contact_index >= trace->unknown3 )
+                                return false;
+                        const auto trace_holder = surface_array + sizeof( systems::tracing::trace_array_element ) * contact_index;
                         const auto hit_handle = memory::read<std::uint32_t>( trace_holder + 0x2c );
                         const auto hit_entity = systems::g_entities.lookup( hit_handle );
 
@@ -393,16 +426,8 @@ namespace features::combat {
 
                         target_hit_idx = i;
                         target_damage = damage;
+                        rd::mark(rd::event::pen_contact_accept);
                         break;
-                }
-
-                if ( target_hit_idx < 0 )
-                {
-                        rd::mark(rd::event::no_target_hit);
-                        detail::report_rejected_contacts(*trace, num_hits, hit_array, surface_array,
-                                ctx.target_pawn, local_pawn, start, end);
-                        out = {};
-                        return false;
                 }
 
                 // Target pawn was hit: now determine the exact hitbox by fine raytracing.
@@ -523,9 +548,56 @@ namespace features::combat {
                         return false;
                 }
 
+                // Fallback for records whose engine contact index does not resolve to
+                // the target: the contact array frequently hands back the world
+                // contact (or a sentinel), which used to reject almost every scan
+                // point. The record geometry is authoritative instead: accept the
+                // segment of the bullet path that spans the point where the ray
+                // enters the target's body, and only while that segment still
+                // carries damage, so a segment the bullet died in is never a hit.
+                if ( target_hit_idx < 0 )
+                {
+                        const auto target_fraction = std::clamp( closest_hitbox_fraction, 0.0f, 1.0f );
+                        constexpr auto fraction_epsilon{ 1.0e-4f };
+
+                        for ( auto i = 0; i < num_hits; ++i )
+                        {
+                                auto hit = reinterpret_cast< detail::bullet_trace_record* >( hit_array + i * sizeof( detail::bullet_trace_record ) );
+                                const auto damage = hit->damage_applied;
+
+                                if ( !std::isfinite( damage ) || damage <= 0.0f )
+                                {
+                                        rd::mark(rd::event::damage_exhausted);
+                                        break;
+                                }
+
+                                if ( target_fraction + fraction_epsilon >= hit->enter_fraction &&
+                                        target_fraction <= hit->exit_fraction + fraction_epsilon )
+                                {
+                                        target_hit_idx = i;
+                                        target_damage = damage;
+                                        rd::mark(rd::event::pen_geometry_accept);
+                                        break;
+                                }
+                        }
+                }
+
+                if ( target_hit_idx < 0 )
+                {
+                        rd::mark(rd::event::no_target_hit);
+                        detail::report_rejected_contacts(*trace, num_hits, hit_array, surface_array,
+                                ctx.target_pawn, local_pawn, start, end);
+                        out = {};
+                        return false;
+                }
+
                 out.hitbox = actual_hitbox;
                 out.hitgroup = systems::g_hitboxes.hitgroup_from_hitbox( actual_hitbox );
-                out.penetrated = penetrated;
+                // Penetration is not "the record list has more than one entry": it is
+                // whether anything solid stood between the muzzle and the aimed point.
+                // A plain visibility trace answers that without depending on how
+                // trace_bullet decided to split this particular path.
+                out.penetrated = !systems::g_tracing.is_visible( start, end, ctx.target_pawn, local_pawn );
                 out.damage = target_damage;
 
                 this->scale_damage( out.hitgroup, ctx.target_armor, ctx.has_helmet, ctx.target_team, ctx.armor_ratio, ctx.headshot_multiplier, ctx.scales, out.damage );
@@ -538,7 +610,11 @@ namespace features::combat {
         {
                 out_damage = 0.0f;
 
-                if ( this->m_weapon_data.damage <= 0.0f || this->m_weapon_data.penetration <= 0.0f )
+                if ( !local.pawn || !detail::finite_position( start ) || !detail::finite_position( direction ) ||
+                        direction.length( ) <= 0.001f || !std::isfinite( this->m_weapon_data.range ) ||
+                        this->m_weapon_data.range <= 0.0f || !std::isfinite( this->m_weapon_data.damage ) ||
+                        this->m_weapon_data.damage <= 0.0f || !std::isfinite( this->m_weapon_data.penetration ) ||
+                        this->m_weapon_data.penetration <= 0.0f )
                 {
                         return false;
                 }
@@ -554,42 +630,36 @@ namespace features::combat {
 
                 systems::g_tracing.setup_trace( trace, start, trace_delta, filter, 4, true );
 
-                const auto num_hits = trace->num_hits;
-
-                if ( num_hits <= 0 )
+                if ( trace->num_hits <= 0 )
                 {
                         return false;
                 }
 
-                const auto hit_array = reinterpret_cast< std::uintptr_t >( trace->hit_array_pointer );
-
                 memory::call<void> (PATTERN (patterns::trace_bullet), trace, this->m_weapon_data.damage, this->m_weapon_data.penetration, this->m_weapon_data.range_modifier, 4, local_team, static_cast<std::uintptr_t>(0));
+
+                const auto num_hits = trace->num_hits;
+                const auto hit_array = reinterpret_cast< std::uintptr_t >( trace->hit_array_pointer );
+                if ( num_hits <= 0 || num_hits > trace->hit_capacity || !hit_array )
+                        return false;
 
                 for ( auto i = 0; i < num_hits; ++i )
                 {
                         auto hit = reinterpret_cast< detail::bullet_trace_record* >( hit_array + i * sizeof( detail::bullet_trace_record ) );
                         const auto damage = hit->damage_applied;
 
-                        if ( damage <= 0.0f )
+                        if ( !std::isfinite( damage ) || damage <= 0.0f )
                         {
+                                // The bullet is spent inside this segment: nothing the
+                                // path passes through afterwards can be damaged.
+                                out_damage = 0.0f;
                                 break;
                         }
 
-                        if ( ( hit->can_penetrate & 1 ) != 0 )
-                        {
-                                // Match run(): bit 0 marks a penetration record and an exit
-                                // fraction of 1 means the bullet did not make it through.
-                                if ( hit->exit_fraction == 1.0f )
-                                {
-                                        break;
-                                }
-
-                                out_damage = damage;
-                                return true;
-                        }
+                        // Damage the bullet still carries once it leaves this segment.
+                        out_damage = damage;
                 }
 
-                return false;
+                return out_damage > 0.0f;
         }
 
         float shared::penetration::get_max_damage( int hitgroup, int target_armor, bool has_helmet, int target_team ) const
@@ -1760,17 +1830,48 @@ namespace features::combat {
 
         math::vector3 shared::get_eye_position( std::uintptr_t local_pawn ) const
         {
-                const auto game_scene_node = memory::read<std::uintptr_t>( local_pawn + SCHEMA( "C_BaseEntity", "m_pGameSceneNode"_hash ) );
-                const auto origin = memory::read<math::vector3>( game_scene_node + SCHEMA( "CGameSceneNode", "m_vecAbsOrigin"_hash ) );
-                const auto view_offset = memory::read<math::vector3>( local_pawn + SCHEMA( "C_BaseModelEntity", "m_vecViewOffset"_hash ) );
-                return origin + view_offset;
+                return detail::read_current_eye( local_pawn ).value_or( detail::invalid_shoot_position( ) );
         }
 
         math::vector3 shared::get_shoot_position( ) const
         {
-                math::vector3 out{};
-                memory::call_vfunc<void>( this->m_ctx.weapon_services, 29, reinterpret_cast< std::uintptr_t >( &out ) );
-                return out;
+                const auto local = systems::g_local.get( );
+                const auto eye = detail::read_current_eye( local.pawn );
+                if ( !eye ) return detail::invalid_shoot_position( );
+
+                // A no-op/missing native getter must not turn a zero-initialized
+                // output into a successful shot origin at the world origin.
+                auto native = detail::invalid_shoot_position( );
+                const auto ws = this->m_ctx.weapon_services;
+                const auto vtable = ws ? memory::safe_read<std::uintptr_t>( ws ).value_or( 0 ) : 0;
+                const auto getter = vtable ? memory::safe_read<std::uintptr_t>(
+                        vtable + 29 * sizeof( std::uintptr_t ) ).value_or( 0 ) : 0;
+                if ( getter )
+                        memory::safe_call<void>( getter, ws, reinterpret_cast<std::uintptr_t>( &native ) );
+
+                // A conservative compatibility check, not a claim that slot 29
+                // is correct for every client build. Keep nearby native offsets;
+                // use the evaluated pawn eye when the native output is unusable.
+                const auto native_zero = native.x == 0.0f && native.y == 0.0f && native.z == 0.0f;
+                const auto eye_zero = eye->x == 0.0f && eye->y == 0.0f && eye->z == 0.0f;
+                const auto use_native = detail::finite_position( native ) &&
+                        ( !native_zero || eye_zero ) && native.distance_sqr( *eye ) <= 64.0f * 64.0f;
+                const auto result = use_native ? native : *eye;
+
+                static std::atomic<ULONGLONG> last_report{};
+                const auto now = GetTickCount64( );
+                auto previous = last_report.load( std::memory_order_relaxed );
+                if ( now - previous >= 5000 && last_report.compare_exchange_strong(
+                        previous, now, std::memory_order_relaxed ) )
+                {
+                        char line[ 320 ]{};
+                        _snprintf_s( line, sizeof( line ), _TRUNCATE,
+                                "[rage-eye:v3] source=%s native=(%.3f,%.3f,%.3f) eye=(%.3f,%.3f,%.3f) selected=(%.3f,%.3f,%.3f)",
+                                use_native ? "native" : "current-eye", native.x, native.y, native.z,
+                                eye->x, eye->y, eye->z, result.x, result.y, result.z );
+                        diag::write( diag::level::debug, line );
+                }
+                return result;
         }
 
         math::vector3 shared::get_interpolated_shoot_position( std::uintptr_t local_pawn, bool newest ) const

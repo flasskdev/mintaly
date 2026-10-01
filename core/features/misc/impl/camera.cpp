@@ -16,6 +16,149 @@ namespace features::misc {
 		constexpr std::ptrdiff_t k_view_flags_offset{ 0x551 };
 		constexpr std::uint8_t k_explicit_aspect_ratio_flag{ 1u << 1 };
 
+		// Smooth aspect ratio transitions, mirroring the viewmodel adjust interpolation
+		// (exponential decay factor + per-frame lerp of the applied value).
+		struct aspect_ratio_anim_state
+		{
+			bool initialized{ false };
+			bool fading_out{ false };
+			float current{ 1.333f };
+			float native{ 1.777f };
+			float fov_scale{ 1.0f };
+			std::chrono::steady_clock::time_point last_time{};
+		};
+
+		inline aspect_ratio_anim_state s_aspect_anim{};
+
+		// Smooth thirdperson transitions: the camera distance eases between 0
+		// (first person) and the configured value instead of snapping.
+		struct thirdperson_anim_state
+		{
+			bool was_enabled{ false };
+			float current_distance{ 0.0f };
+			std::chrono::steady_clock::time_point last_time{};
+		};
+
+		inline thirdperson_anim_state s_tp_anim{};
+
+		// Smooth FOV transitions. Kept as file state so do_fov_change can stay const.
+		struct fov_anim_state
+		{
+			bool initialized{ false };
+			bool fading_out{ false };
+			float current{ 90.0f };
+			float native{ 90.0f };
+			std::chrono::steady_clock::time_point last_time{};
+		};
+
+		inline fov_anim_state s_fov_anim{};
+
+		// Tracks the moment the scope is released so the FOV can be ramped back out
+		// from the scoped value instead of snapping to hipfire. Owns its own value so
+		// the normal lerp cannot fight the ramp for control of the FOV.
+		struct unzoom_hold_state
+		{
+			bool active{ false };
+			bool scoped_now{ false };
+			float value{ 90.0f };
+			float goal{ 90.0f };
+			std::chrono::steady_clock::time_point started{};
+			std::chrono::steady_clock::time_point last_time{};
+		};
+
+		inline unzoom_hold_state s_unzoom_hold{};
+
+		// Below this the FOV is visually indistinguishable from the engine value,
+		// so the handover back to it is not noticeable.
+		constexpr float k_fov_settle{ 0.05f };
+
+		// Zoom level of the currently held weapon: 1 is the first magnification and
+		// 2+ the secondary. Mirrors the legitbot's detection so both agree on what
+		// counts as a second scope.
+		[[nodiscard]] int read_zoom_level( std::uintptr_t target_pawn )
+		{
+			if ( !target_pawn )
+			{
+				return 1;
+			}
+
+			const auto weapon_services = memory::safe_read<std::uintptr_t>(
+				target_pawn + SCHEMA( "C_BasePlayerPawn", "m_pWeaponServices"_hash ) ).value_or( 0 );
+			if ( !weapon_services )
+			{
+				return 1;
+			}
+
+			const auto weapon_handle = memory::safe_read<std::uint32_t>(
+				weapon_services + SCHEMA( "CPlayer_WeaponServices", "m_hActiveWeapon"_hash ) ).value_or( 0u );
+			if ( !weapon_handle || weapon_handle == 0xffffffffu )
+			{
+				return 1;
+			}
+
+			const auto weapon = systems::g_entities.lookup( weapon_handle );
+			if ( !weapon )
+			{
+				return 1;
+			}
+
+			int level = 1;
+
+			const auto zoom_offset = SCHEMA( "C_CSWeaponBaseGun", "m_zoomLevel"_hash );
+			if ( zoom_offset )
+			{
+				const auto value = memory::safe_read<int>( weapon + zoom_offset ).value_or( 1 );
+				if ( value >= 2 )
+				{
+					level = 2;
+				}
+			}
+
+			// Fallback: the camera services FOV is the ground truth for how far in the
+			// player is zoomed. A value this low means a second scope even when the
+			// weapon schema is unavailable.
+			if ( level < 2 )
+			{
+				const auto cam_services = memory::safe_read<std::uintptr_t>(
+					target_pawn + SCHEMA( "C_BasePlayerPawn", "m_pCameraServices"_hash ) ).value_or( 0 );
+				if ( cam_services )
+				{
+					const auto fov_offset = SCHEMA( "CPlayer_CameraServices", "m_iFOV"_hash );
+					if ( fov_offset )
+					{
+						const auto cur_fov = memory::safe_read<std::uint32_t>( cam_services + fov_offset ).value_or( 0u );
+						if ( cur_fov > 0 && cur_fov <= 25 )
+						{
+							level = 2;
+						}
+					}
+				}
+			}
+
+			return level;
+		}
+
+		// Below this the camera is close enough to the eye that the handover to the
+		// engine's own first person view is not visible.
+		constexpr float k_tp_settle_distance{ 0.5f };
+
+		[[nodiscard]] bool is_valid_aspect( float value )
+		{
+			return std::isfinite( value ) && value > 0.1f && value < 10.0f;
+		}
+
+		// Aspect the engine projects with while our override is inactive. Used as
+		// the transition origin so the first animated frame matches what is on screen.
+		[[nodiscard]] float native_screen_aspect( )
+		{
+			const auto [ width, height ] = xdraw::viewport_size( );
+			if ( width > 0 && height > 0 )
+			{
+				return static_cast< float >( width ) / static_cast< float >( height );
+			}
+			return 1.777f;
+		}
+
 
 		math::vector3 s_spec_freecam_angles{};
 		bool s_was_spec_freecam{ false };
@@ -166,18 +309,45 @@ namespace features::misc {
 			const bool is_spec = !local.is_alive && local.observer_pawn != 0;
 			const bool allow_thirdperson = local.is_alive ? settings::g_misc.m_camera.thirdperson.value : ( settings::g_misc.m_camera.spectator_thirdperson.value && is_spec );
 
+			// Keep driving the camera while an animated thirdperson eases back into
+			// first person, otherwise the toggle-off handover to the engine would snap.
+			const bool animated_tp = settings::g_misc.m_camera.thirdperson_animated.value;
+			const bool fading_thirdperson = animated_tp &&
+				!allow_thirdperson &&
+				s_tp_anim.current_distance > k_tp_settle_distance;
+
+			// Animation was switched off mid fade: drop the residual distance so we
+			// stop driving the camera, otherwise it would stay stuck part-way out.
+			if ( !animated_tp && !allow_thirdperson )
+			{
+				s_tp_anim.current_distance = 0.0f;
+				s_tp_anim.was_enabled = false;
+			}
+
 			if ( this->do_freecam( view_setup ) )
 			{
 				// Freecam handled camera position and angles.
 			}
-			else if ( target_pawn && allow_thirdperson )
+			else if ( target_pawn && ( allow_thirdperson || fading_thirdperson ) )
 			{
 				this->do_thirdperson( view_setup, target_pawn );
+			}
+			else if ( !target_pawn && fading_thirdperson )
+			{
+				// Pawn went away mid fade; nothing left to interpolate against.
+				s_tp_anim.current_distance = 0.0f;
+				s_tp_anim.was_enabled = false;
 			}
 
 			if ( target_pawn )
 			{
 				this->do_fov_change( view_setup, target_pawn );
+			}
+			else if ( s_fov_anim.initialized && !settings::g_misc.m_camera.change_fov.value )
+			{
+				// No pawn to read a native FOV from, so the fade has nothing to
+				// converge on. Drop it rather than leaving it stuck mid-transition.
+				s_fov_anim.initialized = false;
 			}
 		}
 
@@ -200,7 +370,11 @@ namespace features::misc {
 
 		const auto& cfg = settings::g_misc.m_camera;
 		const auto is_scoped = memory::read<bool>( player_pawn + SCHEMA( "C_CSPlayerPawn", "m_bIsScoped"_hash ) );
-		const auto target_fov = ( is_scoped && cfg.scoped_fov_override.value ) ? cfg.scoped_fov.value : cfg.fov.value;
+
+		// Track the FOV actually applied this frame rather than the raw config value,
+		// otherwise zoom sensitivity snaps to the final value while the view is still
+		// easing toward it.
+		const auto target_fov = s_fov_anim.initialized ? s_fov_anim.current : cfg.fov.value;
 
 		if ( is_scoped == this->m_cached_scoped && target_fov == this->m_cached_target_fov && this->m_cached_fov_sensitivity >= 0.0f )
 		{
@@ -232,10 +406,68 @@ namespace features::misc {
 		const auto& cfg = settings::g_misc.m_camera;
 		const auto local = systems::g_local.get( );
 		const bool tp_enabled = local.is_alive ? cfg.thirdperson.value : ( cfg.spectator_thirdperson.value && local.observer_pawn != 0 );
-		if ( !tp_enabled )
+
+		const bool animated = cfg.thirdperson_animated.value;
+		const float target_distance = std::clamp( cfg.thirdperson_distance.value, 10.0f, 500.0f );
+
+		// With animation on, keep driving the camera while the distance eases back
+		// toward zero so the pull into first person is gradual. Without it, the
+		// engine snaps back the moment the toggle goes off.
+		const bool fading_out = animated && !tp_enabled && s_tp_anim.current_distance > k_tp_settle_distance;
+
+		if ( !tp_enabled && !fading_out )
 		{
+			if ( animated )
+			{
+				s_tp_anim.current_distance = 0.0f;
+				s_tp_anim.was_enabled = false;
+				s_tp_anim.last_time = std::chrono::steady_clock::now( );
+			}
 			s_was_spec_thirdperson = false;
 			return;
+		}
+
+		float distance = target_distance;
+
+		if ( animated )
+		{
+			const auto now = std::chrono::steady_clock::now( );
+
+			// Fade out toward the eye, fade in toward the configured distance.
+			const float goal = tp_enabled ? target_distance : 0.0f;
+
+			// Detect the toggle edge. Resetting the clock here matters: while
+			// disabled this function stops being called, so last_time would be
+			// stale and the first animated frame would jump most of the way.
+			if ( s_tp_anim.was_enabled != tp_enabled )
+			{
+				s_tp_anim.was_enabled = tp_enabled;
+				s_tp_anim.last_time = now;
+			}
+
+			float dt = std::chrono::duration<float>( now - s_tp_anim.last_time ).count( );
+			s_tp_anim.last_time = now;
+			dt = std::clamp( dt, 0.0f, 0.1f );
+
+			if ( dt > 0.0f )
+			{
+				constexpr float k_animation_speed = 12.0f;
+				const float factor = 1.0f - std::exp( -k_animation_speed * dt );
+				s_tp_anim.current_distance = std::lerp( s_tp_anim.current_distance, goal, factor );
+			}
+
+			if ( std::abs( s_tp_anim.current_distance - goal ) < 0.1f )
+			{
+				s_tp_anim.current_distance = goal;
+			}
+
+			distance = s_tp_anim.current_distance;
+		}
+		else
+		{
+			s_tp_anim.current_distance = target_distance;
+			s_tp_anim.was_enabled = tp_enabled;
+			s_tp_anim.last_time = std::chrono::steady_clock::now( );
 		}
 
 		const auto game_scene_node = memory::safe_read<std::uintptr_t>( target_pawn + SCHEMA( "C_BaseEntity", "m_pGameSceneNode"_hash ) ).value_or( 0 );
@@ -323,7 +555,6 @@ namespace features::misc {
 			forward = { 1.0f, 0.0f, 0.0f };
 		}
 
-		const float distance = std::clamp( cfg.thirdperson_distance.value, 10.0f, 500.0f );
 		const float hull_size = std::clamp( cfg.thirdperson_hull_size.value, 0.0f, 50.0f );
 
 		auto camera_position = eye_position - forward * distance;
@@ -381,15 +612,166 @@ namespace features::misc {
 		}
 
 		const auto& cfg = settings::g_misc.m_camera;
+		const auto now = std::chrono::steady_clock::now( );
+
+		// What the engine picked for this frame, read before anything overwrites it.
+		const auto engine_fov = memory::safe_read<float>( view_setup + k_fov_offset ).value_or( 90.0f );
+
 		if ( !cfg.change_fov.value )
 		{
+			// Keep easing back to the engine value while the override is released.
+			const bool fading = s_fov_anim.initialized && s_fov_anim.current - s_fov_anim.native > k_fov_settle;
+
+			if ( !s_fov_anim.initialized )
+			{
+				s_fov_anim.last_time = now;
+				return;
+			}
+
+			s_fov_anim.native = std::isfinite( engine_fov ) ? engine_fov : s_fov_anim.native;
+
+			if ( !fading )
+			{
+				// Settled: stop touching the FOV so the engine owns it again.
+				s_fov_anim.initialized = false;
+				s_fov_anim.current = s_fov_anim.native;
+				s_fov_anim.last_time = now;
+				return;
+			}
+
+			float dt = std::chrono::duration<float>( now - s_fov_anim.last_time ).count( );
+			s_fov_anim.last_time = now;
+			dt = std::clamp( dt, 0.0f, 0.1f );
+
+			if ( dt > 0.0f )
+			{
+				constexpr float k_animation_speed = 15.0f;
+				const float factor = 1.0f - std::exp( -k_animation_speed * dt );
+				s_fov_anim.current = std::lerp( s_fov_anim.current, s_fov_anim.native, factor );
+			}
+
+			if ( std::abs( s_fov_anim.current - s_fov_anim.native ) < k_fov_settle )
+			{
+				s_fov_anim.initialized = false;
+				return;
+			}
+
+			memory::safe_write<float>( view_setup + k_fov_offset, s_fov_anim.current );
 			return;
 		}
 
 		const auto is_scoped = memory::safe_read<bool>( target_pawn + SCHEMA( "C_CSPlayerPawn", "m_bIsScoped"_hash ) ).value_or( false );
-		const auto target_fov = ( is_scoped && cfg.scoped_fov_override.value ) ? cfg.scoped_fov.value : cfg.fov.value;
+		const auto zoom_level = is_scoped ? read_zoom_level( target_pawn ) : 1;
 
-		memory::safe_write<float>( view_setup + k_fov_offset, target_fov );
+		// Pick the FOV for the current magnification stage. Level 2+ falls back to the
+		// first-scope value so weapons without a second scope are unaffected.
+		float target = cfg.fov.value;
+		if ( is_scoped )
+		{
+			if ( zoom_level >= 2 && cfg.scoped_fov2_override.value )
+			{
+				target = cfg.scoped_fov2.value;
+			}
+			else if ( cfg.scoped_fov_override.value )
+			{
+				target = cfg.scoped_fov.value;
+			}
+		}
+
+		const auto goal = std::clamp( target, 5.0f, 170.0f );
+
+		if ( !cfg.animated_unzoom.value )
+		{
+			s_unzoom_hold = {};
+		}
+		else if ( is_scoped )
+		{
+			// Scoped: cancel any in-flight unzoom and remember we are scoped so the
+			// release below can be detected.
+			s_unzoom_hold.active = false;
+			s_unzoom_hold.scoped_now = true;
+		}
+		else if ( s_unzoom_hold.scoped_now )
+		{
+			// Scope just released. Start the ramp from the FOV currently on screen
+			// toward the hipfire goal.
+			s_unzoom_hold.scoped_now = false;
+			s_unzoom_hold.active = true;
+			s_unzoom_hold.started = now;
+			s_unzoom_hold.last_time = now;
+			s_unzoom_hold.goal = goal;
+			s_unzoom_hold.value = s_fov_anim.initialized
+				? s_fov_anim.current
+				: ( std::isfinite( engine_fov ) && engine_fov > 1.0f ? engine_fov : goal );
+		}
+		else if ( s_unzoom_hold.active )
+		{
+			// Track the goal each frame: if the player swaps weapons or the config
+			// changes mid-ramp we must converge on the new value, not the old one.
+			s_unzoom_hold.goal = goal;
+		}
+
+		float dt = std::chrono::duration<float>( now - s_fov_anim.last_time ).count( );
+		s_fov_anim.last_time = now;
+		dt = std::clamp( dt, 0.0f, 0.1f );
+
+		if ( s_unzoom_hold.active )
+		{
+			// Ramp from the captured value toward the goal. Speed is configurable so a
+			// slow pull-out can be dialled in independently of the normal lerp.
+			const float speed = std::clamp( cfg.unzoom_speed.value, 2.0f, 30.0f );
+			const float factor = 1.0f - std::exp( -speed * dt );
+
+			if ( dt > 0.0f )
+			{
+				s_unzoom_hold.value = std::lerp( s_unzoom_hold.value, s_unzoom_hold.goal, factor );
+			}
+
+			if ( std::abs( s_unzoom_hold.value - s_unzoom_hold.goal ) < k_fov_settle )
+			{
+				// Converged: hand back to the normal path so future frames settle on
+				// the goal exactly instead of asymptotically creeping toward it.
+				s_unzoom_hold.value = s_unzoom_hold.goal;
+				s_unzoom_hold.active = false;
+				s_fov_anim.current = s_unzoom_hold.goal;
+				s_fov_anim.initialized = true;
+				s_fov_anim.native = s_unzoom_hold.goal;
+			}
+			else
+			{
+				s_fov_anim.current = s_unzoom_hold.value;
+			}
+		}
+		else if ( !s_fov_anim.initialized )
+		{
+			// Ease out of whatever the engine is already showing instead of jumping.
+			s_fov_anim.current = std::isfinite( engine_fov ) && engine_fov > 1.0f ? engine_fov : goal;
+			s_fov_anim.native = s_fov_anim.current;
+			s_fov_anim.initialized = true;
+		}
+		else if ( dt >= 0.1f )
+		{
+			// A long gap (alt-tab, respawn) would otherwise produce one huge step.
+			s_fov_anim.current = goal;
+		}
+		else if ( dt > 0.0f )
+		{
+			constexpr float k_animation_speed = 15.0f;
+			const float factor = 1.0f - std::exp( -k_animation_speed * dt );
+			s_fov_anim.current = std::lerp( s_fov_anim.current, goal, factor );
+		}
+
+		if ( std::abs( s_fov_anim.current - goal ) < k_fov_settle )
+		{
+			s_fov_anim.current = goal;
+			// Keep native in sync so a later toggle-off fades back to the right value.
+			if ( !s_unzoom_hold.active )
+			{
+				s_fov_anim.native = goal;
+			}
+		}
+
+		memory::safe_write<float>( view_setup + k_fov_offset, s_fov_anim.current );
 
 		this->update_fov_sensitivity( target_pawn );
 	}
@@ -402,24 +784,108 @@ namespace features::misc {
 		}
 
 		const auto& cfg = settings::g_misc.m_camera;
+		const auto now = std::chrono::steady_clock::now( );
+		const auto flags = memory::safe_read<std::uint8_t>( view_setup + k_view_flags_offset ).value_or( 0 );
+		const bool enabled = cfg.change_aspect_ratio.value;
 
-		if ( cfg.change_aspect_ratio.value )
+		if ( enabled && s_aspect_anim.fading_out )
 		{
-			const auto base_fov = memory::safe_read<float>( view_setup + k_fov_offset ).value_or( 90.0f );
-			const auto flags = memory::safe_read<std::uint8_t>( view_setup + k_view_flags_offset ).value_or( 0 );
-
-			// Explicit aspect bypasses the game's native 4:3-based FOV conversion.
-			memory::safe_write<float>( view_setup + k_fov_offset, scale_horizontal_fov( base_fov, cfg.aspect_ratio ) );
-			memory::safe_write<float>( view_setup + k_aspect_ratio_offset, cfg.aspect_ratio );
-			memory::safe_write<std::uint8_t>( view_setup + k_view_flags_offset, flags | k_explicit_aspect_ratio_flag );
+			// Re-enabled mid fade-out: keep the current value and let it blend onward.
+			s_aspect_anim.fading_out = false;
 		}
-		else
+
+		if ( !enabled && s_aspect_anim.initialized && !s_aspect_anim.fading_out )
 		{
-			const auto flags = memory::safe_read<std::uint8_t>( view_setup + k_view_flags_offset ).value_or( 0 );
+			// Just got disabled: smoothly blend back to the engine's native aspect ratio.
+			s_aspect_anim.fading_out = true;
+		}
+
+		if ( !enabled && !s_aspect_anim.initialized )
+		{
+			// Nothing to blend: release the flag so the engine drives the aspect itself.
 			memory::safe_write<std::uint8_t>( view_setup + k_view_flags_offset,
 				flags & static_cast<std::uint8_t>( ~k_explicit_aspect_ratio_flag ) );
+			return;
 		}
+
+		const auto target = enabled
+			? std::clamp( cfg.aspect_ratio.value, 0.5f, 3.0f )
+			: s_aspect_anim.native;
+		const bool just_initialized = !s_aspect_anim.initialized;
+
+		if ( just_initialized )
+		{
+			// Start from whatever the engine currently applies so enabling the
+			// feature blends out of the native aspect instead of snapping to it.
+			const auto engine_aspect = memory::safe_read<float>( view_setup + k_aspect_ratio_offset ).value_or( 0.0f );
+			s_aspect_anim.native = is_valid_aspect( engine_aspect ) ? engine_aspect : native_screen_aspect( );
+			s_aspect_anim.current = s_aspect_anim.native;
+			s_aspect_anim.last_time = now;
+			s_aspect_anim.initialized = true;
+		}
+
+		float dt = std::chrono::duration<float>( now - s_aspect_anim.last_time ).count( );
+		s_aspect_anim.last_time = now;
+		dt = std::clamp( dt, 0.0f, 0.1f );
+
+		// Skip the lerp on the first frame so we hold the starting aspect instead
+		// of jumping to the target before the transition has a chance to run.
+		if ( !just_initialized && dt > 0.0f )
+		{
+			constexpr float k_animation_speed = 15.0f;
+			const float factor = 1.0f - std::exp( -k_animation_speed * dt );
+			s_aspect_anim.current = std::lerp( s_aspect_anim.current, target, factor );
+		}
+
+		// Snap once the difference is below what the projection matrix can resolve.
+		if ( std::abs( s_aspect_anim.current - target ) < 0.0005f )
+		{
+			s_aspect_anim.current = target;
+		}
+
+		// Fade-out finished: hand control back to the engine so the final frame
+		// matches its native projection exactly without jerking.
+		if ( s_aspect_anim.fading_out && s_aspect_anim.current == target )
+		{
+			s_aspect_anim.initialized = false;
+			s_aspect_anim.fading_out = false;
+			s_aspect_anim.current = target;
+			s_aspect_anim.native = native_screen_aspect( );
+			s_aspect_anim.fov_scale = 1.0f;
+			s_aspect_anim.last_time = now;
+
+			if ( s_fov_anim.initialized )
+			{
+				memory::safe_write<float>( view_setup + k_fov_offset, s_fov_anim.current );
+			}
+			memory::safe_write<float>( view_setup + k_aspect_ratio_offset, target );
+			memory::safe_write<std::uint8_t>( view_setup + k_view_flags_offset,
+				flags & static_cast<std::uint8_t>( ~k_explicit_aspect_ratio_flag ) );
+			return;
+		}
+
+		const auto base_fov = memory::safe_read<float>( view_setup + k_fov_offset ).value_or( 90.0f );
+		const auto scaled_fov = scale_horizontal_fov( base_fov, s_aspect_anim.current );
+		s_aspect_anim.fov_scale = ( base_fov > 0.0f ) ? ( scaled_fov / base_fov ) : 1.0f;
+
+		// Explicit aspect: apply scaled horizontal FOV and aspect ratio
+		memory::safe_write<float>( view_setup + k_fov_offset, scaled_fov );
+		memory::safe_write<float>( view_setup + k_aspect_ratio_offset, s_aspect_anim.current );
+		memory::safe_write<std::uint8_t>( view_setup + k_view_flags_offset, flags | k_explicit_aspect_ratio_flag );
 	}
+
+	float camera::aspect_fov_scale( ) const noexcept
+	{
+		return s_aspect_anim.fov_scale;
+	}
+
+	float camera::aspect_viewmodel_scale( ) const noexcept
+	{
+		if ( !s_aspect_anim.initialized || s_aspect_anim.native <= 0.0f )
+			return 1.0f;
+		return s_aspect_anim.current / s_aspect_anim.native;
+	}
+
 
 	bool camera::is_spec_thirdperson_active( ) const noexcept
 	{

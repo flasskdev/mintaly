@@ -1219,6 +1219,20 @@ namespace rendering {
             }
             this->m_last_open = this->m_open;
         }
+        auto* agent_preview_overlay = xui::overlays::find(nemesis::preview3d::agent_window_id);
+        const bool agent_preview_active = this->m_open && agent_preview_overlay &&
+            !agent_preview_overlay->is_closed() && !agent_preview_overlay->is_closing();
+        const bool visuals_embedded_preview = this->m_open &&
+            this->m_tab == static_cast<int>(tab::visuals) &&
+            this->m_visuals_subtab == 0 && this->m_subtab <= 1;
+        if (!this->m_open ||
+            (this->m_tab != static_cast<int>(tab::skins) && !visuals_embedded_preview && !agent_preview_active))
+        {
+            // Hide item previews before any early return when the menu closes
+            // or moves to another tab. A closed overlay can remain registered
+            // while its fade-out finishes, so existence alone is not active.
+            systems::g_model_preview.hide();
+        }
         if (!g_context.ui_assets_ready())
         {
             this->draw_intro();
@@ -1244,7 +1258,8 @@ namespace rendering {
             const auto menu_reveal = xui::ease::smoothstep(this->m_open_anim);
             xui::rect inventory_preview_aperture{};
             const xui::rect* window_aperture = nullptr;
-            if (this->m_open && this->m_tab == static_cast<int>(tab::skins))
+            if (this->m_open && this->m_tab == static_cast<int>(tab::skins) &&
+                systems::g_model_preview.item_preview_active())
             {
                 const auto content_x = this->m_x + tokens::gap + menu::k_sidebar_w + tokens::gap;
                 const auto content_y = this->m_y + tokens::gap;
@@ -1253,16 +1268,42 @@ namespace rendering {
                 const auto body_y = content_y + tokens::subtab_bar_h + tokens::gap;
                 const auto body_h = content_h - tokens::subtab_bar_h - tokens::gap;
                 const auto preview_h = std::clamp(body_h * 0.5f, 138.0f, 340.0f);
-                inventory_preview_aperture = {content_x, body_y, content_w, preview_h};
+                inventory_preview_aperture = {
+                    std::round(content_x), std::round(body_y),
+                    static_cast<float>(std::max(64, static_cast<int>(std::round(content_w)))),
+                    static_cast<float>(std::max(64, static_cast<int>(std::round(preview_h))))
+                };
+                window_aperture = &inventory_preview_aperture;
+            }
+            else if (visuals_embedded_preview)
+            {
+                const auto content_x = this->m_x + tokens::gap + menu::k_sidebar_w + tokens::gap;
+                const auto content_y = this->m_y + tokens::gap;
+                const auto content_w = this->m_w - tokens::gap * 2.0f - menu::k_sidebar_w - 16.0f;
+                const auto content_h = this->m_h - tokens::gap * 2.0f;
+                const auto body_y = content_y + tokens::subtab_bar_h + tokens::gap;
+                const auto body_h = content_h - tokens::subtab_bar_h - tokens::gap;
+                const auto col_w = (content_w - tokens::gap) * 0.5f;
+                constexpr float k_header_h = menu::k_panel_header_h;
+                constexpr float k_esp_bar_h = 38.0f;
+                constexpr float k_spacing = 6.0f;
+                const auto col_x = content_x + col_w + tokens::gap;
+                const auto col_y = body_y + k_header_h;
+                const auto col_h = body_h - k_header_h;
+                const auto preview_h = col_h - k_esp_bar_h - k_spacing;
+                inventory_preview_aperture = {
+                    std::round(col_x + 1.0f), std::round(col_y + 1.0f),
+                    std::round(col_w - 2.0f), std::round(preview_h - 2.0f)
+                };
                 window_aperture = &inventory_preview_aperture;
             }
             if (!xui::begin_window("##menu", this->m_x, this->m_y, this->m_w, this->m_h, false, 200.0f, 200.0f, menu_reveal, window_aperture))
             {
                 return;
             }
-            if (auto* agent_ov = xui::overlays::find(nemesis::preview3d::agent_window_id))
+            if (agent_preview_active && agent_preview_overlay)
             {
-                agent_ov->update_anchor({ this->m_x, this->m_y, this->m_w, this->m_h });
+                agent_preview_overlay->update_anchor({ this->m_x, this->m_y, this->m_w, this->m_h });
             }
             if (g_widgets.is_keybinds_dragging() || (g_widgets.is_keybinds_hovered() && xui::ctx().input.mouse_clicked))
             {
@@ -1370,7 +1411,7 @@ namespace rendering {
             xui::layout::set_cursor(content_x - wx, body_y - wy);
             if (this->m_search_open)
             {
-                if (!xui::overlays::find(nemesis::preview3d::agent_window_id))
+                if (!visuals_embedded_preview && !agent_preview_active)
                     systems::g_model_preview.hide();
                 // While search is open, block the regular top-bar interactions in this frame.
                 this->m_config_popup_open = false;
@@ -1397,8 +1438,7 @@ namespace rendering {
             case 5: this->draw_misc(col_w); break;
             }
 
-            if (this->m_tab != static_cast<int>(tab::skins) &&
-                !xui::overlays::find(nemesis::preview3d::agent_window_id))
+            if (this->m_tab != static_cast<int>(tab::skins) && !visuals_embedded_preview && !agent_preview_active)
             {
                 systems::g_model_preview.hide();
             }
@@ -1420,6 +1460,8 @@ namespace rendering {
 
     void menu::shutdown() const
     {
+        systems::g_model_preview.hide();
+        xui::overlays::close_all();
         if (this->m_open)
         {
             memory::call_vfunc<void>(addresses::globals::input_system, 76, this->m_saved_relative_mouse != 0);
@@ -1890,58 +1932,17 @@ namespace rendering {
         {
             page_title = (this->m_visuals_subtab == 0) ? "PLAYER" : "WORLD";
         }
-        const bool show_agent_preview_button =
-            tab_idx == static_cast<int>(tab::visuals) && this->m_visuals_subtab == 0;
         xdraw::push_font(rendering::g_fonts.inter_bold[rendering::fonts::size::big]);
         const auto [title_w, title_h] = xdraw::measure_text(page_title);
         const auto title_y = bar_y + (tokens::subtab_bar_h - title_h) * 0.5f;
         dl.text(content_x, title_y, page_title, tokens::col_text);
         xdraw::pop_font();
-        if (show_agent_preview_button)
-        {
-            constexpr float button_w = 88.0f;
-            constexpr float button_h = 24.0f;
-            const xui::rect button{content_x + title_w + 12.0f,
-                bar_y + (tokens::subtab_bar_h - button_h) * 0.5f, button_w, button_h};
-            auto* existing = xui::overlays::find(nemesis::preview3d::agent_window_id);
-            const bool active = existing && !existing->is_closed() && !existing->is_closing();
-            const bool hovered = input.in_rect(button) && !xui::ctx().overlay_blocking();
-            const auto fill = active
-                ? tokens::col_accent.alpha(42)
-                : hovered ? tokens::col_elevated : tokens::col_card;
-            dl.rect_filled(button.x, button.y, button.w, button.h, fill,
-                xdraw::corner_radius{tokens::btn_rounding});
-            dl.rect(button.x, button.y, button.w, button.h,
-                active || hovered ? tokens::col_accent.alpha(190) : tokens::col_border,
-                xdraw::corner_radius{tokens::btn_rounding}, 1.0f);
-            const char* label = active ? "HIDE 3D" : "3D PREVIEW";
-            const auto [label_w, label_h] = xdraw::measure_text(label);
-            dl.text(button.x + (button.w - label_w) * 0.5f,
-                button.y + (button.h - label_h) * 0.5f, label,
-                active || hovered ? tokens::col_accent : tokens::col_text_dim);
-
-            if (normal_interactive && hovered && input.mouse_clicked)
-            {
-                if (active)
-                {
-                    xui::overlays::close(nemesis::preview3d::agent_window_id);
-                    systems::g_model_preview.hide();
-                }
-                else
-                {
-                    nemesis::preview3d::open_agent_window(
-                        {this->m_x, this->m_y, this->m_w, this->m_h});
-                }
-                xui::ctx().input.mouse_clicked = false;
-                xui::ctx().active_window = xui::null_id;
-            }
-        }
         const subtab_info& subtabs = (tab_idx == static_cast<int>(tab::visuals))
             ? (this->m_visuals_subtab == 0 ? k_visuals_player_subtabs : k_visuals_world_subtabs)
             : k_subtab_defs[tab_idx];
         if (subtabs.count > 1)
         {
-            float curr_x = content_x + title_w + (show_agent_preview_button ? 112.0f : 24.0f);
+            float curr_x = content_x + title_w + 24.0f;
             const auto pill_y = bar_y + (tokens::subtab_bar_h - 24.0f) * 0.5f;
             // Subtab selection is a dropdown, not a pill row: the visuals target,
             // the inventory categories (guns / knives / ...) and the misc pages all
@@ -2263,16 +2264,21 @@ namespace rendering {
         // 1. DRAW MAIN POPUP (Theme >, Watermark >, Tooltips, Menu key KEY, Sync)
         // ─────────────────────────────────────────────────────────────
         const auto main_alpha = static_cast<std::uint8_t>(255.0f * anim);
-        const auto main_bg = tokens::col_card.alpha(static_cast<std::uint8_t>(225.0f * anim));
-        const auto main_border = tokens::col_border.alpha(static_cast<std::uint8_t>(180.0f * anim));
-        // Liquid glass blur + background + specular highlight
+        top_dl.rect_filled( main_x - 8.0f, main_y - 5.0f, main_w + 16.0f, main_h + 12.0f,
+            xdraw::color{ 0, 0, 0, static_cast<std::uint8_t>(20.0f * anim) }, xdraw::corner_radius{ 14.0f } );
+        top_dl.rect_filled( main_x - 4.0f, main_y - 2.5f, main_w + 8.0f, main_h + 7.0f,
+            xdraw::color{ 0, 0, 0, static_cast<std::uint8_t>(38.0f * anim) }, xdraw::corner_radius{ 11.0f } );
+        top_dl.rect_filled( main_x, main_y + 2.0f, main_w, main_h,
+            xdraw::color{ 0, 0, 0, static_cast<std::uint8_t>(60.0f * anim) }, xdraw::corner_radius{ 8.0f } );
+
         top_dl.rect_filled_blurred(main_x, main_y, main_w, main_h, xdraw::corner_radius{ 8.0f },
-            xdraw::color{ 50, 55, 65, static_cast<std::uint8_t>(170.0f * anim) });
-        top_dl.rect_filled(main_x, main_y, main_w, main_h, main_bg, xdraw::corner_radius{ 8.0f });
-        top_dl.rect(main_x, main_y, main_w, main_h, main_border, xdraw::corner_radius{ 8.0f }, 1.0f);
-        // Soft inner highlight instead of the old accent glow stripe
+            xdraw::color{ 255, 255, 255, static_cast<std::uint8_t>(255.0f * anim) });
+        const auto glass_top = xdraw::color{ 255, 255, 255, static_cast<std::uint8_t>(145.0f * anim) };
+        const auto glass_bot = xdraw::color{ 240, 245, 255, static_cast<std::uint8_t>(115.0f * anim) };
+        top_dl.rect_filled_gradient(main_x, main_y, main_w, main_h, glass_top, glass_top, glass_bot, glass_bot, xdraw::corner_radius{ 8.0f });
+        top_dl.rect(main_x, main_y, main_w, main_h, xdraw::color{ 255, 255, 255, static_cast<std::uint8_t>(160.0f * anim) }, xdraw::corner_radius{ 8.0f }, 1.0f);
         top_dl.line(main_x + 10.0f, main_y + 0.5f, main_x + main_w - 10.0f, main_y + 0.5f,
-            xdraw::color{ 255, 255, 255, static_cast<std::uint8_t>(18.0f * anim) }, 1.0f);
+            xdraw::color{ 255, 255, 255, static_cast<std::uint8_t>(200.0f * anim) }, 1.0f);
         float item_y = main_y + 8.0f;
         const float item_h = 36.0f;
         // --- ITEM 1: Theme > ---
@@ -2613,15 +2619,21 @@ namespace rendering {
         if (sub_anim > 0.005f && sub_open)
         {
             const auto s_alpha = static_cast<std::uint8_t>(255.0f * sub_anim);
-            const auto s_bg = tokens::col_card.alpha(static_cast<std::uint8_t>(225.0f * sub_anim));
-            const auto s_border = tokens::col_border.alpha(static_cast<std::uint8_t>(185.0f * sub_anim));
+            top_dl.rect_filled( sub_x - 8.0f, sub_y - 5.0f, sub_w + 16.0f, sub_h + 12.0f,
+                xdraw::color{ 0, 0, 0, static_cast<std::uint8_t>(20.0f * sub_anim) }, xdraw::corner_radius{ 14.0f } );
+            top_dl.rect_filled( sub_x - 4.0f, sub_y - 2.5f, sub_w + 8.0f, sub_h + 7.0f,
+                xdraw::color{ 0, 0, 0, static_cast<std::uint8_t>(38.0f * sub_anim) }, xdraw::corner_radius{ 11.0f } );
+            top_dl.rect_filled( sub_x, sub_y + 2.0f, sub_w, sub_h,
+                xdraw::color{ 0, 0, 0, static_cast<std::uint8_t>(60.0f * sub_anim) }, xdraw::corner_radius{ 8.0f } );
+
             top_dl.rect_filled_blurred(sub_x, sub_y, sub_w, sub_h, xdraw::corner_radius{ 8.0f },
-                xdraw::color{ 50, 55, 65, static_cast<std::uint8_t>(170.0f * sub_anim) });
-            top_dl.rect_filled(sub_x, sub_y, sub_w, sub_h, s_bg, xdraw::corner_radius{ 8.0f });
-            top_dl.rect(sub_x, sub_y, sub_w, sub_h, s_border, xdraw::corner_radius{ 8.0f }, 1.0f);
-            // Soft inner highlight instead of the old accent glow stripe
+                xdraw::color{ 255, 255, 255, static_cast<std::uint8_t>(255.0f * sub_anim) });
+            const auto s_glass_top = xdraw::color{ 255, 255, 255, static_cast<std::uint8_t>(145.0f * sub_anim) };
+            const auto s_glass_bot = xdraw::color{ 240, 245, 255, static_cast<std::uint8_t>(115.0f * sub_anim) };
+            top_dl.rect_filled_gradient(sub_x, sub_y, sub_w, sub_h, s_glass_top, s_glass_top, s_glass_bot, s_glass_bot, xdraw::corner_radius{ 8.0f });
+            top_dl.rect(sub_x, sub_y, sub_w, sub_h, xdraw::color{ 255, 255, 255, static_cast<std::uint8_t>(160.0f * sub_anim) }, xdraw::corner_radius{ 8.0f }, 1.0f);
             top_dl.line(sub_x + 10.0f, sub_y + 0.5f, sub_x + sub_w - 10.0f, sub_y + 0.5f,
-                xdraw::color{ 255, 255, 255, static_cast<std::uint8_t>(18.0f * sub_anim) }, 1.0f);
+                xdraw::color{ 255, 255, 255, static_cast<std::uint8_t>(200.0f * sub_anim) }, 1.0f);
             // Header: Title + Close Button
             xdraw::push_font(g_fonts.inter_bold[fonts::size::petite]);
             const char* sub_title = (this->m_user_subtab == 1) ? "THEMES" : "WATERMARK";

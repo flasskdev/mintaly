@@ -68,11 +68,6 @@ namespace rendering {
                                         xui::slider_float( "duration##hl", impacts.hit_log_duration, 0.5f, 10.0f, "%.1fs" );
                                         xui::end_popup( );
                                 }
-
-                                xui::layout::spacing( 3.0f );
-                                xui::toggle( "Console Logs", impacts.console_log );
-                                xui::layout::spacing( 3.0f );
-                                xui::toggle( "Chat Logs", impacts.chat_log );
                                 xui::layout::spacing( 3.0f );
                                 xui::toggle( "Miss Logs", impacts.miss_log );
                                 if ( xui::begin_popup( "##restore_misslogs", 250.0f ) )
@@ -80,6 +75,10 @@ namespace rendering {
                                         xui::slider_float( "duration##ml", impacts.miss_log_duration, 0.5f, 10.0f, "%.1fs" );
                                         xui::end_popup( );
                                 }
+                                xui::layout::spacing( 3.0f );
+                                xui::toggle( "Console Logs", impacts.console_log );
+                                xui::layout::spacing( 3.0f );
+                                xui::toggle( "Chat Logs", impacts.chat_log );
                                 xui::layout::spacing( 3.0f );
                                 xui::toggle( "Vote Logs", impacts.vote_log );
                                 xui::layout::spacing( 6.0f );
@@ -251,6 +250,13 @@ namespace rendering {
                                         xui::slider_float( "fov", cam.fov, 60.0f, 150.0f, "%.0f" );
                                         xui::checkbox( "scoped fov override", cam.scoped_fov_override );
                                         xui::slider_float( "scoped fov", cam.scoped_fov, 10.0f, 90.0f, "%.0f" );
+                                        xui::checkbox( "scoped fov2 override", cam.scoped_fov2_override );
+                                        xui::slider_float( "scoped fov2", cam.scoped_fov2, 5.0f, 90.0f, "%.0f" );
+                                        xui::checkbox( "animated unzoom", cam.animated_unzoom );
+                                        if ( cam.animated_unzoom.value )
+                                        {
+                                                xui::slider_float( "unzoom speed", cam.unzoom_speed, 2.0f, 30.0f, "%.1f" );
+                                        }
                                         xui::end_popup( );
                                 }
 
@@ -261,6 +267,7 @@ namespace rendering {
                                         xui::slider_float( "distance", cam.thirdperson_distance, 35.0f, 200.0f, "%.0f" );
                                         xui::slider_float( "hull size", cam.thirdperson_hull_size, 0.0f, 20.0f, "%.0f" );
                                         xui::checkbox( "spectator thirdperson", cam.spectator_thirdperson );
+                                        xui::checkbox( "animated", cam.thirdperson_animated );
                                         xui::end_popup( );
                                 }
 

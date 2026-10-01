@@ -799,7 +799,7 @@ namespace settings {
                         const chams_config* find(std::uint16_t def) const
                         {
                                 const auto i = chams_weapons::index(def);
-                                return i >= 0 && weapons[i].override_default.value ? &weapons[i].cfg : nullptr;
+                                return (i >= 0 && weapons[i].override_default.value && weapons[i].cfg.enabled.value) ? &weapons[i].cfg : nullptr;
                         }
                 };
 
@@ -1171,7 +1171,11 @@ namespace settings {
                         const chams_config& for_weapon(std::uint16_t def) const
                         {
                                 const auto* specific = individual.find(def);
-                                return specific ? *specific : weapon;
+                                if (specific && specific->enabled.value)
+                                {
+                                        return *specific;
+                                }
+                                return weapon;
                         }
 
                         viewmodel()
@@ -1931,11 +1935,14 @@ namespace settings {
 
                         xui::setting scoped_fov_override{ false,{}, "scoped fov override", "camera" };
                         config::val<float> scoped_fov{ 40.0f, "camera", "scoped fov" };
+                        xui::setting scoped_fov2_override{ false,{}, "scoped fov2 override", "camera" };
+                        config::val<float> scoped_fov2{ 15.0f, "camera", "scoped fov2" };
 
                         xui::setting thirdperson{ true,{ VK_MBUTTON, xui::bind_mode::toggle }, "thirdperson", "camera" };
                         config::val<float> thirdperson_distance{ 85.0f, "camera", "thirdperson distance" };
                         config::val<float> thirdperson_hull_size{ 12.0f, "camera", "thirdperson hull size" };
                         xui::setting spectator_thirdperson{ true,{}, "spectator thirdperson", "camera" };
+                        xui::setting thirdperson_animated{ false,{}, "thirdperson animated", "camera" };
 
                         xui::setting freecam{ false,{}, "freecam", "camera" };
                         config::val<float> freecam_speed{ 1000.0f, "camera", "freecam speed" };
@@ -1945,6 +1952,9 @@ namespace settings {
 
                         xui::setting change_aspect_ratio{ false,{}, "custom aspect ratio", "camera" };
                         config::val<float> aspect_ratio{ 1.333f, "camera", "aspect ratio" };
+
+                        xui::setting animated_unzoom{ false,{}, "animated unzoom", "camera" };
+                        config::val<float> unzoom_speed{ 12.0f, "camera", "unzoom speed" };
                 } m_camera{};
 
                 struct motion_blur

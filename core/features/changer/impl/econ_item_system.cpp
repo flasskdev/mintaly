@@ -1508,8 +1508,31 @@ static constexpr fallback_music_kit k_fallback_kits[] = {
 
 	std::string econ_item_system::build_skin_image_path( const item_def* def, const paint_kit* pk ) const
 	{
+		if ( !def ) return {};
+
 		if ( !pk || pk->id == 0 )
 		{
+			if ( !def->image_inventory.empty( ) )
+			{
+				return def->image_inventory;
+			}
+
+			if ( def->category == item_category::glove )
+			{
+				for ( const auto& skin : this->m_skins )
+				{
+					if ( skin.def_index == def->def_index )
+					{
+						const auto first_pk = this->find_paint_kit( skin.paint_kit_id );
+						if ( first_pk && first_pk->id != 0 )
+						{
+							return this->build_skin_image_path( def, first_pk );
+						}
+					}
+				}
+				return std::string( xs( "econ/weapons/base_weapons/ct_gloves" ) );
+			}
+
 			return def->image_inventory;
 		}
 

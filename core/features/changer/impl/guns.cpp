@@ -648,7 +648,8 @@ namespace features::changer {
 		};
 		const auto soc_offset = SCHEMA( "C_EconItemView", "m_bDisallowSOC"_hash );
 		if ( !skin || !soc_offset || !cosmetic_attributes::available( ) ) return fail( "attribute-dependencies" );
-		if ( !PATTERN( patterns::weapon_update_skin ) || !PATTERN( patterns::weapon_update_composite_material ) ) return fail( "material-patterns" );
+		// Post-update tolerant: material helpers are optional (rebuild_materials
+		// skips missing pieces). Do not fail the whole apply here.
 		if ( !memory::safe_read<std::uintptr_t>( weapon + SCHEMA( "C_BaseEntity", "m_pGameSceneNode"_hash ) ).value_or( 0 ) ) return fail( "weapon-scene" );
 		// HUD readiness must not prevent item writes or rebuilding the real weapon.
 		// A successful world apply queues a separate retry through hud_refresh_pending.
@@ -756,8 +757,7 @@ namespace features::changer {
 			return true;
 		}
 		if ( !visual_identity( weapon ).ready( ) ||
-			 !memory::safe_read<std::uintptr_t>( weapon + SCHEMA( "C_BaseEntity", "m_nSubclassID"_hash ) + 8 ).value_or( 0 ) ||
-			 !PATTERN( patterns::weapon_update_skin ) || !PATTERN( patterns::weapon_update_composite_material ) ) return false;
+			 !memory::safe_read<std::uintptr_t>( weapon + SCHEMA( "C_BaseEntity", "m_nSubclassID"_hash ) + 8 ).value_or( 0 ) ) return false;
 		const auto hud = this->find_hud_model_weapon( pawn );
 		if ( handle == active_handle && ( pawn == systems::g_local.get( ).pawn || hud ) && !entity_guard::ready( hud ) ) return false;
 		if ( !cosmetic_attributes::restore( iv, saved.attributes ) || !entity_guard::current( *entity ) ) return false;

@@ -407,13 +407,27 @@ namespace systems {
 
 		if ( !entry )
 		{
-			auto raw = memory::call<void*>(PATTERN (patterns::history_field_alloc), history_field->m_arena );
-			if ( !raw )
+			// Same guard as acquire_subtick_step: never call into an unresolved
+			// pattern and never publish an element the vector did not accept.
+			const auto allocator = PATTERN (patterns::history_field_alloc);
+			const auto push = PATTERN (patterns::utl_vector_push);
+			if ( !allocator || !push )
 			{
 				return nullptr;
 			}
 
-			memory::call<std::uintptr_t>(PATTERN (patterns::utl_vector_push), reinterpret_cast< std::uintptr_t >( history_field ), reinterpret_cast< std::uintptr_t >( raw ) );
+			const auto before_size = history_field->m_current_size;
+			auto raw = memory::safe_call<void*>( allocator, history_field->m_arena );
+			if ( !raw || !valid_runtime_pointer( reinterpret_cast< std::uintptr_t >( raw ) ) )
+			{
+				return nullptr;
+			}
+
+			(void) memory::safe_call<std::uintptr_t>( push, reinterpret_cast< std::uintptr_t >( history_field ), reinterpret_cast< std::uintptr_t >( raw ) );
+			if ( history_field->m_current_size <= before_size )
+			{
+				return nullptr;
+			}
 
 			entry = proto::impl_ptr<proto::input_history_entry>( raw );
 		}

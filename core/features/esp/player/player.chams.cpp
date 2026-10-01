@@ -1,5 +1,6 @@
 #include <pch/pch.hpp>
 #include <utilities/memory/memory.hpp>
+#include <cstring>
 #include <utilities/addresses/addresses.hpp>
 #include <utilities/diag.hpp>
 #include <utilities/logging/logging.hpp>
@@ -714,12 +715,38 @@ namespace features::esp::player {
 		}
 
 		const auto flags = ( *world_group_id != 0 ) ? 0x2000000000ll : 0x2000000008ll;
-		const auto model_handle = memory::read<std::uintptr_t>( game_scene_node + SCHEMA( "CSkeletonInstance", "m_modelState"_hash ) + SCHEMA( "CModelState", "m_hModel"_hash ) );
+		const auto model_handle = memory::safe_read<std::uintptr_t>( game_scene_node +
+			SCHEMA( "CSkeletonInstance", "m_modelState"_hash ) + SCHEMA( "CModelState", "m_hModel"_hash ) ).value_or( 0 );
 		const auto node_to_world = game_scene_node + SCHEMA( "CGameSceneNode", "m_nodeToWorld"_hash );
 
+		// Every pointer handed to the engine's mesh factory must be a canonical,
+		// mapped address: it dereferences them itself, outside our SEH guards.
+		// A stale m_hModel / node transform left a packed value such as
+		// 0x0000000100000001 on the call and faulted inside mesh_system.dll.
+		const auto is_runtime_pointer = [] ( std::uintptr_t p ) noexcept
+		{
+			return p >= 0x100000000ull && p <= 0x00007FFFFFFFFFFFull && ( p & 0x7 ) == 0;
+		};
+		if ( !is_runtime_pointer( model_handle ) || !is_runtime_pointer( world_group_handle ) ||
+			!is_runtime_pointer( game_scene_node ) )
+		{
+			return;
+		}
+
+		const auto transform = memory::safe_read<std::array<std::uint8_t, 32>>( node_to_world );
+		if ( !transform )
+		{
+			return;
+		}
+
 		__m128 copy[ 2 ]{};
-		copy[ 0 ] = *reinterpret_cast< __m128* >( node_to_world );
-		copy[ 1 ] = *reinterpret_cast< __m128* >( node_to_world + 16 );
+		std::memcpy( &copy[ 0 ], transform->data(), 16 );
+		std::memcpy( &copy[ 1 ], transform->data() + 16, 16 );
+
+		if ( !addresses::globals::mesh_system )
+		{
+			return;
+		}
 
 		this->scene_object = memory::call_vfunc<std::uintptr_t>( addresses::globals::mesh_system, 20, model_handle, &copy, "AnimatableSceneObjectDesc", flags, 0x4100000001ll, world_group_handle );
 		if ( !this->scene_object )

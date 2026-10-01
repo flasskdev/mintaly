@@ -414,16 +414,24 @@ namespace rendering {
 		// faded as one unit at the end so the panel never fades before its widgets.
 		const auto vtx_start = top_dl.vertices.size( );
 
-		top_dl.rect_filled( panel_x - 3.0f, panel_y - 2.0f, k_panel_w + 6.0f, panel_h + 6.0f,
-			xdraw::color{ 0, 0, 0, 90 }, xdraw::corner_radius{ 12.0f } );
+		// Soft ambient drop shadow around the panel
+		top_dl.rect_filled( panel_x - 10.0f, panel_y - 6.0f, k_panel_w + 20.0f, panel_h + 14.0f,
+			xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 22.0f * alpha_mult ) }, xdraw::corner_radius{ 16.0f } );
+		top_dl.rect_filled( panel_x - 5.0f, panel_y - 3.0f, k_panel_w + 10.0f, panel_h + 8.0f,
+			xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 40.0f * alpha_mult ) }, xdraw::corner_radius{ 13.0f } );
+		top_dl.rect_filled( panel_x, panel_y + 2.0f, k_panel_w, panel_h,
+			xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 65.0f * alpha_mult ) }, xdraw::corner_radius{ 10.0f } );
+
 		top_dl.rect_filled_blurred( panel_x, panel_y, k_panel_w, panel_h, xdraw::corner_radius{ 10.0f },
-			xdraw::color{ 45, 50, 60, 190 } );
-		top_dl.rect_filled( panel_x, panel_y, k_panel_w, panel_h,
-			tokens::col_card.alpha( 238 ), xdraw::corner_radius{ 10.0f } );
+			xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 255.0f * alpha_mult ) } );
+		const auto glass_top = xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 145.0f * alpha_mult ) };
+		const auto glass_bot = xdraw::color{ 240, 245, 255, static_cast< std::uint8_t >( 115.0f * alpha_mult ) };
+		top_dl.rect_filled_gradient( panel_x, panel_y, k_panel_w, panel_h,
+			glass_top, glass_top, glass_bot, glass_bot, xdraw::corner_radius{ 10.0f } );
 		top_dl.rect( panel_x, panel_y, k_panel_w, panel_h,
-			tokens::col_border.alpha( 200 ), xdraw::corner_radius{ 10.0f }, 1.0f );
+			xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 160.0f * alpha_mult ) }, xdraw::corner_radius{ 10.0f }, 1.0f );
 		top_dl.line( panel_x + 12.0f, panel_y + 0.5f, panel_x + k_panel_w - 12.0f, panel_y + 0.5f,
-			xdraw::color{ 255, 255, 255, 16 }, 1.0f );
+			xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 200.0f * alpha_mult ) }, 1.0f );
 
 		xdraw::push_font( g_fonts.inter_bold[ fonts::size::petite ] );
 		top_dl.text( panel_x + 14.0f, panel_y + 12.0f, "CONFIG PROFILES",
@@ -446,8 +454,10 @@ namespace rendering {
 			const auto saved_cursor_y = win->cursor_y;
 			const auto saved_line_h = win->line_h;
 			const auto saved_bounds_w = win->bounds.w;
+			const auto saved_start_x = win->start_x;
+			const auto saved_on_same_line = win->on_same_line;
 
-			win->bounds.w = std::max( 40.0f, panel_x - win->bounds.x + k_panel_w - 14.0f );
+			win->bounds.w = std::max( 40.0f, panel_x - win->bounds.x + k_panel_w );
 			xui::layout::set_cursor( panel_x + 14.0f - this->m_x, panel_y + 32.0f - this->m_y );
 
 			xui::text_input( "##cfg_name", detail::name_buf, 64, "config name / search..." );
@@ -687,6 +697,8 @@ namespace rendering {
 			win->cursor_x = saved_cursor_x;
 			win->cursor_y = saved_cursor_y;
 			win->line_h = saved_line_h;
+			win->start_x = saved_start_x;
+			win->on_same_line = saved_on_same_line;
 		}
 
 		xui::draw::pop_layer( );
@@ -712,15 +724,17 @@ namespace rendering {
 			}
 			else
 			{
-				// Soft shadow
-				top_dl.rect_filled( px + 2.0f, py + 2.0f, popup_w, popup_h, xdraw::color{ 0, 0, 0, 120 }, xdraw::corner_radius{ 6.0f } );
 				// Blurred glass
-				top_dl.rect_filled_blurred( px, py, popup_w, popup_h, xdraw::corner_radius{ 6.0f }, xdraw::color{ 45, 50, 60, 185 } );
-				// Card body
-				top_dl.rect_filled( px, py, popup_w, popup_h, tokens::col_card.alpha( 245 ), xdraw::corner_radius{ 6.0f } );
+				top_dl.rect_filled_blurred( px, py, popup_w, popup_h, xdraw::corner_radius{ 6.0f }, xdraw::color{ 255, 255, 255, 255 } );
+				// Frosted body
+				const auto reset_glass_top = xdraw::color{ 255, 255, 255, 145 };
+				const auto reset_glass_bot = xdraw::color{ 240, 245, 255, 115 };
+				top_dl.rect_filled_gradient( px, py, popup_w, popup_h, reset_glass_top, reset_glass_top, reset_glass_bot, reset_glass_bot, xdraw::corner_radius{ 6.0f } );
+				// Top specular line
+				top_dl.line( px + 6.0f, py + 0.5f, px + popup_w - 6.0f, py + 0.5f, xdraw::color{ 255, 255, 255, 200 }, 1.0f );
 				// Border
 				const auto is_danger = is_hovered || detail::confirm_reset;
-				const auto border_col = is_danger ? xdraw::color{ 255, 75, 85, 200 } : tokens::col_border.alpha( 180 );
+				const auto border_col = is_danger ? xdraw::color{ 255, 75, 85, 200 } : xdraw::color{ 255, 255, 255, 150 };
 				top_dl.rect( px, py, popup_w, popup_h, border_col, xdraw::corner_radius{ 6.0f } );
 
 				// Hover effect

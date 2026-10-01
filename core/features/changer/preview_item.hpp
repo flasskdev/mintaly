@@ -19,8 +19,9 @@ namespace features::changer::preview_item {
         return v;
     }
     inline bool available() {
-        return addresses::globals::schema_system && cosmetic_attributes::available() && PATTERN(patterns::weapon_update_skin)
-            && PATTERN(patterns::weapon_update_composite_material) && PATTERN(patterns::weapon_set_mesh_group_mask)
+        // Post-update tolerant: composite/skin rebuild helpers are optional.
+        // Fallback fields + attributes + PostDataUpdate still publish paint.
+        return addresses::globals::schema_system && cosmetic_attributes::available() && PATTERN(patterns::weapon_set_mesh_group_mask)
             && SCHEMA("C_EconItemView", "m_bDisallowSOC"_hash)
             && SCHEMA("C_EconItemView", "m_iItemID"_hash)
             && SCHEMA("C_EconItemView", "m_iItemIDHigh"_hash)

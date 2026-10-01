@@ -1045,6 +1045,11 @@ namespace xui {
 			return false;
 		}
 
+		if ( this->m_open_anim < 0.15f )
+		{
+			return false;
+		}
+
 		const auto popup = this->get_popup( );
 		if ( input.mouse_clicked && !popup.contains( input.mouse_x, input.mouse_y ) && !this->m_anchor.contains( input.mouse_x, input.mouse_y ) )
 		{
@@ -1401,10 +1406,10 @@ namespace xui {
 			const auto max_x = win->bounds.w - s.window_pad_x;
 			const auto max_y = win->bounds.h - s.window_pad_y;
 
-			auto next_x = win->cursor_x;
+			auto next_x = win->on_same_line ? win->cursor_x : win->start_x;
 			auto next_y = win->cursor_y;
 
-			if ( win->line_h > 0.0f )
+			if ( !win->on_same_line && win->line_h > 0.0f )
 			{
 				next_y += win->line_h + s.item_spacing_y;
 			}
@@ -1437,16 +1442,27 @@ namespace xui {
 				return { 0, 0, 0, 0 };
 			}
 
-			if ( win->line_h > 0.0f )
+			if ( win->on_same_line )
 			{
-				auto spacing = get_ctx( ).style.item_spacing_y;
-
-				if ( label_h > 0.0f )
+				win->on_same_line = false;
+				win->line_h = std::max( win->line_h, h );
+			}
+			else
+			{
+				if ( win->line_h > 0.0f )
 				{
-					spacing = std::max( spacing * 0.5f, spacing - label_h * 0.25f );
+					auto spacing = get_ctx( ).style.item_spacing_y;
+
+					if ( label_h > 0.0f )
+					{
+						spacing = std::max( spacing * 0.5f, spacing - label_h * 0.25f );
+					}
+
+					win->cursor_y += win->line_h + spacing;
 				}
 
-				win->cursor_y += win->line_h + spacing;
+				win->cursor_x = win->start_x;
+				win->line_h = h;
 			}
 
 			const auto local = rect{ win->cursor_x, win->cursor_y, w, h };
@@ -1454,7 +1470,6 @@ namespace xui {
 			win->last_item_locked = false;
 			win->last_item_is_toggle = false;
 			win->last_toggle_x = 0.0f;
-			win->line_h = h;
 			win->content_h = std::max( win->content_h, win->cursor_y + h );
 
 			return rect
@@ -1477,7 +1492,7 @@ namespace xui {
 			const auto spacing = ( offset == 0.0f ) ? get_ctx( ).style.item_spacing_x : offset;
 			win->cursor_x = win->last_item.x + win->last_item.w + spacing;
 			win->cursor_y = win->last_item.y;
-			win->line_h = 0.0f;
+			win->on_same_line = true;
 		}
 
 		void new_line( )
@@ -1491,10 +1506,11 @@ namespace xui {
 			if ( win->line_h > 0.0f )
 			{
 				win->cursor_y += win->line_h + get_ctx( ).style.item_spacing_y;
+				win->line_h = 0.0f;
 			}
 
-			win->cursor_x = get_ctx( ).style.window_pad_x;
-			win->line_h = 0.0f;
+			win->cursor_x = win->start_x;
+			win->on_same_line = false;
 		}
 
 		void spacing( float amount )
@@ -1510,7 +1526,15 @@ namespace xui {
 				amount = get_ctx( ).style.item_spacing_y;
 			}
 
+			if ( win->line_h > 0.0f )
+			{
+				win->cursor_y += win->line_h;
+				win->line_h = 0.0f;
+			}
+
 			win->cursor_y += amount;
+			win->cursor_x = win->start_x;
+			win->on_same_line = false;
 		}
 
 		void indent( float amount )
@@ -1527,6 +1551,7 @@ namespace xui {
 			}
 
 			win->cursor_x += amount;
+			win->start_x += amount;
 		}
 
 		void unindent( float amount )
@@ -1542,7 +1567,8 @@ namespace xui {
 				amount = get_ctx( ).style.window_pad_x;
 			}
 
-			win->cursor_x = std::max( get_ctx( ).style.window_pad_x, win->cursor_x - amount );
+			win->start_x = std::max( get_ctx( ).style.window_pad_x, win->start_x - amount );
+			win->cursor_x = std::max( win->start_x, win->cursor_x - amount );
 		}
 
 		void separator( )
@@ -1563,7 +1589,7 @@ namespace xui {
 			}
 
 			const auto max_x = win->bounds.w - s.window_pad_x;
-			const auto w = std::max( 0.0f, max_x - win->cursor_x );
+			const auto w = std::max( 0.0f, max_x - win->start_x );
 			const auto abs = item( w, 1.0f + sep_pad * 2.0f );
 
 			draw::current( ).line( abs.x, abs.y + sep_pad, abs.x + w, abs.y + sep_pad, s.separator, 1.0f );
@@ -1579,7 +1605,9 @@ namespace xui {
 
 			win->cursor_x = x;
 			win->cursor_y = y;
+			win->start_x = x;
 			win->line_h = 0.0f;
+			win->on_same_line = false;
 		}
 
 		std::pair<float, float> get_cursor( )
@@ -3267,6 +3295,9 @@ namespace xui {
 			c.active_window = id;
 		}
 
+		const auto orig_abs_x = abs.x;
+		const auto orig_abs_y = abs.y;
+
 		if ( allow_window_drag && c.active_window == id && input.mouse_down&& c.active_slider == null_id&& c.active_resize == null_id&& c.active_text_input == null_id&& c.active_child_scroll == null_id )
 		{
 			// The press frame may include movement from before the click.
@@ -3279,11 +3310,21 @@ namespace xui {
 			abs.y = y;
 		}
 
+		const auto drag_dx = abs.x - orig_abs_x;
+		const auto drag_dy = abs.y - orig_abs_y;
+		std::optional<rect> adjusted_aperture{};
+		if ( aperture )
+		{
+			adjusted_aperture = rect{ aperture->x + drag_dx, aperture->y + drag_dy, aperture->w, aperture->h };
+		}
+		const rect* eff_aperture = adjusted_aperture ? &*adjusted_aperture : aperture;
+
 		window_state state{};
 		state.title = std::string( title );
 		state.bounds = abs;
 		state.cursor_x = s.window_pad_x;
 		state.cursor_y = s.window_pad_y;
+		state.start_x = s.window_pad_x;
 		state.is_child = false;
 
 		c.windows.push_back( std::move( state ) );
@@ -3303,42 +3344,21 @@ namespace xui {
 		const auto shell_rounding = xdraw::corner_radius{ r };
 		const auto shell_top = lighten( window_bg, 1.75f );
 		const auto shell_bottom = darken( window_bg, 0.72f );
-		const bool use_aperture = aperture && reveal_clamped >= 0.98f &&
-			aperture->right( ) > draw_x && aperture->bottom( ) > draw_y &&
-			aperture->x < draw_x + draw_w && aperture->y < draw_y + draw_h;
-		if ( use_aperture )
-		{
-			const auto hole_left = std::clamp( aperture->x, draw_x, draw_x + draw_w );
-			const auto hole_top = std::clamp( aperture->y, draw_y, draw_y + draw_h );
-			const auto hole_right = std::clamp( aperture->right( ), draw_x, draw_x + draw_w );
-			const auto hole_bottom = std::clamp( aperture->bottom( ), draw_y, draw_y + draw_h );
-			const auto fill = [&]( float x0, float y0, float width, float height, xdraw::corner_radius rounding = {} )
-			{
-				if ( width <= 0.0f || height <= 0.0f ) return;
-				dl.rect_filled_gradient( x0, y0, width, height,
-					shell_top, shell_top, shell_bottom, shell_bottom, rounding );
-			};
-
-			// Leave the preview window transparent so Panorama's 3D composition can
-			// show through the menu surface.
-			fill( draw_x, draw_y, draw_w, hole_top - draw_y, xdraw::corner_radius::top( r ) );
-			fill( draw_x, hole_bottom, draw_w, draw_y + draw_h - hole_bottom, xdraw::corner_radius::bottom( r ) );
-			fill( draw_x, hole_top, hole_left - draw_x, hole_bottom - hole_top );
-			fill( hole_right, hole_top, draw_x + draw_w - hole_right, hole_bottom - hole_top );
-		}
-		else
+		const bool use_aperture = eff_aperture && reveal_clamped >= 0.98f &&
+			eff_aperture->right( ) > draw_x && eff_aperture->bottom( ) > draw_y &&
+			eff_aperture->x < draw_x + draw_w && eff_aperture->y < draw_y + draw_h;
+		const auto hole_left = use_aperture ? std::clamp( eff_aperture->x, draw_x, draw_x + draw_w ) : draw_x;
+		const auto hole_top = use_aperture ? std::clamp( eff_aperture->y, draw_y, draw_y + draw_h ) : draw_y;
+		const auto hole_right = use_aperture ? std::clamp( eff_aperture->right( ), draw_x, draw_x + draw_w ) : draw_x;
+		const auto hole_bottom = use_aperture ? std::clamp( eff_aperture->bottom( ), draw_y, draw_y + draw_h ) : draw_y;
+		const auto draw_surface = [&]( )
 		{
 			const auto blur_alpha = static_cast< std::uint8_t >( 170.0f * reveal_clamped );
-			dl.rect_filled_blurred( draw_x, draw_y, draw_w, draw_h, shell_rounding, xdraw::color{ 52, 56, 68, blur_alpha } );
+			dl.rect_filled_blurred( draw_x, draw_y, draw_w, draw_h, shell_rounding, xdraw::color{ 255, 255, 255, blur_alpha } );
 			dl.rect_filled( draw_x, draw_y, draw_w, draw_h, window_bg, shell_rounding );
 			dl.rect_filled_gradient( draw_x, draw_y, draw_w, draw_h,
 				shell_top, shell_top, shell_bottom, shell_bottom, shell_rounding );
-		}
 
-		// Violet aurora bleeding in from the top corners - keeps the dark
-		// gray-purple look of the reference regardless of the picked theme.
-		if ( !use_aperture )
-		{
 			auto aurora = tokens::col_aurora;
 			aurora.a = static_cast< std::uint8_t >( 30.0f * reveal_clamped );
 			const auto aurora_off = xdraw::color{ aurora.r, aurora.g, aurora.b, 0 };
@@ -3349,6 +3369,37 @@ namespace xui {
 			const auto aurora_w2 = draw_w * 0.45f;
 			dl.rect_filled_gradient( draw_x + draw_w - aurora_w2, draw_y, aurora_w2, aurora_h * 0.6f,
 				aurora_off, aurora, aurora_off, aurora_off, xdraw::corner_radius::top( r ) );
+		};
+
+		// Soft ambient outer drop shadows around the blurred window
+		const auto shadow_alpha = reveal_clamped;
+		dl.rect_filled( draw_x - 14.0f, draw_y - 10.0f, draw_w + 28.0f, draw_h + 22.0f,
+			xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 18.0f * shadow_alpha ) }, xdraw::corner_radius{ r + 8.0f } );
+		dl.rect_filled( draw_x - 8.0f, draw_y - 6.0f, draw_w + 16.0f, draw_h + 14.0f,
+			xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 32.0f * shadow_alpha ) }, xdraw::corner_radius{ r + 5.0f } );
+		dl.rect_filled( draw_x - 4.0f, draw_y - 3.0f, draw_w + 8.0f, draw_h + 8.0f,
+			xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 50.0f * shadow_alpha ) }, xdraw::corner_radius{ r + 2.5f } );
+		dl.rect_filled( draw_x, draw_y + 2.0f, draw_w, draw_h,
+			xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 70.0f * shadow_alpha ) }, shell_rounding );
+
+		if ( use_aperture )
+		{
+			const auto clipped_surface = [&]( float x0, float y0, float width, float height )
+			{
+				if ( width <= 0.0f || height <= 0.0f ) return;
+				dl.push_clip( x0, y0, width, height );
+				draw_surface( );
+				dl.pop_clip( );
+			};
+
+			clipped_surface( draw_x, draw_y, draw_w, hole_top - draw_y );
+			clipped_surface( draw_x, hole_bottom, draw_w, draw_y + draw_h - hole_bottom );
+			clipped_surface( draw_x, hole_top, hole_left - draw_x, hole_bottom - hole_top );
+			clipped_surface( hole_right, hole_top, draw_x + draw_w - hole_right, hole_bottom - hole_top );
+		}
+		else
+		{
+			draw_surface( );
 		}
 
 		// Specular rim highlight on top, soft shade at the bottom edge.
@@ -3422,6 +3473,7 @@ namespace xui {
 		state.bounds = rect{ abs.x, abs.y, abs.w, abs.h };
 		state.cursor_x = has_background ? s.window_pad_x : 0.0f;
 		state.cursor_y = ( has_background ? s.window_pad_y : 0.0f ) - scroll_y;
+		state.start_x = state.cursor_x;
 		state.is_child = true;
 		state.group_id = id;
 		state.scrollable = scrollable;
@@ -3442,7 +3494,7 @@ namespace xui {
 				xdraw::corner_radius{ r + 3.0f }, xdraw::color{ 0, 0, 0, 60 } );
 
 			// Frosted glass base.
-			dl.rect_filled_blurred( abs.x, abs.y, abs.w, abs.h, rounding, xdraw::color{ 42, 46, 58, 150 } );
+			dl.rect_filled_blurred( abs.x, abs.y, abs.w, abs.h, rounding, xdraw::color{ 255, 255, 255, 180 } );
 
 			// Smooth vertical falloff instead of a flat card fill: the panel is
 			// slightly lit at the top and settles into the window colour below.
@@ -3537,11 +3589,9 @@ namespace xui {
 	void draw_gear( xdraw::draw_list& dl, float cx, float cy, xdraw::color col, float size )
 	{
 		const float r_outer = size * 0.5f;
-		const float r_hub = size * 0.32f;
-		const float r_inner = size * 0.25f;
-		const float r_pin = size * 0.12f;
-		const float tooth_thick = size * 0.18f;
-		const float hub_thick = size * 0.14f;
+		const float r_base = size * 0.35f;
+		const float r_hole = size * 0.18f;
+		const float tooth_w = size * 0.26f;
 
 		constexpr int k_teeth = 6;
 		constexpr float k_step = 3.14159265f / 3.0f;
@@ -3550,17 +3600,50 @@ namespace xui {
 			const float a = static_cast< float >( i ) * k_step;
 			const float cos_a = std::cos( a );
 			const float sin_a = std::sin( a );
-			dl.line( cx + cos_a * r_inner, cy + sin_a * r_inner,
+			dl.line( cx + cos_a * ( r_base - 0.5f ), cy + sin_a * ( r_base - 0.5f ),
 					 cx + cos_a * r_outer, cy + sin_a * r_outer,
-					 col, tooth_thick );
+					 col, tooth_w );
 		}
 
-		dl.circle( cx, cy, r_hub, col, hub_thick, 16 );
+		const float ring_r = ( r_base + r_hole ) * 0.5f;
+		const float ring_thick = r_base - r_hole;
+		dl.circle( cx, cy, ring_r, col, ring_thick, 20 );
+	}
 
-		if ( r_pin >= 0.8f )
+	bool nav_row( std::string_view label, float w, float h )
+	{
+		auto win = layout::current_window( );
+		if ( !win )
 		{
-			dl.circle_filled( cx, cy, r_pin, col, 8 );
+			return false;
 		}
+
+		auto& c = get_ctx( );
+		const auto id = make_id( label );
+		const auto [display, full] = parse_label( label );
+		const auto& s = c.style;
+		const auto& input = c.input;
+
+		const auto target_w = ( w > 0.0f ) ? w : ( win->bounds.w - s.window_pad_x * 2.0f );
+		const auto abs = layout::item( target_w, h );
+
+		const auto can_interact = !c.overlay_blocking( );
+		const auto hovered = can_interact && input.in_rect( abs );
+		const auto hover_anim = anim::lerp( id, hovered ? 1.0f : 0.0f, 14.0f );
+
+		auto& dl = draw::current( );
+
+		// Card background
+		auto bg = lerp( tokens::col_card.alpha( 170 ), tokens::col_elevated.alpha( 220 ), hover_anim );
+		dl.rect_filled( abs.x, abs.y, abs.w, abs.h, bg, xdraw::corner_radius{ 6.0f } );
+		dl.rect( abs.x, abs.y, abs.w, abs.h, tokens::col_border.alpha( 130 ), xdraw::corner_radius{ 6.0f }, 1.0f );
+
+		// Label vertically centered
+		const auto [tw, th] = xdraw::measure_text( display );
+		const auto text_col = lerp( s.text_dim, s.text, hover_anim );
+		dl.text( abs.x + 14.0f, abs.y + ( abs.h - th ) * 0.5f, display, text_col );
+
+		return hovered && input.mouse_clicked;
 	}
 
 	bool begin_popup( std::string_view label, float width, const xdraw::color* swatch_color, bool is_arrow )
@@ -3590,14 +3673,15 @@ namespace xui {
 		}
 		else
 		{
-			dot_x = win->bounds.x + win->bounds.w - s.window_pad_x - dot_area_w;
+			dot_x = win->bounds.x + win->last_item.x + win->last_item.w - 12.0f - dot_area_w;
 		}
 		const auto dot_local_y = win->last_item.y;
 		const auto dot_abs = rect{ std::floorf( dot_x ), std::floorf( win->bounds.y + dot_local_y ), dot_area_w, dot_area_h };
 
 		const auto is_open = overlays::is_open( id );
 		const auto can_interact = !c.overlay_blocking( ) || is_open;
-		const auto hovered = can_interact && input.in_rect( dot_abs );
+		const auto item_abs = rect{ win->bounds.x + win->last_item.x, win->bounds.y + win->last_item.y, win->last_item.w, win->last_item.h };
+		const auto hovered = can_interact && ( input.in_rect( dot_abs ) || ( is_arrow && input.in_rect( item_abs ) ) );
 
 		if ( hovered && !is_open )
 		{
@@ -3632,6 +3716,8 @@ namespace xui {
 			draw_gear( dl, cx, cy, dot_col, 11.0f );
 		}
 
+		const auto anchor_rect = is_arrow ? item_abs : dot_abs;
+
 		if ( hovered && input.mouse_clicked )
 		{
 			if ( is_open )
@@ -3645,17 +3731,18 @@ namespace xui {
 				{
 					initial_h = c.child_height_cache[ id ];
 				}
-				auto ov_ptr = std::make_unique<popup_overlay>( id, dot_abs, width, win->bounds );
+				auto ov_ptr = std::make_unique<popup_overlay>( id, anchor_rect, width, win->bounds );
 				ov_ptr->set_content_h( initial_h );
 				overlays::add( std::move( ov_ptr ) );
 			}
+			c.input.mouse_clicked = false;
 		}
 
 		auto ov = dynamic_cast< popup_overlay* >( overlays::find( id ) );
 		if ( ov && !ov->is_closed( ) )
 		{
 			overlays::touch( id );
-			ov->update_anchor( dot_abs );
+			ov->update_anchor( anchor_rect );
 			ov->update_parent_bounds( win->bounds );
 			ov->tick( );
 
@@ -3666,17 +3753,35 @@ namespace xui {
 
 			auto& top_dl = xdraw::get( xdraw::layer::top );
 
-			auto bg = s.popup_bg;
-			bg.a = static_cast< std::uint8_t >( bg.a * alpha_mult );
-			auto border = lighten( s.popup_border, 1.1f );
-			border.a = static_cast< std::uint8_t >( border.a * alpha_mult );
+			auto border = xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 160.0f * alpha_mult ) };
+			const auto pr = xdraw::corner_radius{ s.popup_rounding };
 
 			if ( animated_h > 1.0f )
 			{
-				top_dl.rect_filled_blurred( popup_rect.x, popup_rect.y, popup_rect.w, animated_h, xdraw::corner_radius{ s.popup_rounding }, xdraw::color{ 45, 50, 60, static_cast< std::uint8_t >( 185.0f * alpha_mult ) } );
+				// Ambient drop shadows around the popup
+				top_dl.rect_filled( popup_rect.x - 8.0f, popup_rect.y - 5.0f, popup_rect.w + 16.0f, animated_h + 12.0f,
+					xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 25.0f * alpha_mult ) }, xdraw::corner_radius{ s.popup_rounding + 6.0f } );
+				top_dl.rect_filled( popup_rect.x - 4.0f, popup_rect.y - 2.5f, popup_rect.w + 8.0f, animated_h + 7.0f,
+					xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 45.0f * alpha_mult ) }, xdraw::corner_radius{ s.popup_rounding + 3.0f } );
+				top_dl.rect_filled( popup_rect.x, popup_rect.y + 2.0f, popup_rect.w, animated_h,
+					xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 60.0f * alpha_mult ) }, pr );
+
+				// 1. Frosted glass blur of scene behind popup
+				top_dl.rect_filled_blurred( popup_rect.x, popup_rect.y, popup_rect.w, animated_h,
+					pr, xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 255.0f * alpha_mult ) } );
+
+				// 2. Translucent white frosted acrylic glass body
+				const auto glass_top = xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 145.0f * alpha_mult ) };
+				const auto glass_bot = xdraw::color{ 240, 246, 255, static_cast< std::uint8_t >( 115.0f * alpha_mult ) };
+				top_dl.rect_filled_gradient( popup_rect.x, popup_rect.y, popup_rect.w, animated_h,
+					glass_top, glass_top, glass_bot, glass_bot, pr );
+
+				// 3. Crisp top-edge specular highlight
+				top_dl.line( popup_rect.x + s.popup_rounding, popup_rect.y + 0.5f,
+					popup_rect.x + popup_rect.w - s.popup_rounding, popup_rect.y + 0.5f,
+					xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 200.0f * alpha_mult ) }, 1.0f );
 			}
-			top_dl.rect_filled( popup_rect.x, popup_rect.y, popup_rect.w, animated_h, bg, xdraw::corner_radius{ s.popup_rounding } );
-			top_dl.rect( popup_rect.x, popup_rect.y, popup_rect.w, animated_h, border, xdraw::corner_radius{ s.popup_rounding } );
+			top_dl.rect( popup_rect.x, popup_rect.y, popup_rect.w, animated_h, border, pr, 1.0f );
 
 			draw::push_layer( xdraw::layer::top );
 
@@ -3689,6 +3794,7 @@ namespace xui {
 			state.bounds = popup_rect;
 			state.cursor_x = s.window_pad_x;
 			state.cursor_y = s.window_pad_y - scroll_y;
+			state.start_x = s.window_pad_x;
 			state.is_child = true;
 			state.group_id = id;
 			state.scrollable = true;
@@ -4087,16 +4193,29 @@ namespace xui {
 				const auto animated_h = popup.h * ease_t;
 				const auto pr = style.popup_rounding;
 
-				auto bg = style.popup_bg;
-				bg.a = static_cast< std::uint8_t >( bg.a * alpha_mult );
-				auto border = lighten( style.popup_border, 1.1f );
-				border.a = static_cast< std::uint8_t >( border.a * alpha_mult );
+				auto border = xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 150.0f * alpha_mult ) };
 
 				if ( animated_h > 1.0f )
 				{
-					dl.rect_filled_blurred( popup.x, popup.y, popup.w, animated_h, xdraw::corner_radius{ pr }, xdraw::color{ 45, 50, 60, static_cast< std::uint8_t >( 185.0f * alpha_mult ) } );
+					dl.rect_filled( popup.x - 8.0f, popup.y - 5.0f, popup.w + 16.0f, animated_h + 12.0f,
+						xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 25.0f * alpha_mult ) }, xdraw::corner_radius{ pr + 6.0f } );
+					dl.rect_filled( popup.x - 4.0f, popup.y - 2.5f, popup.w + 8.0f, animated_h + 7.0f,
+						xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 45.0f * alpha_mult ) }, xdraw::corner_radius{ pr + 3.0f } );
+					dl.rect_filled( popup.x, popup.y + 2.0f, popup.w, animated_h,
+						xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 60.0f * alpha_mult ) }, xdraw::corner_radius{ pr } );
+
+					dl.rect_filled_blurred( popup.x, popup.y, popup.w, animated_h,
+						xdraw::corner_radius{ pr }, xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 255.0f * alpha_mult ) } );
+
+					const auto glass_top = xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 145.0f * alpha_mult ) };
+					const auto glass_bot = xdraw::color{ 240, 246, 255, static_cast< std::uint8_t >( 115.0f * alpha_mult ) };
+					dl.rect_filled_gradient( popup.x, popup.y, popup.w, animated_h,
+						glass_top, glass_top, glass_bot, glass_bot, xdraw::corner_radius{ pr } );
+
+					dl.line( popup.x + pr, popup.y + 0.5f,
+						popup.x + popup.w - pr, popup.y + 0.5f,
+						xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 200.0f * alpha_mult ) }, 1.0f );
 				}
-				dl.rect_filled( popup.x, popup.y, popup.w, animated_h, bg, xdraw::corner_radius{ pr } );
 
 				if ( border.a > 0 )
 				{
@@ -5348,16 +5467,32 @@ namespace xui {
 				const auto popup = this->get_popup( );
 				auto& dl = xdraw::get( xdraw::layer::top );
 
+				const auto pr = xdraw::corner_radius{ 6.0f };
+
+				dl.rect_filled( popup.x - 8.0f, popup.y - 5.0f, popup.w + 16.0f, popup.h + 12.0f,
+					xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 18.0f * alpha_mult ) }, xdraw::corner_radius{ 12.0f } );
+				dl.rect_filled( popup.x - 4.0f, popup.y - 2.5f, popup.w + 8.0f, popup.h + 7.0f,
+					xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 35.0f * alpha_mult ) }, xdraw::corner_radius{ 9.0f } );
+				dl.rect_filled( popup.x, popup.y + 2.0f, popup.w, popup.h,
+					xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 55.0f * alpha_mult ) }, pr );
+
 				dl.push_clip( popup.x - 4.0f, popup.y - 4.0f, popup.w + 8.0f, popup.h + 8.0f );
 
-				auto bg = style.popup_bg;
-				bg.a = static_cast< std::uint8_t >( 245.0f * alpha_mult );
-				auto border = style.popup_border;
-				border.a = static_cast< std::uint8_t >( 180.0f * alpha_mult );
+				auto border = xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 70.0f * alpha_mult ) };
 
-				dl.rect_filled_blurred( popup.x, popup.y, popup.w, popup.h, xdraw::corner_radius{ 6.0f }, xdraw::color{ 45, 50, 60, static_cast< std::uint8_t >( 185.0f * alpha_mult ) } );
-				dl.rect_filled( popup.x, popup.y, popup.w, popup.h, bg, xdraw::corner_radius{ 6.0f } );
-				dl.rect( popup.x, popup.y, popup.w, popup.h, border, xdraw::corner_radius{ 6.0f } );
+				dl.rect_filled_blurred( popup.x, popup.y, popup.w, popup.h,
+					pr, xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 220.0f * alpha_mult ) } );
+
+				const auto glass_top = xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 45.0f * alpha_mult ) };
+				const auto glass_bot = xdraw::color{ 240, 245, 255, static_cast< std::uint8_t >( 25.0f * alpha_mult ) };
+				dl.rect_filled_gradient( popup.x, popup.y, popup.w, popup.h,
+					glass_top, glass_top, glass_bot, glass_bot, pr );
+
+				dl.line( popup.x + 6.0f, popup.y + 0.5f,
+					popup.x + popup.w - 6.0f, popup.y + 0.5f,
+					xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 110.0f * alpha_mult ) }, 1.0f );
+
+				dl.rect( popup.x, popup.y, popup.w, popup.h, border, pr );
 
 				// Header
 				auto title_col = style.text;
@@ -6254,18 +6389,31 @@ namespace xui {
 				const auto animated_h = dd.h * ease_t;
 				const auto alpha_mult = ease_t;
 
-				auto bg = style.combo_popup_bg;
-				bg.a = static_cast< std::uint8_t >( bg.a * alpha_mult );
-				auto border = lighten( style.combo_popup_border, 1.1f );
-				border.a = static_cast< std::uint8_t >( border.a * alpha_mult );
+				auto border = xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 150.0f * alpha_mult ) };
 
 				const auto pr = style.combo_popup_rounding;
 
 				if ( animated_h > 1.0f )
 				{
-					dl.rect_filled_blurred( dd.x, dd.y, dd.w, animated_h, xdraw::corner_radius{ pr }, xdraw::color{ 45, 50, 60, static_cast< std::uint8_t >( 185.0f * alpha_mult ) } );
+					dl.rect_filled( dd.x - 8.0f, dd.y - 5.0f, dd.w + 16.0f, animated_h + 12.0f,
+						xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 25.0f * alpha_mult ) }, xdraw::corner_radius{ pr + 6.0f } );
+					dl.rect_filled( dd.x - 4.0f, dd.y - 2.5f, dd.w + 8.0f, animated_h + 7.0f,
+						xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 45.0f * alpha_mult ) }, xdraw::corner_radius{ pr + 3.0f } );
+					dl.rect_filled( dd.x, dd.y + 2.0f, dd.w, animated_h,
+						xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 60.0f * alpha_mult ) }, xdraw::corner_radius{ pr } );
+
+					dl.rect_filled_blurred( dd.x, dd.y, dd.w, animated_h,
+						xdraw::corner_radius{ pr }, xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 255.0f * alpha_mult ) } );
+
+					const auto glass_top = xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 145.0f * alpha_mult ) };
+					const auto glass_bot = xdraw::color{ 240, 246, 255, static_cast< std::uint8_t >( 115.0f * alpha_mult ) };
+					dl.rect_filled_gradient( dd.x, dd.y, dd.w, animated_h,
+						glass_top, glass_top, glass_bot, glass_bot, xdraw::corner_radius{ pr } );
+
+					dl.line( dd.x + pr, dd.y + 0.5f,
+						dd.x + dd.w - pr, dd.y + 0.5f,
+						xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 200.0f * alpha_mult ) }, 1.0f );
 				}
-				dl.rect_filled( dd.x, dd.y, dd.w, animated_h, bg, xdraw::corner_radius{ pr } );
 				dl.rect( dd.x, dd.y, dd.w, animated_h, border, xdraw::corner_radius{ pr } );
 
 				const auto ms = this->max_scroll( );
@@ -6689,18 +6837,31 @@ namespace xui {
 				const auto animated_h = dd.h * ease_t;
 				const auto alpha_mult = ease_t;
 
-				auto bg = style.combo_popup_bg;
-				bg.a = static_cast< std::uint8_t >( bg.a * alpha_mult );
-				auto border = lighten( style.combo_popup_border, 1.1f );
-				border.a = static_cast< std::uint8_t >( border.a * alpha_mult );
+				auto border = xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 150.0f * alpha_mult ) };
 
 				const auto pr = style.combo_popup_rounding;
 
 				if ( animated_h > 1.0f )
 				{
-					dl.rect_filled_blurred( dd.x, dd.y, dd.w, animated_h, xdraw::corner_radius{ pr }, xdraw::color{ 45, 50, 60, static_cast< std::uint8_t >( 185.0f * alpha_mult ) } );
+					dl.rect_filled( dd.x - 8.0f, dd.y - 5.0f, dd.w + 16.0f, animated_h + 12.0f,
+						xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 25.0f * alpha_mult ) }, xdraw::corner_radius{ pr + 6.0f } );
+					dl.rect_filled( dd.x - 4.0f, dd.y - 2.5f, dd.w + 8.0f, animated_h + 7.0f,
+						xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 45.0f * alpha_mult ) }, xdraw::corner_radius{ pr + 3.0f } );
+					dl.rect_filled( dd.x, dd.y + 2.0f, dd.w, animated_h,
+						xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 60.0f * alpha_mult ) }, xdraw::corner_radius{ pr } );
+
+					dl.rect_filled_blurred( dd.x, dd.y, dd.w, animated_h,
+						xdraw::corner_radius{ pr }, xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 255.0f * alpha_mult ) } );
+
+					const auto glass_top = xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 145.0f * alpha_mult ) };
+					const auto glass_bot = xdraw::color{ 240, 246, 255, static_cast< std::uint8_t >( 115.0f * alpha_mult ) };
+					dl.rect_filled_gradient( dd.x, dd.y, dd.w, animated_h,
+						glass_top, glass_top, glass_bot, glass_bot, xdraw::corner_radius{ pr } );
+
+					dl.line( dd.x + pr, dd.y + 0.5f,
+						dd.x + dd.w - pr, dd.y + 0.5f,
+						xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 200.0f * alpha_mult ) }, 1.0f );
 				}
-				dl.rect_filled( dd.x, dd.y, dd.w, animated_h, bg, xdraw::corner_radius{ pr } );
 				dl.rect( dd.x, dd.y, dd.w, animated_h, border, xdraw::corner_radius{ pr } );
 
 				dl.push_clip( dd.x - 2.0f, dd.y, dd.w + 4.0f, animated_h );
@@ -7145,15 +7306,22 @@ namespace xui {
 				const auto sx = popup.x + ( popup.w - sw ) * 0.5f;
 				const auto sy = popup.y + ( popup.h - sh ) * 0.5f;
 
-				const auto pr = style.picker_popup_rounding;
-				auto tint = style.picker_popup_bg;
-				tint.a = static_cast< std::uint8_t >( tint.a * alpha_mult );
-				auto border = style.picker_popup_border;
-				border.a = static_cast< std::uint8_t >( border.a * alpha_mult );
+				const auto pr = xdraw::corner_radius{ style.picker_popup_rounding };
+				auto border = xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 150.0f * alpha_mult ) };
 
-				dl.rect_filled_blurred( sx, sy, sw, sh, xdraw::corner_radius{ pr }, xdraw::color{ 45, 50, 60, static_cast< std::uint8_t >( 185.0f * alpha_mult ) } );
-				dl.rect_filled( sx, sy, sw, sh, tint, xdraw::corner_radius{ pr } );
-				dl.rect( sx, sy, sw, sh, border, xdraw::corner_radius{ pr } );
+				dl.rect_filled_blurred( sx, sy, sw, sh,
+					pr, xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 255.0f * alpha_mult ) } );
+
+				const auto glass_top = xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 145.0f * alpha_mult ) };
+				const auto glass_bot = xdraw::color{ 240, 246, 255, static_cast< std::uint8_t >( 115.0f * alpha_mult ) };
+				dl.rect_filled_gradient( sx, sy, sw, sh,
+					glass_top, glass_top, glass_bot, glass_bot, pr );
+
+				dl.line( sx + style.picker_popup_rounding, sy + 0.5f,
+					sx + sw - style.picker_popup_rounding, sy + 0.5f,
+					xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 200.0f * alpha_mult ) }, 1.0f );
+
+				dl.rect( sx, sy, sw, sh, border, pr );
 
 				if ( ease_t < 0.15f )
 				{
@@ -7442,12 +7610,29 @@ namespace xui {
 				const auto animated_h = popup.h * ease_t;
 				const auto pr = style.popup_rounding;
 
-				auto bg = style.popup_bg;
-				bg.a = static_cast< std::uint8_t >( bg.a * alpha_mult );
-				auto border = lighten( style.popup_border, 1.1f );
-				border.a = static_cast< std::uint8_t >( border.a * alpha_mult );
+				auto border = xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 150.0f * alpha_mult ) };
 
-				dl.rect_filled( popup.x, popup.y, popup.w, animated_h, bg, xdraw::corner_radius{ pr } );
+				if ( animated_h > 1.0f )
+				{
+					dl.rect_filled( popup.x - 8.0f, popup.y - 5.0f, popup.w + 16.0f, animated_h + 12.0f,
+						xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 25.0f * alpha_mult ) }, xdraw::corner_radius{ pr + 6.0f } );
+					dl.rect_filled( popup.x - 4.0f, popup.y - 2.5f, popup.w + 8.0f, animated_h + 7.0f,
+						xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 45.0f * alpha_mult ) }, xdraw::corner_radius{ pr + 3.0f } );
+					dl.rect_filled( popup.x, popup.y + 2.0f, popup.w, animated_h,
+						xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 60.0f * alpha_mult ) }, xdraw::corner_radius{ pr } );
+
+					dl.rect_filled_blurred( popup.x, popup.y, popup.w, animated_h,
+						xdraw::corner_radius{ pr }, xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 255.0f * alpha_mult ) } );
+
+					const auto glass_top = xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 145.0f * alpha_mult ) };
+					const auto glass_bot = xdraw::color{ 240, 246, 255, static_cast< std::uint8_t >( 115.0f * alpha_mult ) };
+					dl.rect_filled_gradient( popup.x, popup.y, popup.w, animated_h,
+						glass_top, glass_top, glass_bot, glass_bot, xdraw::corner_radius{ pr } );
+
+					dl.line( popup.x + pr, popup.y + 0.5f,
+						popup.x + popup.w - pr, popup.y + 0.5f,
+						xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 200.0f * alpha_mult ) }, 1.0f );
+				}
 
 				if ( border.a > 0 )
 				{

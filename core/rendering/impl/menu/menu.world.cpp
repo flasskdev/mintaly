@@ -354,6 +354,14 @@ namespace rendering {
         const std::size_t modal_vtx_start = modal_dl.vertices.size();
         // Draw Window Background with Blur/Glass effect (full base opacities, scaled together at end)
         const auto amb_bg = tokens::col_dark.alpha(245);
+        // Soft ambient drop shadow around ambience modal
+        modal_dl.rect_filled( final_x - 12.0f, final_y - 8.0f, final_w + 24.0f, final_h + 18.0f,
+            xdraw::color{ 0, 0, 0, 25 }, xdraw::corner_radius{ tokens::window_rounding + 6.0f } );
+        modal_dl.rect_filled( final_x - 6.0f, final_y - 4.0f, final_w + 12.0f, final_h + 10.0f,
+            xdraw::color{ 0, 0, 0, 45 }, xdraw::corner_radius{ tokens::window_rounding + 3.0f } );
+        modal_dl.rect_filled( final_x, final_y + 3.0f, final_w, final_h,
+            xdraw::color{ 0, 0, 0, 70 }, xdraw::corner_radius{ tokens::window_rounding } );
+
         // Blurred background layer
         modal_dl.rect_filled_blurred(final_x, final_y, final_w, final_h, xdraw::corner_radius{ tokens::window_rounding },
             xdraw::color{ 40, 40, 45, 180 });

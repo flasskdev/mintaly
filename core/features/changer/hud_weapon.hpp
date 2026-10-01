@@ -228,9 +228,9 @@ namespace features::changer::hud_weapon {
         if (!entity_guard::set_mesh(*hud, mesh)) return false;
         if (bind || model_mismatch || changed_model) {
             // Refresh via the real econ weapon; a HUD model has no item view.
-            const auto skin = PATTERN(patterns::weapon_update_skin);
-            if (!skin) return false;
-            memory::call<void>(skin, weapon->entity, true);
+            // Optional post-update: skip when the helper signature is gone.
+            if (const auto skin = PATTERN(patterns::weapon_update_skin))
+                memory::call<void>(skin, weapon->entity, true);
         }
         if (!entity_guard::current(*player) || !entity_guard::current(*weapon) ||
             active_handle() != handle || find(pawn) != hud->entity) return false;

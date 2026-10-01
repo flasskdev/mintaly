@@ -60,11 +60,6 @@ namespace patterns {
 		::protection::addresses::address_type::pattern,
 		"scenesystem.dll:488D05*????????488907488B7C2448+8~");
 
-	const ::protection::addresses::address_t& draw_scene_object_array = ADDRESS_IMPL(
-		::protection::addresses::hash("scenesystem.dll:488BC4488950??488948??555356574154415541564157488DA8????????4881EC????????0F2970??"),
-		::protection::addresses::address_type::pattern,
-		"scenesystem.dll:488BC4488950??488948??555356574154415541564157488DA8????????4881EC????????0F2970??");
-
 	const ::protection::addresses::address_t& draw_skybox_array = ADDRESS_IMPL(
 		::protection::addresses::hash("scenesystem.dll:4585C90F8E????????4C8BDC"),
 		::protection::addresses::address_type::pattern,
@@ -739,10 +734,14 @@ namespace patterns {
 		::protection::addresses::address_type::pattern,
 		"client.dll:498D8D00050000488D542420>E8????????");
 
+	// Re-verified against client.dll 01.10.2026 (RVA 0x803160). The compiler
+	// moved `this` from rbx to rsi and shrank the frame from 0x300 to 0xD0,
+	// which is why the previous 40555341... prologue stopped matching. The
+	// stable part is: frame setup -> mov rax,[rip+X] -> movzx r15d,dl.
 	const ::protection::addresses::address_t& weapon_update_skin = ADDRESS_IMPL(
-		::protection::addresses::hash("client.dll:4055534157488DAC2400FEFFFF4881EC00030000488B05????????440FB6FA488BD9"),
+		::protection::addresses::hash("client.dll:4055564157488D6C24??4881EC????????488B05????????440FB6FA"),
 		::protection::addresses::address_type::pattern,
-		"client.dll:4055534157488DAC2400FEFFFF4881EC00030000488B05????????440FB6FA488BD9");
+		"client.dll:4055564157488D6C24??4881EC????????488B05????????440FB6FA");
 
 	const ::protection::addresses::address_t& collect_attached_entities = ADDRESS_IMPL(
 		::protection::addresses::hash("client.dll:40534883EC20488B81????????488BDA488B48404885C9"),

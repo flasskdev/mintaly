@@ -200,6 +200,22 @@ def main():
     entries = load_pattern_table()
     print(f'parsed {len(entries)} pattern entries from patterns.cpp')
 
+    wanted = ('weapon_update_skin', 'weapon_update_composite_material',
+              'weapon_set_mesh_group_mask', 'generate_primitives',
+              'generate_animatable_primitives', 'render_crosshair')
+    print('=== signatures that back the reported symptoms ===')
+    for name, spec in entries:
+        if name not in wanted:
+            continue
+        module, pat = spec.split(':', 1)
+        img = load_image(module)
+        if img is None:
+            print(f'  {name:34s} {module:18s} MODULE-MISSING')
+            continue
+        final, _ok = resolve(img, pat)
+        addr = '0x%X' % final if final is not None else 'NOT-FOUND'
+        print(f'  {name:34s} {module:18s} {addr}')
+
     results = []  # (name, module, status, final)
     for name, spec in entries:
         if ':' not in spec:

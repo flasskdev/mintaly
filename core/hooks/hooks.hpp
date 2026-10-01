@@ -28,8 +28,7 @@ namespace hooks {
 		static void __fastcall spec_cmds_handler( void* cmd );
 		static void __fastcall draw_skybox_array( std::uintptr_t thisptr, std::uintptr_t a2, std::uintptr_t mesh_array, int mesh_count, int a5, std::uintptr_t a6, std::uintptr_t a7, std::uintptr_t a8 );
 		static std::uintptr_t __fastcall light_scene_object( std::uintptr_t thisptr, std::uintptr_t object, std::uintptr_t a3 );
-		static void __fastcall draw_scene_object_array( std::uintptr_t thisptr, std::uintptr_t a2, std::uintptr_t object_array );
-		static std::uintptr_t __fastcall draw_scene_object( std::uintptr_t a1, std::uintptr_t a2, std::uintptr_t batch, int batch_count, int a5, std::uintptr_t a6, std::uintptr_t a7, std::uintptr_t a8 );
+		static std::uintptr_t __fastcall draw_scene_object( std::uintptr_t thisptr, std::uintptr_t object, std::uintptr_t batch, int batch_count, std::uintptr_t a5, std::uintptr_t a6, std::uintptr_t a7 );
 		static bool __fastcall is_glowing( std::uintptr_t glow_property );
 		static void __fastcall get_glow_color( std::uintptr_t glow_property, float* color );
 		static ID3D11ShaderResourceView* __fastcall preview_resource_view(std::uintptr_t, std::uintptr_t, char, char, const char*);
@@ -88,7 +87,6 @@ namespace hooks {
 		inline static hooking::jmp m_spec_cmds_handler{};
 		inline static hooking::jmp m_draw_skybox_array{};
 		inline static hooking::jmp m_light_scene_object{};
-		inline static hooking::jmp m_draw_scene_object_array{};
 		inline static hooking::jmp m_draw_scene_object{};
 		inline static hooking::jmp m_is_glowing{};
 		inline static hooking::jmp m_get_glow_color{};

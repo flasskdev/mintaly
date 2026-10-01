@@ -1559,10 +1559,9 @@ namespace features::misc {
 		std::unique_lock lock( this->m_mtx );
 		const auto& cfg = settings::g_misc.m_impacts;
 		const auto [screen_w, screen_h] = xdraw::viewport_size( );
-		const auto width = std::min( 400.0f, std::max( 0.0f, screen_w - 32.0f ) );
 		auto y = 16.0f;
 
-		xdraw::push_font( rendering::g_fonts.inter_medium[ rendering::fonts::size::petite ] );
+		xdraw::push_font( rendering::g_fonts.inter_medium[ rendering::fonts::size::normal ] );
 
 		for ( auto it = this->m_logs.begin( ); it != this->m_logs.end( ); )
 		{
@@ -1583,8 +1582,8 @@ namespace features::misc {
 			const auto fade_out = std::clamp( ( duration - safe_elapsed ) / fade_window, 0.0f, 1.0f );
 			const auto alpha = std::clamp( it->alpha.alpha( ) * fade_out, 0.0f, 1.0f );
 
-			constexpr auto height = 28.0f;
-			if ( width < 140.0f || y + height > screen_h ) { ++it; continue; }
+			constexpr auto height = 35.0f;
+			if ( y + height > screen_h ) { ++it; continue; }
 
 			const auto slide_x = it->offset.value( );
 			const auto x = 16.0f + slide_x * ( 1.0f - alpha * 0.5f ) - ( 1.0f - fade_out ) * 14.0f;
@@ -1594,125 +1593,122 @@ namespace features::misc {
 			};
 
 			const bool is_miss = it->is_miss;
-			const bool is_kill = !is_miss && it->health == 0;
 
-			// Hit / Miss specific colors for the text
-			// Miss: pink-red (#FF5C80)
-			// Hit:  mint green (#4ADE80) / emerald (#34D399) on kill
-			const auto log_color = is_miss
-				? xdraw::color{ 255, 92, 128 }
-				: ( is_kill ? xdraw::color{ 52, 211, 153 } : xdraw::color{ 74, 222, 128 } );
+			struct text_chunk
+			{
+				std::string text;
+				xdraw::color col;
+			};
+			std::vector<text_chunk> chunks;
 
-			// 1. "mintaly" brand pill in menu accent color
-			const auto brand = "mintaly";
-			const auto [brand_tw, brand_th] = xdraw::measure_text( brand );
-			const auto brand_w = brand_tw + 12.0f;
-			const auto brand_h = 17.0f;
-			const auto brand_y = y + ( height - brand_h ) * 0.5f;
-			const auto brand_x = x + 10.0f;
-
-			// 2. Status badge: [MISS], [KILL], [HIT]
-			const auto badge = is_miss ? "MISS" : ( is_kill ? "KILL" : "HIT" );
-			const auto [badge_tw, badge_th] = xdraw::measure_text( badge );
-			const auto badge_w = badge_tw + 10.0f;
-			const auto badge_h = 17.0f;
-			const auto badge_y = y + ( height - badge_h ) * 0.5f;
-			const auto badge_x = brand_x + brand_w + 5.0f;
-
-			// Right pill:
-			// For miss: "{hc}% HC" (or "{reason}" if hc <= 0)
-			// For kill: "FATAL"
-			// For hit:  "{health} HP"
-			std::string right_label;
 			if ( is_miss )
 			{
-				const auto hc = static_cast< int >( std::round( it->hitchance * 100.0f ) );
-				if ( hc > 0 )
-				{
-					right_label = std::format( "{}% HC", hc );
-				}
-				else
-				{
-					right_label = it->reason.empty( ) ? "MISSED" : it->reason;
-				}
-			}
-			else if ( is_kill )
-			{
-				right_label = "FATAL";
+				const auto reason = it->reason.empty( ) ? "unknown" : it->reason;
+				const auto col_muted_red = tint( xdraw::color{ 255, 120, 130 } );
+				const auto col_bright_red = tint( xdraw::color{ 255, 75, 85 } );
+
+				chunks.push_back( { "missed ", col_muted_red } );
+				chunks.push_back( { "shot ", col_bright_red } );
+				chunks.push_back( { "due to ", col_muted_red } );
+				chunks.push_back( { reason, col_bright_red } );
 			}
 			else
 			{
-				right_label = std::format( "{} HP", it->health );
-			}
-
-			const auto [rw, rh] = xdraw::measure_text( right_label );
-			const auto right_pill_w = rw + 10.0f;
-			const auto right_pill_h = 17.0f;
-			const auto right_pill_x = x + width - 10.0f - right_pill_w;
-			const auto right_pill_y = y + ( height - right_pill_h ) * 0.5f;
-
-			// Single line text:
-			// Miss: "{name} ({hitgroup}) - {reason}"
-			// Hit:  "{name} in {hitgroup} [-{damage}]"
-			std::string text;
-			const auto target_name = ( it->name.empty( ) || it->name == "unknown" ) ? "enemy" : it->name.c_str( );
-			if ( is_miss )
-			{
-				const auto group = it->hitgroup.empty( ) ? "body" : it->hitgroup.c_str( );
-				const auto r_str = it->reason.empty( ) ? "unknown" : it->reason.c_str( );
-				text = std::format( "{} ({}) - {}", target_name, group, r_str );
-			}
-			else
-			{
+				const auto target_name = ( it->name.empty( ) || it->name == "unknown" ) ? "enemy" : it->name;
 				const auto group = it->weapon_type == cstypes::weapon_type::knife ? "knife" :
 					( it->weapon_type == cstypes::weapon_type::taser ? "zeus" :
-					( it->hitgroup.empty( ) ? "body" : it->hitgroup.c_str( ) ) );
-				text = std::format( "{} in {} [-{}]", target_name, group, it->damage );
+					( it->hitgroup.empty( ) ? "body" : it->hitgroup ) );
+				const auto rem_hp = std::max( 0, it->health );
+
+				const auto col_neutral   = tint( xdraw::color{ 225, 230, 240 } );
+				const auto col_name_blue = tint( xdraw::color{ 195, 220, 255 } );
+				const auto col_white_bold = tint( xdraw::color{ 255, 255, 255 } );
+
+				chunks.push_back( { "Hit ", col_neutral } );
+				chunks.push_back( { target_name, col_name_blue } );
+				chunks.push_back( { " in the ", col_neutral } );
+				chunks.push_back( { group, col_white_bold } );
+				chunks.push_back( { " for ", col_neutral } );
+				chunks.push_back( { std::to_string( it->damage ), col_white_bold } );
+				chunks.push_back( { " damage ", col_neutral } );
+				chunks.push_back( { std::format( "({} health left)", rem_hp ), col_neutral } );
 			}
 
-			const auto title_x = badge_x + badge_w + 7.0f;
-			const auto max_title_w = std::max( 0.0f, right_pill_x - 8.0f - title_x );
-			const auto title = rendering::theme::fit_text( text, max_title_w );
-			const auto title_h = xdraw::measure_text( title ).second;
-
-			// Card styling — clean dark translucent glass (same as menu)
-			// 1. Soft drop shadow
-			draw_list.rect_filled( x, y + 2.0f, width, height, tint( { 0, 0, 0, 60 } ), xdraw::corner_radius{ 6.0f } );
-
-			// 2. Frosted glass blur
-			draw_list.rect_filled_blurred( x, y, width, height, xdraw::corner_radius{ 6.0f }, tint( { 255, 255, 255, 210 } ) );
-
-			// 3. Dark card body (tokens::col_card — pitch dark translucent, NOT grey)
-			draw_list.rect_filled( x, y, width, height, tint( tokens::col_card.alpha( 242 ) ), xdraw::corner_radius{ 6.0f } );
-
-			// 4. Subtle border
-			const auto card_border = xui::lerp( tokens::col_border, tokens::col_accent, 0.15f );
-			draw_list.rect( x, y, width, height, tint( card_border.alpha( 180 ) ), xdraw::corner_radius{ 6.0f } );
-
-			// 5. Thin accent strip on the left edge
-			draw_list.rect_filled( x + 3.0f, y + 5.0f, 3.0f, height - 10.0f, tint( tokens::col_accent.alpha( 40 ) ), xdraw::corner_radius{ 1.5f } );
-			draw_list.rect_filled( x + 3.5f, y + 6.0f, 2.0f, height - 12.0f, tint( tokens::col_accent ), xdraw::corner_radius{ 1.0f } );
-
-			// 1. Left rectangular badge [mintaly] in menu accent color
-			draw_list.rect_filled( brand_x, brand_y, brand_w, brand_h, tint( tokens::col_accent.alpha( 45 ) ), xdraw::corner_radius{ 4.0f } );
-			draw_list.rect( brand_x, brand_y, brand_w, brand_h, tint( tokens::col_accent.alpha( 190 ) ), xdraw::corner_radius{ 4.0f }, 1.0f );
-			draw_list.text( brand_x + ( brand_w - brand_tw ) * 0.5f, brand_y + ( brand_h - brand_th ) * 0.5f, brand, tint( tokens::col_accent ) );
-
-			// 2. Status badge [HIT] / [KILL] / [MISS]
-			draw_list.rect_filled( badge_x, badge_y, badge_w, badge_h, tint( tokens::col_elevated ), xdraw::corner_radius{ 4.0f } );
-			draw_list.rect( badge_x, badge_y, badge_w, badge_h, tint( tokens::col_border.alpha( 160 ) ), xdraw::corner_radius{ 4.0f } );
-			draw_list.text( badge_x + ( badge_w - badge_tw ) * 0.5f, badge_y + ( badge_h - badge_th ) * 0.5f, badge, tint( log_color ) );
-
-			// Right pill (MISSED / FATAL / victim name / -XX HP)
-			if ( !right_label.empty( ) )
+			float total_text_w = 0.0f;
+			for ( const auto& chunk : chunks )
 			{
-				draw_list.rect_filled( right_pill_x, right_pill_y, right_pill_w, right_pill_h, tint( tokens::col_elevated ), xdraw::corner_radius{ 4.0f } );
-				draw_list.rect( right_pill_x, right_pill_y, right_pill_w, right_pill_h, tint( tokens::col_border.alpha( 160 ) ), xdraw::corner_radius{ 4.0f } );
-				draw_list.text( right_pill_x + ( right_pill_w - rw ) * 0.5f, right_pill_y + ( right_pill_h - rh ) * 0.5f, right_label, tint( log_color ) );
+				total_text_w += xdraw::measure_text( chunk.text ).first;
 			}
 
-			// Main single-line text (hit to <group> [<damage>] / miss to <reason>) in hit/miss color
-			draw_list.text( title_x, y + ( height - title_h ) * 0.5f, title, tint( log_color ) );
+			constexpr float left_pad = 13.0f;
+			constexpr float icon_size = 18.0f;
+			constexpr float icon_to_text = 10.0f;
+			constexpr float right_pad = 15.0f;
+			const float total_w = left_pad + icon_size + icon_to_text + total_text_w + right_pad;
+			const float max_available_w = std::max( 0.0f, screen_w - x - 16.0f );
+			const float card_w = std::min( total_w, max_available_w );
+
+			if ( card_w < 50.0f ) { ++it; continue; }
+
+			const auto pill_radius = xdraw::corner_radius{ height * 0.5f };
+
+			// 1. Soft ambient drop shadow around the pill
+			draw_list.rect_filled( x - 4.0f, y - 2.0f, card_w + 8.0f, height + 5.0f, tint( { 0, 0, 0, 25 } ), xdraw::corner_radius{ height * 0.5f + 2.0f } );
+			draw_list.rect_filled( x, y + 2.0f, card_w, height, tint( { 0, 0, 0, 50 } ), pill_radius );
+
+			// 2. Real frosted glass blur
+			draw_list.rect_filled_blurred( x, y, card_w, height, pill_radius, tint( { 255, 255, 255, 255 } ) );
+
+			// 3. Crisp white frosted acrylic glass body and crisp border
+			draw_list.rect_filled_gradient( x, y, card_w, height,
+				tint( { 255, 255, 255, 140 } ), tint( { 255, 255, 255, 140 } ),
+				tint( { 240, 246, 255, 110 } ), tint( { 240, 246, 255, 110 } ),
+				pill_radius );
+			draw_list.rect( x, y, card_w, height, tint( { 255, 255, 255, 160 } ), pill_radius, 1.0f );
+
+			// Top specular rim
+			draw_list.line( x + height * 0.5f, y + 0.5f, x + card_w - height * 0.5f, y + 0.5f, tint( { 255, 255, 255, 200 } ), 1.0f );
+
+			// 4. Left circle icon
+			const float icon_cx = x + left_pad + icon_size * 0.5f;
+			const float icon_cy = y + height * 0.5f;
+			const float icon_r = 8.5f;
+
+			if ( is_miss )
+			{
+				const auto miss_color = tint( xdraw::color{ 255, 75, 85 } );
+				draw_list.circle_filled( icon_cx, icon_cy, icon_r, miss_color.alpha( 35 ) );
+				draw_list.circle( icon_cx, icon_cy, icon_r, miss_color, 1.4f );
+				constexpr float cr = 3.2f;
+				draw_list.line( icon_cx - cr, icon_cy - cr, icon_cx + cr, icon_cy + cr, miss_color, 1.5f );
+				draw_list.line( icon_cx + cr, icon_cy - cr, icon_cx - cr, icon_cy + cr, miss_color, 1.5f );
+			}
+			else
+			{
+				const auto hit_color = tint( xdraw::color{ 170, 205, 255 } );
+				draw_list.circle_filled( icon_cx, icon_cy, icon_r, hit_color.alpha( 35 ) );
+				draw_list.circle( icon_cx, icon_cy, icon_r, hit_color, 1.4f );
+				// Crosshair marks inside the circle
+				draw_list.line( icon_cx - 5.5f, icon_cy, icon_cx - 2.5f, icon_cy, hit_color, 1.4f );
+				draw_list.line( icon_cx + 2.5f, icon_cy, icon_cx + 5.5f, icon_cy, hit_color, 1.4f );
+				draw_list.line( icon_cx, icon_cy - 5.5f, icon_cx, icon_cy - 2.5f, hit_color, 1.4f );
+				draw_list.line( icon_cx, icon_cy + 2.5f, icon_cx, icon_cy + 5.5f, hit_color, 1.4f );
+				draw_list.circle_filled( icon_cx, icon_cy, 1.3f, hit_color );
+			}
+
+			// 5. Segmented multi-colored text with shadow for high contrast on frosted white
+			float cur_tx = x + left_pad + icon_size + icon_to_text;
+			const float clip_w = card_w - ( left_pad + icon_size + icon_to_text ) - right_pad;
+			draw_list.push_clip( cur_tx, y, std::max( 0.0f, clip_w ), height );
+
+			for ( const auto& chunk : chunks )
+			{
+				const auto [cw, ch] = xdraw::measure_text( chunk.text );
+				draw_list.text( cur_tx, y + ( height - ch ) * 0.5f, chunk.text, chunk.col, xdraw::text_style::shadowed, tint( { 0, 0, 0, 150 } ) );
+				cur_tx += cw;
+			}
+
+			draw_list.pop_clip( );
 
 			y += height + 6.0f;
 			++it;

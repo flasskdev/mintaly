@@ -66,15 +66,17 @@ namespace features::changer::entity_guard {
         return current(expected);
     }
     inline bool rebuild_materials(const stamp& expected, std::uint64_t mask) {
+        // Post-update tolerant: composite/skin helpers are optional.
+        // Fallback fields + PostDataUpdate still publish the paint to the
+        // world mesh; missing helpers only skip the extra material rebuild.
         const auto composite = PATTERN(patterns::weapon_update_composite_material);
         const auto skin = PATTERN(patterns::weapon_update_skin);
-        if (!composite || !skin || !set_mesh(expected, mask)) return false;
-        // Existing build-dependent composite-material subobject layout.
-		memory::call<void>(composite, expected.entity + 0x610, true);
+        if (!set_mesh(expected, mask)) return false;
+        if (composite) memory::call<void>(composite, expected.entity + 0x610, true);
         if (!current(expected)) return false;
         memory::call_vfunc<void>(expected.entity, 10, 1);
         if (!current(expected)) return false;
-        memory::call<void>(skin, expected.entity, true);
+        if (skin) memory::call<void>(skin, expected.entity, true);
         return current(expected);
     }
 }

@@ -74,6 +74,7 @@ namespace xdraw {
 		ID3D11ShaderResourceView* texture{};
 		D3D11_RECT scissor{};
 		bool has_scissor{};
+		bool is_blur{ false };
 	};
 
 	struct glyph
@@ -160,6 +161,7 @@ namespace xdraw {
 		void image_uv( float x, float y, float w, float h, ID3D11ShaderResourceView* tex, float u0, float v0, float u1, float v1, color tint = color{ 255, 255, 255, 255 } );
 
 		void ensure_cmd( ID3D11ShaderResourceView* texture );
+		void ensure_blur_cmd( );
 		std::uint32_t emit_vtx( float x, float y, float u, float v, color c );
 		void emit_idx( std::uint32_t a, std::uint32_t b, std::uint32_t c );
 		void emit_quad( std::uint32_t a, std::uint32_t b, std::uint32_t c, std::uint32_t d );

@@ -22,6 +22,11 @@ public:
     struct request {
         kind type = kind::weapon;
         int def_index{}, paint_kit{}, music_kit{}, team = 3;
+        float wear{0.01f};
+        int seed{};
+        bool stattrak{};
+        int stattrak_count{};
+        std::string name_tag;
         std::string model_path;
         int width = 512, height = 512;
         int screen_width = 1920, screen_height = 1080;

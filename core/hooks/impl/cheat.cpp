@@ -18,6 +18,7 @@
 #include <utilities/tls/tls.hpp>
 #include <core/features/changer/preview_scene.hpp>
 #include <core/features/changer/preview_item.hpp>
+#include <core/features/esp/primitive_buffer.hpp>
 #include "../hooks.hpp"
 
 namespace hooks {
@@ -756,7 +757,6 @@ namespace hooks {
 			{ &m_render_view, &render_view, "render_view", PATTERN (patterns::render_view) },
 			{ &m_draw_skybox_array, &draw_skybox_array, "draw_skybox_array", PATTERN (patterns::draw_skybox_array) },
 			{ &m_light_scene_object, &light_scene_object, "light_scene_object", PATTERN (patterns::light_scene_object) },
-			{ &m_draw_scene_object_array, &draw_scene_object_array, "draw_scene_object_array", PATTERN (patterns::draw_scene_object_array) },
 			{ &m_draw_scene_object, &draw_scene_object, "draw_scene_object", PATTERN (patterns::draw_scene_object) },
 			{ &m_is_glowing, &is_glowing, "is_glowing", PATTERN (patterns::is_glowing) },
 			{ &m_get_glow_color, &get_glow_color, "get_glow_color", PATTERN (patterns::get_glow_color) },
@@ -842,7 +842,6 @@ namespace hooks {
 		m_render_view.reset( );
 		m_draw_skybox_array.reset( );
 		m_light_scene_object.reset( );
-		m_draw_scene_object_array.reset( );
 		m_draw_scene_object.reset( );
 		m_is_glowing.reset( );
 		m_get_glow_color.reset( );
@@ -1568,27 +1567,6 @@ namespace hooks {
 		return result;
 	}
 
-	void __fastcall cheat::draw_scene_object_array( std::uintptr_t thisptr, std::uintptr_t a2, std::uintptr_t object_array )
-	{
-		static std::atomic_bool first_draw_array_call{};
-		if ( !first_draw_array_call.exchange( true, std::memory_order_relaxed ) )
-		{
-			diag::writef( diag::level::info,
-				"[chams-hook] draw_scene_object_array first call this=%p array=%p",
-				reinterpret_cast<void*>( thisptr ), reinterpret_cast<void*>( object_array ) );
-		}
-
-		m_draw_scene_object_array.call<void>( thisptr, a2, object_array );
-
-		if ( lifecycle::is_unloading( ) || !object_array || !settings::g_world.m_scene.world_setting.value )
-		{
-			return;
-		}
-
-		diag::exception_scope exception_scope{ "world: aggregate records" };
-		features::world::g_scene.on_draw_scene_object_array( object_array );
-	}
-
 	namespace detail {
 		inline bool read_batch_colors( std::uintptr_t batch, int count, std::pair<std::uintptr_t, std::uint32_t>* out ) noexcept
 		{
@@ -1596,7 +1574,11 @@ namespace hooks {
 			{
 				for ( int i = 0; i < count; ++i )
 				{
-					const auto address = batch + static_cast<std::size_t>( i ) * 0x50 + 0x28;
+					const auto address = batch + static_cast<std::size_t>( i ) * features::esp::detail::primitive_size + features::esp::detail::primitive_color_offset;
+					if ( address < 0x10000ull || address > 0x00007FFFFFFFFFFFull )
+					{
+						return false;
+					}
 					out[ i ] = { address, *reinterpret_cast<const std::uint32_t*>( address ) };
 				}
 				return true;
@@ -1613,7 +1595,11 @@ namespace hooks {
 			{
 				for ( std::size_t i = 0; i < count; ++i )
 				{
-					*reinterpret_cast<std::uint32_t*>( in[ i ].first ) = in[ i ].second;
+					const auto address = in[ i ].first;
+					if ( address >= 0x10000ull && address <= 0x00007FFFFFFFFFFFull )
+					{
+						*reinterpret_cast<std::uint32_t*>( address ) = in[ i ].second;
+					}
 				}
 			}
 			__except ( EXCEPTION_EXECUTE_HANDLER )
@@ -1677,15 +1663,15 @@ namespace hooks {
 		}
 	} // namespace detail
 
-	std::uintptr_t __fastcall cheat::draw_scene_object( std::uintptr_t a1, std::uintptr_t a2, std::uintptr_t batch, int batch_count, int a5, std::uintptr_t a6, std::uintptr_t a7, std::uintptr_t a8 )
+	std::uintptr_t __fastcall cheat::draw_scene_object( std::uintptr_t thisptr, std::uintptr_t object, std::uintptr_t batch, int batch_count, std::uintptr_t a5, std::uintptr_t a6, std::uintptr_t a7 )
 	{
 		static std::atomic_bool first_draw_call{};
 		if ( !first_draw_call.exchange( true, std::memory_order_relaxed ) )
 		{
 			diag::writef( diag::level::info,
-				"[chams-hook] draw_scene_object first call a1=%p a2=%p batch=%p count=%d",
-				reinterpret_cast<void*>( a1 ), reinterpret_cast<void*>( a2 ),
-				reinterpret_cast<void*>( batch ), batch_count );
+				"[chams-hook] draw_scene_object first call a1=%p a2=%p batch=%p count=%d a5=%p a6=%p a7=%p",
+				reinterpret_cast<void*>( thisptr ), reinterpret_cast<void*>( object ),
+				reinterpret_cast<void*>( batch ), batch_count, reinterpret_cast<void*>( a5 ), reinterpret_cast<void*>( a6 ), reinterpret_cast<void*>( a7 ) );
 		}
 
 		const auto& scene = settings::g_world.m_scene;
@@ -1725,10 +1711,10 @@ namespace hooks {
 				static_cast<int>( m_generate_primitives.is_enabled( ) || m_generate_animatable_primitives.is_enabled( ) ) );
 		}
 
-		if ( lifecycle::is_unloading( ) || !batch || batch_count <= 0 || batch_count > ( 1 << 16 ) ||
+		if ( lifecycle::is_unloading( ) || !batch || batch < 0x10000ull || batch > 0x00007FFFFFFFFFFFull || batch_count <= 0 || batch_count > ( 1 << 16 ) ||
 			!tint_active )
 		{
-			return m_draw_scene_object.call<std::uintptr_t>( a1, a2, batch, batch_count, a5, a6, a7, a8 );
+			return m_draw_scene_object.call<std::uintptr_t>( thisptr, object, batch, batch_count, a5, a6, a7 );
 		}
 
 		constexpr std::size_t k_stack_batch_capacity = 128;
@@ -1750,7 +1736,7 @@ namespace hooks {
 			tinted = true;
 		}
 
-		const auto result = m_draw_scene_object.call<std::uintptr_t>( a1, a2, batch, batch_count, a5, a6, a7, a8 );
+		const auto result = m_draw_scene_object.call<std::uintptr_t>( thisptr, object, batch, batch_count, a5, a6, a7 );
 
 		if ( tinted )
 		{
@@ -2715,6 +2701,23 @@ namespace hooks {
 			offsets[ 1 ] = target_y;
 			offsets[ 2 ] = target_z;
 			fov[ 0 ]     = target_fov;
+		}
+
+		const float vm_aspect_scale = features::misc::g_camera.aspect_viewmodel_scale( );
+		if ( std::isfinite( vm_aspect_scale ) && vm_aspect_scale > 0.05f && std::abs( vm_aspect_scale - 1.0f ) > 0.001f )
+		{
+			constexpr float deg2rad = std::numbers::pi_v<float> / 360.0f;
+			constexpr float rad2deg = 360.0f / std::numbers::pi_v<float>;
+			const float current_vm_fov = fov[ 0 ];
+			const float tan_half = std::tan( current_vm_fov * deg2rad );
+			// To keep viewmodel projection untouched by custom aspect ratio:
+			// tan(fov_comp / 2) * current_aspect = tan(fov_base / 2) * native_aspect
+			// tan(fov_comp / 2) = tan(fov_base / 2) / (current_aspect / native_aspect) = tan(fov_base / 2) / vm_aspect_scale
+			const float adjusted_fov = 2.0f * std::atan( tan_half / vm_aspect_scale ) * ( 180.0f / std::numbers::pi_v<float> );
+			if ( std::isfinite( adjusted_fov ) && adjusted_fov >= 10.0f && adjusted_fov <= 170.0f )
+			{
+				fov[ 0 ] = adjusted_fov;
+			}
 		}
 	}
 

@@ -188,16 +188,16 @@ namespace rendering::menu_weapons {
             constexpr float k_row_h = 30.0f;
 
             // Draw Left Panel (Groups)
-            const auto bg_card = tokens::col_card.alpha(static_cast<std::uint8_t>(235.0f * alpha_mult));
-            const auto border_card = tokens::col_border.alpha(static_cast<std::uint8_t>(180.0f * alpha_mult));
             top_dl.rect_filled_blurred(main_rect.x, main_rect.y, main_rect.w, main_rect.h, xdraw::corner_radius{ 6.0f },
-                xdraw::color{ 45, 48, 55, static_cast<std::uint8_t>(180.0f * alpha_mult) });
-            top_dl.rect_filled(main_rect.x, main_rect.y, main_rect.w, main_rect.h, bg_card, xdraw::corner_radius{ 6.0f });
-            top_dl.rect(main_rect.x, main_rect.y, main_rect.w, main_rect.h, border_card, xdraw::corner_radius{ 6.0f }, 1.0f);
+                xdraw::color{ 255, 255, 255, static_cast<std::uint8_t>(255.0f * alpha_mult) });
+            const auto glass_top = xdraw::color{ 255, 255, 255, static_cast<std::uint8_t>(145.0f * alpha_mult) };
+            const auto glass_bot = xdraw::color{ 240, 245, 255, static_cast<std::uint8_t>(115.0f * alpha_mult) };
+            top_dl.rect_filled_gradient(main_rect.x, main_rect.y, main_rect.w, main_rect.h, glass_top, glass_top, glass_bot, glass_bot, xdraw::corner_radius{ 6.0f });
+            top_dl.rect(main_rect.x, main_rect.y, main_rect.w, main_rect.h, xdraw::color{ 255, 255, 255, static_cast<std::uint8_t>(160.0f * alpha_mult) }, xdraw::corner_radius{ 6.0f }, 1.0f);
 
             // Soft inner highlight instead of the old accent stripe
             top_dl.line(main_rect.x + 8.0f, main_rect.y + 0.5f, main_rect.x + main_rect.w - 8.0f, main_rect.y + 0.5f,
-                xdraw::color{ 255, 255, 255, static_cast<std::uint8_t>(16.0f * alpha_mult) }, 1.0f);
+                xdraw::color{ 255, 255, 255, static_cast<std::uint8_t>(200.0f * alpha_mult) }, 1.0f);
 
             xdraw::push_font(rendering::g_fonts.inter_medium[rendering::fonts::size::petite]);
 
@@ -250,13 +250,15 @@ namespace rendering::menu_weapons {
             const auto fly_alpha = static_cast<std::uint8_t>(255.0f * fly_ease);
 
             top_dl.rect_filled_blurred(sub_rect.x, sub_rect.y, sub_rect.w, sub_rect.h, xdraw::corner_radius{ 6.0f },
-                xdraw::color{ 45, 48, 55, static_cast<std::uint8_t>(180.0f * fly_ease) });
-            top_dl.rect_filled(sub_rect.x, sub_rect.y, sub_rect.w, sub_rect.h, bg_card, xdraw::corner_radius{ 6.0f });
-            top_dl.rect(sub_rect.x, sub_rect.y, sub_rect.w, sub_rect.h, border_card, xdraw::corner_radius{ 6.0f }, 1.0f);
+                xdraw::color{ 255, 255, 255, static_cast<std::uint8_t>(255.0f * fly_ease) });
+            const auto sub_glass_top = xdraw::color{ 255, 255, 255, static_cast<std::uint8_t>(145.0f * fly_ease) };
+            const auto sub_glass_bot = xdraw::color{ 240, 245, 255, static_cast<std::uint8_t>(115.0f * fly_ease) };
+            top_dl.rect_filled_gradient(sub_rect.x, sub_rect.y, sub_rect.w, sub_rect.h, sub_glass_top, sub_glass_top, sub_glass_bot, sub_glass_bot, xdraw::corner_radius{ 6.0f });
+            top_dl.rect(sub_rect.x, sub_rect.y, sub_rect.w, sub_rect.h, xdraw::color{ 255, 255, 255, static_cast<std::uint8_t>(160.0f * fly_ease) }, xdraw::corner_radius{ 6.0f }, 1.0f);
 
             // Soft inner highlight instead of the old accent stripe
             top_dl.line(sub_rect.x + 8.0f, sub_rect.y + 0.5f, sub_rect.x + sub_rect.w - 8.0f, sub_rect.y + 0.5f,
-                xdraw::color{ 255, 255, 255, static_cast<std::uint8_t>(16.0f * fly_ease) }, 1.0f);
+                xdraw::color{ 255, 255, 255, static_cast<std::uint8_t>(200.0f * fly_ease) }, 1.0f);
 
             const auto safe_hovered = std::clamp(m_hovered_group, 0, 5);
             const auto& grp_info = cstypes::weapons::k_groups[safe_hovered];

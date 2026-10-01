@@ -55,13 +55,21 @@ namespace features::world {
 		}
 
 		[[nodiscard]] std::uint32_t safe_material_hash_impl (std::uintptr_t material) noexcept {
-			if (!material) {
+			// Empty primitive slots can contain sentinels such as -1. Do not let
+			// call_vfunc probe those values: a first-chance AV inside safe_read is
+			// still enough to stop a debugger on every scene draw.
+			if (material < 0x10000ull || material > 0x00007ffffffffff8ull ||
+				(material & (alignof(std::uintptr_t) - 1)) != 0) {
 				return 0;
 			}
 
 			__try {
 				const auto name = memory::call_vfunc<const char*> (material, 0);
-				return name ? fnv1a::runtime_hash (name) : 0;
+				const auto name_addr = reinterpret_cast<std::uintptr_t> (name);
+				if (name_addr < 0x10000ull || name_addr > 0x00007fffffffffffull) {
+					return 0;
+				}
+				return fnv1a::runtime_hash (name);
 			} __except (EXCEPTION_EXECUTE_HANDLER) {
 				return 0;
 			}
@@ -346,59 +354,6 @@ namespace features::world {
 		//memory::write<math::vector3>( object + 0x184, rotation );
 	}
 
-	void scene::on_draw_scene_object_array (std::uintptr_t object_array) const {
-		// Fullbright uses scoped light/primitive overrides, not persistent aggregate records.
-		const auto fullbright_on = false;
-		if (!object_array || !settings::g_world.m_scene.world_setting.value) {
-			return;
-		}
-
-		const auto object_data = memory::safe_read<std::uintptr_t> (object_array + 0x8);
-		if (!object_data || !*object_data) {
-			return;
-		}
-
-		const auto light_data_queue = memory::safe_read<std::uintptr_t> (addresses::globals::light_data_queue);
-		if (!light_data_queue || !*light_data_queue) {
-			return;
-		}
-
-		const auto light_data_base = memory::safe_read<std::uintptr_t> (*light_data_queue + 0x1f08);
-		if (!light_data_base || !*light_data_base) {
-			return;
-		}
-
-		const auto count = memory::safe_read<int> (*object_data + 0x4);
-		const auto index = memory::safe_read<int> (*object_data + 0x30);
-		if (!count || !index || *count <= 0 || *count > (1 << 20) ||
-			*index < 0 || *index > (1 << 22)) {
-			return;
-		}
-
-		const auto fb_col = settings::g_world.m_scene.fullbright_color.value;
-		const auto fb_mult = settings::g_world.m_scene.fullbright_intensity.value;
-		const auto& configured = settings::g_world.m_scene.world_color.value;
-
-		for (auto i = 0; i < *count; ++i) {
-			const auto color_addr = *light_data_base +
-				(static_cast<std::size_t> (*index) + i) * 0x50 + 0x28;
-			const auto current = memory::safe_read<xdraw::color> (color_addr);
-			if (!current) {
-				continue;
-			}
-
-			if (fullbright_on) {
-				const auto r = static_cast<std::uint8_t>(std::clamp(static_cast<float>(fb_col.r) * fb_mult, 0.0f, 255.0f));
-				const auto g = static_cast<std::uint8_t>(std::clamp(static_cast<float>(fb_col.g) * fb_mult, 0.0f, 255.0f));
-				const auto b = static_cast<std::uint8_t>(std::clamp(static_cast<float>(fb_col.b) * fb_mult, 0.0f, 255.0f));
-				(void) memory::safe_write<xdraw::color> (color_addr, { r, g, b, 255 });
-			} else {
-				(void) memory::safe_write<xdraw::color> (
-					color_addr, {configured.r, configured.g, configured.b, current->a});
-			}
-		}
-	}
-
 	void scene::on_draw_scene_object (std::uintptr_t batch, int batch_count) const {
 		if (!batch || batch_count <= 0 || batch_count > (1 << 20)) {
 			return;
@@ -433,20 +388,20 @@ namespace features::world {
 		for (auto i = 0; i < batch_count; ++i) {
 			// Current scenesystem.dll mesh primitives are 0x50 bytes and their
 			// packed color is at +0x28.
-			const auto mesh = batch + (static_cast<std::size_t> (i) * 0x50);
-			const auto material = memory::safe_read<std::uintptr_t> (mesh + 0x20);
+			const auto mesh = batch + (static_cast<std::size_t> (i) * features::esp::detail::primitive_size);
+			const auto material = memory::safe_read<std::uintptr_t> (mesh + features::esp::detail::primitive_material_offset);
 
-			if (!material || !*material) {
+			if (!material || !*material || *material < 0x10000ull || *material > 0x00007ffffffffff8ull) {
 				continue;
 			}
 
             const auto& fire = settings::g_misc.m_smoke_and_fire_color;
             if (fire.custom_molotov.value && is_inferno_primitive(mesh)) {
-				if (const auto original = memory::safe_read<xdraw::color>(mesh + 0x28)) {
+				if (const auto original = memory::safe_read<xdraw::color>(mesh + features::esp::detail::primitive_color_offset)) {
                     const auto& color = fire.molotov_color.value;
                     // Preserve the flame's opacity/fade. draw_scene_object's
                     // existing scoped backup restores the original after draw.
-					(void)memory::safe_write<xdraw::color>(mesh + 0x28,
+					(void)memory::safe_write<xdraw::color>(mesh + features::esp::detail::primitive_color_offset,
                         {color.r, color.g, color.b, original->a});
                 }
                 continue; // World/fullbright tint must not replace the fire color.
@@ -461,11 +416,11 @@ namespace features::world {
 
 			if ((is_cloud || is_sun) && config.custom_color.value) {
 				const auto& color = is_cloud ? config.cloud_color.value : config.sun_color.value;
-				(void)memory::safe_write<std::uint32_t>(mesh + 0x28, color);
+				(void)memory::safe_write<std::uint32_t>(mesh + features::esp::detail::primitive_color_offset, color);
 			} else if (fullbright_on) {
-				(void)memory::safe_write<std::uint32_t>(mesh + 0x28, settings::g_world.m_scene.fullbright_color.value);
+				(void)memory::safe_write<std::uint32_t>(mesh + features::esp::detail::primitive_color_offset, settings::g_world.m_scene.fullbright_color.value);
 			} else if (!is_cloud && !is_sun && settings::g_world.m_scene.world_setting.value) {
-				(void)memory::safe_write<std::uint32_t>(mesh + 0x28, settings::g_world.m_scene.world_color.value);
+				(void)memory::safe_write<std::uint32_t>(mesh + features::esp::detail::primitive_color_offset, settings::g_world.m_scene.world_color.value);
 			}
 		}
 	}

@@ -59,7 +59,7 @@ namespace xdraw {
 			float dt{};
 			float fps{};
 
-			static constexpr auto k_blur_iterations{ 4 };
+			static constexpr auto k_blur_iterations{ 6 };
 
 			struct blur_level
 			{
@@ -76,11 +76,14 @@ namespace xdraw {
 			ComPtr<ID3D11VertexShader> blur_vs{};
 			ComPtr<ID3D11PixelShader> blur_downsample_ps{};
 			ComPtr<ID3D11PixelShader> blur_upsample_ps{};
+			ComPtr<ID3D11PixelShader> blur_quad_ps{};
+			ComPtr<ID3D11SamplerState> blur_sampler{};
 			ComPtr<ID3D11Buffer> blur_cb{};
 			ComPtr<ID3D11BlendState> blur_blend{};
 			ComPtr<ID3D11RasterizerState> blur_rasterizer{};
 			int blur_cached_w{};
 			int blur_cached_h{};
+			DXGI_FORMAT blur_scene_format{ DXGI_FORMAT_UNKNOWN };
 
 			ComPtr<ID3D11Texture2D> glow_tex{};
 			ComPtr<ID3D11RenderTargetView> glow_rtv{};
@@ -271,6 +274,25 @@ namespace xdraw {
 				return false;
 			}
 
+			hr = g.device->CreatePixelShader( shaders::blur_quad_ps_bytecode, sizeof( shaders::blur_quad_ps_bytecode ), nullptr, &g.blur_quad_ps );
+			if ( FAILED( hr ) )
+			{
+				return false;
+			}
+
+			D3D11_SAMPLER_DESC bsd{};
+			bsd.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
+			bsd.AddressU = D3D11_TEXTURE_ADDRESS_CLAMP;
+			bsd.AddressV = D3D11_TEXTURE_ADDRESS_CLAMP;
+			bsd.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
+			bsd.ComparisonFunc = D3D11_COMPARISON_ALWAYS;
+			bsd.MaxLOD = D3D11_FLOAT32_MAX;
+
+			if ( FAILED( g.device->CreateSamplerState( &bsd, &g.blur_sampler ) ) )
+			{
+				return false;
+			}
+
 			D3D11_BLEND_DESC abd{};
 			abd.RenderTarget[ 0 ].BlendEnable = TRUE;
 			abd.RenderTarget[ 0 ].SrcBlend = D3D11_BLEND_ONE;
@@ -289,29 +311,38 @@ namespace xdraw {
 			return true;
 		}
 
-		static void create_blur_textures( int w, int h )
+		static void create_blur_textures( int w, int h, DXGI_FORMAT format = DXGI_FORMAT_R8G8B8A8_UNORM )
 		{
 			g.blur_scene_tex.Reset( );
 			g.blur_scene_srv.Reset( );
+
+			if ( format == DXGI_FORMAT_UNKNOWN )
+			{
+				format = DXGI_FORMAT_R8G8B8A8_UNORM;
+			}
 
 			D3D11_TEXTURE2D_DESC td{};
 			td.Width = static_cast< UINT >( w );
 			td.Height = static_cast< UINT >( h );
 			td.MipLevels = 1;
 			td.ArraySize = 1;
-			td.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+			td.Format = format;
 			td.SampleDesc.Count = 1;
 			td.Usage = D3D11_USAGE_DEFAULT;
 			td.BindFlags = D3D11_BIND_SHADER_RESOURCE;
 
-			g.device->CreateTexture2D( &td, nullptr, &g.blur_scene_tex );
+			if ( FAILED( g.device->CreateTexture2D( &td, nullptr, &g.blur_scene_tex ) ) )
+			{
+				return;
+			}
 
 			D3D11_SHADER_RESOURCE_VIEW_DESC sv{};
-			sv.Format = td.Format;
+			sv.Format = format;
 			sv.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
 			sv.Texture2D.MipLevels = 1;
 
 			g.device->CreateShaderResourceView( g.blur_scene_tex.Get( ), &sv, &g.blur_scene_srv );
+			g.blur_scene_format = format;
 
 			auto mw = w;
 			auto mh = h;
@@ -365,14 +396,14 @@ namespace xdraw {
 			g.device->CreateShaderResourceView( g.glow_tex.Get( ), nullptr, &g.glow_srv );
 		}
 
-		static void update_blur_cb( float tex_w, float tex_h )
+		static void update_blur_cb( float tex_w, float tex_h, float scale = 2.0f )
 		{
 			D3D11_MAPPED_SUBRESOURCE mapped{};
 			if ( SUCCEEDED( g.context->Map( g.blur_cb.Get( ), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped ) ) )
 			{
 				auto data = static_cast< float* >( mapped.pData );
-				data[ 0 ] = 1.0f / tex_w;
-				data[ 1 ] = 1.0f / tex_h;
+				data[ 0 ] = scale / tex_w;
+				data[ 1 ] = scale / tex_h;
 				data[ 2 ] = 0.0f;
 				data[ 3 ] = 0.0f;
 				g.context->Unmap( g.blur_cb.Get( ), 0 );
@@ -402,12 +433,45 @@ namespace xdraw {
 				return;
 			}
 
-			ctx->CopyResource( g.blur_scene_tex.Get( ), bb_resource.Get( ) );
+			ComPtr<ID3D11Texture2D> bb_tex{};
+			if ( FAILED( bb_resource.As( &bb_tex ) ) || !bb_tex )
+			{
+				return;
+			}
+
+			D3D11_TEXTURE2D_DESC bb_desc{};
+			bb_tex->GetDesc( &bb_desc );
+
+			if ( !g.blur_scene_tex || g.blur_scene_format != bb_desc.Format || g.blur_cached_w != static_cast< int >( bb_desc.Width ) || g.blur_cached_h != static_cast< int >( bb_desc.Height ) )
+			{
+				create_blur_textures( static_cast< int >( bb_desc.Width ), static_cast< int >( bb_desc.Height ), bb_desc.Format );
+			}
+
+			if ( !g.blur_scene_tex )
+			{
+				return;
+			}
+
+			auto resolve_fmt = bb_desc.Format;
+			if ( resolve_fmt == DXGI_FORMAT_B8G8R8A8_TYPELESS ) resolve_fmt = DXGI_FORMAT_B8G8R8A8_UNORM;
+			else if ( resolve_fmt == DXGI_FORMAT_R8G8B8A8_TYPELESS ) resolve_fmt = DXGI_FORMAT_R8G8B8A8_UNORM;
+
+			if ( bb_desc.SampleDesc.Count > 1 )
+			{
+				ctx->ResolveSubresource( g.blur_scene_tex.Get( ), 0, bb_resource.Get( ), 0, resolve_fmt );
+			}
+			else
+			{
+				ctx->CopyResource( g.blur_scene_tex.Get( ), bb_resource.Get( ) );
+			}
+
+			ID3D11RenderTargetView* null_rtv{ nullptr };
+			ctx->OMSetRenderTargets( 1, &null_rtv, nullptr );
 
 			ctx->IASetInputLayout( nullptr );
 			ctx->IASetPrimitiveTopology( D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST );
 			ctx->VSSetShader( g.blur_vs.Get( ), nullptr, 0 );
-			ctx->PSSetSamplers( 0, 1, g.sampler.GetAddressOf( ) );
+			ctx->PSSetSamplers( 0, 1, g.blur_sampler.GetAddressOf( ) );
 
 			constexpr float bf[ 4 ]{ 0, 0, 0, 0 };
 			ctx->OMSetBlendState( g.blur_blend.Get( ), bf, 0xFFFFFFFF );
@@ -433,7 +497,7 @@ namespace xdraw {
 				vp.Height = static_cast< float >( dst.h );
 				ctx->RSSetViewports( 1, &vp );
 
-				update_blur_cb( src_w, src_h );
+				update_blur_cb( src_w, src_h, 2.0f );
 				ctx->PSSetConstantBuffers( 0, 1, g.blur_cb.GetAddressOf( ) );
 				ctx->PSSetShaderResources( 0, 1, &src_srv );
 				ctx->Draw( 3, 0 );
@@ -453,7 +517,7 @@ namespace xdraw {
 				vp.Height = static_cast< float >( dst.h );
 				ctx->RSSetViewports( 1, &vp );
 
-				update_blur_cb( static_cast< float >( src.w ), static_cast< float >( src.h ) );
+				update_blur_cb( static_cast< float >( src.w ), static_cast< float >( src.h ), 2.0f );
 				ctx->PSSetConstantBuffers( 0, 1, g.blur_cb.GetAddressOf( ) );
 				ctx->PSSetShaderResources( 0, 1, src.srv.GetAddressOf( ) );
 				ctx->Draw( 3, 0 );
@@ -506,7 +570,7 @@ namespace xdraw {
 				vp.Height = static_cast< float >( dst.h );
 				ctx->RSSetViewports( 1, &vp );
 
-				update_blur_cb( src_w, src_h );
+				update_blur_cb( src_w, src_h, 1.0f );
 				ctx->PSSetConstantBuffers( 0, 1, g.blur_cb.GetAddressOf( ) );
 				ctx->PSSetShaderResources( 0, 1, &src_srv );
 				ctx->Draw( 3, 0 );
@@ -526,7 +590,7 @@ namespace xdraw {
 				vp.Height = static_cast< float >( dst.h );
 				ctx->RSSetViewports( 1, &vp );
 
-				update_blur_cb( static_cast< float >( src.w ), static_cast< float >( src.h ) );
+				update_blur_cb( static_cast< float >( src.w ), static_cast< float >( src.h ), 1.0f );
 				ctx->PSSetConstantBuffers( 0, 1, g.blur_cb.GetAddressOf( ) );
 				ctx->PSSetShaderResources( 0, 1, src.srv.GetAddressOf( ) );
 				ctx->Draw( 3, 0 );
@@ -1128,31 +1192,33 @@ namespace xdraw {
 			return;
 		}
 
-		auto* blur_srv = detail::g.blur_chain[ 0 ].srv.Get( );
-		if ( !blur_srv )
+		auto [vw, vh] = viewport_size( );
+		if ( vw <= 0 || vh <= 0 )
 		{
-			return;
+			vw = detail::g.blur_cached_w;
+			vh = detail::g.blur_cached_h;
+		}
+		if ( vw <= 0 || vh <= 0 )
+		{
+			vw = 1920;
+			vh = 1080;
 		}
 
-		const auto vp_w = static_cast< float >( detail::g.blur_cached_w );
-		const auto vp_h = static_cast< float >( detail::g.blur_cached_h );
-
-		if ( vp_w <= 0.0f || vp_h <= 0.0f )
-		{
-			return;
-		}
+		const auto vp_w = static_cast< float >( vw );
+		const auto vp_h = static_cast< float >( vh );
 
 		const auto u0 = x / vp_w;
 		const auto v0 = y / vp_h;
 		const auto u1 = ( x + w ) / vp_w;
 		const auto v1 = ( y + h ) / vp_h;
 
-		this->ensure_cmd( blur_srv );
+		this->ensure_blur_cmd( );
 
-		auto a = this->emit_vtx( x, y, u0, v0, tint );
-		auto b = this->emit_vtx( x + w, y, u1, v0, tint );
-		auto c = this->emit_vtx( x + w, y + h, u1, v1, tint );
-		auto d = this->emit_vtx( x, y + h, u0, v1, tint );
+		const auto blur_tint = color{ tint.r, tint.g, tint.b, tint.a };
+		auto a = this->emit_vtx( x, y, u0, v0, blur_tint );
+		auto b = this->emit_vtx( x + w, y, u1, v0, blur_tint );
+		auto c = this->emit_vtx( x + w, y + h, u1, v1, blur_tint );
+		auto d = this->emit_vtx( x, y + h, u0, v1, blur_tint );
 		this->emit_quad( a, b, c, d );
 	}
 
@@ -1169,19 +1235,20 @@ namespace xdraw {
 			return;
 		}
 
-		auto blur_srv = detail::g.blur_chain[ 0 ].srv.Get( );
-		if ( !blur_srv )
+		auto [vw, vh] = viewport_size( );
+		if ( vw <= 0 || vh <= 0 )
 		{
-			return;
+			vw = detail::g.blur_cached_w;
+			vh = detail::g.blur_cached_h;
+		}
+		if ( vw <= 0 || vh <= 0 )
+		{
+			vw = 1920;
+			vh = 1080;
 		}
 
-		const auto vp_w = static_cast< float >( detail::g.blur_cached_w );
-		const auto vp_h = static_cast< float >( detail::g.blur_cached_h );
-
-		if ( vp_w <= 0.0f || vp_h <= 0.0f )
-		{
-			return;
-		}
+		const auto vp_w = static_cast< float >( vw );
+		const auto vp_h = static_cast< float >( vh );
 
 		std::vector<float> path{};
 		this->build_rounded_rect_path( x, y, w, h, rounding, path );
@@ -1192,7 +1259,9 @@ namespace xdraw {
 			return;
 		}
 
-		this->ensure_cmd( blur_srv );
+		this->ensure_blur_cmd( );
+
+		const auto blur_tint = color{ tint.r, tint.g, tint.b, tint.a };
 
 		if ( !aa )
 		{
@@ -1202,7 +1271,7 @@ namespace xdraw {
 			{
 				const auto px = path[ static_cast< std::size_t >( i ) * 2 ];
 				const auto py = path[ static_cast< std::size_t >( i ) * 2 + 1 ];
-				const auto vtx = this->emit_vtx( px, py, px / vp_w, py / vp_h, tint );
+				const auto vtx = this->emit_vtx( px, py, px / vp_w, py / vp_h, blur_tint );
 
 				if ( i == 0 )
 				{
@@ -1221,7 +1290,7 @@ namespace xdraw {
 		constexpr auto aa_fringe{ 1.0f };
 		constexpr auto aa_half = aa_fringe * 0.5f;
 
-		const auto transparent = tint.alpha( 0 );
+		const auto transparent = blur_tint.alpha( 0 );
 
 		auto centroid_x{ 0.0f };
 		auto centroid_y{ 0.0f };
@@ -1236,7 +1305,7 @@ namespace xdraw {
 		centroid_y /= static_cast< float >( count );
 
 		const auto base = static_cast< std::uint32_t >( this->vertices.size( ) );
-		this->emit_vtx( centroid_x, centroid_y, centroid_x / vp_w, centroid_y / vp_h, tint );
+		this->emit_vtx( centroid_x, centroid_y, centroid_x / vp_w, centroid_y / vp_h, blur_tint );
 
 		std::vector<float> normals( count * 2 );
 
@@ -1293,7 +1362,7 @@ namespace xdraw {
 			const auto outer_x = px + nx * offset;
 			const auto outer_y = py + ny * offset;
 
-			this->emit_vtx( inner_x, inner_y, inner_x / vp_w, inner_y / vp_h, tint );
+			this->emit_vtx( inner_x, inner_y, inner_x / vp_w, inner_y / vp_h, blur_tint );
 			this->emit_vtx( outer_x, outer_y, outer_x / vp_w, outer_y / vp_h, transparent );
 		}
 
@@ -2170,7 +2239,7 @@ namespace xdraw {
 		if ( !this->commands.empty( ) )
 		{
 			auto& last = this->commands.back( );
-			if ( last.texture == tex && last.has_scissor == has_clip )
+			if ( !last.is_blur && last.texture == tex && last.has_scissor == has_clip )
 			{
 				if ( !has_clip )
 				{
@@ -2189,6 +2258,43 @@ namespace xdraw {
 		cmd.texture = tex;
 		cmd.has_scissor = has_clip;
 		cmd.scissor = clip;
+		cmd.is_blur = false;
+		this->commands.push_back( cmd );
+	}
+
+	void draw_list::ensure_blur_cmd( )
+	{
+		const auto has_clip = !this->clip_stack.empty( );
+		D3D11_RECT clip{};
+
+		if ( has_clip )
+		{
+			clip = this->clip_stack.back( );
+		}
+
+		if ( !this->commands.empty( ) )
+		{
+			auto& last = this->commands.back( );
+			if ( last.is_blur && last.has_scissor == has_clip )
+			{
+				if ( !has_clip )
+				{
+					return;
+				}
+
+				if ( last.scissor.left == clip.left && last.scissor.top == clip.top && last.scissor.right == clip.right && last.scissor.bottom == clip.bottom )
+				{
+					return;
+				}
+			}
+		}
+
+		draw_cmd cmd{};
+		cmd.idx_offset = static_cast< std::uint32_t >( this->indices.size( ) );
+		cmd.texture = nullptr;
+		cmd.has_scissor = has_clip;
+		cmd.scissor = clip;
+		cmd.is_blur = true;
 		this->commands.push_back( cmd );
 	}
 
@@ -2413,9 +2519,28 @@ namespace xdraw {
 		const auto target_w = static_cast< int >( std::ceil( vp.Width ) );
 		const auto target_h = static_cast< int >( std::ceil( vp.Height ) );
 
-		if ( target_w > 0 && target_h > 0 && ( target_w != d.blur_cached_w || target_h != d.blur_cached_h ) )
+		Microsoft::WRL::ComPtr<ID3D11RenderTargetView> current_rtv{};
+		d.context->OMGetRenderTargets( 1, &current_rtv, nullptr );
+		DXGI_FORMAT bb_format = d.blur_scene_format;
+		if ( current_rtv )
 		{
-			detail::create_blur_textures( target_w, target_h );
+			Microsoft::WRL::ComPtr<ID3D11Resource> res{};
+			current_rtv->GetResource( &res );
+			if ( res )
+			{
+				Microsoft::WRL::ComPtr<ID3D11Texture2D> tex{};
+				if ( SUCCEEDED( res.As( &tex ) ) && tex )
+				{
+					D3D11_TEXTURE2D_DESC desc{};
+					tex->GetDesc( &desc );
+					bb_format = desc.Format;
+				}
+			}
+		}
+
+		if ( target_w > 0 && target_h > 0 && ( !d.blur_scene_tex || target_w != d.blur_cached_w || target_h != d.blur_cached_h || d.blur_scene_format != bb_format ) )
+		{
+			detail::create_blur_textures( target_w, target_h, bb_format );
 		}
 
 		{
@@ -2460,8 +2585,6 @@ namespace xdraw {
 				d.context->OMSetDepthStencilState( d.depth.Get( ), 0 );
 			};
 
-		auto blur_srv = d.blur_chain[ 0 ].srv.Get( );
-
 		auto render_layer = [ & ]( draw_list& dl )
 			{
 				if ( dl.vertices.empty( ) || dl.commands.empty( ) )
@@ -2501,6 +2624,7 @@ namespace xdraw {
 				auto blur_stale{ true };
 				ID3D11ShaderResourceView* bound_tex{ nullptr };
 				auto bound_scissor = full_scissor;
+				auto bound_is_blur{ false };
 
 				for ( auto i = 0ull; i < dl.commands.size( ); ++i )
 				{
@@ -2511,7 +2635,7 @@ namespace xdraw {
 						continue;
 					}
 
-					const auto is_blur = blur_srv && cmd.texture == blur_srv;
+					const auto is_blur = cmd.is_blur;
 					auto scissor = full_scissor;
 
 					if ( cmd.has_scissor )
@@ -2527,8 +2651,8 @@ namespace xdraw {
 						}
 					}
 
-					// Reject fully clipped commands before running any blur work.
-					if ( is_blur && blur_stale && d.blur_scene_tex )
+					// Capture and blur background when first blur command is encountered in this layer.
+					if ( is_blur && blur_stale )
 					{
 						detail::run_blur_pass( );
 						pipeline_dirty = true;
@@ -2541,6 +2665,23 @@ namespace xdraw {
 						pipeline_dirty = false;
 						bound_tex = nullptr;
 						bound_scissor = full_scissor;
+						bound_is_blur = false;
+					}
+
+					if ( is_blur != bound_is_blur )
+					{
+						if ( is_blur )
+						{
+							d.context->PSSetShader( d.blur_quad_ps.Get( ), nullptr, 0 );
+							d.context->PSSetSamplers( 0, 1, d.blur_sampler.GetAddressOf( ) );
+						}
+						else
+						{
+							d.context->PSSetShader( d.ps.Get( ), nullptr, 0 );
+							d.context->PSSetSamplers( 0, 1, d.sampler.GetAddressOf( ) );
+						}
+						bound_is_blur = is_blur;
+						bound_tex = nullptr;
 					}
 
 					if ( scissor.left != bound_scissor.left || scissor.top != bound_scissor.top || scissor.right != bound_scissor.right || scissor.bottom != bound_scissor.bottom )
@@ -2549,10 +2690,11 @@ namespace xdraw {
 						bound_scissor = scissor;
 					}
 
-					if ( cmd.texture != bound_tex )
+					auto cur_tex = is_blur ? d.blur_chain[ 0 ].srv.Get( ) : cmd.texture;
+					if ( cur_tex != bound_tex )
 					{
-						d.context->PSSetShaderResources( 0, 1, &cmd.texture );
-						bound_tex = cmd.texture;
+						d.context->PSSetShaderResources( 0, 1, &cur_tex );
+						bound_tex = cur_tex;
 					}
 
 					d.context->DrawIndexed( cmd.idx_count, cmd.idx_offset, 0 );

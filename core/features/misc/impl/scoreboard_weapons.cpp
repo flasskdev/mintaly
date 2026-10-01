@@ -923,6 +923,11 @@ namespace features::misc {
 			return hud;
 		}
 
+		const auto local_ctl = memory::safe_read<std::uintptr_t>( addresses::globals::local_player_controller ).value_or( 0 );
+		const bool in_match = (local_ctl != 0) || systems::g_local.get().is_valid();
+
+		c_ui_panel* hud_panel{};
+		c_ui_panel* menu_panel{};
 		c_ui_panel* fallback{};
 		std::string candidate_names;
 		unsigned candidate_count{};
@@ -951,34 +956,44 @@ namespace features::misc {
 				++candidate_count;
 			}
 
-			// The main-menu Panorama tree exists when the client is outside a match.
-			// Run preview scripts from that root when no live HUD panel is present.
-			if (name == "CSGOMainMenu" || name == "MainMenuRoot") {
-				if (diagnostics) *diagnostics = std::format("matched menu root '{}' ({}/{} panels)", name, i, count);
-				return slot->m_panel;
-			}
+			if (!hud_panel && (name == "CSGOHud" || name == "CSGO_Hud" || name == "Hud"))
+				hud_panel = slot->m_panel;
+			if (!menu_panel && (name == "CSGOMainMenu" || name == "MainMenuRoot"))
+				menu_panel = slot->m_panel;
 			if (!fallback && (name == "MainMenuContainerPanel" || name == "MainMenuInput"))
 				fallback = slot->m_panel;
 		}
-		// Prefer the active menu tree when the match HUD is not built yet. A stale
-		// HUD element can survive a disconnect and would accept scripts without
-		// ever displaying the resulting preview panel.
-		if (fallback) {
-			if (diagnostics)
-				*diagnostics = std::format("menu root not found; using '{}' ({}/{} panels; sample={})",
-					memory::read_string(reinterpret_cast<std::uintptr_t>(fallback->m_panel_name), 96),
-					count, count, candidate_names);
-			return fallback;
+
+		if (in_match) {
+			auto* hud = find_hud_panel();
+			if (hud) {
+				if (diagnostics) *diagnostics = std::format("matched HUD script panel in match ({}/{} panels)", count, count);
+				return hud;
+			}
+			if (menu_panel) {
+				if (diagnostics) *diagnostics = std::format("HUD script panel not found in match, using menu root ({}/{} panels)", count, count);
+				return menu_panel;
+			}
+			if (fallback) return fallback;
+			if (hud_panel) return hud_panel;
+		} else {
+			if (menu_panel) {
+				if (diagnostics) *diagnostics = std::format("matched menu root '{}' ({}/{} panels)",
+					memory::read_string(reinterpret_cast<std::uintptr_t>(menu_panel->m_panel_name), 96), count, count);
+				return menu_panel;
+			}
+			if (fallback) {
+				if (diagnostics)
+					*diagnostics = std::format("menu root not found; using '{}' ({}/{} panels; sample={})",
+						memory::read_string(reinterpret_cast<std::uintptr_t>(fallback->m_panel_name), 96),
+						count, count, candidate_names);
+				return fallback;
+			}
+			if (hud_panel) return hud_panel;
+			auto* hud = find_hud_panel();
+			if (hud) return hud;
 		}
-		auto* hud = find_hud_panel();
-		if (diagnostics) {
-			const auto hud_name = hud
-				? memory::read_string(reinterpret_cast<std::uintptr_t>(hud->m_panel_name), 96)
-				: std::string{"<none>"};
-			*diagnostics = std::format("menu root not found; HUD fallback='{}' ({} panels; sample={})",
-				hud_name, count, candidate_names);
-		}
-		return hud;
+		return nullptr;
 	}
 
 	void scoreboard_weapons::on_level_change () {
@@ -1169,11 +1184,18 @@ namespace features::misc {
 			return !name.empty() && name.size() < 96 &&
 				std::ranges::all_of(name, [](const unsigned char c) { return c >= 0x20 && c < 0x7f; });
 		};
+		const auto local_ctl = memory::safe_read<std::uintptr_t>( addresses::globals::local_player_controller ).value_or( 0 );
+		const bool in_match = (local_ctl != 0) || systems::g_local.get().is_valid();
+
+		if (m_preview_script_panel && !is_live_panel(m_preview_script_panel)) {
+			m_preview_script_panel = nullptr;
+		}
+
 		c_ui_panel* panel{};
 		if (m_preview_ui_engine == ui_engine && is_live_panel(m_preview_script_panel)) {
 			panel = m_preview_script_panel;
 			panel_diagnostics = "cached active Panorama panel";
-		} else if (m_ui_engine == ui_engine && is_live_panel(m_script_panel)) {
+		} else if (in_match && m_ui_engine == ui_engine && is_live_panel(m_script_panel)) {
 			panel = m_script_panel;
 			panel_diagnostics = "reusing the scoreboard's live Panorama panel";
 		} else {
@@ -1212,11 +1234,10 @@ namespace features::misc {
 		m_preview_ui_engine = ui_engine;
 		m_preview_script_panel = panel;
 		if (context_changed) {
-			diag::writef(diag::level::warning,
-				"[model-preview] Panorama context changed; reconnecting engine=0x%llx panel=0x%llx",
+			diag::writef(diag::level::info,
+				"[model-preview] Panorama context changed; updating engine=0x%llx panel=0x%llx",
 				static_cast<unsigned long long>(engine),
 				static_cast<unsigned long long>(reinterpret_cast<std::uintptr_t>(panel)));
-			return false;
 		}
 		if (first_connection) {
 			diag::writef(diag::level::info,

@@ -23,7 +23,9 @@ preview_candidate_filter g_preview_candidate_filter{};
 
 bool model_preview::request::same_asset(const request& o) const {
     return type == o.type && def_index == o.def_index && paint_kit == o.paint_kit &&
-        music_kit == o.music_kit && team == o.team && model_path == o.model_path &&
+        music_kit == o.music_kit && team == o.team && wear == o.wear && seed == o.seed &&
+        stattrak == o.stattrak && stattrak_count == o.stattrak_count && name_tag == o.name_tag &&
+        model_path == o.model_path &&
         width == o.width && height == o.height && screen_width == o.screen_width &&
         screen_height == o.screen_height && background_rgb == o.background_rgb &&
         x == o.x && y == o.y &&
@@ -47,7 +49,7 @@ bool model_preview::initialize() {
     last_sent_.reset();
     last_script_ = {};
     status_ = "Native CS2 agent preview is ready.";
-    diag::writef(diag::level::info, "[model-preview] initialized");
+    diag::writef(diag::level::info, "[model-preview] initialized build=skin-preview-20260930-r5");
     return true;
 }
 
@@ -60,7 +62,6 @@ void model_preview::set_capture_available(bool available) {
     if (!available) {
         bootstrap_sent_ = false;
         connected_ = false;
-        last_sent_.reset();
         agent_pose_ = {};
         pose_entity_ = 0;
         g_preview_candidate_filter = {};
@@ -73,14 +74,19 @@ void model_preview::set_capture_available(bool available) {
 
 void model_preview::submit(request value) {
     if (!std::isfinite(value.x) || !std::isfinite(value.y) ||
-        !std::isfinite(value.yaw) || !std::isfinite(value.pitch))
+        !std::isfinite(value.yaw) || !std::isfinite(value.pitch) || !std::isfinite(value.wear))
         return;
     value.width = std::clamp(value.width, 64, 1600);
     value.height = std::clamp(value.height, 64, 1600);
     value.screen_width = std::clamp(value.screen_width, 64, 8192);
     value.screen_height = std::clamp(value.screen_height, 64, 8192);
+    value.x = std::round(value.x);
+    value.y = std::round(value.y);
     value.yaw = std::remainder(value.yaw, 360.0f);
     value.pitch = std::clamp(value.pitch, -85.0f, 85.0f);
+    value.wear = std::clamp(value.wear, 0.0f, 1.0f);
+    value.seed = std::clamp(value.seed, 0, 1000);
+    value.stattrak_count = std::max(0, value.stattrak_count);
     value.visible = true;
     std::lock_guard lock(mutex_);
     if (!initialized_) return;
@@ -119,7 +125,10 @@ void model_preview::submit(request value) {
 
 void model_preview::hide() {
     std::lock_guard lock(mutex_);
-    if (wanted_) wanted_->visible = false;
+    if (!wanted_ || !wanted_->visible) return;
+    wanted_->visible = false;
+    connected_ = false;
+    status_ = "CS2 item preview closed.";
     pose_capture_requested_.store(false, std::memory_order_release);
     agent_pose_ = {};
     pose_entity_ = 0;
@@ -130,8 +139,7 @@ void model_preview::hide() {
 
 bool model_preview::item_preview_active() const {
     std::lock_guard lock(mutex_);
-    return wanted_ && wanted_->visible &&
-        (wanted_->type == kind::weapon || wanted_->type == kind::knife || wanted_->type == kind::gloves);
+    return wanted_ && wanted_->visible;
 }
 
 bool model_preview::wants_agent_pose() const noexcept {
@@ -453,8 +461,9 @@ void model_preview::update() {
     bool needs_bootstrap{};
     {
         std::lock_guard lock(mutex_);
-        if (!initialized_ || !capture_available_ || !wanted_) {
-            if (wanted_ && wanted_->visible) {
+        if (!initialized_ || !wanted_) return;
+        if (!capture_available_ && wanted_->visible) {
+            if (wanted_->visible) {
                 static auto next_gate_log = clock::time_point{};
                 const auto now = clock::now();
                 if (now >= next_gate_log) {
@@ -475,11 +484,27 @@ void model_preview::update() {
             now < g_preview_candidate_filter.warmup_until)
             return;
         const bool unchanged = last_sent_ && last_sent_->same_asset(value);
-        const auto min_interval = !value.visible ? std::chrono::milliseconds(100) :
+        const bool selection_changed = !last_sent_ || last_sent_->type != value.type ||
+            last_sent_->def_index != value.def_index || last_sent_->team != value.team ||
+            last_sent_->paint_kit != value.paint_kit || last_sent_->music_kit != value.music_kit ||
+            last_sent_->wear != value.wear || last_sent_->seed != value.seed ||
+            last_sent_->stattrak != value.stattrak || last_sent_->stattrak_count != value.stattrak_count ||
+            last_sent_->name_tag != value.name_tag || last_sent_->model_path != value.model_path;
+        const bool visibility_changed = !last_sent_ || last_sent_->visible != value.visible;
+        const bool layout_changed = !last_sent_ || last_sent_->width != value.width ||
+            last_sent_->height != value.height || last_sent_->screen_width != value.screen_width ||
+            last_sent_->screen_height != value.screen_height || last_sent_->background_rgb != value.background_rgb ||
+            last_sent_->x != value.x || last_sent_->y != value.y;
+        const bool rotation_changed = !last_sent_ || last_sent_->yaw != value.yaw || last_sent_->pitch != value.pitch;
+        const auto min_interval = !value.visible ? std::chrono::milliseconds(0) :
             !bootstrap_sent_ ? std::chrono::milliseconds(250) :
-            unchanged ? std::chrono::milliseconds(500) : std::chrono::milliseconds(33);
+            unchanged ? std::chrono::milliseconds(500) :
+            (selection_changed || visibility_changed || rotation_changed) ? std::chrono::milliseconds(16) :
+            layout_changed ? std::chrono::milliseconds(0) : std::chrono::milliseconds(500);
         if (unchanged && !value.visible) return;
         if (last_script_ != clock::time_point{} && now - last_script_ < min_interval) return;
+        // Panorama script execution is synchronous on the game UI thread. Keep
+        // layout updates instant (0ms) so the preview tracks the menu window 1:1 without dragging lag.
         needs_bootstrap = value.visible && !bootstrap_sent_;
         last_script_ = now;
     }
@@ -511,15 +536,24 @@ void model_preview::update() {
         {"visible", value.visible}, {"kind", kind_name},
         {"def", value.def_index}, {"paint", value.paint_kit},
         {"music", value.music_kit}, {"team", value.team},
+        {"wear", value.wear}, {"seed", value.seed},
+        {"stattrak", value.stattrak}, {"stattrak_count", value.stattrak_count},
+        {"name_tag", value.name_tag},
         {"model", value.model_path}, {"width", value.width}, {"height", value.height},
         {"screen_width", value.screen_width}, {"screen_height", value.screen_height},
         {"background_rgb", value.background_rgb},
         {"x", value.x}, {"y", value.y}, {"yaw", value.yaw}, {"pitch", value.pitch},
         {"animation", "inventory-inspect"}
     };
-    const auto script = std::string{"(function(){var p=$.GetContextPanel();if(!p||!p.IsValid())return;"} +
-        "for(var i=0;i<16;i++){var q=null;try{q=p.GetParent();}catch(e){}if(!q||!q.IsValid())break;p=q;}" +
-        "var d=p.Data(),r=d&&d.mintalyNativePreview;if(r&&r.submit)r.submit(" + payload.dump() + ");})()";
+    const auto script = std::string{"(function(){var q=$.GetContextPanel(),origin=q,r=null;"} +
+        "for(var i=0;i<32&&q&&q.IsValid();i++){try{var d=q.Data(),s=d&&d.mintalyNativePreview;" +
+        "if(s&&s.submit){r=s;break;}q=q.GetParent();}catch(e){break;}}" +
+        "if(r&&r.submit){try{if(origin&&origin.IsValid())origin.Data().mintalyPreviewBridgeMissing=false;}catch(e){}r.submit(" +
+        payload.dump() + ");}else{try{var d=origin&&origin.IsValid()?origin.Data():null;" +
+        "if(d&&!d.mintalyPreviewBridgeMissing){d.mintalyPreviewBridgeMissing=true;" +
+        "$.Msg('[mintaly preview] request ignored: bridge state missing');" +
+        "try{if(typeof GameInterfaceAPI!=='undefined'&&typeof GameInterfaceAPI.ConsoleCommand==='function')" +
+        "GameInterfaceAPI.ConsoleCommand('echoln \"[mintaly-js] request ignored: bridge state missing\"');}catch(x){}}}catch(e){}}})()";
     if (!bridge.run_preview_script(script)) {
         std::lock_guard lock(mutex_);
         connected_ = false;
@@ -532,8 +566,11 @@ void model_preview::update() {
     const bool asset_changed = !last_sent_ || last_sent_->type != value.type ||
         last_sent_->def_index != value.def_index || last_sent_->team != value.team ||
         last_sent_->paint_kit != value.paint_kit || last_sent_->music_kit != value.music_kit ||
+        last_sent_->wear != value.wear || last_sent_->seed != value.seed ||
+        last_sent_->stattrak != value.stattrak || last_sent_->stattrak_count != value.stattrak_count ||
+        last_sent_->name_tag != value.name_tag ||
         last_sent_->model_path != value.model_path;
-    connected_ = true;
+    connected_ = value.visible;
     last_sent_ = value;
     if (value.type == kind::agent && asset_changed) {
         diag::writef(diag::level::info,
@@ -543,8 +580,10 @@ void model_preview::update() {
     status_ = value.visible ? "CS2 native item preview is active." : "CS2 item preview closed.";
     if (asset_changed)
         diag::writef(diag::level::info,
-            "[model-preview] request script submitted visible=%d team=%d def=%d yaw=%.1f pitch=%.1f",
-            static_cast<int>(value.visible), value.team, value.def_index, value.yaw, value.pitch);
+            "[model-preview] request script submitted visible=%d team=%d def=%d paint=%d wear=%.4f seed=%d stattrak=%d:%d yaw=%.1f pitch=%.1f",
+            static_cast<int>(value.visible), value.team, value.def_index, value.paint_kit,
+            value.wear, value.seed, static_cast<int>(value.stattrak), value.stattrak_count,
+            value.yaw, value.pitch);
 }
 
 void model_preview::reset() {

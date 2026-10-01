@@ -420,7 +420,20 @@ namespace memory {
 
 done_scanning:
 		if (!match) {
-			logging::console::print (xs ("[error] pattern not found | {}"), pattern_str);
+			// A dead signature is normal after a game update and is retried by
+			// PATTERN(). Logging it on every retry floods the diag log (and the
+			// log itself costs I/O), so report each pattern once.
+			static std::mutex once_mutex;
+			static std::unordered_set<std::string> reported;
+			const std::string key{ pattern_str };
+			bool first_time = false;
+			{
+				std::lock_guard lock( once_mutex );
+				first_time = reported.insert( key ).second;
+			}
+			if (first_time) {
+				logging::console::print (xs ("[error] pattern not found | {}"), pattern_str);
+			}
 			return 0;
 		}
 

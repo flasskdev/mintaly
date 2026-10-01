@@ -48,6 +48,15 @@ namespace utilities::rage_scan_diagnostics {
         no_target_hit,
         geometry_miss,
         pen_success,
+        fire_abort_viewangles,
+        fire_history_pushed,
+        fire_history_missing,
+        pen_contact_accept,
+        pen_geometry_accept,
+        gate_inactive,
+        gate_no_enemies,
+        gate_disabled,
+        gate_cannot_shoot,
         count
     };
 
@@ -86,7 +95,16 @@ namespace utilities::rage_scan_diagnostics {
         "contact_mismatch",
         "no_target_hit",
         "geometry_miss",
-        "pen_success"
+        "pen_success",
+        "fire_abort_viewangles",
+        "fire_history_pushed",
+        "fire_history_missing",
+        "pen_contact_accept",
+        "pen_geometry_accept",
+        "gate_inactive",
+        "gate_no_enemies",
+        "gate_disabled",
+        "gate_cannot_shoot"
     };
     static_assert(names.size() == static_cast<std::size_t>(event::count));
     inline std::array<std::atomic<std::uint64_t>, names.size()> counters{};
@@ -124,13 +142,13 @@ namespace utilities::rage_scan_diagnostics {
         for (std::size_t i = 0; i < snapshot.size(); ++i)
             snapshot[i] = counters[i].exchange(0, std::memory_order_relaxed);
         report_group("pipeline", snapshot, {
-            event::entry, event::gun_calls, event::targets, event::no_targets, event::scan_empty, event::scan_nonempty, event::scan_hits, event::selection, event::selected, event::fire_calls, event::attack_set
+            event::entry, event::gun_calls, event::targets, event::no_targets, event::scan_empty, event::scan_nonempty, event::scan_hits, event::selection, event::selected, event::fire_calls, event::attack_set, event::fire_abort_viewangles, event::fire_history_pushed, event::fire_history_missing, event::gate_inactive, event::gate_no_enemies, event::gate_disabled, event::gate_cannot_shoot
         });
         report_group("scan", snapshot, {
             event::prepare_calls, event::prepare_invalid, event::prepare_fov, event::prepare_geometry, event::prepared_points, event::points, event::invalid_hitbox, event::fov, event::budget, event::penetration_failed, event::damage, event::headgroup, event::accepted
         });
         report_group("penetration", snapshot, {
-            event::pen_calls, event::no_weapon_damage, event::tls_failed, event::invalid_filter, event::no_trace_hits, event::contacts, event::damage_exhausted, event::contact_mismatch, event::no_target_hit, event::geometry_miss, event::pen_success
+            event::pen_calls, event::no_weapon_damage, event::tls_failed, event::invalid_filter, event::no_trace_hits, event::contacts, event::damage_exhausted, event::contact_mismatch, event::no_target_hit, event::geometry_miss, event::pen_success, event::pen_contact_accept, event::pen_geometry_accept
         });
     }
 }

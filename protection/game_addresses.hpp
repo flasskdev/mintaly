@@ -3,6 +3,8 @@
 
 #include <cstdint>
 #include <cstddef>
+#include <atomic>
+#include <chrono>
 
 /*
 * @info
@@ -27,6 +29,22 @@
 namespace protection::addresses {
 	constexpr std::uint32_t hash_const (const char* str, std::uint32_t value = 0x811C9DC5u) {
 		return *str ? hash_const (str + 1, (value ^ std::uint32_t (*str)) * 0x01000193u) : value;
+	}
+
+	// Backoff helper for the PATTERN() retry. A failed resolution doubles the
+	// interval before the next attempt, capped at ~30 s. prev_due is the
+	// previous deadline, now the current steady_clock tick.
+	[[gnu::always_inline]] inline long long pattern_retry_backoff_ns (long long prev_due, long long now) noexcept {
+		constexpr long long k_second = 1000000000LL;
+		constexpr long long k_cap = 30LL * k_second;
+		const long long elapsed = now - prev_due;
+		long long delay = k_second;
+		if ( prev_due && elapsed > 0 && elapsed < k_cap )
+		{
+			delay = elapsed * 2;
+			if ( delay > k_cap ) delay = k_cap;
+		}
+		return delay;
 	}
 
 	template <std::size_t N>
@@ -96,10 +114,36 @@ namespace protection::addresses {
     (::protection::addresses ::address_holder<hash_value, addr_type, ::protection::addresses ::fixed_string{ str_value }>::entry)
 
 #ifndef PATTERN
+// Per-call-site cache that RETRIES a miss (the old `static const auto val`
+// poisoned a 0 forever when the first call happened before the module was
+// loaded or after a game update changed the bytes).
+//
+// A retry is rate limited: memory::resolve_pattern() SIMD-scans the whole
+// module (~39 MB for client.dll). Re-scanning every frame for a genuinely
+// dead signature produced multi-second frame stalls, so misses back off
+// exponentially up to ~30 s. resolve_pattern_cached() only caches successes.
 #define PATTERN(entry) \
     ([]() -> std::uintptr_t { \
-        static const auto val = memory::resolve_pattern_cached((entry).data.data); \
-        return val; \
+        static std::atomic<std::uintptr_t> val{}; \
+        auto cur = val.load( std::memory_order_acquire ); \
+        if ( !cur ) { \
+            static std::atomic<long long> next_try{}; \
+            const auto now = std::chrono::steady_clock::now().time_since_epoch().count(); \
+            auto due = next_try.load( std::memory_order_acquire ); \
+            if ( now >= due ) { \
+                cur = memory::resolve_pattern_cached((entry).data.data); \
+                if ( cur ) { \
+                    val.store( cur, std::memory_order_release ); \
+                    next_try.store( 0, std::memory_order_relaxed ); \
+                } else { \
+                    /* Exponential backoff: 1s, 2s, 4s, ... capped at 30s. */ \
+                    const auto prev = next_try.exchange( now + ::protection::addresses::pattern_retry_backoff_ns( due, now ), \
+                        std::memory_order_acq_rel ); \
+                    (void)prev; \
+                } \
+            } \
+        } \
+        return cur; \
     }())
 #endif
 

@@ -206,7 +206,7 @@ namespace rendering {
         const bool is_user_active     = wm.show_user.value;
         const bool is_map_active      = has_map;
         const bool is_ping_active     = wm.show_ping.value;
-        const bool is_loss_active     = wm.show_loss.value;
+        const bool is_loss_active     = wm.show_loss.value && ( loss_pct > 0 );
         const bool is_velocity_active = has_velocity;
         const bool is_fps_active      = wm.show_fps.value;
         const bool is_tick_active     = has_tick;
@@ -422,18 +422,29 @@ namespace rendering {
                 y = 12.0f + row * (height + 5.0f);
 
             // Ambient soft shadow expanding all around the background card
-            draw_list.rect_filled( x - 6.0f, y - 5.0f, w + 12.0f, height + 11.0f,
-                tint({ 0, 0, 0, 15 }), xdraw::corner_radius{ 12.0f } );
-            draw_list.rect_filled( x - 4.0f, y - 3.5f, w + 8.0f, height + 8.0f,
-                tint({ 0, 0, 0, 30 }), xdraw::corner_radius{ 10.0f } );
+            draw_list.rect_filled( x - 8.0f, y - 6.0f, w + 16.0f, height + 13.0f,
+                tint({ 0, 0, 0, 20 }), xdraw::corner_radius{ 13.0f } );
+            draw_list.rect_filled( x - 5.0f, y - 4.0f, w + 10.0f, height + 9.0f,
+                tint({ 0, 0, 0, 35 }), xdraw::corner_radius{ 11.0f } );
             draw_list.rect_filled( x - 2.5f, y - 2.0f, w + 5.0f, height + 5.0f,
-                tint({ 0, 0, 0, 50 }), xdraw::corner_radius{ 8.5f } );
-            draw_list.rect_filled( x - 1.0f, y - 0.5f, w + 2.0f, height + 3.0f,
-                tint({ 0, 0, 0, 75 }), xdraw::corner_radius{ 7.5f } );
+                tint({ 0, 0, 0, 55 }), xdraw::corner_radius{ 9.0f } );
+            draw_list.rect_filled( x, y + 2.0f, w, height,
+                tint({ 0, 0, 0, 80 }), xdraw::corner_radius{ 7.0f } );
 
-            // Card background and border
-            draw_list.rect_filled(x, y, w, height, tint(tokens::col_card), xdraw::corner_radius{7.0f});
-            draw_list.rect(x, y, w, height, tint(tokens::col_border), xdraw::corner_radius{7.0f});
+            // 1. Frosted glass blur (like options)
+            draw_list.rect_filled_blurred( x, y, w, height, xdraw::corner_radius{ 7.0f },
+                tint({ 255, 255, 255, 255 }) );
+
+            // 2. White frosted acrylic glass body (like options)
+            const auto glass_top = tint( xdraw::color{ 255, 255, 255, 145 } );
+            const auto glass_bot = tint( xdraw::color{ 240, 246, 255, 115 } );
+            draw_list.rect_filled_gradient( x, y, w, height, glass_top, glass_top, glass_bot, glass_bot, xdraw::corner_radius{ 7.0f } );
+
+            // 3. Whitish border and top specular rim
+            draw_list.rect( x, y, w, height, tint( xdraw::color{ 255, 255, 255, 150 } ), xdraw::corner_radius{ 7.0f } );
+            draw_list.line( x + 7.0f, y + 0.5f, x + w - 7.0f, y + 0.5f,
+                tint( xdraw::color{ 255, 255, 255, 200 } ), 1.0f );
+
             const auto accent_x = x + 10.0f;
             const auto accent_w = std::max(0.0f, w - 20.0f);
             const auto half_w = accent_w * 0.5f;
@@ -446,14 +457,14 @@ namespace rendering {
             auto cx = x + pad;
             if (row == 0)
             {
-                draw_list.rect_filled(cx, y + 6.0f, 22.0f, 22.0f, tint(tokens::col_elevated), xdraw::corner_radius{5.0f});
-                draw_list.rect(cx, y + 6.0f, 22.0f, 22.0f, tint(tokens::col_accent.alpha(110)), xdraw::corner_radius{5.0f});
+                draw_list.rect_filled(cx, y + 6.0f, 22.0f, 22.0f, tint(xdraw::color{ 255, 255, 255, 22 }), xdraw::corner_radius{5.0f});
+                draw_list.rect(cx, y + 6.0f, 22.0f, 22.0f, tint(tokens::col_accent.alpha(130)), xdraw::corner_radius{5.0f});
                 xdraw::push_font(g_fonts.inter_bold[fonts::size::petite]);
                 const auto [mw, mh] = xdraw::measure_text("M");
                 draw_list.text(cx + (22.0f - mw) * 0.5f, y + (height - mh) * 0.5f, "M", tint(tokens::col_accent));
                 xdraw::pop_font();
                 const auto th = xdraw::measure_text("mintaly").second;
-                draw_list.text(cx + 29.0f, y + (height - th) * 0.5f, "mintaly", tint(tokens::col_text));
+                draw_list.text(cx + 29.0f, y + (height - th) * 0.5f, "mintaly", tint(xdraw::color{ 245, 248, 255, 255 }));
                 cx += brand_width;
             }
             for (const auto& item : rows[row])

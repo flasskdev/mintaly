@@ -9,6 +9,11 @@ namespace memory {
 		template <typename T>
 		[[nodiscard]] __declspec(noinline) std::optional<T> safe_read_impl( std::uintptr_t address )
 		{
+			if ( address < 0x10000ull || address > 0x00007FFFFFFFFFFFull )
+			{
+				return std::nullopt;
+			}
+
 			__try
 			{
 				return *reinterpret_cast<T*>( address );
@@ -24,6 +29,11 @@ namespace memory {
 			std::uintptr_t address,
 			const T& value )
 		{
+			if ( address < 0x10000ull || address > 0x00007FFFFFFFFFFFull )
+			{
+				return false;
+			}
+
 			__try
 			{
 				*reinterpret_cast<T*>( address ) = value;
@@ -126,16 +136,17 @@ namespace memory {
 				return T{};
 		};
 
-		if ( !instance )
+		if ( instance < 0x10000ull || instance > 0x00007FFFFFFFFFFFull )
 			return fail();
 
 		const auto vtable = safe_read<std::uintptr_t>( instance );
-		if ( !vtable || !*vtable )
+		if ( !vtable || !*vtable || *vtable < 0x10000ull || *vtable > 0x00007FFFFFFFFFFFull ||
+		     (*vtable & (alignof(std::uintptr_t) - 1)) != 0 )
 			return fail();
 
 		const auto func = safe_read<std::uintptr_t>(
 			*vtable + index * sizeof( std::uintptr_t ) );
-		if ( !func || !*func )
+		if ( !func || !*func || *func < 0x10000ull || *func > 0x00007FFFFFFFFFFFull )
 			return fail();
 
 		return reinterpret_cast< T( __fastcall* )( std::uintptr_t, args_t... ) >(

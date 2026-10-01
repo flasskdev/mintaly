@@ -43,7 +43,6 @@ namespace features::world {
         void on_draw_skybox_array_post( );
         void on_light_scene_object_pre( std::uintptr_t object ) const;
         void on_light_scene_object_post( std::uintptr_t object ) const;
-        void on_draw_scene_object_array( std::uintptr_t object_array ) const;
         void on_draw_scene_object( std::uintptr_t batch, int batch_count ) const;
         [[nodiscard]] bool on_setup_fog( __m128i* output, int* mode ) const;
         void on_set_shader_param( __m128i*& value, std::uint32_t hash ) const;

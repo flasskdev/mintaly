@@ -217,6 +217,7 @@ namespace systems {
 		// Cheap count without materializing a snapshot: used by the frame hook to
 		// detect a stale cache whose player entries were never recorded.
 		[[nodiscard]] std::size_t count_of( type type ) const;
+		[[nodiscard]] bool has_type( type type ) const { return this->count_of( type ) > 0; }
 		[[nodiscard]] bool has_alive_enemies( std::uintptr_t local_controller, std::uintptr_t local_pawn, int local_team, bool is_team_mode = true ) const;
 
 		[[nodiscard]] bool is_empty( ) const;

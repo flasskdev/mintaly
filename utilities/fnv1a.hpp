@@ -17,7 +17,8 @@ namespace fnv1a {
 
 	inline std::uint32_t runtime_hash( const char* str ) noexcept
 	{
-		if ( !str )
+		const auto addr = reinterpret_cast< std::uintptr_t >( str );
+		if ( addr < 0x10000ull || addr > 0x00007FFFFFFFFFFFull )
 		{
 			return 0;
 		}

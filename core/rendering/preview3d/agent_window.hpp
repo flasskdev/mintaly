@@ -17,6 +17,309 @@
 namespace nemesis::preview3d {
 inline constexpr std::uintptr_t agent_window_id = 0x4e454d3341475052ull;
 
+struct point2 { float x{}, y{}; };
+struct projected_agent {
+    std::array<point2, 21> bones{};
+    std::array<bool, 21> bone_valid{};
+    xui::rect bounds{};
+    bool valid{};
+};
+
+[[nodiscard]] inline projected_agent project_agent(
+    const systems::model_preview::agent_pose_snapshot& pose) {
+    static constexpr std::array<std::uint32_t, 21> bone_map{{
+        cstypes::bone_ids::head,           // 0
+        cstypes::bone_ids::neck,           // 1
+        cstypes::bone_ids::spine_4,        // 2
+        cstypes::bone_ids::spine_3,        // 3
+        cstypes::bone_ids::spine_2,        // 4
+        cstypes::bone_ids::spine_1,        // 5
+        cstypes::bone_ids::pelvis,         // 6
+        cstypes::bone_ids::left_clavicle,  // 7
+        cstypes::bone_ids::left_shoulder,  // 8
+        cstypes::bone_ids::left_elbow,     // 9
+        cstypes::bone_ids::left_hand,      // 10
+        cstypes::bone_ids::right_clavicle, // 11
+        cstypes::bone_ids::right_shoulder, // 12
+        cstypes::bone_ids::right_elbow,    // 13
+        cstypes::bone_ids::right_hand,     // 14
+        cstypes::bone_ids::left_hip,       // 15
+        cstypes::bone_ids::left_knee,      // 16
+        cstypes::bone_ids::left_foot,      // 17
+        cstypes::bone_ids::right_hip,      // 18
+        cstypes::bone_ids::right_knee,     // 19
+        cstypes::bone_ids::right_foot      // 20
+    }};
+    projected_agent result{};
+    float min_x = pose.right, min_y = pose.bottom;
+    float max_x = pose.left, max_y = pose.top;
+    std::size_t valid_points{};
+    for (std::size_t i = 0; i < bone_map.size(); ++i) {
+        const auto bone_index = bone_map[i];
+        if (bone_index >= pose.bones.size() || !pose.bones[bone_index].valid)
+            continue;
+        auto& point = result.bones[i];
+        point.x = pose.bones[bone_index].x;
+        point.y = pose.bones[bone_index].y;
+        result.bone_valid[i] = true;
+        min_x = std::min(min_x, point.x);
+        min_y = std::min(min_y, point.y);
+        max_x = std::max(max_x, point.x);
+        max_y = std::max(max_y, point.y);
+        ++valid_points;
+    }
+
+    if (!pose.valid || valid_points < 10 || !result.bone_valid[0] ||
+        !result.bone_valid[6] || !result.bone_valid[17] || !result.bone_valid[20] ||
+        pose.right <= pose.left || pose.bottom <= pose.top)
+        return result;
+    result.bounds = {pose.left, pose.top, pose.right - pose.left, pose.bottom - pose.top};
+    result.valid = true;
+    return result;
+}
+
+inline void setup_agent_request(
+    systems::model_preview::request& request,
+    std::string& agent_name,
+    int team) {
+    team = (team == 2) ? 2 : 3;
+    const auto& changer = settings::g_changer;
+    auto def_index = team == 3 ? changer.agents.ct_def : changer.agents.t_def;
+    std::string model_path;
+    const auto custom_index = team == 3 ? changer.custom_agents.selected_ct : changer.custom_agents.selected_t;
+    if (custom_index >= 0 && custom_index < static_cast<int>(changer.custom_agents.entries.size())) {
+        const auto& custom = changer.custom_agents.entries[custom_index];
+        if ((custom.team == 0 || custom.team == team) && !custom.model_path.empty())
+            model_path = custom.model_path;
+    }
+
+    auto& items = features::changer::g_econ_item_system;
+    const features::changer::econ_item_system::item_def* def =
+        def_index ? items.find_def(def_index) : nullptr;
+    if (!def) {
+        for (const auto* candidate : items.agents()) {
+            if (candidate && candidate->team() == team) {
+                def = candidate;
+                def_index = candidate->def_index;
+                break;
+            }
+        }
+    }
+    if (model_path.empty() && def) model_path = def->model_player;
+    if (model_path.empty()) {
+        model_path = team == 3
+            ? "agents/models/ctm_sas/ctm_sas.vmdl"
+            : "agents/models/tm_phoenix/tm_phoenix.vmdl";
+    }
+
+    request.type = systems::model_preview::kind::agent;
+    request.team = team;
+    request.def_index = def_index;
+    request.paint_kit = request.music_kit = 0;
+    request.model_path = std::move(model_path);
+    agent_name = def ? (def->localized_name.empty() ? def->name : def->localized_name)
+        : (team == 3 ? "Counter-Terrorist" : "Terrorist");
+}
+
+inline void draw_agent_esp_overlay(
+    xdraw::draw_list& dl,
+    const projected_agent& projected,
+    const settings::esp::player::overlay& esp,
+    int team,
+    std::string_view agent_name) {
+    if (!projected.valid || !esp.enabled.value)
+        return;
+    const auto box = projected.bounds;
+
+    if (esp.m_box.enabled.value) {
+        const auto color = esp.m_box.visible_color.value;
+        if (esp.m_box.fill.value)
+            dl.rect_filled(box.x, box.y, box.w, box.h, color.alpha(18));
+        if (esp.m_box.outline.value)
+            dl.rect(box.x - 1.0f, box.y - 1.0f, box.w + 2.0f, box.h + 2.0f,
+                xdraw::color{0, 0, 0, 210}, xdraw::corner_radius{0.0f}, 3.0f);
+        if (esp.m_box.style.value == settings::esp::player::overlay::box::style_type::full) {
+            dl.rect(box.x, box.y, box.w, box.h, color, xdraw::corner_radius{0.0f}, 1.4f);
+        } else {
+            const float max_corner = std::max(4.0f, box.w * 0.35f);
+            const float c = std::clamp(esp.m_box.corner_length.value, 4.0f, max_corner);
+            dl.line(box.x, box.y, box.x + c, box.y, color, 1.4f);
+            dl.line(box.x, box.y, box.x, box.y + c, color, 1.4f);
+            dl.line(box.right() - c, box.y, box.right(), box.y, color, 1.4f);
+            dl.line(box.right(), box.y, box.right(), box.y + c, color, 1.4f);
+            dl.line(box.x, box.bottom() - c, box.x, box.bottom(), color, 1.4f);
+            dl.line(box.x, box.bottom(), box.x + c, box.bottom(), color, 1.4f);
+            dl.line(box.right() - c, box.bottom(), box.right(), box.bottom(), color, 1.4f);
+            dl.line(box.right(), box.bottom() - c, box.right(), box.bottom(), color, 1.4f);
+        }
+    }
+
+    if (esp.m_skeleton.enabled.value) {
+        const auto color = esp.m_skeleton.visible_color.value;
+        const float thickness = std::clamp(esp.m_skeleton.thickness.value, 0.5f, 5.0f);
+        static constexpr std::array<std::pair<std::size_t, std::size_t>, 20> edges{{
+            // Spine
+            {0, 1}, {1, 2}, {2, 3}, {3, 4}, {4, 5}, {5, 6},
+            // Left arm
+            {2, 7}, {7, 8}, {8, 9}, {9, 10},
+            // Right arm
+            {2, 11}, {11, 12}, {12, 13}, {13, 14},
+            // Left leg
+            {6, 15}, {15, 16}, {16, 17},
+            // Right leg
+            {6, 18}, {18, 19}, {19, 20}
+        }};
+        for (const auto& [from, to] : edges) {
+            if (!projected.bone_valid[from] || !projected.bone_valid[to])
+                continue;
+            const auto& a = projected.bones[from];
+            const auto& b = projected.bones[to];
+            dl.line(a.x, a.y, b.x, b.y, color, thickness);
+        }
+        if (projected.bone_valid[0]) {
+            const auto& head = projected.bones[0];
+            dl.circle(head.x, head.y, std::clamp(box.w * 0.08f, 5.0f, 12.0f), color, thickness);
+        }
+    }
+
+    if (esp.m_health_bar.enabled.value) {
+        const auto& health = esp.m_health_bar;
+        const auto position = health.position.value;
+        const bool vertical = position == settings::esp::player::overlay::health_bar::position_type::left;
+        const float x = vertical ? box.x - 7.0f : box.x;
+        const float y = position == settings::esp::player::overlay::health_bar::position_type::top
+            ? box.y - 7.0f : position == settings::esp::player::overlay::health_bar::position_type::bottom
+                ? box.bottom() + 7.0f : box.y;
+        const float w = vertical ? 4.0f : box.w;
+        const float h = vertical ? box.h : 4.0f;
+        if (health.glow.value)
+            dl.rect_filled(x - 2.0f, y - 2.0f, w + 4.0f, h + 4.0f,
+                health.glow_color.value.alpha(static_cast<std::uint8_t>(
+                    std::clamp(health.glow_strength.value, 0.0f, 1.0f) * 96.0f)));
+        if (health.outline_setting.value)
+            dl.rect_filled(x - 1.0f, y - 1.0f, w + 2.0f, h + 2.0f, health.outline_color.value);
+        dl.rect_filled(x, y, w, h, health.background_color.value);
+        constexpr float health_fraction = 0.76f;
+        const float filled = (vertical ? h : w) * health_fraction;
+        if (vertical) {
+            if (health.gradient.value)
+                dl.rect_filled_gradient(x, y + h - filled, w, filled,
+                    health.full_color.value, health.full_color.value,
+                    health.low_color.value, health.low_color.value);
+            else
+                dl.rect_filled(x, y + h - filled, w, filled, health.full_color.value);
+        } else if (health.gradient.value) {
+            dl.rect_filled_gradient(x, y, filled, h,
+                health.low_color.value, health.full_color.value,
+                health.full_color.value, health.low_color.value);
+        } else {
+            dl.rect_filled(x, y, filled, h, health.full_color.value);
+        }
+        if (health.show_value.value)
+            dl.text(vertical ? x - 18.0f : x, y - 14.0f, "76",
+                health.text_color.value, xdraw::text_style::outlined);
+    }
+
+    if (esp.m_ammo_bar.enabled.value) {
+        const auto& ammo = esp.m_ammo_bar;
+        const auto position = ammo.position.value;
+        const bool vertical = position == settings::esp::player::overlay::ammo_bar::position_type::left;
+        const float x = vertical ? box.x - 13.0f : box.x;
+        const float y = position == settings::esp::player::overlay::ammo_bar::position_type::top
+            ? box.y - 13.0f : position == settings::esp::player::overlay::ammo_bar::position_type::bottom
+                ? box.bottom() + 13.0f : box.y;
+        const float w = vertical ? 3.5f : box.w;
+        const float h = vertical ? box.h : 3.5f;
+        constexpr float ammo_fraction = 0.58f;
+        const float filled = (vertical ? h : w) * ammo_fraction;
+        if (ammo.glow.value)
+            dl.rect_filled(x - 2.0f, y - 2.0f, w + 4.0f, h + 4.0f,
+                ammo.glow_color.value.alpha(static_cast<std::uint8_t>(
+                    std::clamp(ammo.glow_strength.value, 0.0f, 1.0f) * 96.0f)));
+        if (ammo.outline_setting.value)
+            dl.rect_filled(x - 1.0f, y - 1.0f, w + 2.0f, h + 2.0f, ammo.outline_color.value);
+        dl.rect_filled(x, y, w, h, ammo.background_color.value);
+        if (vertical) {
+            if (ammo.gradient.value)
+                dl.rect_filled_gradient(x, y + h - filled, w, filled,
+                    ammo.full_color.value, ammo.full_color.value,
+                    ammo.low_color.value, ammo.low_color.value);
+            else
+                dl.rect_filled(x, y + h - filled, w, filled, ammo.full_color.value);
+        } else if (ammo.gradient.value) {
+            dl.rect_filled_gradient(x, y, filled, h,
+                ammo.low_color.value, ammo.full_color.value,
+                ammo.full_color.value, ammo.low_color.value);
+        } else {
+            dl.rect_filled(x, y, filled, h, ammo.full_color.value);
+        }
+        if (ammo.show_value.value)
+            dl.text(vertical ? x - 19.0f : x, y + h + 2.0f, "7/12",
+                ammo.text_color.value, xdraw::text_style::outlined);
+    }
+
+    if (esp.m_name.enabled.value) {
+        const auto [tw, th] = xdraw::measure_text(agent_name);
+        dl.text(box.x + (box.w - tw) * 0.5f, box.y - th - 4.0f,
+            agent_name, esp.m_name.color.value, xdraw::text_style::outlined);
+    }
+
+    if (esp.m_info_flags.enabled.value) {
+        const auto& flags = esp.m_info_flags;
+        struct flag_preview {
+            settings::esp::player::overlay::info_flags::flag flag;
+            std::string_view label;
+            xdraw::color color;
+        };
+        const std::array<flag_preview, 9> flag_previews{{
+            {settings::esp::player::overlay::info_flags::money, "$16,000", flags.money_color.value},
+            {settings::esp::player::overlay::info_flags::armor, "ARMOR", flags.armor_color.value},
+            {settings::esp::player::overlay::info_flags::kit, "KIT", flags.kit_color.value},
+            {settings::esp::player::overlay::info_flags::scoped, "SCOPED", flags.scoped_color.value},
+            {settings::esp::player::overlay::info_flags::defusing, "DEFUSING", flags.defusing_color.value},
+            {settings::esp::player::overlay::info_flags::flashed, "FLASHED", flags.flashed_color.value},
+            {settings::esp::player::overlay::info_flags::ping, "38ms", flags.distance_color.value},
+            {settings::esp::player::overlay::info_flags::distance, "12m", flags.distance_color.value},
+            {settings::esp::player::overlay::info_flags::c4, "C4", flags.c4_color.value}
+        }};
+        float flags_y = box.y + 4.0f;
+        for (const auto& flag : flag_previews) {
+            if (!flags.has(flag.flag)) continue;
+            dl.text(box.right() + 6.0f, flags_y, flag.label,
+                flag.color, xdraw::text_style::outlined);
+            flags_y += 13.0f;
+        }
+    }
+
+    if (esp.m_weapon.enabled.value) {
+        const bool is_ct = team == 3;
+        const auto weapon_name = is_ct ? std::string_view{"usp_silencer"} : std::string_view{"glock"};
+        const auto weapon_label = is_ct ? std::string_view{"USP-S"} : std::string_view{"Glock-18"};
+        const auto display = esp.m_weapon.display.value;
+        const bool show_icon = display == settings::esp::player::overlay::weapon::display_type::icon ||
+            display == settings::esp::player::overlay::weapon::display_type::text_and_icon;
+        const bool show_text = display == settings::esp::player::overlay::weapon::display_type::text ||
+            display == settings::esp::player::overlay::weapon::display_type::text_and_icon;
+        float y = box.bottom() + 5.0f;
+        bool icon_drawn = false;
+        if (show_icon) {
+            const auto* icon = systems::g_icons.get(std::string{weapon_name}, 0.35f);
+            if (icon && icon->texture) {
+                const float x = box.x + (box.w - static_cast<float>(icon->width)) * 0.5f;
+                dl.image(x, y, static_cast<float>(icon->width), static_cast<float>(icon->height),
+                    icon->texture.Get(), esp.m_weapon.icon_color.value);
+                y += static_cast<float>(icon->height) + 2.0f;
+                icon_drawn = true;
+            }
+        }
+        if (show_text || (show_icon && !icon_drawn)) {
+            const auto [tw, th] = xdraw::measure_text(weapon_label);
+            dl.text(box.x + (box.w - tw) * 0.5f, y, weapon_label,
+                esp.m_weapon.text_color.value, xdraw::text_style::outlined);
+        }
+    }
+}
+
 class agent_preview_window final : public xui::overlay {
     xui::rect window_{};
     systems::model_preview::request request_{};
@@ -25,18 +328,9 @@ class agent_preview_window final : public xui::overlay {
     float preview_ready_time_{};
     bool rotating_{};
 
-    struct point2 { float x{}, y{}; };
-    struct projected_agent {
-        std::array<point2, 21> bones{};
-        std::array<bool, 21> bone_valid{};
-        xui::rect bounds{};
-        bool valid{};
-    };
-
     void update_layout() {
         const auto [sw, sh] = xdraw::viewport_size();
         constexpr float w = 378.0f, h = 568.0f;
-        // Reserve room for the side trigger; the preview always docks to the right.
         const float x = m_anchor.x + m_anchor.w + 82.0f;
         window_ = {
             x,
@@ -45,107 +339,15 @@ class agent_preview_window final : public xui::overlay {
         };
     }
 
-    [[nodiscard]] static projected_agent project_agent(
-        const systems::model_preview::agent_pose_snapshot& pose) {
-        static constexpr std::array<std::uint32_t, 21> bone_map{{
-            cstypes::bone_ids::head,           // 0
-            cstypes::bone_ids::neck,           // 1
-            cstypes::bone_ids::spine_4,        // 2
-            cstypes::bone_ids::spine_3,        // 3
-            cstypes::bone_ids::spine_2,        // 4
-            cstypes::bone_ids::spine_1,        // 5
-            cstypes::bone_ids::pelvis,         // 6
-            cstypes::bone_ids::left_clavicle,  // 7
-            cstypes::bone_ids::left_shoulder,  // 8
-            cstypes::bone_ids::left_elbow,     // 9
-            cstypes::bone_ids::left_hand,      // 10
-            cstypes::bone_ids::right_clavicle, // 11
-            cstypes::bone_ids::right_shoulder, // 12
-            cstypes::bone_ids::right_elbow,    // 13
-            cstypes::bone_ids::right_hand,     // 14
-            cstypes::bone_ids::left_hip,       // 15
-            cstypes::bone_ids::left_knee,      // 16
-            cstypes::bone_ids::left_foot,      // 17
-            cstypes::bone_ids::right_hip,      // 18
-            cstypes::bone_ids::right_knee,     // 19
-            cstypes::bone_ids::right_foot      // 20
-        }};
-        projected_agent result{};
-        float min_x = pose.right, min_y = pose.bottom;
-        float max_x = pose.left, max_y = pose.top;
-        std::size_t valid_points{};
-        for (std::size_t i = 0; i < bone_map.size(); ++i) {
-            const auto bone_index = bone_map[i];
-            if (bone_index >= pose.bones.size() || !pose.bones[bone_index].valid)
-                continue;
-            auto& point = result.bones[i];
-            point.x = pose.bones[bone_index].x;
-            point.y = pose.bones[bone_index].y;
-            result.bone_valid[i] = true;
-            min_x = std::min(min_x, point.x);
-            min_y = std::min(min_y, point.y);
-            max_x = std::max(max_x, point.x);
-            max_y = std::max(max_y, point.y);
-            ++valid_points;
-        }
-
-        if (!pose.valid || valid_points < 10 || !result.bone_valid[0] ||
-            !result.bone_valid[6] || !result.bone_valid[17] || !result.bone_valid[20] ||
-            pose.right <= pose.left || pose.bottom <= pose.top)
-            return result;
-        result.bounds = {pose.left, pose.top, pose.right - pose.left, pose.bottom - pose.top};
-        result.valid = true;
-        return result;
-    }
-
     [[nodiscard]] xui::rect body() const {
         return {window_.x + 10.0f, window_.y + 73.0f, window_.w - 20.0f, window_.h - 88.0f};
     }
 
     void select_agent(int team) {
         team = team == 2 ? 2 : 3;
-        // Team changes create a new native preview actor. Do not carry the
-        // previous tab's inspection rotation into the new model.
-        // Let the native preview camera choose the actor's initial facing.
-        // Applying a fixed quarter turn makes some agents render side-on.
         request_.yaw = 0.0f;
         request_.pitch = 0.0f;
-        const auto& changer = settings::g_changer;
-        auto def_index = team == 3 ? changer.agents.ct_def : changer.agents.t_def;
-        std::string model_path;
-        const auto custom_index = team == 3 ? changer.custom_agents.selected_ct : changer.custom_agents.selected_t;
-        if (custom_index >= 0 && custom_index < static_cast<int>(changer.custom_agents.entries.size())) {
-            const auto& custom = changer.custom_agents.entries[custom_index];
-            if ((custom.team == 0 || custom.team == team) && !custom.model_path.empty())
-                model_path = custom.model_path;
-        }
-
-        auto& items = features::changer::g_econ_item_system;
-        const features::changer::econ_item_system::item_def* def =
-            def_index ? items.find_def(def_index) : nullptr;
-        if (!def) {
-            for (const auto* candidate : items.agents()) {
-                if (candidate && candidate->team() == team) {
-                    def = candidate;
-                    def_index = candidate->def_index;
-                    break;
-                }
-            }
-        }
-        if (model_path.empty() && def) model_path = def->model_player;
-        if (model_path.empty()) {
-            model_path = team == 3
-                ? "agents/models/ctm_sas/ctm_sas.vmdl"
-                : "agents/models/tm_phoenix/tm_phoenix.vmdl";
-        }
-
-        request_.type = systems::model_preview::kind::agent;
-        request_.team = team;
-        request_.def_index = def_index;
-        request_.paint_kit = request_.music_kit = 0;
-        request_.model_path = std::move(model_path);
-        agent_name_ = def ? (def->localized_name.empty() ? def->name : def->localized_name)
-            : (team == 3 ? "Counter-Terrorist" : "Terrorist");
+        setup_agent_request(request_, agent_name_, team);
     }
 
     static bool button(xdraw::draw_list& dl, const xui::input_state& input,
@@ -215,14 +417,9 @@ public:
             ? std::min(preview_ready_time_ + dt, 1.0f) : 0.0f;
         const bool preview_live = preview_connected && preview_ready_time_ >= 0.4f;
         auto viewport = body();
-        // Expanding the real Panorama render surface sells the agent's approach
-        // animation while CS2 plays the native team-intro animation graph.
         const float inset = (1.0f - xui::ease::out_cubic(open_anim_)) * 30.0f;
         const float panel_w = std::max(64.0f, viewport.w - inset * 2.0f);
         const float panel_h = std::max(64.0f, viewport.h - inset * 2.0f);
-        // Keep Panorama's render surface pixel-aligned with the visible body.
-        // Oversizing this surface clips the native actor and makes the ESP fit
-        // a different rectangle than the one the user sees.
         constexpr float agent_zoom = 1.0f;
         request_.width = static_cast<int>(panel_w * agent_zoom);
         request_.height = static_cast<int>(panel_h * agent_zoom);
@@ -239,8 +436,6 @@ public:
         systems::g_model_preview.submit(request_);
 
         auto& dl = xdraw::get(xdraw::layer::top);
-        // Keep an aperture over the native 3D panel. Panorama supplies its
-        // opaque menu-colored backplate behind the agent.
         dl.rect_filled(window_.x, window_.y, window_.w, viewport.y - window_.y,
             frame_bg, xdraw::corner_radius::top(12.0f));
         dl.rect_filled(window_.x, viewport.bottom(), window_.w, window_.bottom() - viewport.bottom(),
@@ -280,193 +475,10 @@ public:
         const auto target_index = systems::g_model_preview.is_enemy_preview(local_team) ? 0u : 1u;
         const auto& esp = settings::g_esp.m_player.m_overlay[target_index];
         const auto projected = project_agent(systems::g_model_preview.get_agent_pose());
-        const auto box = projected.bounds;
+
         dl.push_clip(viewport.x, viewport.y, viewport.w, viewport.h);
-        // Use the pose captured from the exact PreviewPlayer draw. When its
-        // fresh bone projection is unavailable, suppress ESP instead of drawing
-        // a guessed skeleton that drifts away from the animated model.
         if (preview_live && projected.valid && esp.enabled.value) {
-            if (esp.m_box.enabled.value) {
-                const auto color = esp.m_box.visible_color.value;
-                if (esp.m_box.fill.value)
-                    dl.rect_filled(box.x, box.y, box.w, box.h, color.alpha(18));
-                if (esp.m_box.outline.value)
-                    dl.rect(box.x - 1.0f, box.y - 1.0f, box.w + 2.0f, box.h + 2.0f,
-                        xdraw::color{0, 0, 0, 210}, xdraw::corner_radius{0.0f}, 3.0f);
-                if (esp.m_box.style.value == settings::esp::player::overlay::box::style_type::full) {
-                    dl.rect(box.x, box.y, box.w, box.h, color, xdraw::corner_radius{0.0f}, 1.4f);
-                } else {
-                    const float max_corner = std::max(4.0f, box.w * 0.35f);
-                    const float c = std::clamp(esp.m_box.corner_length.value, 4.0f, max_corner);
-                    dl.line(box.x, box.y, box.x + c, box.y, color, 1.4f);
-                    dl.line(box.x, box.y, box.x, box.y + c, color, 1.4f);
-                    dl.line(box.right() - c, box.y, box.right(), box.y, color, 1.4f);
-                    dl.line(box.right(), box.y, box.right(), box.y + c, color, 1.4f);
-                    dl.line(box.x, box.bottom() - c, box.x, box.bottom(), color, 1.4f);
-                    dl.line(box.x, box.bottom(), box.x + c, box.bottom(), color, 1.4f);
-                    dl.line(box.right() - c, box.bottom(), box.right(), box.bottom(), color, 1.4f);
-                    dl.line(box.right(), box.bottom() - c, box.right(), box.bottom(), color, 1.4f);
-                }
-            }
-            if (esp.m_skeleton.enabled.value) {
-                const auto color = esp.m_skeleton.visible_color.value;
-                const float thickness = std::clamp(esp.m_skeleton.thickness.value, 0.5f, 5.0f);
-                static constexpr std::array<std::pair<std::size_t, std::size_t>, 20> edges{{
-                    // Spine
-                    {0, 1}, {1, 2}, {2, 3}, {3, 4}, {4, 5}, {5, 6},
-                    // Left arm
-                    {2, 7}, {7, 8}, {8, 9}, {9, 10},
-                    // Right arm
-                    {2, 11}, {11, 12}, {12, 13}, {13, 14},
-                    // Left leg
-                    {6, 15}, {15, 16}, {16, 17},
-                    // Right leg
-                    {6, 18}, {18, 19}, {19, 20}
-                }};
-                for (const auto& [from, to] : edges) {
-                    if (!projected.bone_valid[from] || !projected.bone_valid[to])
-                        continue;
-                    const auto& a = projected.bones[from];
-                    const auto& b = projected.bones[to];
-                    dl.line(a.x, a.y, b.x, b.y, color, thickness);
-                }
-                if (projected.bone_valid[0]) {
-                    const auto& head = projected.bones[0];
-                    dl.circle(head.x, head.y, std::clamp(box.w * 0.08f, 5.0f, 12.0f), color, thickness);
-                }
-            }
-            if (esp.m_health_bar.enabled.value) {
-                const auto& health = esp.m_health_bar;
-                const auto position = health.position.value;
-                const bool vertical = position == settings::esp::player::overlay::health_bar::position_type::left;
-                const float x = vertical ? box.x - 7.0f : box.x;
-                const float y = position == settings::esp::player::overlay::health_bar::position_type::top
-                    ? box.y - 7.0f : position == settings::esp::player::overlay::health_bar::position_type::bottom
-                        ? box.bottom() + 7.0f : box.y;
-                const float w = vertical ? 4.0f : box.w;
-                const float h = vertical ? box.h : 4.0f;
-                if (health.glow.value)
-                    dl.rect_filled(x - 2.0f, y - 2.0f, w + 4.0f, h + 4.0f,
-                        health.glow_color.value.alpha(static_cast<std::uint8_t>(
-                            std::clamp(health.glow_strength.value, 0.0f, 1.0f) * 96.0f)));
-                if (health.outline_setting.value)
-                    dl.rect_filled(x - 1.0f, y - 1.0f, w + 2.0f, h + 2.0f, health.outline_color.value);
-                dl.rect_filled(x, y, w, h, health.background_color.value);
-                constexpr float health_fraction = 0.76f;
-                const float filled = (vertical ? h : w) * health_fraction;
-                if (vertical) {
-                    if (health.gradient.value)
-                        dl.rect_filled_gradient(x, y + h - filled, w, filled,
-                            health.full_color.value, health.full_color.value,
-                            health.low_color.value, health.low_color.value);
-                    else
-                        dl.rect_filled(x, y + h - filled, w, filled, health.full_color.value);
-                } else if (health.gradient.value) {
-                    dl.rect_filled_gradient(x, y, filled, h,
-                        health.low_color.value, health.full_color.value,
-                        health.full_color.value, health.low_color.value);
-                } else {
-                    dl.rect_filled(x, y, filled, h, health.full_color.value);
-                }
-                if (health.show_value.value)
-                    dl.text(vertical ? x - 18.0f : x, y - 14.0f, "76",
-                        health.text_color.value, xdraw::text_style::outlined);
-            }
-            if (esp.m_ammo_bar.enabled.value) {
-                const auto& ammo = esp.m_ammo_bar;
-                const auto position = ammo.position.value;
-                const bool vertical = position == settings::esp::player::overlay::ammo_bar::position_type::left;
-                const float x = vertical ? box.x - 13.0f : box.x;
-                const float y = position == settings::esp::player::overlay::ammo_bar::position_type::top
-                    ? box.y - 13.0f : position == settings::esp::player::overlay::ammo_bar::position_type::bottom
-                        ? box.bottom() + 13.0f : box.y;
-                const float w = vertical ? 3.5f : box.w;
-                const float h = vertical ? box.h : 3.5f;
-                constexpr float ammo_fraction = 0.58f;
-                const float filled = (vertical ? h : w) * ammo_fraction;
-                if (ammo.glow.value)
-                    dl.rect_filled(x - 2.0f, y - 2.0f, w + 4.0f, h + 4.0f,
-                        ammo.glow_color.value.alpha(static_cast<std::uint8_t>(
-                            std::clamp(ammo.glow_strength.value, 0.0f, 1.0f) * 96.0f)));
-                if (ammo.outline_setting.value)
-                    dl.rect_filled(x - 1.0f, y - 1.0f, w + 2.0f, h + 2.0f, ammo.outline_color.value);
-                dl.rect_filled(x, y, w, h, ammo.background_color.value);
-                if (vertical) {
-                    if (ammo.gradient.value)
-                        dl.rect_filled_gradient(x, y + h - filled, w, filled,
-                            ammo.full_color.value, ammo.full_color.value,
-                            ammo.low_color.value, ammo.low_color.value);
-                    else
-                        dl.rect_filled(x, y + h - filled, w, filled, ammo.full_color.value);
-                } else if (ammo.gradient.value) {
-                    dl.rect_filled_gradient(x, y, filled, h,
-                        ammo.low_color.value, ammo.full_color.value,
-                        ammo.full_color.value, ammo.low_color.value);
-                } else {
-                    dl.rect_filled(x, y, filled, h, ammo.full_color.value);
-                }
-                if (ammo.show_value.value)
-                    dl.text(vertical ? x - 19.0f : x, y + h + 2.0f, "7/12",
-                        ammo.text_color.value, xdraw::text_style::outlined);
-            }
-            if (esp.m_name.enabled.value) {
-                const auto [tw, th] = xdraw::measure_text(agent_name_);
-                dl.text(box.x + (box.w - tw) * 0.5f, box.y - th - 4.0f,
-                    agent_name_, esp.m_name.color.value, xdraw::text_style::outlined);
-            }
-            if (esp.m_info_flags.enabled.value) {
-                const auto& flags = esp.m_info_flags;
-                struct flag_preview {
-                    settings::esp::player::overlay::info_flags::flag flag;
-                    std::string_view label;
-                    xdraw::color color;
-                };
-                const std::array<flag_preview, 9> flag_previews{{
-                    {settings::esp::player::overlay::info_flags::money, "$16,000", flags.money_color.value},
-                    {settings::esp::player::overlay::info_flags::armor, "ARMOR", flags.armor_color.value},
-                    {settings::esp::player::overlay::info_flags::kit, "KIT", flags.kit_color.value},
-                    {settings::esp::player::overlay::info_flags::scoped, "SCOPED", flags.scoped_color.value},
-                    {settings::esp::player::overlay::info_flags::defusing, "DEFUSING", flags.defusing_color.value},
-                    {settings::esp::player::overlay::info_flags::flashed, "FLASHED", flags.flashed_color.value},
-                    {settings::esp::player::overlay::info_flags::ping, "38ms", flags.distance_color.value},
-                    {settings::esp::player::overlay::info_flags::distance, "12m", flags.distance_color.value},
-                    {settings::esp::player::overlay::info_flags::c4, "C4", flags.c4_color.value}
-                }};
-                float flags_y = box.y + 4.0f;
-                for (const auto& flag : flag_previews) {
-                    if (!flags.has(flag.flag)) continue;
-                    dl.text(box.right() + 6.0f, flags_y, flag.label,
-                        flag.color, xdraw::text_style::outlined);
-                    flags_y += 13.0f;
-                }
-            }
-            if (esp.m_weapon.enabled.value) {
-                const bool is_ct = request_.team == 3;
-                const auto weapon_name = is_ct ? std::string_view{"usp_silencer"} : std::string_view{"glock"};
-                const auto weapon_label = is_ct ? std::string_view{"USP-S"} : std::string_view{"Glock-18"};
-                const auto display = esp.m_weapon.display.value;
-                const bool show_icon = display == settings::esp::player::overlay::weapon::display_type::icon ||
-                    display == settings::esp::player::overlay::weapon::display_type::text_and_icon;
-                const bool show_text = display == settings::esp::player::overlay::weapon::display_type::text ||
-                    display == settings::esp::player::overlay::weapon::display_type::text_and_icon;
-                float y = box.bottom() + 5.0f;
-                bool icon_drawn = false;
-                if (show_icon) {
-                    const auto* icon = systems::g_icons.get(std::string{weapon_name}, 0.35f);
-                    if (icon && icon->texture) {
-                        const float x = box.x + (box.w - static_cast<float>(icon->width)) * 0.5f;
-                        dl.image(x, y, static_cast<float>(icon->width), static_cast<float>(icon->height),
-                            icon->texture.Get(), esp.m_weapon.icon_color.value);
-                        y += static_cast<float>(icon->height) + 2.0f;
-                        icon_drawn = true;
-                    }
-                }
-                if (show_text || (show_icon && !icon_drawn)) {
-                    const auto [tw, th] = xdraw::measure_text(weapon_label);
-                    dl.text(box.x + (box.w - tw) * 0.5f, y, weapon_label,
-                        esp.m_weapon.text_color.value, xdraw::text_style::outlined);
-                }
-            }
+            draw_agent_esp_overlay(dl, projected, esp, request_.team, agent_name_);
         }
         dl.pop_clip();
     }

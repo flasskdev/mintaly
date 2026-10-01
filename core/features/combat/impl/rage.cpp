@@ -97,6 +97,7 @@ namespace features::combat {
 
         if (!ctx.valid)
         {
+            rd::mark(rd::event::gate_inactive);
             this->m_revolver_cock_ticks = 0;
             return;
         }
@@ -119,6 +120,7 @@ namespace features::combat {
 
         if (!g_shared.has_alive_enemies())
         {
+            rd::mark(rd::event::gate_no_enemies);
             this->m_revolver_cock_ticks = 0;
             return;
         }
@@ -137,26 +139,36 @@ namespace features::combat {
 
         // Filter invalid weapon types early
         if (!is_knife && !is_taser && (ctx.weapon_type < cstypes::weapon_type::pistol || ctx.weapon_type > cstypes::weapon_type::lmg))
+        {
+            rd::mark(rd::event::gate_inactive);
             return;
+        }
 
         auto aim_ctx = this->build_context(cmd, local);
 
         if (is_knife)
         {
             if (!g_shared.can_shoot(cmd, local.controller))
+            {
+                rd::mark(rd::event::gate_cannot_shoot);
                 return;
+            }
             this->run_knife(cmd, aim_ctx, local);
         }
         else if (is_taser)
         {
             if (!g_shared.can_shoot(cmd, local.controller))
+            {
+                rd::mark(rd::event::gate_cannot_shoot);
                 return;
+            }
             this->run_taser(cmd, aim_ctx, local);
         }
         else if (ctx.item_def_idx == cstypes::item_definition_index::weapon_r8_revolver)
         {
             if (!settings::g_combat.m_ragebot.enabled)
             {
+                rd::mark(rd::event::gate_disabled);
                 this->m_revolver_cock_ticks = 0;
                 return;
             }
@@ -173,7 +185,10 @@ namespace features::combat {
                     cmd->csgo_user_cmd.set_attack1_start_history_index(-1);
                 }
                 if (!g_shared.can_shoot(cmd, local.controller))
+                {
+                    rd::mark(rd::event::gate_cannot_shoot);
                     return;
+                }
                 this->run_gun(cmd, aim_ctx, local);
             }
             else
@@ -185,9 +200,15 @@ namespace features::combat {
         {
             this->m_revolver_cock_ticks = 0;
             if (!settings::g_combat.m_ragebot.enabled)
+            {
+                rd::mark(rd::event::gate_disabled);
                 return;
+            }
             if (!g_shared.can_shoot(cmd, local.controller))
+            {
+                rd::mark(rd::event::gate_cannot_shoot);
                 return;
+            }
             this->run_gun(cmd, aim_ctx, local);
         }
     }
@@ -243,6 +264,10 @@ namespace features::combat {
         }
         auto recoil_index = ctx.recoil_index;
 
+        // Never reuse a previous command's simulated eyes if prediction is
+        // disabled or declines this command. Keep the compatibility disable;
+        // the scan fallback resolves the current eye without reenabling it.
+        g_shared.sh() = {};
         // Keep spread, inaccuracy and recoil from the same simulated weapon state.
         systems::g_prediction.simulate(cmd, local, [&]
             {
@@ -526,7 +551,10 @@ namespace features::combat {
         auto eye_candidates = g_shared.sh().get_candidates();
         if (eye_candidates.count == 0)
         {
-            eye_candidates.entries[0].position = g_shared.get_shoot_position();
+            const auto eye = g_shared.get_shoot_position();
+            if (!std::isfinite(eye.x) || !std::isfinite(eye.y) || !std::isfinite(eye.z))
+                return false;
+            eye_candidates.entries[0].position = eye;
             eye_candidates.entries[0].is_uninterpolated = true;
             eye_candidates.count = 1;
         }
@@ -741,7 +769,10 @@ namespace features::combat {
         auto eye_candidates = g_shared.sh().get_candidates();
         if (eye_candidates.count == 0)
         {
-            eye_candidates.entries[0].position = g_shared.get_shoot_position();
+            const auto eye = g_shared.get_shoot_position();
+            if (!std::isfinite(eye.x) || !std::isfinite(eye.y) || !std::isfinite(eye.z))
+                return;
+            eye_candidates.entries[0].position = eye;
             eye_candidates.entries[0].is_uninterpolated = true;
             eye_candidates.count = 1;
         }
@@ -796,7 +827,10 @@ namespace features::combat {
         auto eye_candidates = g_shared.sh().get_candidates();
         if (eye_candidates.count == 0)
         {
-            eye_candidates.entries[0].position = g_shared.get_shoot_position();
+            const auto eye = g_shared.get_shoot_position();
+            if (!std::isfinite(eye.x) || !std::isfinite(eye.y) || !std::isfinite(eye.z))
+                return;
+            eye_candidates.entries[0].position = eye;
             eye_candidates.entries[0].is_uninterpolated = true;
             eye_candidates.count = 1;
         }
@@ -1824,10 +1858,13 @@ namespace features::combat {
             return;
 
         const auto base = cmd->csgo_user_cmd.mutable_base();
-        const auto history_size = cmd->csgo_user_cmd.input_history_size();
-        if (!base || !base->mutable_viewangles() || history_size <= 0 ||
-            !cmd->csgo_user_cmd.mutable_input_history(history_size - 1))
+        if (!base || !base->mutable_viewangles())
+        {
+            // Without a base message there is nowhere to write the silent aim;
+            // everything else must still fire.
+            rd::mark(rd::event::fire_abort_viewangles);
             return;
+        }
 
         const auto tick_base = memory::read<int>(local.controller + SCHEMA("CBasePlayerController", "m_nTickBase"_hash));
         const auto& shared_ctx = g_shared.ctx();
@@ -1952,6 +1989,39 @@ namespace features::combat {
 
         const auto record_time = cstypes::tick_fraction::from_value(tgt.hit.record->simulation_time / cstypes::tick_interval);
 
+        // The client does not populate input history for every command. An empty
+        // history used to abort the shot right here, which is why rage almost
+        // never fired: stamp the shot into a fresh entry instead, and fall back
+        // to the command itself when the engine allocator is unavailable.
+        auto history_size = cmd->csgo_user_cmd.input_history_size();
+        if (history_size <= 0 || !cmd->csgo_user_cmd.mutable_input_history(history_size - 1))
+        {
+            systems::input::input_history_params params{};
+            params.view_angles = math::vector3{
+                aim_angle.x - aim_punch.x,
+                aim_angle.y - aim_punch.y,
+                config.no_spread.value ? aim_angle.z : 0.0f };
+            params.shoot_position = shoot_eye;
+            params.render_tick = record_time.tick + 1;
+            params.render_frac = 0.0f;
+            params.player_tick = stamp_tick;
+            params.player_frac = stamp_frac;
+            params.sv_interp0_src = -1;
+            params.sv_interp0_dst = -1;
+            params.sv_interp1_src = -1;
+            params.sv_interp1_dst = -1;
+            params.player_interp_src = -1;
+            params.player_interp_dst = -1;
+
+            if (systems::g_input.push_input_history(cmd, params) &&
+                cmd->csgo_user_cmd.input_history_size() > 0)
+                rd::mark(rd::event::fire_history_pushed);
+            else
+                rd::mark(rd::event::fire_history_missing);
+
+            history_size = cmd->csgo_user_cmd.input_history_size();
+        }
+
         for (auto i = 0; i < history_size; ++i)
         {
             const auto entry = cmd->csgo_user_cmd.mutable_input_history(i);
@@ -2015,6 +2085,14 @@ namespace features::combat {
             {
                 cmd->csgo_user_cmd.set_attack1_start_history_index(history_size - 1);
             }
+        }
+        else
+        {
+            // No entry survived: anchor the attack to this command itself instead
+            // of leaving an index that points at nothing.
+            cmd->csgo_user_cmd.set_attack1_start_history_index(-1);
+            if (quick_revolver)
+                cmd->csgo_user_cmd.set_attack2_start_history_index(-1);
         }
 
         math::vector3 forward{};
