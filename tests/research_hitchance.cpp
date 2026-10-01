@@ -82,7 +82,9 @@ int main()
         }
     assert(close((*table)[0].x, 0.25f * std::cos(std::numbers::pi_v<float> / 8)));
     assert(!hc::ring_samples(-1));
-    for (const auto s : *hc::ring_samples(0)) assert(s.x == 0 && s.y == 0);
+    const auto zero_table = hc::ring_samples(0);
+    assert(zero_table);
+    for (const auto s : *zero_table) assert(s.x == 0 && s.y == 0);
 
     const hc::frame<vec> frame{{1, 2, 3}, {1, 0, 0}, {0, 1, 0}, {0, 0, 1}, 100};
     const auto end = hc::endpoint(frame, {0, 0});
