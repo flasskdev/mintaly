@@ -1,0 +1,32 @@
+<!-- split-part | CS2_RESEARCH_MASTER.md lines 6773-6800 | body-sha256 6030158c73d63028c074235001c8853fe55566fc09a14c425d0336c1f7695b96 -->
+[← все части](../../README.md) · [категория](00-index.md) · [manifest E001–E184](../00-manifest.md)
+
+<!-- split-body-start -->
+
+
+<a id="evidence-014"></a>
+
+## E014. `analysis/phase2/conditional_core/index.tsv`
+
+Bytes: 755. SHA-256: `9d5ebdb5de7b2fe5d7ca5dcffa8cae391ef8bf2e9c5dc550403675b1b73561b2`.
+
+```tsv
+0xf57b0	FUN_212c33f57b0	212c33f57b0.c	ok
+0x1463a0	FUN_212c34463a0	212c34463a0.c	ok
+0x52ad40	FUN_212c382ad40	212c382ad40.c	ok
+0x528b90	FUN_212c3828b90	212c3828b90.c	ok
+0x5239d0	FUN_212c38239d0	212c38239d0.c	ok
+0x524a30	FUN_212c3824a30	212c3824a30.c	ok
+0x51bea0	FUN_212c381bea0	212c381bea0.c	ok
+0x52bb10	FUN_212c382bb10	212c382bb10.c	ok
+0x52dd20	FUN_212c382dd20	212c382dd20.c	ok
+0x51df10	FUN_212c381df10	212c381df10.c	ok
+0x511160	FUN_212c3811160	212c3811160.c	ok
+0x5114d0	FUN_212c38114d0	212c38114d0.c	ok
+0x530cd0	FUN_212c3830cd0	212c3830cd0.c	ok
+0x5302c0	FUN_212c38302c0	212c38302c0.c	ok
+0x50ce90	FUN_212c380ce90	212c380ce90.c	ok
+0x30d580	FUN_212c360d580	212c360d580.c	ok
+0x52f030	FUN_212c382f030	212c382f030.c	ok
+0x52e720	FUN_212c382e720	212c382e720.c	ok
+```

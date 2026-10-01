@@ -997,11 +997,7 @@ namespace rendering {
 			const auto card_bot = xdraw::color{ 20, 23, 30, static_cast< std::uint8_t >( ( 150.0f + 30.0f * hover_anim ) * fade_alpha ) };
 			dl.rect_filled_gradient( card.x, card.y, card.w, card.h, card_top, card_top, card_bot, card_bot, xdraw::corner_radius{ 8.0f } );
 
-			// 3. Specular top rim
-			dl.line( card.x + 8.0f, card.y + 0.5f, card.x + card.w - 8.0f, card.y + 0.5f,
-				xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( ( 25.0f + 35.0f * hover_anim ) * fade_alpha ) }, 1.0f );
-
-			// 4. Border
+			// 3. Border
 			auto bcol = def ? tokens::col_accent : xdraw::color{ 255, 255, 255, 25 };
 			bcol.a = static_cast< std::uint8_t >( ( def ? ( 130.0f + 80.0f * hover_anim ) : ( 25.0f + 55.0f * hover_anim ) ) * fade_alpha );
 			dl.rect( card.x, card.y, card.w, card.h, bcol, xdraw::corner_radius{ 8.0f }, def ? 1.5f : 1.0f );
@@ -1187,11 +1183,7 @@ namespace rendering {
 					glow.alpha( 0 ), glow.alpha( 0 ), glow, glow, xdraw::corner_radius::bottom( 8.0f ) );
 			}
 
-			// 4. Specular top rim
-			dl.line( card.x + 8.0f, card.y + 0.5f, card.x + card.w - 8.0f, card.y + 0.5f,
-				xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( ( 25.0f + 35.0f * hover_anim ) * fade_alpha ) }, 1.0f );
-
-			// 5. Border
+			// 4. Border
 			auto bcol = is_skinned ? ( pk ? rarity_col : tokens::col_accent ) : xdraw::color{ 255, 255, 255, 25 };
 			bcol.a = static_cast< std::uint8_t >( ( is_skinned ? ( 120.0f + 80.0f * hover_anim ) : ( 25.0f + 55.0f * hover_anim ) ) * fade_alpha );
 			dl.rect( card.x, card.y, card.w, card.h, bcol, xdraw::corner_radius{ 8.0f }, is_skinned ? 1.5f : 1.0f );
@@ -1457,11 +1449,7 @@ namespace rendering {
 			const auto card_bot = xdraw::color{ 14, 16, 22, static_cast< std::uint8_t >( ( 165.0f + 25.0f * hover_anim ) * fade_alpha ) };
 			dl.rect_filled_gradient( card.x, card.y, card.w, card.h, card_top, card_top, card_bot, card_bot, xdraw::corner_radius{ 8.0f } );
 
-			// 3. Specular top rim
-			dl.line( card.x + 8.0f, card.y + 0.5f, card.x + card.w - 8.0f, card.y + 0.5f,
-				xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( ( 25.0f + 35.0f * hover_anim ) * fade_alpha ) }, 1.0f );
-
-			// 4. Border
+			// 3. Border
 			auto bcol = is_equipped ? tokens::col_accent : xdraw::color{ 255, 255, 255, 25 };
 			bcol.a = static_cast< std::uint8_t >( ( is_equipped ? ( 160.0f + 80.0f * hover_anim ) : ( 25.0f + 55.0f * hover_anim ) ) * fade_alpha );
 			dl.rect( card.x, card.y, card.w, card.h, bcol, xdraw::corner_radius{ 8.0f }, is_equipped ? 1.5f : 1.0f );
@@ -1586,11 +1574,7 @@ namespace rendering {
 					glow.alpha( 0 ), glow.alpha( 0 ), glow, glow, xdraw::corner_radius::bottom( 8.0f ) );
 			}
 
-			// 4. Specular top rim
-			dl.line( card.x + 8.0f, card.y + 0.5f, card.x + card.w - 8.0f, card.y + 0.5f,
-				xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( ( 25.0f + 35.0f * hover_anim ) * fade_alpha ) }, 1.0f );
-
-			// 5. Border
+			// 4. Border
 			auto bcol = is_equipped ? tokens::col_accent : ( kit ? rarity_col : xdraw::color{ 255, 255, 255, 25 } );
 			bcol.a = static_cast< std::uint8_t >( ( is_equipped ? ( 160.0f + 80.0f * hover_anim ) : ( 30.0f + 65.0f * hover_anim ) ) * fade_alpha );
 			dl.rect( card.x, card.y, card.w, card.h, bcol, xdraw::corner_radius{ 8.0f }, is_equipped ? 1.5f : 1.0f );
@@ -1881,11 +1865,7 @@ namespace rendering {
 					glow.alpha( 0 ), glow.alpha( 0 ), glow, glow, xdraw::corner_radius::bottom( 8.0f ) );
 			}
 
-			// 4. Specular top rim
-			dl.line( card.x + 8.0f, card.y + 0.5f, card.x + card.w - 8.0f, card.y + 0.5f,
-				xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( ( 25.0f + 35.0f * hover_anim ) * fade_alpha ) }, 1.0f );
-
-			// 5. Border
+			// 4. Border
 			auto bcol = is_equipped ? tokens::col_accent : ( is_vanilla ? xdraw::color{ 255, 255, 255, 25 } : rarity_col );
 			bcol.a = static_cast< std::uint8_t >( ( is_equipped ? ( 160.0f + 80.0f * hover_anim ) : ( 30.0f + 65.0f * hover_anim ) ) * fade_alpha );
 			dl.rect( card.x, card.y, card.w, card.h, bcol, xdraw::corner_radius{ 8.0f }, is_equipped ? 1.5f : 1.0f );

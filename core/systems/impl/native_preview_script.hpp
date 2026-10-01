@@ -22,15 +22,15 @@ inline constexpr const char* bootstrap = R"MINTALY_JS(
     for (var ci = 0; ci < chain.length; ++ci) {
         try {
             var old = chain[ci].Data().mintalyNativePreview;
-            if (old && old.version === 29 && !state) {
+            if (old && old.version === 30 && !state) {
                 state = old;
-            } else if (old && old.version === 29 && state && old !== state) {
+            } else if (old && old.version === 30 && state && old !== state) {
                 try { if (old.anchor && old.anchor.IsValid()) old.anchor.style.visibility = 'collapse'; } catch (_) {}
                 try { if (old.panel && old.panel.IsValid()) old.panel.DeleteAsync(0); } catch (_) {}
                 try { if (old.background && old.background.IsValid()) old.background.DeleteAsync(0); } catch (_) {}
                 try { if (old.anchor && old.anchor.IsValid()) old.anchor.DeleteAsync(0); } catch (_) {}
                 try { old.panel = null; old.background = null; old.anchor = null; } catch (_) {}
-            } else if (old && old.version !== 29) {
+            } else if (old && old.version !== 30) {
                 try { if (old.anchor && old.anchor.IsValid()) old.anchor.style.visibility = 'collapse'; } catch (_) {}
                 try { if (old.panel && old.panel.IsValid()) old.panel.DeleteAsync(0); } catch (_) {}
                 try { if (old.background && old.background.IsValid()) old.background.DeleteAsync(0); } catch (_) {}
@@ -44,8 +44,8 @@ inline constexpr const char* bootstrap = R"MINTALY_JS(
     var host = root;
     var data = root.Data();
     if (!state) state = data.mintalyNativePreview;
-    if (!state || state.version !== 29) {
-        state = { version: 29, panel: null, background: null, anchor: null, generation: '',
+    if (!state || state.version !== 30) {
+        state = { version: 30, panel: null, background: null, anchor: null, generation: '',
             touched: 0, args: null, selection: null, panelFamily: '', panelMap: '',
             configure: null, watching: false, panelSerial: 0, layoutKey: '',
             rotationPanel: null, rotationYaw: null, rotationPitch: null, ready: true };
@@ -70,14 +70,14 @@ inline constexpr const char* bootstrap = R"MINTALY_JS(
     }
     if (state.initialized) {
         if (!state.versionLogged) {
-            logMsg('bridge initialized version=29');
+            logMsg('bridge initialized version=30');
             state.versionLogged = true;
         }
         return;
     }
     state.initialized = true;
     state.versionLogged = true;
-    logMsg('bridge initialized version=29');
+    logMsg('bridge initialized version=30');
     function deletePanel(panel) {
         try { if (panel && panel.IsValid()) panel.DeleteAsync(0); } catch (_) {}
     }
@@ -139,20 +139,8 @@ inline constexpr const char* bootstrap = R"MINTALY_JS(
         try {
             if (typeof InventoryAPI !== 'undefined' && typeof InventoryAPI.GetFauxItemIDFromDefAndPaintIndex === 'function') {
                 var id = InventoryAPI.GetFauxItemIDFromDefAndPaintIndex(def, paint);
-                var valid = false;
-                try {
-                    valid = typeof InventoryAPI.IsValidItemID !== 'function' || InventoryAPI.IsValidItemID(id);
-                } catch (_) {}
-                // Faux IDs are synthetic preview IDs; IsValidItemID can reject
-                // them even though MapItemPreviewPanel understands them. Never
-                // replace a requested finish with the unpainted base item.
-                if (id && String(id) !== '0' && (valid || paint !== 0)) {
-                    logMsg('faux id def=' + def + ' paint=' + paint + ' valid=' + valid);
+                if (id && String(id) !== '0') {
                     return id;
-                }
-                if (paint !== 0) {
-                    logMsg('no faux id for finish def=' + def + ' paint=' + paint);
-                    return '';
                 }
             }
         } catch (e) {
@@ -209,13 +197,12 @@ inline constexpr const char* bootstrap = R"MINTALY_JS(
     }
     function makeSelection(a) {
         var agent = a.kind === 'agent', id = '', active = 0, camera = 'cam_default';
-        var loadedMap = 'ui/acknowledge_item';
+        var loadedMap = agentMap();
         var def = a.def, paint = a.paint;
         if (agent) {
             if (a.def > 0) id = faux(a.def, 0);
             active = 5;
             camera = 'cam_char_inspect_wide_intro';
-            loadedMap = 'ui/acknowledge_item';
         } else {
             if (a.kind === 'music') {
                 try { def = InventoryAPI.GetItemDefinitionIndexFromDefinitionName('musickit'); } catch (_) {}
@@ -380,7 +367,7 @@ inline constexpr const char* bootstrap = R"MINTALY_JS(
                 camera: selection.camera,
                 player: selection.agent ? 'true' : 'false',
                 active_item_idx: selection.active,
-                initial_entity: 'item',
+                initial_entity: selection.agent ? 'vanity_character' : 'item',
                 csm_split_plane0_distance_override: '200.0',
                 hide_while_waiting_for_composite_materials: 'true',
                 mouse_rotate: false,
@@ -416,7 +403,7 @@ inline constexpr const char* bootstrap = R"MINTALY_JS(
             optional(p, 'SetTransparentBackground', [true]);
             optional(p, 'SetHideStaticGeometry', [true]);
             optional(p, 'SetHideParticles', [true]);
-            optional(p, 'SetBackgroundColor', [rCol, gCol, bCol]);
+            optional(p, 'SetBackgroundColor', [rCol, gCol, bCol, 255]);
             p.Data().itemId = selection.id;
             p.Data().active_item_idx = selection.active;
             if (selection.agent) p.Data().weaponItemId = selection.pistolId;
@@ -476,9 +463,11 @@ inline constexpr const char* bootstrap = R"MINTALY_JS(
                         } catch (helperError) {
                             logMsg('agent helper setup failed: ' + helperError);
                         }
-                        if (!configuredByGameHelpers) {
-                            if (current.id) optional(p, 'SetPlayerCharacterItemID', [current.id]);
-                            if (currentArgs.model) optional(p, 'SetPlayerModel', [currentArgs.model]);
+                        if (!configuredByGameHelpers && current.id) {
+                            optional(p, 'SetPlayerCharacterItemID', [current.id]);
+                        }
+                        if (currentArgs.model) {
+                            optional(p, 'SetPlayerModel', [currentArgs.model]);
                         }
                         // Apply the secondary after the vanity helper too: some
                         // client builds ignore weaponItemId in the settings object.
@@ -530,7 +519,7 @@ inline constexpr const char* bootstrap = R"MINTALY_JS(
                     optional(p, 'SetHideParticles', [true]);
                     optional(p, 'SetTransparentBackground', [true]);
                     optional(p, 'SetCSMSplitPlane0DistanceOverride', [200.0]);
-                    optional(p, 'SetBarnlightShadowScaleOverride', [0.0]);
+                    optional(p, 'SetBarnlightShadowScaleOverride', [1.0]);
                     for (var i = 0; i <= 10; ++i) {
                         var mod = i === 0 ? '' : String(i);
                         if (i === current.active) {
@@ -566,6 +555,17 @@ inline constexpr const char* bootstrap = R"MINTALY_JS(
                     optional(p, 'FireEntityInput', ['main_light', 'Enable']);
                     optional(p, 'FireEntityInput', ['main_light', 'SetBrightness', '3.0']);
                     optional(p, 'FireEntityInput', ['main_light', 'SetLightBrightness', '3.0']);
+                    if (current.agent) {
+                        optional(p, 'FireEntityInput', ['light_char', 'Enable']);
+                        optional(p, 'FireEntityInput', ['light_char', 'SetLightBrightness', '3.5']);
+                        optional(p, 'FireEntityInput', ['light_char', 'SetBrightness', '3.5']);
+                        optional(p, 'FireEntityInput', ['light_character', 'Enable']);
+                        optional(p, 'FireEntityInput', ['light_character', 'SetLightBrightness', '3.5']);
+                        optional(p, 'FireEntityInput', ['light_character', 'SetBrightness', '3.5']);
+                        optional(p, 'FireEntityInput', ['light_player', 'Enable']);
+                        optional(p, 'FireEntityInput', ['light_player', 'SetLightBrightness', '3.5']);
+                        optional(p, 'FireEntityInput', ['light_player', 'SetBrightness', '3.5']);
+                    }
                     applyRotation();
                     applyLayout();
                     p.style.opacity = '1.0';
@@ -621,7 +621,7 @@ inline constexpr const char* bootstrap = R"MINTALY_JS(
             state.watching = false;
             return;
         }
-        if (Date.now() - state.touched > 1000) {
+        if (Date.now() - state.touched > 4000) {
             if (state.panel) logMsg('watchdog hid stale preview panel');
             destroy();
         }

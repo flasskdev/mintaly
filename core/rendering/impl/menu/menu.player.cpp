@@ -228,11 +228,6 @@ void menu::draw_player(float group_w, int subtab) const
 		systems::g_model_preview.submit(std::move(req));
 
 		auto& dl = xdraw::get(xdraw::layer::middle);
-		if (!systems::g_model_preview.connected())
-		{
-			dl.rect_filled(preview_rect.x, preview_rect.y, preview_rect.w, preview_rect.h,
-				tokens::col_dark, xdraw::corner_radius{7.0f});
-		}
 		dl.rect(preview_rect.x, preview_rect.y, preview_rect.w, preview_rect.h,
 			tokens::col_border.alpha(160), xdraw::corner_radius{7.0f}, 1.0f);
 

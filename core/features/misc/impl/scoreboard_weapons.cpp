@@ -1187,17 +1187,24 @@ namespace features::misc {
 		const auto local_ctl = memory::safe_read<std::uintptr_t>( addresses::globals::local_player_controller ).value_or( 0 );
 		const bool in_match = (local_ctl != 0) || systems::g_local.get().is_valid();
 
+		static bool s_last_in_match = in_match;
+		if (s_last_in_match != in_match) {
+			s_last_in_match = in_match;
+			m_preview_script_panel = nullptr;
+			m_preview_ui_engine = nullptr;
+		}
+
 		if (m_preview_script_panel && !is_live_panel(m_preview_script_panel)) {
 			m_preview_script_panel = nullptr;
 		}
 
 		c_ui_panel* panel{};
-		if (m_preview_ui_engine == ui_engine && is_live_panel(m_preview_script_panel)) {
-			panel = m_preview_script_panel;
-			panel_diagnostics = "cached active Panorama panel";
-		} else if (in_match && m_ui_engine == ui_engine && is_live_panel(m_script_panel)) {
+		if (in_match && m_ui_engine == ui_engine && is_live_panel(m_script_panel)) {
 			panel = m_script_panel;
 			panel_diagnostics = "reusing the scoreboard's live Panorama panel";
+		} else if (m_preview_ui_engine == ui_engine && is_live_panel(m_preview_script_panel)) {
+			panel = m_preview_script_panel;
+			panel_diagnostics = "cached active Panorama panel";
 		} else {
 			static c_ui_engine* retry_engine{};
 			static auto next_search = std::chrono::steady_clock::time_point{};

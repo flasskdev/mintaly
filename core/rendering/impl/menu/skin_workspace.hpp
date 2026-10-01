@@ -191,7 +191,6 @@ inline void panel(const xui::rect& r) {
     const auto bloom_off = xdraw::color{bloom.r, bloom.g, bloom.b, 0};
     dl.rect_filled_gradient(r.x, r.y, r.w * 0.6f, std::min(r.h, 150.0f),
         bloom, bloom_off, bloom_off, bloom_off, xdraw::corner_radius{12.0f, 0.0f, 0.0f, 0.0f});
-    dl.line(r.x + 12.0f, r.y + 0.5f, r.x + r.w - 12.0f, r.y + 0.5f, xdraw::color{255, 255, 255, 16}, 1.0f);
     dl.line(r.x + 12.0f, r.y + r.h - 1.5f, r.x + r.w - 12.0f, r.y + r.h - 1.5f, xdraw::color{0, 0, 0, 55}, 1.0f);
     dl.rect(r.x, r.y, r.w, r.h, tokens::col_border.alpha(140), rounding);
 }

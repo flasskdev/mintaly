@@ -421,15 +421,19 @@ namespace rendering {
             else
                 y = 12.0f + row * (height + 5.0f);
 
-            // Ambient soft shadow expanding all around the background card
-            draw_list.rect_filled( x - 8.0f, y - 6.0f, w + 16.0f, height + 13.0f,
-                tint({ 0, 0, 0, 20 }), xdraw::corner_radius{ 13.0f } );
-            draw_list.rect_filled( x - 5.0f, y - 4.0f, w + 10.0f, height + 9.0f,
-                tint({ 0, 0, 0, 35 }), xdraw::corner_radius{ 11.0f } );
-            draw_list.rect_filled( x - 2.5f, y - 2.0f, w + 5.0f, height + 5.0f,
-                tint({ 0, 0, 0, 55 }), xdraw::corner_radius{ 9.0f } );
-            draw_list.rect_filled( x, y + 2.0f, w, height,
-                tint({ 0, 0, 0, 80 }), xdraw::corner_radius{ 7.0f } );
+            // Ambient smooth drop shadow expanding all around the watermark card
+            draw_list.rect_filled( x - 14.0f, y - 10.0f, w + 28.0f, height + 22.0f,
+                tint({ 0, 0, 0, 12 }), xdraw::corner_radius{ 16.0f } );
+            draw_list.rect_filled( x - 9.0f,  y - 7.0f,  w + 18.0f, height + 16.0f,
+                tint({ 0, 0, 0, 22 }), xdraw::corner_radius{ 14.0f } );
+            draw_list.rect_filled( x - 5.5f,  y - 4.5f,  w + 11.0f, height + 11.0f,
+                tint({ 0, 0, 0, 38 }), xdraw::corner_radius{ 12.0f } );
+            draw_list.rect_filled( x - 3.0f,  y - 2.0f,  w + 6.0f,  height + 6.0f,
+                tint({ 0, 0, 0, 60 }), xdraw::corner_radius{ 10.0f } );
+            draw_list.rect_filled( x - 1.0f,  y + 0.5f,  w + 2.0f,  height + 2.5f,
+                tint({ 0, 0, 0, 85 }), xdraw::corner_radius{ 8.0f } );
+            draw_list.rect_filled( x,         y + 2.0f,  w,          height,
+                tint({ 0, 0, 0, 115 }), xdraw::corner_radius{ 7.0f } );
 
             // 1. Frosted glass blur (like options)
             draw_list.rect_filled_blurred( x, y, w, height, xdraw::corner_radius{ 7.0f },
@@ -440,10 +444,8 @@ namespace rendering {
             const auto glass_bot = tint( xdraw::color{ 240, 246, 255, 45 } );
             draw_list.rect_filled_gradient( x, y, w, height, glass_top, glass_top, glass_bot, glass_bot, xdraw::corner_radius{ 7.0f } );
 
-            // 3. Whitish border and top specular rim
+            // 3. Whitish border
             draw_list.rect( x, y, w, height, tint( xdraw::color{ 255, 255, 255, 150 } ), xdraw::corner_radius{ 7.0f } );
-            draw_list.line( x + 7.0f, y + 0.5f, x + w - 7.0f, y + 0.5f,
-                tint( xdraw::color{ 255, 255, 255, 200 } ), 1.0f );
 
             const auto accent_x = x + 10.0f;
             const auto accent_w = std::max(0.0f, w - 20.0f);
@@ -1023,10 +1025,16 @@ namespace rendering {
 		const auto [header_tw, header_th] = xdraw::measure_text( "Keybinds" );
 
 		auto draw_watermark_shadow = [&]( float sx, float sy, float sw, float sh ) {
-			draw_list.rect_filled( sx - 4.0f, sy - 3.0f, sw + 8.0f, sh + 7.0f,
-				xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 30.0f * master_alpha ) }, xdraw::corner_radius{ 9.0f } );
-			draw_list.rect_filled( sx - 1.5f, sy - 1.0f, sw + 3.0f, sh + 3.0f,
-				xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 65.0f * master_alpha ) }, xdraw::corner_radius{ 7.0f } );
+			draw_list.rect_filled( sx - 10.0f, sy - 7.0f, sw + 20.0f, sh + 15.0f,
+				xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 12.0f * master_alpha ) }, xdraw::corner_radius{ 14.0f } );
+			draw_list.rect_filled( sx - 6.5f,  sy - 4.5f, sw + 13.0f, sh + 11.0f,
+				xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 24.0f * master_alpha ) }, xdraw::corner_radius{ 12.0f } );
+			draw_list.rect_filled( sx - 4.0f,  sy - 2.5f, sw + 8.0f,  sh + 7.0f,
+				xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 42.0f * master_alpha ) }, xdraw::corner_radius{ 10.0f } );
+			draw_list.rect_filled( sx - 2.0f,  sy - 1.0f, sw + 4.0f,  sh + 4.0f,
+				xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 68.0f * master_alpha ) }, xdraw::corner_radius{ 8.0f } );
+			draw_list.rect_filled( sx,         sy + 1.0f, sw,          sh + 1.0f,
+				xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 95.0f * master_alpha ) }, xdraw::corner_radius{ 7.0f } );
 		};
 
 		constexpr float el_gap = 5.0f;
@@ -1588,10 +1596,16 @@ namespace rendering {
 		const auto [header_tw, header_th] = xdraw::measure_text( "Spectators" );
 
 		auto draw_watermark_shadow = [&]( float sx, float sy, float sw, float sh ) {
-			draw_list.rect_filled( sx - 4.0f, sy - 3.0f, sw + 8.0f, sh + 7.0f,
-				xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 30.0f * master_alpha ) }, xdraw::corner_radius{ 9.0f } );
-			draw_list.rect_filled( sx - 1.5f, sy - 1.0f, sw + 3.0f, sh + 3.0f,
-				xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 65.0f * master_alpha ) }, xdraw::corner_radius{ 7.0f } );
+			draw_list.rect_filled( sx - 10.0f, sy - 7.0f, sw + 20.0f, sh + 15.0f,
+				xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 12.0f * master_alpha ) }, xdraw::corner_radius{ 14.0f } );
+			draw_list.rect_filled( sx - 6.5f,  sy - 4.5f, sw + 13.0f, sh + 11.0f,
+				xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 24.0f * master_alpha ) }, xdraw::corner_radius{ 12.0f } );
+			draw_list.rect_filled( sx - 4.0f,  sy - 2.5f, sw + 8.0f,  sh + 7.0f,
+				xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 42.0f * master_alpha ) }, xdraw::corner_radius{ 10.0f } );
+			draw_list.rect_filled( sx - 2.0f,  sy - 1.0f, sw + 4.0f,  sh + 4.0f,
+				xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 68.0f * master_alpha ) }, xdraw::corner_radius{ 8.0f } );
+			draw_list.rect_filled( sx,         sy + 1.0f, sw,          sh + 1.0f,
+				xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 95.0f * master_alpha ) }, xdraw::corner_radius{ 7.0f } );
 		};
 
 		constexpr float av_size = 32.0f;
@@ -1809,10 +1823,16 @@ namespace rendering {
 		const float max_w = 13.0f + 8.0f + header_tw + 14.0f;
 
 		auto draw_watermark_shadow = [&]( float sx, float sy, float sw, float sh ) {
-			draw_list.rect_filled( sx - 4.0f, sy - 3.0f, sw + 8.0f, sh + 7.0f,
-				xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 30.0f * master_alpha ) }, xdraw::corner_radius{ 9.0f } );
-			draw_list.rect_filled( sx - 1.5f, sy - 1.0f, sw + 3.0f, sh + 3.0f,
-				xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 65.0f * master_alpha ) }, xdraw::corner_radius{ 7.0f } );
+			draw_list.rect_filled( sx - 10.0f, sy - 7.0f, sw + 20.0f, sh + 15.0f,
+				xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 12.0f * master_alpha ) }, xdraw::corner_radius{ 14.0f } );
+			draw_list.rect_filled( sx - 6.5f,  sy - 4.5f, sw + 13.0f, sh + 11.0f,
+				xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 24.0f * master_alpha ) }, xdraw::corner_radius{ 12.0f } );
+			draw_list.rect_filled( sx - 4.0f,  sy - 2.5f, sw + 8.0f,  sh + 7.0f,
+				xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 42.0f * master_alpha ) }, xdraw::corner_radius{ 10.0f } );
+			draw_list.rect_filled( sx - 2.0f,  sy - 1.0f, sw + 4.0f,  sh + 4.0f,
+				xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 68.0f * master_alpha ) }, xdraw::corner_radius{ 8.0f } );
+			draw_list.rect_filled( sx,         sy + 1.0f, sw,          sh + 1.0f,
+				xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 95.0f * master_alpha ) }, xdraw::corner_radius{ 7.0f } );
 		};
 
 		auto& widgets_cfg = settings::g_misc.m_widgets;

@@ -3402,9 +3402,7 @@ namespace xui {
 			draw_surface( );
 		}
 
-		// Specular rim highlight on top, soft shade at the bottom edge.
-		dl.line( draw_x + r, draw_y + 0.5f, draw_x + draw_w - r, draw_y + 0.5f,
-			xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 24.0f * reveal_clamped ) }, 1.0f );
+		// Soft shade at the bottom edge.
 		dl.line( draw_x + r, draw_y + draw_h - 0.5f, draw_x + draw_w - r, draw_y + draw_h - 0.5f,
 			xdraw::color{ 0, 0, 0, static_cast< std::uint8_t >( 70.0f * reveal_clamped ) }, 1.0f );
 
@@ -3519,9 +3517,7 @@ namespace xui {
 				xdraw::color{ wash.r, wash.g, wash.b, 0 }, xdraw::color{ wash.r, wash.g, wash.b, 0 },
 				xdraw::corner_radius::top( r ) );
 
-			// Specular rim: lit along the top edge, shaded along the bottom.
-			dl.line( abs.x + r, abs.y + 0.5f, abs.x + abs.w - r, abs.y + 0.5f,
-				xdraw::color{ 255, 255, 255, 16 }, 1.0f );
+			// Shaded along the bottom edge.
 			dl.line( abs.x + r, abs.y + abs.h - 1.5f, abs.x + abs.w - r, abs.y + abs.h - 1.5f,
 				xdraw::color{ 0, 0, 0, 55 }, 1.0f );
 
@@ -3775,11 +3771,6 @@ namespace xui {
 				const auto glass_bot = xdraw::color{ 240, 246, 255, static_cast< std::uint8_t >( 45.0f * alpha_mult ) };
 				top_dl.rect_filled_gradient( popup_rect.x, popup_rect.y, popup_rect.w, animated_h,
 					glass_top, glass_top, glass_bot, glass_bot, pr );
-
-				// 3. Crisp top-edge specular highlight
-				top_dl.line( popup_rect.x + s.popup_rounding, popup_rect.y + 0.5f,
-					popup_rect.x + popup_rect.w - s.popup_rounding, popup_rect.y + 0.5f,
-					xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 200.0f * alpha_mult ) }, 1.0f );
 			}
 			top_dl.rect( popup_rect.x, popup_rect.y, popup_rect.w, animated_h, border, pr, 1.0f );
 
@@ -4211,10 +4202,6 @@ namespace xui {
 					const auto glass_bot = xdraw::color{ 240, 246, 255, static_cast< std::uint8_t >( 45.0f * alpha_mult ) };
 					dl.rect_filled_gradient( popup.x, popup.y, popup.w, animated_h,
 						glass_top, glass_top, glass_bot, glass_bot, xdraw::corner_radius{ pr } );
-
-					dl.line( popup.x + pr, popup.y + 0.5f,
-						popup.x + popup.w - pr, popup.y + 0.5f,
-						xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 200.0f * alpha_mult ) }, 1.0f );
 				}
 
 				if ( border.a > 0 )
@@ -5488,10 +5475,6 @@ namespace xui {
 				dl.rect_filled_gradient( popup.x, popup.y, popup.w, popup.h,
 					glass_top, glass_top, glass_bot, glass_bot, pr );
 
-				dl.line( popup.x + 6.0f, popup.y + 0.5f,
-					popup.x + popup.w - 6.0f, popup.y + 0.5f,
-					xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 110.0f * alpha_mult ) }, 1.0f );
-
 				dl.rect( popup.x, popup.y, popup.w, popup.h, border, pr );
 
 				// Header
@@ -6409,10 +6392,6 @@ namespace xui {
 					const auto glass_bot = xdraw::color{ 240, 246, 255, static_cast< std::uint8_t >( 45.0f * alpha_mult ) };
 					dl.rect_filled_gradient( dd.x, dd.y, dd.w, animated_h,
 						glass_top, glass_top, glass_bot, glass_bot, xdraw::corner_radius{ pr } );
-
-					dl.line( dd.x + pr, dd.y + 0.5f,
-						dd.x + dd.w - pr, dd.y + 0.5f,
-						xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 200.0f * alpha_mult ) }, 1.0f );
 				}
 				dl.rect( dd.x, dd.y, dd.w, animated_h, border, xdraw::corner_radius{ pr } );
 
@@ -6857,10 +6836,6 @@ namespace xui {
 					const auto glass_bot = xdraw::color{ 240, 246, 255, static_cast< std::uint8_t >( 45.0f * alpha_mult ) };
 					dl.rect_filled_gradient( dd.x, dd.y, dd.w, animated_h,
 						glass_top, glass_top, glass_bot, glass_bot, xdraw::corner_radius{ pr } );
-
-					dl.line( dd.x + pr, dd.y + 0.5f,
-						dd.x + dd.w - pr, dd.y + 0.5f,
-						xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 200.0f * alpha_mult ) }, 1.0f );
 				}
 				dl.rect( dd.x, dd.y, dd.w, animated_h, border, xdraw::corner_radius{ pr } );
 
@@ -7317,10 +7292,6 @@ namespace xui {
 				dl.rect_filled_gradient( sx, sy, sw, sh,
 					glass_top, glass_top, glass_bot, glass_bot, pr );
 
-				dl.line( sx + style.picker_popup_rounding, sy + 0.5f,
-					sx + sw - style.picker_popup_rounding, sy + 0.5f,
-					xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 200.0f * alpha_mult ) }, 1.0f );
-
 				dl.rect( sx, sy, sw, sh, border, pr );
 
 				if ( ease_t < 0.15f )
@@ -7628,10 +7599,6 @@ namespace xui {
 					const auto glass_bot = xdraw::color{ 240, 246, 255, static_cast< std::uint8_t >( 45.0f * alpha_mult ) };
 					dl.rect_filled_gradient( popup.x, popup.y, popup.w, animated_h,
 						glass_top, glass_top, glass_bot, glass_bot, xdraw::corner_radius{ pr } );
-
-					dl.line( popup.x + pr, popup.y + 0.5f,
-						popup.x + popup.w - pr, popup.y + 0.5f,
-						xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 200.0f * alpha_mult ) }, 1.0f );
 				}
 
 				if ( border.a > 0 )

@@ -472,9 +472,6 @@ public:
         if (button(dl, input, {window_.x + 18.0f + tab_w, tabs_y, tab_w, 27.0f}, "Counter-Terrorist", style, request_.team == 3))
             select_agent(3);
 
-        if (!preview_live)
-            dl.rect_filled(viewport.x, viewport.y, viewport.w, viewport.h,
-                frame_bg, xdraw::corner_radius{7.0f});
         dl.rect(viewport.x, viewport.y, viewport.w, viewport.h,
             tokens::col_border.alpha(160), xdraw::corner_radius{7.0f}, 1.0f);
 

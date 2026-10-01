@@ -430,8 +430,6 @@ namespace rendering {
 			glass_top, glass_top, glass_bot, glass_bot, xdraw::corner_radius{ 10.0f } );
 		top_dl.rect( panel_x, panel_y, k_panel_w, panel_h,
 			xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 160.0f * alpha_mult ) }, xdraw::corner_radius{ 10.0f }, 1.0f );
-		top_dl.line( panel_x + 12.0f, panel_y + 0.5f, panel_x + k_panel_w - 12.0f, panel_y + 0.5f,
-			xdraw::color{ 255, 255, 255, static_cast< std::uint8_t >( 200.0f * alpha_mult ) }, 1.0f );
 
 		xdraw::push_font( g_fonts.inter_bold[ fonts::size::petite ] );
 		top_dl.text( panel_x + 14.0f, panel_y + 12.0f, "CONFIG PROFILES",
@@ -730,8 +728,6 @@ namespace rendering {
 				const auto reset_glass_top = xdraw::color{ 255, 255, 255, 75 };
 				const auto reset_glass_bot = xdraw::color{ 240, 245, 255, 45 };
 				top_dl.rect_filled_gradient( px, py, popup_w, popup_h, reset_glass_top, reset_glass_top, reset_glass_bot, reset_glass_bot, xdraw::corner_radius{ 6.0f } );
-				// Top specular line
-				top_dl.line( px + 6.0f, py + 0.5f, px + popup_w - 6.0f, py + 0.5f, xdraw::color{ 255, 255, 255, 200 }, 1.0f );
 				// Border
 				const auto is_danger = is_hovered || detail::confirm_reset;
 				const auto border_col = is_danger ? xdraw::color{ 255, 75, 85, 200 } : xdraw::color{ 255, 255, 255, 150 };

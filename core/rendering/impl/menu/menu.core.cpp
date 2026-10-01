@@ -1258,8 +1258,7 @@ namespace rendering {
             const auto menu_reveal = xui::ease::smoothstep(this->m_open_anim);
             xui::rect inventory_preview_aperture{};
             const xui::rect* window_aperture = nullptr;
-            if (this->m_open && this->m_tab == static_cast<int>(tab::skins) &&
-                systems::g_model_preview.item_preview_active())
+            if (this->m_open && this->m_tab == static_cast<int>(tab::skins))
             {
                 const auto content_x = this->m_x + tokens::gap + menu::k_sidebar_w + tokens::gap;
                 const auto content_y = this->m_y + tokens::gap;
@@ -2277,8 +2276,6 @@ namespace rendering {
         const auto glass_bot = xdraw::color{ 240, 245, 255, static_cast<std::uint8_t>(45.0f * anim) };
         top_dl.rect_filled_gradient(main_x, main_y, main_w, main_h, glass_top, glass_top, glass_bot, glass_bot, xdraw::corner_radius{ 8.0f });
         top_dl.rect(main_x, main_y, main_w, main_h, xdraw::color{ 255, 255, 255, static_cast<std::uint8_t>(160.0f * anim) }, xdraw::corner_radius{ 8.0f }, 1.0f);
-        top_dl.line(main_x + 10.0f, main_y + 0.5f, main_x + main_w - 10.0f, main_y + 0.5f,
-            xdraw::color{ 255, 255, 255, static_cast<std::uint8_t>(200.0f * anim) }, 1.0f);
         float item_y = main_y + 8.0f;
         const float item_h = 36.0f;
         // --- ITEM 1: Theme > ---
@@ -2632,8 +2629,6 @@ namespace rendering {
             const auto s_glass_bot = xdraw::color{ 240, 245, 255, static_cast<std::uint8_t>(45.0f * sub_anim) };
             top_dl.rect_filled_gradient(sub_x, sub_y, sub_w, sub_h, s_glass_top, s_glass_top, s_glass_bot, s_glass_bot, xdraw::corner_radius{ 8.0f });
             top_dl.rect(sub_x, sub_y, sub_w, sub_h, xdraw::color{ 255, 255, 255, static_cast<std::uint8_t>(160.0f * sub_anim) }, xdraw::corner_radius{ 8.0f }, 1.0f);
-            top_dl.line(sub_x + 10.0f, sub_y + 0.5f, sub_x + sub_w - 10.0f, sub_y + 0.5f,
-                xdraw::color{ 255, 255, 255, static_cast<std::uint8_t>(200.0f * sub_anim) }, 1.0f);
             // Header: Title + Close Button
             xdraw::push_font(g_fonts.inter_bold[fonts::size::petite]);
             const char* sub_title = (this->m_user_subtab == 1) ? "THEMES" : "WATERMARK";

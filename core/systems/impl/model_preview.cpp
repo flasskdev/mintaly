@@ -108,9 +108,7 @@ void model_preview::submit(request value) {
         pose_entity_ = 0;
         g_preview_candidate_filter.preexisting_entities.fill(0);
         g_preview_candidate_filter.preexisting_count = 0;
-        // Let the existing menu scene render once before Panorama creates the
-        // isolated panel. Its matching lobby actor must not win first capture.
-        g_preview_candidate_filter.warmup_until = clock::now() + std::chrono::milliseconds(400);
+        g_preview_candidate_filter.warmup_until = {};
         pose_basis_x_ = 1.0f;
         pose_basis_y_ = 0.0f;
         pose_basis_valid_ = false;
@@ -254,15 +252,13 @@ void model_preview::capture_agent_pose(std::uintptr_t entity) {
                 break;
             }
         }
-        if (is_waiting_for_panel && !is_preexisting &&
-            g_preview_candidate_filter.preexisting_count < g_preview_candidate_filter.preexisting_entities.size()) {
-            g_preview_candidate_filter.preexisting_entities[g_preview_candidate_filter.preexisting_count++] = entity;
-            is_preexisting = true;
-        }
     }
-    if (is_waiting_for_panel || is_preexisting) {
-        report_pose(is_waiting_for_panel ? "pre-panel-candidate" : "excluded-lobby-candidate",
-            0, 0.0f, 0.0f);
+    if (is_waiting_for_panel) {
+        report_pose("pre-panel-candidate", 0, 0.0f, 0.0f);
+        return;
+    }
+    if (is_preexisting) {
+        report_pose("excluded-lobby-candidate", 0, 0.0f, 0.0f);
         return;
     }
 
@@ -479,10 +475,6 @@ void model_preview::update() {
         value = *wanted_;
         if (!value.visible && (!last_sent_ || !last_sent_->visible)) return;
         const auto now = clock::now();
-        if (value.visible && value.type == kind::agent && !connected_ &&
-            g_preview_candidate_filter.warmup_until != clock::time_point{} &&
-            now < g_preview_candidate_filter.warmup_until)
-            return;
         const bool unchanged = last_sent_ && last_sent_->same_asset(value);
         const bool selection_changed = !last_sent_ || last_sent_->type != value.type ||
             last_sent_->def_index != value.def_index || last_sent_->team != value.team ||

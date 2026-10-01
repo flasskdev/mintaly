@@ -1651,23 +1651,28 @@ namespace features::misc {
 			if ( card_w < 50.0f ) { ++it; continue; }
 
 			const auto pill_radius = xdraw::corner_radius{ height * 0.5f };
+			const auto pr = height * 0.5f;
 
-			// 1. Soft ambient drop shadow around the pill
-			draw_list.rect_filled( x - 4.0f, y - 2.0f, card_w + 8.0f, height + 5.0f, tint( { 0, 0, 0, 25 } ), xdraw::corner_radius{ height * 0.5f + 2.0f } );
-			draw_list.rect_filled( x, y + 2.0f, card_w, height, tint( { 0, 0, 0, 50 } ), pill_radius );
+			// 1. Progressive smooth ambient drop shadow expanding around the pill
+			draw_list.rect_filled( x - 12.0f, y - 8.0f, card_w + 24.0f, height + 18.0f, tint( { 0, 0, 0, 12 } ), xdraw::corner_radius{ pr + 10.0f } );
+			draw_list.rect_filled( x - 8.0f,  y - 5.0f, card_w + 16.0f, height + 13.0f, tint( { 0, 0, 0, 22 } ), xdraw::corner_radius{ pr + 7.0f } );
+			draw_list.rect_filled( x - 5.0f,  y - 3.0f, card_w + 10.0f, height + 9.0f,  tint( { 0, 0, 0, 36 } ), xdraw::corner_radius{ pr + 4.5f } );
+			draw_list.rect_filled( x - 3.0f,  y - 1.5f, card_w + 6.0f,  height + 5.5f,  tint( { 0, 0, 0, 55 } ), xdraw::corner_radius{ pr + 2.5f } );
+			draw_list.rect_filled( x - 1.0f,  y + 0.5f, card_w + 2.0f,  height + 2.5f,  tint( { 0, 0, 0, 80 } ), xdraw::corner_radius{ pr + 1.0f } );
+			draw_list.rect_filled( x,         y + 2.0f, card_w,          height,         tint( { 0, 0, 0, 110 } ), pill_radius );
 
 			// 2. Real frosted glass blur
 			draw_list.rect_filled_blurred( x, y, card_w, height, pill_radius, tint( { 255, 255, 255, 255 } ) );
 
-			// 3. Crisp white frosted acrylic glass body and crisp border
-			draw_list.rect_filled_gradient( x, y, card_w, height,
-				tint( { 255, 255, 255, 75 } ), tint( { 255, 255, 255, 75 } ),
-				tint( { 240, 246, 255, 45 } ), tint( { 240, 246, 255, 45 } ),
-				pill_radius );
-			draw_list.rect( x, y, card_w, height, tint( { 255, 255, 255, 160 } ), pill_radius, 1.0f );
+			// 3. Dark frosted acrylic glass body and subtle border
+			const auto card_top = tint( xdraw::color{ 24, 27, 34, 220 } );
+			const auto card_bot = tint( xdraw::color{ 14, 16, 21, 230 } );
+			draw_list.rect_filled_gradient( x, y, card_w, height, card_top, card_top, card_bot, card_bot, pill_radius );
 
-			// Top specular rim
-			draw_list.line( x + height * 0.5f, y + 0.5f, x + card_w - height * 0.5f, y + 0.5f, tint( { 255, 255, 255, 200 } ), 1.0f );
+			const auto border_col = is_miss
+				? tint( xdraw::color{ 255, 75, 85, 90 } )
+				: tint( xdraw::color{ 255, 255, 255, 30 } );
+			draw_list.rect( x, y, card_w, height, border_col, pill_radius, 1.0f );
 
 			// 4. Left circle icon
 			const float icon_cx = x + left_pad + icon_size * 0.5f;

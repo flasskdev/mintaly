@@ -1,0 +1,142 @@
+<!-- split-part | CS2_RESEARCH_MASTER.md lines 76191-76328 | body-sha256 bf26a2bddd491f1a98889a0053088af5457c6ff5299ae71384603a1e151bab4d -->
+[← все части](../../README.md) · [категория](00-index.md) · [manifest E001–E184](../00-manifest.md)
+
+<!-- split-body-start -->
+
+
+<a id="evidence-141"></a>
+
+## E141. `analysis/phase2/spread/table_refs.tsv`
+
+Bytes: 9766. SHA-256: `816e839f9cf7d8cd51ede6cb4b2ece03ff39db82ccab0fbf15ad5af05a55c45e`.
+
+```tsv
+source	target	owner	mnemonic	operands	indexed
+0x512b49	0x1754680	0x512710	lea	rbx, [rip + 0x1241b30]	True
+0x512d35	0x17548c0	0x512710	lea	rdi, [rip + 0x1241b84]	True
+0x51eece	0x17548a0	0x51e4f0	mov	eax, dword ptr [rip + 0x12359cc]	False
+0x51f1a5	0x17548a4	0x51e4f0	mov	eax, dword ptr [rip + 0x12356f9]	False
+0x51f1ca	0x1754888	0x51e4f0	mov	rax, qword ptr [rip + 0x12356b7]	False
+0x51f1d1	0x1754890	0x51e4f0	cmp	rax, qword ptr [rip + 0x12356b8]	False
+0x51f1da	0x1754890	0x51e4f0	mov	qword ptr [rip + 0x12356af], rax	False
+0x51f1ec	0x1754880	0x51e4f0	mov	eax, dword ptr [rip + 0x123568e]	False
+0x520414	0x1754890	0x51e4f0	mov	rdx, qword ptr es:[rip + 0x1234474]	False
+0x52041c	0x1754898	0x51e4f0	cmp	rdx, qword ptr [rip + 0x1234475]	False
+0x520444	0x1754888	0x51e4f0	lea	rcx, [rip + 0x123443c]	False
+0x52045e	0x1754890	0x51e4f0	mov	rdx, qword ptr [rip + 0x123442b]	False
+0x520465	0x1754898	0x51e4f0	cmp	rdx, qword ptr [rip + 0x123442c]	False
+0x52047e	0x1754888	0x51e4f0	lea	rcx, [rip + 0x1234403]	False
+0x5204dd	0x1754884	0x51e4f0	mov	eax, dword ptr [rip + 0x12343a1]	False
+0x520502	0x17548a8	0x51e4f0	mov	rax, qword ptr [rip + 0x123439f]	False
+0x520509	0x17548b0	0x51e4f0	cmp	rax, qword ptr [rip + 0x12343a0]	False
+0x520512	0x17548b0	0x51e4f0	mov	qword ptr [rip + 0x1234397], rax	False
+0x5205b0	0x1754888	0x51e4f0	mov	rsi, qword ptr [rip + 0x12342d1]	False
+0x5205b7	0x1754890	0x51e4f0	mov	rbx, qword ptr [rip + 0x12342d2]	False
+0x52068f	0x17548a8	0x51e4f0	mov	r14, qword ptr [rip + 0x1234212]	False
+0x520698	0x17548b0	0x51e4f0	mov	rax, qword ptr [rip + 0x1234211]	False
+0x5206c0	0x17548b0	0x51e4f0	mov	rbx, qword ptr [rip + 0x12341e9]	False
+0x5206c7	0x17548b8	0x51e4f0	cmp	rbx, qword ptr [rip + 0x12341ea]	False
+0x5206e3	0x17548b0	0x51e4f0	mov	qword ptr [rip + 0x12341c6], rax	False
+0x520703	0x17548a8	0x51e4f0	sub	rsi, qword ptr [rip + 0x123419e]	False
+0x5207f3	0x17548b0	0x51e4f0	cmp	rbx, qword ptr [rip + 0x12340b6]	False
+0x520800	0x17548a8	0x51e4f0	mov	rdx, qword ptr [rip + 0x12340a1]	False
+0x520815	0x17548b0	0x51e4f0	mov	r8, qword ptr [rip + 0x1234094]	False
+0x520827	0x17548a8	0x51e4f0	mov	rdx, qword ptr [rip + 0x123407a]	False
+0x52083c	0x17548a8	0x51e4f0	mov	rdx, qword ptr [rip + 0x1234065]	False
+0x520848	0x17548b8	0x51e4f0	mov	rax, qword ptr [rip + 0x1234069]	False
+0x520882	0x17548a8	0x51e4f0	mov	qword ptr [rip + 0x123401f], r13	False
+0x52089f	0x17548b0	0x51e4f0	mov	qword ptr [rip + 0x123400a], rax	False
+0x5208af	0x17548b8	0x51e4f0	mov	qword ptr [rip + 0x1234002], rax	False
+0x520a4e	0x1754890	0x51e4f0	mov	rdx, qword ptr [rip + 0x1233e3b]	False
+0x520a55	0x1754898	0x51e4f0	cmp	rdx, qword ptr [rip + 0x1233e3c]	False
+0x520a80	0x1754888	0x51e4f0	lea	rcx, [rip + 0x1233e01]	False
+0x520a8c	0x17548a8	0x51e4f0	mov	rcx, qword ptr [rip + 0x1233e15]	False
+0x520a93	0x17548b0	0x51e4f0	mov	rax, qword ptr [rip + 0x1233e16]	False
+0x520b80	0x1754888	0x51e4f0	mov	rax, qword ptr [rip + 0x1233d01]	False
+0x520b87	0x1754890	0x51e4f0	mov	rdx, qword ptr [rip + 0x1233d02]	False
+0x520b97	0x1754888	0x51e4f0	mov	rax, qword ptr [rip + 0x1233cea]	False
+0x520b9e	0x1754890	0x51e4f0	mov	rcx, qword ptr [rip + 0x1233ceb]	False
+0x523024	0x1754898	0x51e4f0	cmp	rax, qword ptr [rip + 0x123186d]	False
+0x523040	0x1754888	0x51e4f0	lea	rcx, [rip + 0x1231841]	False
+0x523051	0x17548a4	0x51e4f0	lea	rcx, [rip + 0x123184c]	False
+0x523079	0x17548a4	0x51e4f0	lea	rcx, [rip + 0x1231824]	False
+0x52308a	0x1754880	0x51e4f0	lea	rcx, [rip + 0x12317ef]	False
+0x5230b2	0x1754880	0x51e4f0	lea	rcx, [rip + 0x12317c7]	False
+0x5230f9	0x1754884	0x51e4f0	lea	rcx, [rip + 0x1231784]	False
+0x52311e	0x1754884	0x51e4f0	lea	rcx, [rip + 0x123175f]	False
+0x5231a2	0x17548a0	0x51e4f0	lea	rcx, [rip + 0x12316f7]	False
+0x5231c7	0x17548a0	0x51e4f0	lea	rcx, [rip + 0x12316d2]	False
+0x523702	0x1754888	0x5236f0	mov	rdx, qword ptr [rip + 0x123117f]	True
+0x52370d	0x1754898	0x5236f0	mov	rax, qword ptr [rip + 0x1231183]	False
+0x523748	0x1754888	0x5236f0	vmovups	xmmword ptr [rip + 0x1231138], xmm0	True
+0x523842	0x17548a8	0x523830	mov	rdx, qword ptr [rip + 0x123105f]	True
+0x52384d	0x17548b8	0x523830	mov	rax, qword ptr [rip + 0x1231063]	False
+0x523888	0x17548a8	0x523830	vmovups	xmmword ptr [rip + 0x1231018], xmm0	True
+0x52416a	0x1754680	0x5239d0	lea	r13, [rip + 0x123050f]	False
+0x52422b	0x1754880	0x5239d0	lea	rax, [rip + 0x123064e]	False
+0x5242b7	0x1754680	0x5239d0	vmulps	xmm1, xmm0, xmmword ptr [rip + 0x12303c1]	False
+0x5242bf	0x1754690	0x5239d0	vmulps	xmm2, xmm0, xmmword ptr [rip + 0x12303c9]	False
+0x5242d2	0x17546a0	0x5239d0	vmulps	xmm1, xmm0, xmmword ptr [rip + 0x12303c6]	False
+0x5242da	0x17546b0	0x5239d0	vmulps	xmm2, xmm0, xmmword ptr [rip + 0x12303ce]	False
+0x5242ee	0x17546c0	0x5239d0	vmulps	xmm1, xmm0, xmmword ptr [rip + 0x12303ca]	False
+0x5242f6	0x17546d0	0x5239d0	vmulps	xmm2, xmm0, xmmword ptr [rip + 0x12303d2]	False
+0x52430a	0x17546e0	0x5239d0	vmulps	xmm1, xmm0, xmmword ptr [rip + 0x12303ce]	False
+0x524312	0x17546f0	0x5239d0	vmulps	xmm2, xmm0, xmmword ptr [rip + 0x12303d6]	False
+0x524326	0x1754700	0x5239d0	vmulps	xmm1, xmm0, xmmword ptr [rip + 0x12303d2]	False
+0x52432e	0x1754710	0x5239d0	vmulps	xmm2, xmm0, xmmword ptr [rip + 0x12303da]	False
+0x524348	0x1754720	0x5239d0	vmulps	xmm1, xmm0, xmmword ptr [rip + 0x12303d0]	False
+0x524350	0x1754730	0x5239d0	vmulps	xmm2, xmm0, xmmword ptr [rip + 0x12303d8]	False
+0x52436a	0x1754740	0x5239d0	vmulps	xmm1, xmm0, xmmword ptr [rip + 0x12303ce]	False
+0x524372	0x1754750	0x5239d0	vmulps	xmm2, xmm0, xmmword ptr [rip + 0x12303d6]	False
+0x52438c	0x1754760	0x5239d0	vmulps	xmm1, xmm0, xmmword ptr [rip + 0x12303cc]	False
+0x524394	0x1754770	0x5239d0	vmulps	xmm2, xmm0, xmmword ptr [rip + 0x12303d4]	False
+0x5243ae	0x1754780	0x5239d0	vmulps	xmm1, xmm0, xmmword ptr [rip + 0x12303ca]	False
+0x5243b6	0x1754790	0x5239d0	vmulps	xmm2, xmm0, xmmword ptr [rip + 0x12303d2]	False
+0x5243d0	0x17547a0	0x5239d0	vmulps	xmm1, xmm0, xmmword ptr [rip + 0x12303c8]	False
+0x5243d8	0x17547b0	0x5239d0	vmulps	xmm2, xmm0, xmmword ptr [rip + 0x12303d0]	False
+0x5243f2	0x17547c0	0x5239d0	vmulps	xmm1, xmm0, xmmword ptr [rip + 0x12303c6]	False
+0x5243fa	0x17547d0	0x5239d0	vmulps	xmm2, xmm0, xmmword ptr [rip + 0x12303ce]	False
+0x524414	0x17547e0	0x5239d0	vmulps	xmm1, xmm0, xmmword ptr [rip + 0x12303c4]	False
+0x52441c	0x17547f0	0x5239d0	vmulps	xmm2, xmm0, xmmword ptr [rip + 0x12303cc]	False
+0x524436	0x1754800	0x5239d0	vmulps	xmm1, xmm0, xmmword ptr [rip + 0x12303c2]	False
+0x52443e	0x1754810	0x5239d0	vmulps	xmm2, xmm0, xmmword ptr [rip + 0x12303ca]	False
+0x524458	0x1754820	0x5239d0	vmulps	xmm1, xmm0, xmmword ptr [rip + 0x12303c0]	False
+0x524460	0x1754830	0x5239d0	vmulps	xmm2, xmm0, xmmword ptr [rip + 0x12303c8]	False
+0x52447a	0x1754840	0x5239d0	vmulps	xmm1, xmm0, xmmword ptr [rip + 0x12303be]	False
+0x524482	0x1754850	0x5239d0	vmulps	xmm2, xmm0, xmmword ptr [rip + 0x12303c6]	False
+0x52449c	0x1754860	0x5239d0	vmulps	xmm1, xmm0, xmmword ptr [rip + 0x12303bc]	False
+0x5244a4	0x1754870	0x5239d0	vmulps	xmm0, xmm0, xmmword ptr [rip + 0x12303c4]	False
+0x524f52	0x17548c0	0x524a30	lea	rax, [rip + 0x122f967]	True
+0x524ffd	0x17548c0	0x524a30	vmulps	xmm1, xmm0, xmmword ptr [rip + 0x122f8bb]	True
+0x525005	0x17548d0	0x524a30	vmulps	xmm2, xmm0, xmmword ptr [rip + 0x122f8c3]	True
+0x52501d	0x17548e0	0x524a30	vmulps	xmm1, xmm0, xmmword ptr [rip + 0x122f8bb]	True
+0x525025	0x17548f0	0x524a30	vmulps	xmm2, xmm0, xmmword ptr [rip + 0x122f8c3]	True
+0x52503d	0x1754900	0x524a30	vmulps	xmm1, xmm0, xmmword ptr [rip + 0x122f8bb]	True
+0x525045	0x1754910	0x524a30	vmulps	xmm2, xmm0, xmmword ptr [rip + 0x122f8c3]	True
+0x52505d	0x1754920	0x524a30	vmulps	xmm1, xmm0, xmmword ptr [rip + 0x122f8bb]	True
+0x525065	0x1754930	0x524a30	vmulps	xmm2, xmm0, xmmword ptr [rip + 0x122f8c3]	True
+0x52507d	0x1754940	0x524a30	vmulps	xmm1, xmm0, xmmword ptr [rip + 0x122f8bb]	True
+0x525085	0x1754950	0x524a30	vmulps	xmm2, xmm0, xmmword ptr [rip + 0x122f8c3]	True
+0x52509d	0x1754960	0x524a30	vmulps	xmm1, xmm0, xmmword ptr [rip + 0x122f8bb]	True
+0x5250a5	0x1754970	0x524a30	vmulps	xmm2, xmm0, xmmword ptr [rip + 0x122f8c3]	True
+0x5250bd	0x1754980	0x524a30	vmulps	xmm1, xmm0, xmmword ptr [rip + 0x122f8bb]	True
+0x5250c5	0x1754990	0x524a30	vmulps	xmm2, xmm0, xmmword ptr [rip + 0x122f8c3]	True
+0x5250dd	0x17549a0	0x524a30	vmulps	xmm1, xmm0, xmmword ptr [rip + 0x122f8bb]	True
+0x5250e5	0x17549b0	0x524a30	vmulps	xmm2, xmm0, xmmword ptr [rip + 0x122f8c3]	True
+0x5250fd	0x17549c0	0x524a30	vmulps	xmm1, xmm0, xmmword ptr [rip + 0x122f8bb]	True
+0x525105	0x17549d0	0x524a30	vmulps	xmm2, xmm0, xmmword ptr [rip + 0x122f8c3]	True
+0x52511d	0x17549e0	0x524a30	vmulps	xmm1, xmm0, xmmword ptr [rip + 0x122f8bb]	True
+0x525125	0x17549f0	0x524a30	vmulps	xmm2, xmm0, xmmword ptr [rip + 0x122f8c3]	True
+0x52513d	0x1754a00	0x524a30	vmulps	xmm1, xmm0, xmmword ptr [rip + 0x122f8bb]	True
+0x525145	0x1754a10	0x524a30	vmulps	xmm2, xmm0, xmmword ptr [rip + 0x122f8c3]	True
+0x52515d	0x1754a20	0x524a30	vmulps	xmm1, xmm0, xmmword ptr [rip + 0x122f8bb]	True
+0x525165	0x1754a30	0x524a30	vmulps	xmm2, xmm0, xmmword ptr [rip + 0x122f8c3]	True
+0x52517d	0x1754a40	0x524a30	vmulps	xmm1, xmm0, xmmword ptr [rip + 0x122f8bb]	True
+0x525185	0x1754a50	0x524a30	vmulps	xmm2, xmm0, xmmword ptr [rip + 0x122f8c3]	True
+0x52519d	0x1754a60	0x524a30	vmulps	xmm1, xmm0, xmmword ptr [rip + 0x122f8bb]	True
+0x5251a5	0x1754a70	0x524a30	vmulps	xmm2, xmm0, xmmword ptr [rip + 0x122f8c3]	True
+0x5251bd	0x1754a80	0x524a30	vmulps	xmm1, xmm0, xmmword ptr [rip + 0x122f8bb]	True
+0x5251c5	0x1754a90	0x524a30	vmulps	xmm2, xmm0, xmmword ptr [rip + 0x122f8c3]	True
+0x5251dd	0x1754aa0	0x524a30	vmulps	xmm1, xmm0, xmmword ptr [rip + 0x122f8bb]	True
+0x5251e5	0x1754ab0	0x524a30	vmulps	xmm0, xmm0, xmmword ptr [rip + 0x122f8c3]	True
+```
