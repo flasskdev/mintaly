@@ -614,6 +614,38 @@ namespace features::combat {
 
                 this->scale_damage( out.hitgroup, ctx.target_armor, ctx.has_helmet, ctx.target_team, ctx.armor_ratio, ctx.headshot_multiplier, ctx.scales, out.damage );
 
+                // A successful raw trace is not sufficient: scaling can produce
+                // NaN/Inf from invalid coefficients. Fail closed for every caller.
+                if (!damage_validation::positive_finite(out.damage))
+                {
+                        // Zero can legitimately result from floor or a zero damage
+                        // scale. Log only non-finite/negative results, at most eight
+                        // per DLL load across all scan workers. No guessed defaults.
+                        if (!std::isfinite(out.damage) || out.damage < 0.0f)
+                        {
+                                static std::atomic<unsigned> emitted{};
+                                auto report = emitted.load(std::memory_order_relaxed);
+                                while (report < 8 && !emitted.compare_exchange_weak(
+                                        report, report + 1, std::memory_order_relaxed)) {}
+                                if (report < 8)
+                                {
+                                        char line[1024]{};
+                                        _snprintf_s(line, sizeof(line), _TRUNCATE,
+                                                "[rage-damage:invalid] report=%u limit=8 target=%llx method=%s hitgroup=%d team=%d armor=%d helmet=%d raw=%.9g scaled=%.9g armor_ratio=%.9g headshot_multiplier=%.9g ct_head=%.9g t_head=%.9g ct_body=%.9g t_body=%.9g action=reject",
+                                                report + 1, static_cast<unsigned long long>(ctx.target_pawn),
+                                                diagnostic_contact_confirmed ? "contact" : "geometry", out.hitgroup,
+                                                ctx.target_team, ctx.target_armor, static_cast<int>(ctx.has_helmet),
+                                                static_cast<double>(target_damage), static_cast<double>(out.damage),
+                                                static_cast<double>(ctx.armor_ratio), static_cast<double>(ctx.headshot_multiplier),
+                                                static_cast<double>(ctx.scales.ct_head), static_cast<double>(ctx.scales.t_head),
+                                                static_cast<double>(ctx.scales.ct_body), static_cast<double>(ctx.scales.t_body));
+                                        diag::write(diag::level::warning, line);
+                                }
+                        }
+                        out = {};
+                        return false;
+                }
+
                 // Copy evidence while this exact trace workspace is alive. No extra
                 // traces, entity lookups, worker logging or changes to acceptance.
                 auto& evidence = out.trace_diagnostic;
@@ -694,7 +726,7 @@ namespace features::combat {
 
         float shared::penetration::get_max_damage( int hitgroup, int target_armor, bool has_helmet, int target_team ) const
         {
-                if ( this->m_weapon_data.damage <= 0.0f )
+                if ( !damage_validation::positive_finite(this->m_weapon_data.damage) )
                 {
                         return 0.0f;
                 }
@@ -709,7 +741,7 @@ namespace features::combat {
 
                 auto damage = this->m_weapon_data.damage;
                 this->scale_damage( hitgroup, target_armor, has_helmet, target_team, this->m_weapon_data.armor_ratio, this->m_weapon_data.headshot_multiplier, scales, damage );
-                return damage;
+                return damage_validation::positive_finite(damage) ? damage : 0.0f;
         }
 
         void shared::penetration::scale_damage( int hitgroup, int armor, bool has_helmet, int team, float armor_ratio, float headshot_multiplier, const damage_scales& scales, float& damage ) const
